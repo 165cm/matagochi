@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>またごち</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">家族の「また食べたい」を残す、ごはんメモ</p>
+          <h1>またごち</h1>
+        </div>
+        <button class="icon-button" type="button" data-action="reset-demo" aria-label="デモをリセット">↺</button>
+      </header>
+
+      <main id="app" class="screen" aria-live="polite"></main>
+
+      <nav class="bottom-tabs" aria-label="主要画面">
+        <button class="tab is-active" type="button" data-view="collection">
+          <span>コレクション</span>
+        </button>
+        <button class="tab" type="button" data-view="ratings">
+          <span>評価</span>
+        </button>
+      </nav>
+    </div>
+
+    <script src="app.js?v=matagochi"></script>
+  </body>
+</html>
