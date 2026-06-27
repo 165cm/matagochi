@@ -117,7 +117,8 @@ h3 {
 .text-button,
 .slot,
 .chip,
-.cycle-button,
+.mood-button,
+.no-repeat-button,
 .choice-button,
 .calendar-day {
   border: 0;
@@ -623,10 +624,10 @@ body.is-onboarding .icon-button {
 
 .rating-row {
   display: grid;
-  grid-template-columns: 74px 1fr;
+  grid-template-columns: 64px 1fr;
   gap: 8px;
-  align-items: center;
-  padding: 8px 0;
+  align-items: start;
+  padding: 10px 0;
   border-bottom: 1px solid #f0e9df;
 }
 
@@ -634,27 +635,112 @@ body.is-onboarding .icon-button {
   border-bottom: 0;
 }
 
-.cycle-buttons {
+.repeat-person {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  gap: 3px;
+  padding-top: 5px;
 }
 
-.cycle-button {
-  min-width: 0;
-  min-height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--muted);
+.repeat-person span {
+  color: var(--sage-dark);
   font-size: 11px;
   font-weight: 900;
 }
 
-.cycle-button.is-active {
+.repeat-choice-wrap {
+  display: grid;
+  gap: 7px;
+}
+
+.mood-meter {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(90deg, #fff1e8 0%, #fff7d9 34%, #edf3e8 70%, #eef4fb 100%);
+}
+
+.mood-button,
+.no-repeat-button {
+  min-width: 0;
+  min-height: 50px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.mood-button {
+  display: grid;
+  gap: 2px;
+  place-items: center;
+  padding: 5px 2px;
+}
+
+.mood-button span:not(.mood-dot) {
+  display: block;
+}
+
+.mood-button small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.mood-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--sage);
+}
+
+.mood-tomorrow .mood-dot {
+  background: var(--tomato);
+}
+
+.mood-weekly .mood-dot {
+  background: var(--egg);
+}
+
+.mood-twice_month .mood-dot {
+  background: var(--sage);
+}
+
+.mood-monthly .mood-dot {
+  background: var(--blue);
+}
+
+.mood-pause .mood-dot {
+  background: #9b9185;
+}
+
+.mood-button.is-active {
   border-color: var(--sage);
-  background: #edf3e8;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px rgba(124, 154, 117, 0.25);
+}
+
+.mood-button.is-active small {
   color: var(--sage-dark);
+}
+
+.no-repeat-button {
+  width: 100%;
+  min-height: 38px;
+  background: #f1ede8;
+  color: #6e6358;
+}
+
+.no-repeat-button.is-active {
+  border-color: #9b9185;
+  background: #e2ddd5;
+  color: var(--ink);
 }
 
 .compact-textarea {

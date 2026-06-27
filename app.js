@@ -546,7 +546,7 @@ function renderRepeatCycles() {
         <div class="section-head">
           <div>
             <h3>今日のリピ周期</h3>
-            <p>家族それぞれの「また食べたい」ペースを選びます。</p>
+            <p>食べたい気持ちの強さで、家族それぞれのペースを選びます。</p>
           </div>
         </div>
         <div class="feedback-list">
@@ -581,16 +581,34 @@ function renderRepeatCycles() {
 
 function renderRepeatInput(name) {
   const cycle = normalizeRepeatCycle(state.repeatDraft.familyRepeatCycles[name]) || defaultRepeatCycle;
+  const timeOptions = repeatOptions.filter((option) => option.id !== "never");
+  const noRepeat = repeatOptions.find((option) => option.id === "never");
   return `
-    <div class="rating-row">
-      <strong>${name}</strong>
-      <div class="cycle-buttons" role="group" aria-label="${name}のリピ周期">
-        ${repeatOptions.map((option) => `
-          <button class="cycle-button ${option.id === cycle ? "is-active" : ""}" type="button" data-action="set-cycle" data-person="${escapeAttr(name)}" data-cycle="${option.id}" aria-label="${name} ${option.label}">${option.label}</button>
-        `).join("")}
+    <div class="rating-row repeat-meter-row">
+      <div class="repeat-person">
+        <strong>${name}</strong>
+        <span>${escapeHtml(repeatLabel(cycle))}</span>
+      </div>
+      <div class="repeat-choice-wrap" role="group" aria-label="${name}のリピ周期">
+        <div class="mood-meter" aria-label="${name}の食べたい気持ちメーター">
+          ${timeOptions.map((option, index) => `
+            <button class="mood-button mood-${option.id} ${option.id === cycle ? "is-active" : ""}" type="button" data-action="set-cycle" data-person="${escapeAttr(name)}" data-cycle="${option.id}" aria-label="${name} ${option.label}">
+              <span class="mood-dot" aria-hidden="true"></span>
+              <span>${option.label}</span>
+              <small>${repeatMoodHint(index)}</small>
+            </button>
+          `).join("")}
+        </div>
+        <button class="no-repeat-button ${noRepeat.id === cycle ? "is-active" : ""}" type="button" data-action="set-cycle" data-person="${escapeAttr(name)}" data-cycle="${noRepeat.id}" aria-label="${name} ${noRepeat.label}">
+          ${noRepeat.label}
+        </button>
       </div>
     </div>
   `;
+}
+
+function repeatMoodHint(index) {
+  return ["すぐ", "好き", "ほどよく", "たまに", "お休み"][index] || "";
 }
 
 function renderEvaluationCard(evaluation) {
