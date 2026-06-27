@@ -1,6 +1,7 @@
 const STORAGE_KEY = "matagochi-mvp-v1";
 
 const defaultFamily = ["ママ", "パパ", "子ども1", "子ども2"];
+const emptyDraft = { title: "", videoUrl: "", source: "", mealType: "dinner", caption: "", note: "" };
 const mealTypes = [
   { id: "breakfast", label: "朝ごはん" },
   { id: "lunch", label: "昼ごはん" },
@@ -10,6 +11,7 @@ const mealTypes = [
 
 const demoState = {
   view: "collection",
+  onboarded: false,
   selectedRecipeId: "r2",
   editingRecipeId: null,
   searchText: "",
@@ -28,7 +30,8 @@ const demoState = {
   ratingDraft: {
     familyRatings: { "ママ": 5, "パパ": 4, "子ども1": 4, "子ども2": 3 },
     nextTiming: "2週間後",
-    memo: "魚の日としてリピート候補。子ども用はしょうゆ少なめ。"
+    memo: "魚の日としてリピート候補。子ども用はしょうゆ少なめ。",
+    photo: ""
   },
   recipes: [
     {
@@ -136,6 +139,7 @@ function normalizeState(saved) {
     ...base,
     ...saved,
     family,
+    onboarded: saved.onboarded ?? true,
     editingRecipeId: null,
     draft: { ...base.draft, ...(saved.draft || {}) },
     ratingDraft: { ...base.ratingDraft, ...(saved.ratingDraft || {}) }
@@ -143,7 +147,11 @@ function normalizeState(saved) {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
+  }
 }
 
 function setView(view) {
@@ -153,6 +161,12 @@ function setView(view) {
 }
 
 function render() {
+  if (!state.onboarded) {
+    renderOnboarding();
+    return;
+  }
+  document.body.classList.remove("is-onboarding");
+
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === state.view);
   });
@@ -164,6 +178,25 @@ function render() {
   };
   document.querySelector("#app").innerHTML = views[state.view]();
   bindEvents();
+}
+
+function renderOnboarding() {
+  document.body.classList.add("is-onboarding");
+  document.querySelector("#app").innerHTML = `
+    <section class="hero-card onboarding">
+      <p class="eyebrow">ようこそ</p>
+      <h2>またごちをはじめましょう</h2>
+      <p class="muted">家族の「また食べたい」を残す、ごはんメモです。<br>まずは始め方を選んでください。あとからいつでも切り替えられます。</p>
+      <div class="onboarding-actions">
+        <button class="primary-button full-button" type="button" data-action="start-empty">空ではじめる</button>
+        <button class="secondary-button full-button" type="button" data-action="start-demo">サンプルを見てみる</button>
+      </div>
+      <p class="muted small">サンプルには操作を試すためのレシピと評価が入っています。「設定」からいつでもリセットできます。</p>
+    </section>
+  `;
+  document.querySelectorAll("[data-action]").forEach((element) => {
+    element.addEventListener("click", handleAction);
+  });
 }
 
 function renderCollection() {
@@ -363,6 +396,16 @@ function renderRatings() {
           <label for="rating-memo">評価メモ</label>
           <textarea id="rating-memo" class="textarea compact-textarea">${escapeHtml(state.ratingDraft.memo)}</textarea>
         </div>
+        <div class="field">
+          <label for="rating-photo">料理写真（任意）</label>
+          ${state.ratingDraft.photo ? `
+            <div class="photo-preview">
+              <img src="${escapeAttr(state.ratingDraft.photo)}" alt="料理写真プレビュー">
+              <button class="secondary-button danger" type="button" data-action="remove-photo">写真を外す</button>
+            </div>
+          ` : ""}
+          <input id="rating-photo" type="file" accept="image/*" class="input file-input">
+        </div>
         <button class="primary-button full-button" type="button" data-action="save-evaluation">評価を保存</button>
       </section>
 
@@ -402,6 +445,7 @@ function renderEvaluationCard(evaluation) {
         <span class="badge hot">★ ${average.toFixed(1)}</span>
       </div>
       <p class="muted small">${evaluation.memo}</p>
+      ${evaluation.photo ? `<img class="eval-photo" src="${escapeAttr(evaluation.photo)}" alt="料理写真">` : ""}
       <div class="chip-row">
         ${state.family.map((name) => `<span class="chip">${name}: ${evaluation.familyRatings[name] || "-"}点</span>`).join("")}
       </div>
@@ -485,10 +529,36 @@ function bindEvents() {
   });
 
   document.querySelector("#import-file")?.addEventListener("change", handleImportFile);
+
+  document.querySelector("#rating-photo")?.addEventListener("change", handlePhotoFile);
 }
 
 function handleAction(event) {
   const { action } = event.currentTarget.dataset;
+
+  if (action === "start-demo") {
+    state = clone(demoState);
+    state.onboarded = true;
+    saveState();
+    showToast("サンプルデータを読み込みました。");
+    render();
+    return;
+  }
+
+  if (action === "start-empty") {
+    state = clone(demoState);
+    state.onboarded = true;
+    state.recipes = [];
+    state.evaluations = [];
+    state.selectedRecipeId = null;
+    state.draft = clone(emptyDraft);
+    state.extractedIngredients = [];
+    state.extractedSteps = [];
+    saveState();
+    showToast("空の状態ではじめます。");
+    render();
+    return;
+  }
 
   if (action === "extract-caption") {
     captureDraft();
@@ -513,6 +583,16 @@ function handleAction(event) {
 
   if (action === "save-recipe") {
     captureDraft();
+    if (!state.draft.title) {
+      showToast("レシピ名を入力してください。");
+      render();
+      return;
+    }
+    if (!state.draft.videoUrl) {
+      showToast("ショート動画リンクを入力してください。");
+      render();
+      return;
+    }
     const ingredients = state.extractedIngredients.length ? state.extractedIngredients : parseIngredients(state.draft.caption);
     const steps = state.extractedSteps.length ? state.extractedSteps : parseCookingSteps(state.draft.caption);
     const existing = state.editingRecipeId ? recipeById(state.editingRecipeId) : null;
@@ -547,8 +627,10 @@ function handleAction(event) {
       };
       state.recipes.unshift(recipe);
       state.selectedRecipeId = recipe.id;
-      state.extractedIngredients = recipe.ingredients;
-      state.extractedSteps = recipe.steps;
+      state.draft = clone(emptyDraft);
+      state.extractedIngredients = [];
+      state.extractedSteps = [];
+      state.fetchStatus = "";
       saveState();
       showToast("ショート動画レシピを保存しました。");
       render();
@@ -579,9 +661,10 @@ function handleAction(event) {
 
   if (action === "cancel-edit") {
     state.editingRecipeId = null;
-    state.draft = clone(demoState.draft);
+    state.draft = clone(emptyDraft);
     state.extractedIngredients = [];
     state.extractedSteps = [];
+    state.fetchStatus = "";
     saveState();
     render();
   }
@@ -650,11 +733,19 @@ function handleAction(event) {
       familyRatings: { ...state.ratingDraft.familyRatings },
       nextTiming: state.ratingDraft.nextTiming,
       memo: state.ratingDraft.memo,
+      photo: state.ratingDraft.photo || "",
       photoLabel: "食卓写真"
     };
     state.evaluations.unshift(evaluation);
+    state.ratingDraft.photo = "";
     saveState();
     showToast("レシピ評価を保存しました。");
+    render();
+  }
+
+  if (action === "remove-photo") {
+    state.ratingDraft.photo = "";
+    saveState();
     render();
   }
 }
@@ -663,7 +754,7 @@ function captureDraft() {
   const currentUrl = document.querySelector("#recipe-url")?.value.trim() || "";
   const platform = detectPlatform(currentUrl);
   state.draft = {
-    title: document.querySelector("#recipe-title")?.value.trim() || "名前未設定レシピ",
+    title: document.querySelector("#recipe-title")?.value.trim() || "",
     videoUrl: currentUrl,
     source: document.querySelector("#recipe-source")?.value.trim() || platform.label,
     mealType: document.querySelector("#recipe-meal")?.value || "dinner",
@@ -766,6 +857,47 @@ function handleImportFile(event) {
     }
   };
   reader.readAsText(file);
+}
+
+function handlePhotoFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    showToast("画像ファイルを選んでください。");
+    return;
+  }
+  resizeImage(file)
+    .then((dataUrl) => {
+      state.ratingDraft.photo = dataUrl;
+      saveState();
+      showToast("写真を追加しました。");
+      render();
+    })
+    .catch(() => showToast("写真を読み込めませんでした。"));
+}
+
+function resizeImage(file, maxSize = 960, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = reject;
+      image.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const width = Math.round(image.width * scale);
+        const height = Math.round(image.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function recipeById(id) {
@@ -937,9 +1069,10 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 document.querySelector('[data-action="reset-demo"]').addEventListener("click", () => {
+  if (!window.confirm("この端末に保存したレシピと評価をすべて削除して、最初の状態に戻します。よろしいですか？")) return;
   localStorage.removeItem(STORAGE_KEY);
   state = clone(demoState);
-  showToast("MVPデモをリセットしました。");
+  showToast("データをリセットしました。");
   render();
 });
 

@@ -380,6 +380,64 @@ h3 {
   align-items: center;
 }
 
+body.is-onboarding .bottom-tabs,
+body.is-onboarding .icon-button {
+  display: none;
+}
+
+.onboarding {
+  margin-top: 24px;
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.onboarding h2 {
+  margin-bottom: 8px;
+}
+
+.onboarding p {
+  line-height: 1.7;
+}
+
+.onboarding-actions {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 12px;
+}
+
+.onboarding-actions .full-button {
+  margin-top: 0;
+}
+
+.file-input {
+  height: auto;
+  padding: 9px 12px;
+}
+
+.photo-preview {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.photo-preview img {
+  width: 100%;
+  max-height: 240px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+
+.eval-photo {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+
 .form-grid {
   display: grid;
   gap: 10px;
