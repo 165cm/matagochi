@@ -1,6 +1,7 @@
 const STORAGE_KEY = "matagochi-mvp-v1";
 
-const family = ["ママ", "パパ", "子ども1", "子ども2"];
+const defaultFamily = ["ママ", "パパ", "子ども1", "子ども2"];
+const emptyDraft = { title: "", videoUrl: "", source: "", mealType: "dinner", caption: "", note: "" };
 const mealTypes = [
   { id: "breakfast", label: "朝ごはん" },
   { id: "lunch", label: "昼ごはん" },
@@ -10,8 +11,11 @@ const mealTypes = [
 
 const demoState = {
   view: "collection",
+  onboarded: false,
   selectedRecipeId: "r2",
+  editingRecipeId: null,
   searchText: "",
+  family: [...defaultFamily],
   extractedIngredients: [],
   extractedSteps: [],
   fetchStatus: "",
@@ -26,7 +30,8 @@ const demoState = {
   ratingDraft: {
     familyRatings: { "ママ": 5, "パパ": 4, "子ども1": 4, "子ども2": 3 },
     nextTiming: "2週間後",
-    memo: "魚の日としてリピート候補。子ども用はしょうゆ少なめ。"
+    memo: "魚の日としてリピート候補。子ども用はしょうゆ少なめ。",
+    photo: ""
   },
   recipes: [
     {
@@ -129,16 +134,24 @@ function loadState() {
 
 function normalizeState(saved) {
   const base = clone(demoState);
+  const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
   return {
     ...base,
     ...saved,
+    family,
+    onboarded: saved.onboarded ?? true,
+    editingRecipeId: null,
     draft: { ...base.draft, ...(saved.draft || {}) },
     ratingDraft: { ...base.ratingDraft, ...(saved.ratingDraft || {}) }
   };
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
+  }
 }
 
 function setView(view) {
@@ -148,16 +161,42 @@ function setView(view) {
 }
 
 function render() {
+  if (!state.onboarded) {
+    renderOnboarding();
+    return;
+  }
+  document.body.classList.remove("is-onboarding");
+
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === state.view);
   });
 
   const views = {
     collection: renderCollection,
-    ratings: renderRatings
+    ratings: renderRatings,
+    settings: renderSettings
   };
   document.querySelector("#app").innerHTML = views[state.view]();
   bindEvents();
+}
+
+function renderOnboarding() {
+  document.body.classList.add("is-onboarding");
+  document.querySelector("#app").innerHTML = `
+    <section class="hero-card onboarding">
+      <p class="eyebrow">ようこそ</p>
+      <h2>またごちをはじめましょう</h2>
+      <p class="muted">家族の「また食べたい」を残す、ごはんメモです。<br>まずは始め方を選んでください。あとからいつでも切り替えられます。</p>
+      <div class="onboarding-actions">
+        <button class="primary-button full-button" type="button" data-action="start-empty">空ではじめる</button>
+        <button class="secondary-button full-button" type="button" data-action="start-demo">サンプルを見てみる</button>
+      </div>
+      <p class="muted small">サンプルには操作を試すためのレシピと評価が入っています。「設定」からいつでもリセットできます。</p>
+    </section>
+  `;
+  document.querySelectorAll("[data-action]").forEach((element) => {
+    element.addEventListener("click", handleAction);
+  });
 }
 
 function renderCollection() {
@@ -185,8 +224,8 @@ function renderCollection() {
     <section class="panel">
       <div class="section-head">
         <div>
-          <h3>リンクを保存</h3>
-          <p>URLとキャプションだけで、後から探せる形に。</p>
+          <h3>${state.editingRecipeId ? "レシピを編集" : "リンクを保存"}</h3>
+          <p>${state.editingRecipeId ? "内容を直して更新できます。" : "URLとキャプションだけで、後から探せる形に。"}</p>
         </div>
       </div>
       <div class="form-grid">
@@ -226,10 +265,11 @@ function renderCollection() {
           <input id="recipe-note" class="input" value="${escapeAttr(state.draft.note)}">
         </div>
         <div class="actions">
-          <button class="primary-button" type="button" data-action="save-recipe">保存する</button>
+          <button class="primary-button" type="button" data-action="save-recipe">${state.editingRecipeId ? "更新する" : "保存する"}</button>
           <button class="secondary-button" type="button" data-action="fetch-caption">URLから取得</button>
         </div>
         <button class="secondary-button full-button" type="button" data-action="extract-caption">キャプションから材料・作り方を抽出</button>
+        ${state.editingRecipeId ? `<button class="text-button full-button" type="button" data-action="cancel-edit">編集をやめる</button>` : ""}
         ${state.fetchStatus ? `<p class="notice">${state.fetchStatus}</p>` : ""}
       </div>
     </section>
@@ -290,6 +330,10 @@ function renderRecipeCard(recipe) {
         <a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>
         <button class="secondary-button" type="button" data-action="rate-recipe" data-recipe="${recipe.id}">評価する</button>
       </div>
+      <div class="actions">
+        <button class="secondary-button" type="button" data-action="edit-recipe" data-recipe="${recipe.id}">編集</button>
+        <button class="secondary-button danger" type="button" data-action="delete-recipe" data-recipe="${recipe.id}">削除</button>
+      </div>
     </article>
   `;
 }
@@ -342,7 +386,7 @@ function renderRatings() {
           </div>
         </div>
         <div class="feedback-list">
-          ${family.map((name) => renderRatingInput(name)).join("")}
+          ${state.family.map((name) => renderRatingInput(name)).join("")}
         </div>
         <div class="field">
           <label for="next-timing">次はいつ頃食べたい？</label>
@@ -351,6 +395,16 @@ function renderRatings() {
         <div class="field">
           <label for="rating-memo">評価メモ</label>
           <textarea id="rating-memo" class="textarea compact-textarea">${escapeHtml(state.ratingDraft.memo)}</textarea>
+        </div>
+        <div class="field">
+          <label for="rating-photo">料理写真（任意）</label>
+          ${state.ratingDraft.photo ? `
+            <div class="photo-preview">
+              <img src="${escapeAttr(state.ratingDraft.photo)}" alt="料理写真プレビュー">
+              <button class="secondary-button danger" type="button" data-action="remove-photo">写真を外す</button>
+            </div>
+          ` : ""}
+          <input id="rating-photo" type="file" accept="image/*" class="input file-input">
         </div>
         <button class="primary-button full-button" type="button" data-action="save-evaluation">評価を保存</button>
       </section>
@@ -391,10 +445,63 @@ function renderEvaluationCard(evaluation) {
         <span class="badge hot">★ ${average.toFixed(1)}</span>
       </div>
       <p class="muted small">${evaluation.memo}</p>
+      ${evaluation.photo ? `<img class="eval-photo" src="${escapeAttr(evaluation.photo)}" alt="料理写真">` : ""}
       <div class="chip-row">
-        ${family.map((name) => `<span class="chip">${name}: ${evaluation.familyRatings[name] || "-"}点</span>`).join("")}
+        ${state.family.map((name) => `<span class="chip">${name}: ${evaluation.familyRatings[name] || "-"}点</span>`).join("")}
       </div>
+      <button class="secondary-button danger full-button" type="button" data-action="delete-evaluation" data-eval="${evaluation.id}">この評価を削除</button>
     </article>
+  `;
+}
+
+function renderSettings() {
+  return `
+    <section class="hero-card">
+      <div class="section-head">
+        <div>
+          <h2>設定</h2>
+          <p>家族メンバーとデータの管理をします。</p>
+        </div>
+      </div>
+      <div class="hero-row">
+        <div class="hero-stat"><strong>${state.family.length}</strong><span>家族メンバー</span></div>
+        <div class="hero-stat"><strong>${state.recipes.length}</strong><span>レシピ</span></div>
+        <div class="hero-stat"><strong>${state.evaluations.length}</strong><span>評価</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h3>家族メンバー</h3>
+          <p>評価画面で星をつける人を編集できます。</p>
+        </div>
+      </div>
+      <div class="member-list">
+        ${state.family.map((name, index) => `
+          <div class="member-row">
+            <input class="input member-name" data-index="${index}" value="${escapeAttr(name)}" aria-label="メンバー名">
+            <button class="secondary-button danger" type="button" data-action="remove-member" data-index="${index}" ${state.family.length <= 1 ? "disabled" : ""}>削除</button>
+          </div>
+        `).join("")}
+      </div>
+      <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h3>データのバックアップ</h3>
+          <p>端末を変えるときや、消えてしまう前の保険に。</p>
+        </div>
+      </div>
+      <p class="notice">この端末のブラウザにだけ保存されています。書き出したファイルを保管しておくと、別の端末や再インストール後に読み込んで復元できます。</p>
+      <div class="actions">
+        <button class="primary-button" type="button" data-action="export-data">書き出す</button>
+        <button class="secondary-button" type="button" data-action="import-data">読み込む</button>
+      </div>
+      <input id="import-file" type="file" accept="application/json,.json" hidden>
+    </section>
   `;
 }
 
@@ -414,10 +521,44 @@ function bindEvents() {
     saveState();
     render();
   });
+
+  document.querySelectorAll(".member-name").forEach((input) => {
+    input.addEventListener("change", (event) => {
+      renameMember(Number(event.target.dataset.index), event.target.value);
+    });
+  });
+
+  document.querySelector("#import-file")?.addEventListener("change", handleImportFile);
+
+  document.querySelector("#rating-photo")?.addEventListener("change", handlePhotoFile);
 }
 
 function handleAction(event) {
   const { action } = event.currentTarget.dataset;
+
+  if (action === "start-demo") {
+    state = clone(demoState);
+    state.onboarded = true;
+    saveState();
+    showToast("サンプルデータを読み込みました。");
+    render();
+    return;
+  }
+
+  if (action === "start-empty") {
+    state = clone(demoState);
+    state.onboarded = true;
+    state.recipes = [];
+    state.evaluations = [];
+    state.selectedRecipeId = null;
+    state.draft = clone(emptyDraft);
+    state.extractedIngredients = [];
+    state.extractedSteps = [];
+    saveState();
+    showToast("空の状態ではじめます。");
+    render();
+    return;
+  }
 
   if (action === "extract-caption") {
     captureDraft();
@@ -442,28 +583,130 @@ function handleAction(event) {
 
   if (action === "save-recipe") {
     captureDraft();
+    if (!state.draft.title) {
+      showToast("レシピ名を入力してください。");
+      render();
+      return;
+    }
+    if (!state.draft.videoUrl) {
+      showToast("ショート動画リンクを入力してください。");
+      render();
+      return;
+    }
     const ingredients = state.extractedIngredients.length ? state.extractedIngredients : parseIngredients(state.draft.caption);
     const steps = state.extractedSteps.length ? state.extractedSteps : parseCookingSteps(state.draft.caption);
-    const recipe = {
-      id: `r${Date.now()}`,
-      title: state.draft.title,
-      videoUrl: state.draft.videoUrl,
-      source: state.draft.source,
-      mealType: state.draft.mealType,
-      caption: state.draft.caption,
-      ingredients,
-      steps,
-      tags: [mealLabel(state.draft.mealType), state.draft.source, "動画"],
-      savedAt: today(),
-      note: state.draft.note
-    };
-    state.recipes.unshift(recipe);
-    state.selectedRecipeId = recipe.id;
-    state.extractedIngredients = recipe.ingredients;
-    state.extractedSteps = recipe.steps;
+    const existing = state.editingRecipeId ? recipeById(state.editingRecipeId) : null;
+    if (existing) {
+      existing.title = state.draft.title;
+      existing.videoUrl = state.draft.videoUrl;
+      existing.source = state.draft.source;
+      existing.mealType = state.draft.mealType;
+      existing.caption = state.draft.caption;
+      existing.ingredients = ingredients;
+      existing.steps = steps;
+      existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
+      existing.note = state.draft.note;
+      state.selectedRecipeId = existing.id;
+      state.editingRecipeId = null;
+      saveState();
+      showToast("レシピを更新しました。");
+      render();
+    } else {
+      const recipe = {
+        id: `r${Date.now()}`,
+        title: state.draft.title,
+        videoUrl: state.draft.videoUrl,
+        source: state.draft.source,
+        mealType: state.draft.mealType,
+        caption: state.draft.caption,
+        ingredients,
+        steps,
+        tags: [mealLabel(state.draft.mealType), state.draft.source, "動画"],
+        savedAt: today(),
+        note: state.draft.note
+      };
+      state.recipes.unshift(recipe);
+      state.selectedRecipeId = recipe.id;
+      state.draft = clone(emptyDraft);
+      state.extractedIngredients = [];
+      state.extractedSteps = [];
+      state.fetchStatus = "";
+      saveState();
+      showToast("ショート動画レシピを保存しました。");
+      render();
+    }
+  }
+
+  if (action === "edit-recipe") {
+    const recipe = recipeById(event.currentTarget.dataset.recipe);
+    if (recipe) {
+      state.editingRecipeId = recipe.id;
+      state.draft = {
+        title: recipe.title,
+        videoUrl: recipe.videoUrl,
+        source: recipe.source,
+        mealType: recipe.mealType,
+        caption: recipe.caption,
+        note: recipe.note
+      };
+      state.extractedIngredients = clone(recipe.ingredients);
+      state.extractedSteps = [...recipe.steps];
+      state.fetchStatus = "";
+      state.view = "collection";
+      saveState();
+      render();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  if (action === "cancel-edit") {
+    state.editingRecipeId = null;
+    state.draft = clone(emptyDraft);
+    state.extractedIngredients = [];
+    state.extractedSteps = [];
+    state.fetchStatus = "";
     saveState();
-    showToast("ショート動画レシピを保存しました。");
     render();
+  }
+
+  if (action === "delete-recipe") {
+    const id = event.currentTarget.dataset.recipe;
+    const recipe = recipeById(id);
+    if (recipe && window.confirm(`「${recipe.title}」を削除します。関連する評価履歴も消えます。よろしいですか？`)) {
+      state.recipes = state.recipes.filter((item) => item.id !== id);
+      state.evaluations = state.evaluations.filter((item) => item.recipeId !== id);
+      if (state.editingRecipeId === id) state.editingRecipeId = null;
+      if (state.selectedRecipeId === id) state.selectedRecipeId = state.recipes[0]?.id || null;
+      saveState();
+      showToast("レシピを削除しました。");
+      render();
+    }
+  }
+
+  if (action === "delete-evaluation") {
+    const id = event.currentTarget.dataset.eval;
+    if (window.confirm("この評価を削除します。よろしいですか？")) {
+      state.evaluations = state.evaluations.filter((item) => item.id !== id);
+      saveState();
+      showToast("評価を削除しました。");
+      render();
+    }
+  }
+
+  if (action === "add-member") {
+    addMember();
+  }
+
+  if (action === "remove-member") {
+    removeMember(Number(event.currentTarget.dataset.index));
+  }
+
+  if (action === "export-data") {
+    exportData();
+  }
+
+  if (action === "import-data") {
+    document.querySelector("#import-file")?.click();
   }
 
   if (action === "rate-recipe") {
@@ -490,11 +733,19 @@ function handleAction(event) {
       familyRatings: { ...state.ratingDraft.familyRatings },
       nextTiming: state.ratingDraft.nextTiming,
       memo: state.ratingDraft.memo,
+      photo: state.ratingDraft.photo || "",
       photoLabel: "食卓写真"
     };
     state.evaluations.unshift(evaluation);
+    state.ratingDraft.photo = "";
     saveState();
     showToast("レシピ評価を保存しました。");
+    render();
+  }
+
+  if (action === "remove-photo") {
+    state.ratingDraft.photo = "";
+    saveState();
     render();
   }
 }
@@ -503,7 +754,7 @@ function captureDraft() {
   const currentUrl = document.querySelector("#recipe-url")?.value.trim() || "";
   const platform = detectPlatform(currentUrl);
   state.draft = {
-    title: document.querySelector("#recipe-title")?.value.trim() || "名前未設定レシピ",
+    title: document.querySelector("#recipe-title")?.value.trim() || "",
     videoUrl: currentUrl,
     source: document.querySelector("#recipe-source")?.value.trim() || platform.label,
     mealType: document.querySelector("#recipe-meal")?.value || "dinner",
@@ -515,6 +766,138 @@ function captureDraft() {
 function captureRatingDraft() {
   state.ratingDraft.nextTiming = document.querySelector("#next-timing")?.value.trim() || "また今度";
   state.ratingDraft.memo = document.querySelector("#rating-memo")?.value.trim() || "";
+}
+
+function renameMember(index, rawValue) {
+  const next = rawValue.trim();
+  const previous = state.family[index];
+  if (!next || next === previous) {
+    render();
+    return;
+  }
+  if (state.family.some((name, i) => i !== index && name === next)) {
+    showToast("同じ名前のメンバーがいます。");
+    render();
+    return;
+  }
+  state.family[index] = next;
+  migrateMemberKey(previous, next);
+  saveState();
+  showToast("メンバー名を変更しました。");
+  render();
+}
+
+function migrateMemberKey(previous, next) {
+  const move = (ratings) => {
+    if (ratings && Object.prototype.hasOwnProperty.call(ratings, previous)) {
+      ratings[next] = ratings[previous];
+      delete ratings[previous];
+    }
+  };
+  move(state.ratingDraft.familyRatings);
+  state.evaluations.forEach((evaluation) => move(evaluation.familyRatings));
+}
+
+function addMember() {
+  let index = state.family.length + 1;
+  let name = `メンバー${index}`;
+  while (state.family.includes(name)) {
+    index += 1;
+    name = `メンバー${index}`;
+  }
+  state.family.push(name);
+  state.ratingDraft.familyRatings[name] = 4;
+  saveState();
+  showToast("メンバーを追加しました。名前を編集してください。");
+  render();
+}
+
+function removeMember(index) {
+  if (state.family.length <= 1) return;
+  const name = state.family[index];
+  if (!window.confirm(`「${name}」を家族メンバーから外します。よろしいですか？`)) return;
+  state.family.splice(index, 1);
+  delete state.ratingDraft.familyRatings[name];
+  saveState();
+  showToast("メンバーを削除しました。");
+  render();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `matagochi-backup-${today()}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("データを書き出しました。");
+}
+
+function handleImportFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(String(reader.result));
+      if (!Array.isArray(parsed.recipes) || !Array.isArray(parsed.evaluations)) {
+        throw new Error("invalid");
+      }
+      if (!window.confirm("読み込むと、今のデータはバックアップの内容で置き換わります。よろしいですか？")) return;
+      state = normalizeState(parsed);
+      saveState();
+      showToast("データを読み込みました。");
+      render();
+    } catch {
+      showToast("読み込めませんでした。書き出したJSONファイルを選んでください。");
+    }
+  };
+  reader.readAsText(file);
+}
+
+function handlePhotoFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    showToast("画像ファイルを選んでください。");
+    return;
+  }
+  resizeImage(file)
+    .then((dataUrl) => {
+      state.ratingDraft.photo = dataUrl;
+      saveState();
+      showToast("写真を追加しました。");
+      render();
+    })
+    .catch(() => showToast("写真を読み込めませんでした。"));
+}
+
+function resizeImage(file, maxSize = 960, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = reject;
+      image.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const width = Math.round(image.width * scale);
+        const height = Math.round(image.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function recipeById(id) {
@@ -644,7 +1027,11 @@ function mealLabel(id) {
 }
 
 function today() {
-  return "2026-06-21";
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function formatDate(date) {
@@ -682,9 +1069,10 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 document.querySelector('[data-action="reset-demo"]').addEventListener("click", () => {
+  if (!window.confirm("この端末に保存したレシピと評価をすべて削除して、最初の状態に戻します。よろしいですか？")) return;
   localStorage.removeItem(STORAGE_KEY);
   state = clone(demoState);
-  showToast("MVPデモをリセットしました。");
+  showToast("データをリセットしました。");
   render();
 });
 
