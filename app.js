@@ -270,7 +270,7 @@ function renderCollection() {
         </div>
         <button class="secondary-button full-button" type="button" data-action="extract-caption">キャプションから材料・作り方を抽出</button>
         ${state.editingRecipeId ? `<button class="text-button full-button" type="button" data-action="cancel-edit">編集をやめる</button>` : ""}
-        ${state.fetchStatus ? `<p class="notice">${state.fetchStatus}</p>` : ""}
+        ${state.fetchStatus ? `<p class="notice">${escapeHtml(state.fetchStatus)}</p>` : ""}
       </div>
     </section>
 
@@ -285,14 +285,14 @@ function renderCollection() {
       <div class="ingredient-list">
         ${extracted.map((item) => `
           <div class="ingredient-row">
-            <strong>${item.name}</strong>
-            <span class="muted small">${item.amount}・${item.category}</span>
+            <strong>${escapeHtml(item.name)}</strong>
+            <span class="muted small">${escapeHtml(item.amount)}・${escapeHtml(item.category)}</span>
           </div>
         `).join("")}
       </div>
       <h3 class="subhead">調理方法</h3>
       <ol class="step-list">
-        ${steps.map((step) => `<li>${step}</li>`).join("") || "<li>キャプション内の作り方を確認してください。</li>"}
+        ${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("") || "<li>キャプション内の作り方を確認してください。</li>"}
       </ol>
     </section>
 
@@ -317,22 +317,22 @@ function renderRecipeCard(recipe) {
     <article class="recipe-card">
       <div class="recipe-top">
         <div>
-          <strong>${recipe.title}</strong>
-          <p class="muted small">${mealLabel(recipe.mealType)} / ${recipe.source} / 保存 ${recipe.savedAt}</p>
+          <strong>${escapeHtml(recipe.title)}</strong>
+          <p class="muted small">${mealLabel(recipe.mealType)} / ${escapeHtml(recipe.source)} / 保存 ${escapeHtml(recipe.savedAt)}</p>
         </div>
         <span class="badge ${summary.count ? "hot" : ""}">${summary.count ? `★ ${summary.average.toFixed(1)}` : "未評価"}</span>
       </div>
-      <p class="muted small">${recipe.note}</p>
+      <p class="muted small">${escapeHtml(recipe.note)}</p>
       <div class="chip-row">
-        ${recipe.ingredients.slice(0, 5).map((item) => `<span class="chip">${item.name}</span>`).join("")}
+        ${recipe.ingredients.slice(0, 5).map((item) => `<span class="chip">${escapeHtml(item.name)}</span>`).join("")}
       </div>
       <div class="actions">
         <a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>
-        <button class="secondary-button" type="button" data-action="rate-recipe" data-recipe="${recipe.id}">評価する</button>
+        <button class="secondary-button" type="button" data-action="rate-recipe" data-recipe="${escapeAttr(recipe.id)}">評価する</button>
       </div>
       <div class="actions">
-        <button class="secondary-button" type="button" data-action="edit-recipe" data-recipe="${recipe.id}">編集</button>
-        <button class="secondary-button danger" type="button" data-action="delete-recipe" data-recipe="${recipe.id}">削除</button>
+        <button class="secondary-button" type="button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">編集</button>
+        <button class="secondary-button danger" type="button" data-action="delete-recipe" data-recipe="${escapeAttr(recipe.id)}">削除</button>
       </div>
     </article>
   `;
@@ -363,15 +363,15 @@ function renderRatings() {
       <div class="field">
         <label for="rating-recipe">評価するレシピ</label>
         <select id="rating-recipe" class="select">
-          ${state.recipes.map((recipe) => `<option value="${recipe.id}" ${selected?.id === recipe.id ? "selected" : ""}>${recipe.title}</option>`).join("")}
+          ${state.recipes.map((recipe) => `<option value="${escapeAttr(recipe.id)}" ${selected?.id === recipe.id ? "selected" : ""}>${escapeHtml(recipe.title)}</option>`).join("")}
         </select>
       </div>
       ${selected ? `
         <div class="rating-target">
-          <strong>${selected.title}</strong>
-          <p class="muted small">${selected.note}</p>
+          <strong>${escapeHtml(selected.title)}</strong>
+          <p class="muted small">${escapeHtml(selected.note)}</p>
           <div class="chip-row">
-            ${selected.ingredients.slice(0, 5).map((item) => `<span class="chip">${item.name}</span>`).join("")}
+            ${selected.ingredients.slice(0, 5).map((item) => `<span class="chip">${escapeHtml(item.name)}</span>`).join("")}
           </div>
         </div>
       ` : renderEmpty("先にレシピを保存してください。")}
@@ -440,16 +440,16 @@ function renderEvaluationCard(evaluation) {
       <div class="recipe-top">
         <div>
           <strong>${formatDate(evaluation.cookedAt)}</strong>
-          <p class="muted small">${evaluation.nextTiming}</p>
+          <p class="muted small">${escapeHtml(evaluation.nextTiming)}</p>
         </div>
         <span class="badge hot">★ ${average.toFixed(1)}</span>
       </div>
-      <p class="muted small">${evaluation.memo}</p>
+      <p class="muted small">${escapeHtml(evaluation.memo)}</p>
       ${evaluation.photo ? `<img class="eval-photo" src="${escapeAttr(evaluation.photo)}" alt="料理写真">` : ""}
       <div class="chip-row">
         ${state.family.map((name) => `<span class="chip">${name}: ${evaluation.familyRatings[name] || "-"}点</span>`).join("")}
       </div>
-      <button class="secondary-button danger full-button" type="button" data-action="delete-evaluation" data-eval="${evaluation.id}">この評価を削除</button>
+      <button class="secondary-button danger full-button" type="button" data-action="delete-evaluation" data-eval="${escapeAttr(evaluation.id)}">この評価を削除</button>
     </article>
   `;
 }
