@@ -3,22 +3,22 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="SNSで見つけたレシピ動画を保存して、作ったら家族の星評価を記録できる、ごはんメモMVPです。">
-    <meta property="og:title" content="またごち">
-    <meta property="og:description" content="家族の「また食べたい」を残す、ごはんメモ">
+    <meta name="description" content="SNSで見つけたレシピ動画を保存して、家族のリピート周期から1週間の献立候補を作る、ごはんメモMVPです。">
+    <meta property="og:title" content="リピごち">
+    <meta property="og:description" content="家族の「また食べたい周期」を残す、ごはんメモ">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://165cm.github.io/matagochi/">
     <meta name="twitter:card" content="summary">
     <link rel="canonical" href="https://165cm.github.io/matagochi/">
-    <title>またごち</title>
+    <title>リピごち</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">家族の「また食べたい」を残す、ごはんメモ</p>
-          <h1>またごち</h1>
+          <p class="eyebrow">家族の「また食べたい周期」を残す、ごはんメモ</p>
+          <h1>リピごち</h1>
         </div>
         <button class="icon-button" type="button" data-action="reset-demo" aria-label="データをリセット" title="データをリセット">↺</button>
       </header>
@@ -29,8 +29,11 @@
         <button class="tab is-active" type="button" data-view="collection">
           <span>コレクション</span>
         </button>
-        <button class="tab" type="button" data-view="ratings">
-          <span>評価</span>
+        <button class="tab" type="button" data-view="plan">
+          <span>献立</span>
+        </button>
+        <button class="tab" type="button" data-view="repeat">
+          <span>リピ周期</span>
         </button>
         <button class="tab" type="button" data-view="settings">
           <span>設定</span>
@@ -38,6 +41,6 @@
       </nav>
     </div>
 
-    <script src="app.js?v=matagochi"></script>
+    <script src="app.js?v=ripigochi"></script>
   </body>
 </html>

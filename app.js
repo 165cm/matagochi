@@ -2,6 +2,15 @@ const STORAGE_KEY = "matagochi-mvp-v1";
 
 const defaultFamily = ["ママ", "パパ", "子ども1", "子ども2"];
 const emptyDraft = { title: "", videoUrl: "", source: "", mealType: "dinner", caption: "", note: "" };
+const defaultRepeatCycle = "weekly";
+const repeatOptions = [
+  { id: "tomorrow", label: "明日でも", days: 1, tone: "hot" },
+  { id: "weekly", label: "毎週", days: 7, tone: "good" },
+  { id: "twice_month", label: "月２回", days: 14, tone: "good" },
+  { id: "monthly", label: "月１回", days: 30, tone: "calm" },
+  { id: "pause", label: "しばらくいい", days: 90, tone: "calm" },
+  { id: "never", label: "リピなし", days: null, tone: "stop" }
+];
 const mealTypes = [
   { id: "breakfast", label: "朝ごはん" },
   { id: "lunch", label: "昼ごはん" },
@@ -27,9 +36,8 @@ const demoState = {
     caption: "鮭 3切れ、しめじ 1袋、玉ねぎ 1個、バター 20g、しょうゆ 大さじ1。1. 玉ねぎを薄切り。2. 鮭としめじをホイルにのせる。3. バターとしょうゆを入れて包む。4. フライパンで12分蒸し焼き。",
     note: "平日夜に良さそう。ホイルなら洗い物が少ない。"
   },
-  ratingDraft: {
-    familyRatings: { "ママ": 5, "パパ": 4, "子ども1": 4, "子ども2": 3 },
-    nextTiming: "2週間後",
+  repeatDraft: {
+    familyRepeatCycles: { "ママ": "weekly", "パパ": "weekly", "子ども1": "twice_month", "子ども2": "twice_month" },
     memo: "魚の日としてリピート候補。子ども用はしょうゆ少なめ。",
     photo: ""
   },
@@ -94,8 +102,7 @@ const demoState = {
       id: "e1",
       recipeId: "r2",
       cookedAt: "2026-06-17",
-      familyRatings: { "ママ": 4, "パパ": 5, "子ども1": 4, "子ども2": 4 },
-      nextTiming: "来週でもいい",
+      familyRepeatCycles: { "ママ": "weekly", "パパ": "tomorrow", "子ども1": "weekly", "子ども2": "weekly" },
       memo: "キャベツ多めでもよく食べた。次はにんじん細め。",
       photoLabel: "夕食写真"
     },
@@ -103,8 +110,7 @@ const demoState = {
       id: "e2",
       recipeId: "r1",
       cookedAt: "2026-06-18",
-      familyRatings: { "ママ": 5, "パパ": 4, "子ども1": 3, "子ども2": 3 },
-      nextTiming: "月2回",
+      familyRepeatCycles: { "ママ": "twice_month", "パパ": "twice_month", "子ども1": "monthly", "子ども2": "monthly" },
       memo: "大人は好き。子どもには卵を多めに。",
       photoLabel: "朝スープ"
     }
@@ -135,15 +141,78 @@ function loadState() {
 function normalizeState(saved) {
   const base = clone(demoState);
   const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
+  const savedView = saved.view === "ratings" ? "repeat" : saved.view;
+  const view = ["collection", "plan", "repeat", "settings"].includes(savedView) ? savedView : base.view;
   return {
     ...base,
     ...saved,
     family,
+    view,
     onboarded: saved.onboarded ?? true,
     editingRecipeId: null,
     draft: { ...base.draft, ...(saved.draft || {}) },
-    ratingDraft: { ...base.ratingDraft, ...(saved.ratingDraft || {}) }
+    repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
+    evaluations: normalizeEvaluations(Array.isArray(saved.evaluations) ? saved.evaluations : base.evaluations, family)
   };
+}
+
+function normalizeRepeatDraft(draft, family) {
+  return {
+    familyRepeatCycles: normalizeFamilyRepeatCycles(draft?.familyRepeatCycles, draft?.familyRatings, family, draft?.nextTiming),
+    memo: draft?.memo || "",
+    photo: draft?.photo || ""
+  };
+}
+
+function normalizeEvaluations(evaluations, family) {
+  return evaluations.map((evaluation) => ({
+    ...evaluation,
+    familyRepeatCycles: normalizeFamilyRepeatCycles(
+      evaluation.familyRepeatCycles,
+      evaluation.familyRatings,
+      family,
+      evaluation.nextTiming
+    ),
+    memo: evaluation.memo || "",
+    photo: evaluation.photo || ""
+  }));
+}
+
+function normalizeFamilyRepeatCycles(cycles, ratings, family, nextTiming = "") {
+  const fallbackCycle = repeatCycleFromTiming(nextTiming);
+  return family.reduce((result, name) => {
+    const cycle = cycles?.[name];
+    const rating = ratings?.[name];
+    result[name] = normalizeRepeatCycle(cycle) || repeatCycleFromRating(rating) || fallbackCycle || defaultRepeatCycle;
+    return result;
+  }, {});
+}
+
+function normalizeRepeatCycle(value) {
+  if (!value) return "";
+  if (repeatOptions.some((option) => option.id === value)) return value;
+  const option = repeatOptions.find((item) => item.label === value);
+  return option?.id || "";
+}
+
+function repeatCycleFromRating(value) {
+  const rating = Number(value);
+  if (!Number.isFinite(rating)) return "";
+  if (rating <= 1) return "never";
+  if (rating === 2) return "pause";
+  if (rating === 3) return "monthly";
+  if (rating === 4) return "twice_month";
+  return "weekly";
+}
+
+function repeatCycleFromTiming(value) {
+  if (/リピなし|なし|もういい/.test(value)) return "never";
+  if (/しばらく|当分/.test(value)) return "pause";
+  if (/明日|すぐ/.test(value)) return "tomorrow";
+  if (/毎週|来週|1週間|１週間/.test(value)) return "weekly";
+  if (/月2|月２|2週間|２週間/.test(value)) return "twice_month";
+  if (/月1|月１|1か月|１か月|1ヶ月|１ヶ月/.test(value)) return "monthly";
+  return "";
 }
 
 function saveState() {
@@ -173,7 +242,8 @@ function render() {
 
   const views = {
     collection: renderCollection,
-    ratings: renderRatings,
+    plan: renderMealPlan,
+    repeat: renderRepeatCycles,
     settings: renderSettings
   };
   document.querySelector("#app").innerHTML = views[state.view]();
@@ -185,13 +255,13 @@ function renderOnboarding() {
   document.querySelector("#app").innerHTML = `
     <section class="hero-card onboarding">
       <p class="eyebrow">ようこそ</p>
-      <h2>またごちをはじめましょう</h2>
-      <p class="muted">家族の「また食べたい」を残す、ごはんメモです。<br>まずは始め方を選んでください。あとからいつでも切り替えられます。</p>
+      <h2>リピごちをはじめましょう</h2>
+      <p class="muted">家族の「また食べたい周期」を残して、献立候補を整えるごはんメモです。<br>まずは始め方を選んでください。あとからいつでも切り替えられます。</p>
       <div class="onboarding-actions">
         <button class="primary-button full-button" type="button" data-action="start-empty">空ではじめる</button>
         <button class="secondary-button full-button" type="button" data-action="start-demo">サンプルを見てみる</button>
       </div>
-      <p class="muted small">サンプルには操作を試すためのレシピと評価が入っています。「設定」からいつでもリセットできます。</p>
+      <p class="muted small">サンプルには操作を試すためのレシピとリピ記録が入っています。「設定」からいつでもリセットできます。</p>
     </section>
   `;
   document.querySelectorAll("[data-action]").forEach((element) => {
@@ -210,13 +280,13 @@ function renderCollection() {
       <div class="section-head">
         <div>
           <h2>動画レシピコレクション</h2>
-          <p>SNSで見つけたレシピ動画を保存して、家族の「また」を残します。</p>
+          <p>SNSで見つけたレシピ動画を保存して、家族のリピ周期につなげます。</p>
         </div>
         <span class="badge">${state.recipes.length}件</span>
       </div>
       <div class="hero-row">
-        <div class="hero-stat"><strong>${favoriteCount()}</strong><span>高評価候補</span></div>
-        <div class="hero-stat"><strong>${uncookedCount()}</strong><span>未評価</span></div>
+        <div class="hero-stat"><strong>${repeatReadyCount()}</strong><span>今週候補</span></div>
+        <div class="hero-stat"><strong>${unrecordedCount()}</strong><span>未リピ記録</span></div>
         <div class="hero-stat"><strong>${countIngredientNames()}</strong><span>材料メモ</span></div>
       </div>
     </section>
@@ -300,7 +370,7 @@ function renderCollection() {
       <div class="section-head">
         <div>
           <h3>保存済み</h3>
-          <p>評価が増えるほど、リピート判断が楽になります。</p>
+          <p>リピ周期が増えるほど、献立候補が選びやすくなります。</p>
         </div>
       </div>
       <input id="recipe-search" class="input" placeholder="レシピ名・材料・メモで検索" value="${escapeAttr(state.searchText)}">
@@ -312,7 +382,7 @@ function renderCollection() {
 }
 
 function renderRecipeCard(recipe) {
-  const summary = getRecipeSummary(recipe.id);
+  const summary = getRecipeRepeatSummary(recipe.id);
   return `
     <article class="recipe-card">
       <div class="recipe-top">
@@ -320,7 +390,7 @@ function renderRecipeCard(recipe) {
           <strong>${escapeHtml(recipe.title)}</strong>
           <p class="muted small">${mealLabel(recipe.mealType)} / ${escapeHtml(recipe.source)} / 保存 ${escapeHtml(recipe.savedAt)}</p>
         </div>
-        <span class="badge ${summary.count ? "hot" : ""}">${summary.count ? `★ ${summary.average.toFixed(1)}` : "未評価"}</span>
+        <span class="badge ${summary.badgeClass}">${escapeHtml(summary.badgeLabel)}</span>
       </div>
       <p class="muted small">${escapeHtml(recipe.note)}</p>
       <div class="chip-row">
@@ -328,7 +398,7 @@ function renderRecipeCard(recipe) {
       </div>
       <div class="actions">
         <a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>
-        <button class="secondary-button" type="button" data-action="rate-recipe" data-recipe="${escapeAttr(recipe.id)}">評価する</button>
+        <button class="secondary-button" type="button" data-action="record-repeat" data-recipe="${escapeAttr(recipe.id)}">リピ記録</button>
       </div>
       <div class="actions">
         <button class="secondary-button" type="button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">編集</button>
@@ -338,31 +408,125 @@ function renderRecipeCard(recipe) {
   `;
 }
 
-function renderRatings() {
-  const selected = recipeById(state.selectedRecipeId) || state.recipes[0];
-  const history = selected ? state.evaluations.filter((evaluation) => evaluation.recipeId === selected.id) : [];
-  const summary = selected ? getRecipeSummary(selected.id) : null;
+function renderMealPlan() {
+  const plan = buildWeeklyPlan();
+  const dueCount = getMealCandidates().filter((candidate) => !candidate.summary.unrecorded && candidate.daysUntil <= 7).length;
+  const excludedCount = excludedRepeatCount();
 
   return `
     <section class="hero-card">
       <div class="section-head">
         <div>
-          <h2>レシピ評価</h2>
-          <p>「次いつ食べたい？」を家族ごとに残します。</p>
+          <h2>今週の献立</h2>
+          <p>家族のリピ周期から、食べ頃のレシピを並べます。</p>
+        </div>
+        <span class="badge">${plan.filter((day) => day.candidate).length}/7日</span>
+      </div>
+      <div class="hero-row">
+        <div class="hero-stat"><strong>${dueCount}</strong><span>今週食べ頃</span></div>
+        <div class="hero-stat"><strong>${unrecordedCount()}</strong><span>周期未設定</span></div>
+        <div class="hero-stat"><strong>${excludedCount}</strong><span>リピなし</span></div>
+      </div>
+    </section>
+
+    <section class="panel meal-board">
+      <div class="section-head">
+        <div>
+          <h3>7日分の提案</h3>
+          <p>同じレシピが重ならないよう、食べ頃が近い順に入れます。</p>
+        </div>
+      </div>
+      <div class="weekday-list">
+        ${plan.map(renderPlanDay).join("")}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h3>食べ頃候補</h3>
+          <p>リピなし以外のレシピを、優先度順に表示します。</p>
+        </div>
+      </div>
+      <div class="recipe-list">
+        ${getMealCandidates().slice(0, 8).map(renderCandidateCard).join("") || renderEmpty("リピ周期を記録すると候補が表示されます。")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPlanDay(day) {
+  if (!day.candidate) {
+    return `
+      <div class="day-row">
+        <div class="day-label">${escapeHtml(day.label)}</div>
+        <div class="slot is-empty">
+          <span class="slot-meal">${escapeHtml(day.dateLabel)}</span>
+          <strong class="slot-title">候補なし</strong>
+          <span class="slot-meta">レシピを追加するか、リピ周期を記録してください</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const { recipe, summary, reason } = day.candidate;
+  return `
+    <div class="day-row">
+      <div class="day-label">${escapeHtml(day.label)}</div>
+      <div class="slot">
+        <span class="slot-meal">${escapeHtml(day.dateLabel)} / ${escapeHtml(mealLabel(recipe.mealType))}</span>
+        <strong class="slot-title">${escapeHtml(recipe.title)}</strong>
+        <span class="slot-meta">${escapeHtml(summary.badgeLabel)}・${escapeHtml(reason)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderCandidateCard(candidate) {
+  const { recipe, summary, reason } = candidate;
+  return `
+    <article class="recipe-card">
+      <div class="recipe-top">
+        <div>
+          <strong>${escapeHtml(recipe.title)}</strong>
+          <p class="muted small">${escapeHtml(reason)}</p>
+        </div>
+        <span class="badge ${summary.badgeClass}">${escapeHtml(summary.badgeLabel)}</span>
+      </div>
+      <p class="muted small">${escapeHtml(recipe.note)}</p>
+      <div class="actions">
+        <button class="secondary-button" type="button" data-action="record-repeat" data-recipe="${escapeAttr(recipe.id)}">リピ記録</button>
+        <a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>
+      </div>
+    </article>
+  `;
+}
+
+function renderRepeatCycles() {
+  const selected = recipeById(state.selectedRecipeId) || state.recipes[0];
+  const history = selected ? state.evaluations.filter((evaluation) => evaluation.recipeId === selected.id) : [];
+  const summary = selected ? getRecipeRepeatSummary(selected.id) : null;
+
+  return `
+    <section class="hero-card">
+      <div class="section-head">
+        <div>
+          <h2>リピ周期</h2>
+          <p>「どのくらいの周期でリピートしたい？」を家族ごとに残します。</p>
         </div>
         <span class="badge">${state.evaluations.length}件</span>
       </div>
       <div class="hero-row">
-        <div class="hero-stat"><strong>${summary ? summary.average.toFixed(1) : "-"}</strong><span>選択中の平均</span></div>
+        <div class="hero-stat"><strong>${summary ? summary.shortLabel : "-"}</strong><span>選択中の周期</span></div>
         <div class="hero-stat"><strong>${summary ? summary.count : 0}</strong><span>作った回数</span></div>
-        <div class="hero-stat"><strong>${repeatSoonCount()}</strong><span>早めに再登場</span></div>
+        <div class="hero-stat"><strong>${repeatReadyCount()}</strong><span>今週候補</span></div>
       </div>
     </section>
 
     <section class="panel">
       <div class="field">
-        <label for="rating-recipe">評価するレシピ</label>
-        <select id="rating-recipe" class="select">
+        <label for="repeat-recipe">リピ周期を記録するレシピ</label>
+        <select id="repeat-recipe" class="select">
           ${state.recipes.map((recipe) => `<option value="${escapeAttr(recipe.id)}" ${selected?.id === recipe.id ? "selected" : ""}>${escapeHtml(recipe.title)}</option>`).join("")}
         </select>
       </div>
@@ -381,52 +545,48 @@ function renderRatings() {
       <section class="panel">
         <div class="section-head">
           <div>
-            <h3>今日の評価</h3>
-            <p>星と次回希望を残すだけの軽い記録です。</p>
+            <h3>今日のリピ周期</h3>
+            <p>家族それぞれの「また食べたい」ペースを選びます。</p>
           </div>
         </div>
         <div class="feedback-list">
-          ${state.family.map((name) => renderRatingInput(name)).join("")}
+          ${state.family.map((name) => renderRepeatInput(name)).join("")}
         </div>
         <div class="field">
-          <label for="next-timing">次はいつ頃食べたい？</label>
-          <input id="next-timing" class="input" value="${escapeAttr(state.ratingDraft.nextTiming)}">
+          <label for="repeat-memo">メモ</label>
+          <textarea id="repeat-memo" class="textarea compact-textarea">${escapeHtml(state.repeatDraft.memo)}</textarea>
         </div>
         <div class="field">
-          <label for="rating-memo">評価メモ</label>
-          <textarea id="rating-memo" class="textarea compact-textarea">${escapeHtml(state.ratingDraft.memo)}</textarea>
-        </div>
-        <div class="field">
-          <label for="rating-photo">料理写真（任意）</label>
-          ${state.ratingDraft.photo ? `
+          <label for="repeat-photo">料理写真（任意）</label>
+          ${state.repeatDraft.photo ? `
             <div class="photo-preview">
-              <img src="${escapeAttr(state.ratingDraft.photo)}" alt="料理写真プレビュー">
+              <img src="${escapeAttr(state.repeatDraft.photo)}" alt="料理写真プレビュー">
               <button class="secondary-button danger" type="button" data-action="remove-photo">写真を外す</button>
             </div>
           ` : ""}
-          <input id="rating-photo" type="file" accept="image/*" class="input file-input">
+          <input id="repeat-photo" type="file" accept="image/*" class="input file-input">
         </div>
-        <button class="primary-button full-button" type="button" data-action="save-evaluation">評価を保存</button>
+        <button class="primary-button full-button" type="button" data-action="save-repeat">リピ記録を保存</button>
       </section>
 
       <section class="panel">
-        <h3>評価履歴</h3>
+        <h3>リピ記録履歴</h3>
         <div class="recipe-list">
-          ${history.map(renderEvaluationCard).join("") || renderEmpty("まだ評価履歴がありません。")}
+          ${history.map(renderEvaluationCard).join("") || renderEmpty("まだリピ記録がありません。")}
         </div>
       </section>
     ` : ""}
   `;
 }
 
-function renderRatingInput(name) {
-  const rating = Number(state.ratingDraft.familyRatings[name] || 4);
+function renderRepeatInput(name) {
+  const cycle = normalizeRepeatCycle(state.repeatDraft.familyRepeatCycles[name]) || defaultRepeatCycle;
   return `
     <div class="rating-row">
       <strong>${name}</strong>
-      <div class="rating-buttons" role="group" aria-label="${name}の評価">
-        ${[1, 2, 3, 4, 5].map((value) => `
-          <button class="star-button ${value <= rating ? "is-active" : ""}" type="button" data-action="set-rating" data-person="${name}" data-rating="${value}" aria-label="${name} ${value}点">★</button>
+      <div class="cycle-buttons" role="group" aria-label="${name}のリピ周期">
+        ${repeatOptions.map((option) => `
+          <button class="cycle-button ${option.id === cycle ? "is-active" : ""}" type="button" data-action="set-cycle" data-person="${escapeAttr(name)}" data-cycle="${option.id}" aria-label="${name} ${option.label}">${option.label}</button>
         `).join("")}
       </div>
     </div>
@@ -434,22 +594,22 @@ function renderRatingInput(name) {
 }
 
 function renderEvaluationCard(evaluation) {
-  const average = averageRating(evaluation.familyRatings);
+  const summary = summarizeRepeatCycles(evaluation.familyRepeatCycles);
   return `
     <article class="recipe-card">
       <div class="recipe-top">
         <div>
           <strong>${formatDate(evaluation.cookedAt)}</strong>
-          <p class="muted small">${escapeHtml(evaluation.nextTiming)}</p>
+          <p class="muted small">${escapeHtml(summary.description)}</p>
         </div>
-        <span class="badge hot">★ ${average.toFixed(1)}</span>
+        <span class="badge ${summary.badgeClass}">${escapeHtml(summary.shortLabel)}</span>
       </div>
       <p class="muted small">${escapeHtml(evaluation.memo)}</p>
       ${evaluation.photo ? `<img class="eval-photo" src="${escapeAttr(evaluation.photo)}" alt="料理写真">` : ""}
       <div class="chip-row">
-        ${state.family.map((name) => `<span class="chip">${name}: ${evaluation.familyRatings[name] || "-"}点</span>`).join("")}
+        ${state.family.map((name) => `<span class="chip">${name}: ${escapeHtml(repeatLabel(evaluation.familyRepeatCycles?.[name]) || "-")}</span>`).join("")}
       </div>
-      <button class="secondary-button danger full-button" type="button" data-action="delete-evaluation" data-eval="${escapeAttr(evaluation.id)}">この評価を削除</button>
+      <button class="secondary-button danger full-button" type="button" data-action="delete-evaluation" data-eval="${escapeAttr(evaluation.id)}">この記録を削除</button>
     </article>
   `;
 }
@@ -466,7 +626,7 @@ function renderSettings() {
       <div class="hero-row">
         <div class="hero-stat"><strong>${state.family.length}</strong><span>家族メンバー</span></div>
         <div class="hero-stat"><strong>${state.recipes.length}</strong><span>レシピ</span></div>
-        <div class="hero-stat"><strong>${state.evaluations.length}</strong><span>評価</span></div>
+        <div class="hero-stat"><strong>${state.evaluations.length}</strong><span>リピ記録</span></div>
       </div>
     </section>
 
@@ -474,7 +634,7 @@ function renderSettings() {
       <div class="section-head">
         <div>
           <h3>家族メンバー</h3>
-          <p>評価画面で星をつける人を編集できます。</p>
+          <p>リピ周期を記録する家族を編集できます。</p>
         </div>
       </div>
       <div class="member-list">
@@ -516,7 +676,7 @@ function bindEvents() {
     render();
   });
 
-  document.querySelector("#rating-recipe")?.addEventListener("change", (event) => {
+  document.querySelector("#repeat-recipe")?.addEventListener("change", (event) => {
     state.selectedRecipeId = event.target.value;
     saveState();
     render();
@@ -530,7 +690,7 @@ function bindEvents() {
 
   document.querySelector("#import-file")?.addEventListener("change", handleImportFile);
 
-  document.querySelector("#rating-photo")?.addEventListener("change", handlePhotoFile);
+  document.querySelector("#repeat-photo")?.addEventListener("change", handlePhotoFile);
 }
 
 function handleAction(event) {
@@ -552,6 +712,7 @@ function handleAction(event) {
     state.evaluations = [];
     state.selectedRecipeId = null;
     state.draft = clone(emptyDraft);
+    state.repeatDraft = normalizeRepeatDraft({}, state.family);
     state.extractedIngredients = [];
     state.extractedSteps = [];
     saveState();
@@ -672,7 +833,7 @@ function handleAction(event) {
   if (action === "delete-recipe") {
     const id = event.currentTarget.dataset.recipe;
     const recipe = recipeById(id);
-    if (recipe && window.confirm(`「${recipe.title}」を削除します。関連する評価履歴も消えます。よろしいですか？`)) {
+    if (recipe && window.confirm(`「${recipe.title}」を削除します。関連するリピ記録も消えます。よろしいですか？`)) {
       state.recipes = state.recipes.filter((item) => item.id !== id);
       state.evaluations = state.evaluations.filter((item) => item.recipeId !== id);
       if (state.editingRecipeId === id) state.editingRecipeId = null;
@@ -685,10 +846,10 @@ function handleAction(event) {
 
   if (action === "delete-evaluation") {
     const id = event.currentTarget.dataset.eval;
-    if (window.confirm("この評価を削除します。よろしいですか？")) {
+    if (window.confirm("このリピ記録を削除します。よろしいですか？")) {
       state.evaluations = state.evaluations.filter((item) => item.id !== id);
       saveState();
-      showToast("評価を削除しました。");
+      showToast("リピ記録を削除しました。");
       render();
     }
   }
@@ -709,42 +870,41 @@ function handleAction(event) {
     document.querySelector("#import-file")?.click();
   }
 
-  if (action === "rate-recipe") {
+  if (action === "record-repeat") {
     state.selectedRecipeId = event.currentTarget.dataset.recipe;
-    state.view = "ratings";
+    state.view = "repeat";
     saveState();
     render();
   }
 
-  if (action === "set-rating") {
+  if (action === "set-cycle") {
     const person = event.currentTarget.dataset.person;
-    const rating = Number(event.currentTarget.dataset.rating);
-    state.ratingDraft.familyRatings[person] = rating;
+    const cycle = normalizeRepeatCycle(event.currentTarget.dataset.cycle) || defaultRepeatCycle;
+    state.repeatDraft.familyRepeatCycles[person] = cycle;
     saveState();
     render();
   }
 
-  if (action === "save-evaluation") {
-    captureRatingDraft();
+  if (action === "save-repeat") {
+    captureRepeatDraft();
     const evaluation = {
       id: `e${Date.now()}`,
       recipeId: state.selectedRecipeId,
       cookedAt: today(),
-      familyRatings: { ...state.ratingDraft.familyRatings },
-      nextTiming: state.ratingDraft.nextTiming,
-      memo: state.ratingDraft.memo,
-      photo: state.ratingDraft.photo || "",
+      familyRepeatCycles: { ...state.repeatDraft.familyRepeatCycles },
+      memo: state.repeatDraft.memo,
+      photo: state.repeatDraft.photo || "",
       photoLabel: "食卓写真"
     };
     state.evaluations.unshift(evaluation);
-    state.ratingDraft.photo = "";
+    state.repeatDraft.photo = "";
     saveState();
-    showToast("レシピ評価を保存しました。");
+    showToast("リピ記録を保存しました。");
     render();
   }
 
   if (action === "remove-photo") {
-    state.ratingDraft.photo = "";
+    state.repeatDraft.photo = "";
     saveState();
     render();
   }
@@ -763,9 +923,8 @@ function captureDraft() {
   };
 }
 
-function captureRatingDraft() {
-  state.ratingDraft.nextTiming = document.querySelector("#next-timing")?.value.trim() || "また今度";
-  state.ratingDraft.memo = document.querySelector("#rating-memo")?.value.trim() || "";
+function captureRepeatDraft() {
+  state.repeatDraft.memo = document.querySelector("#repeat-memo")?.value.trim() || "";
 }
 
 function renameMember(index, rawValue) {
@@ -788,14 +947,14 @@ function renameMember(index, rawValue) {
 }
 
 function migrateMemberKey(previous, next) {
-  const move = (ratings) => {
-    if (ratings && Object.prototype.hasOwnProperty.call(ratings, previous)) {
-      ratings[next] = ratings[previous];
-      delete ratings[previous];
+  const move = (cycles) => {
+    if (cycles && Object.prototype.hasOwnProperty.call(cycles, previous)) {
+      cycles[next] = cycles[previous];
+      delete cycles[previous];
     }
   };
-  move(state.ratingDraft.familyRatings);
-  state.evaluations.forEach((evaluation) => move(evaluation.familyRatings));
+  move(state.repeatDraft.familyRepeatCycles);
+  state.evaluations.forEach((evaluation) => move(evaluation.familyRepeatCycles));
 }
 
 function addMember() {
@@ -806,7 +965,7 @@ function addMember() {
     name = `メンバー${index}`;
   }
   state.family.push(name);
-  state.ratingDraft.familyRatings[name] = 4;
+  state.repeatDraft.familyRepeatCycles[name] = defaultRepeatCycle;
   saveState();
   showToast("メンバーを追加しました。名前を編集してください。");
   render();
@@ -817,7 +976,7 @@ function removeMember(index) {
   const name = state.family[index];
   if (!window.confirm(`「${name}」を家族メンバーから外します。よろしいですか？`)) return;
   state.family.splice(index, 1);
-  delete state.ratingDraft.familyRatings[name];
+  delete state.repeatDraft.familyRepeatCycles[name];
   saveState();
   showToast("メンバーを削除しました。");
   render();
@@ -869,7 +1028,7 @@ function handlePhotoFile(event) {
   }
   resizeImage(file)
     .then((dataUrl) => {
-      state.ratingDraft.photo = dataUrl;
+      state.repeatDraft.photo = dataUrl;
       saveState();
       showToast("写真を追加しました。");
       render();
@@ -994,28 +1153,154 @@ function prepareCaptionImport(url) {
   };
 }
 
-function getRecipeSummary(recipeId) {
-  const evaluations = state.evaluations.filter((evaluation) => evaluation.recipeId === recipeId);
-  if (!evaluations.length) return { count: 0, average: 0 };
-  const average = evaluations.reduce((sum, evaluation) => sum + averageRating(evaluation.familyRatings), 0) / evaluations.length;
-  return { count: evaluations.length, average };
+function getRecipeRepeatSummary(recipeId) {
+  const evaluations = state.evaluations
+    .filter((evaluation) => evaluation.recipeId === recipeId)
+    .sort((a, b) => dateValue(b.cookedAt) - dateValue(a.cookedAt));
+  if (!evaluations.length) {
+    return {
+      count: 0,
+      averageDays: null,
+      shortLabel: "未設定",
+      badgeLabel: "未リピ記録",
+      badgeClass: "warn",
+      description: "まだ周期未設定",
+      nextDate: today(),
+      daysUntil: 0,
+      excluded: false,
+      unrecorded: true
+    };
+  }
+
+  const latest = evaluations[0];
+  const summary = summarizeRepeatCycles(latest.familyRepeatCycles);
+  if (summary.excluded) {
+    return {
+      ...summary,
+      count: evaluations.length,
+      nextDate: "",
+      daysUntil: Infinity,
+      unrecorded: false
+    };
+  }
+
+  const nextDate = addDays(latest.cookedAt, Math.round(summary.averageDays));
+  const daysUntil = daysBetween(today(), nextDate);
+  return {
+    ...summary,
+    count: evaluations.length,
+    nextDate,
+    daysUntil,
+    description: `${formatDate(latest.cookedAt)}に記録 / 次は${formatDate(nextDate)}頃`,
+    unrecorded: false
+  };
 }
 
-function averageRating(ratings) {
-  const values = Object.values(ratings || {}).map(Number);
-  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+function summarizeRepeatCycles(cycles) {
+  const values = state.family
+    .map((name) => normalizeRepeatCycle(cycles?.[name]))
+    .filter(Boolean);
+  if (!values.length) values.push(defaultRepeatCycle);
+  const validOptions = values
+    .map((cycle) => repeatOptions.find((option) => option.id === cycle))
+    .filter((option) => option && option.days !== null);
+  const neverCount = values.filter((cycle) => cycle === "never").length;
+  if (!validOptions.length) {
+    return {
+      averageDays: null,
+      shortLabel: "リピなし",
+      badgeLabel: "リピなし",
+      badgeClass: "stop",
+      description: "家族全員がリピなし",
+      excluded: true
+    };
+  }
+
+  const averageDays = validOptions.reduce((sum, option) => sum + option.days, 0) / validOptions.length;
+  const nearest = nearestRepeatOption(averageDays);
+  const mixed = new Set(values).size > 1;
+  const shortLabel = nearest.label;
+  const badgeLabel = `${nearest.label}${mixed ? "平均" : ""}`;
+  return {
+    averageDays,
+    shortLabel,
+    badgeLabel,
+    badgeClass: nearest.tone === "hot" ? "hot" : "",
+    description: neverCount ? `${badgeLabel} / リピなし ${neverCount}人` : badgeLabel,
+    excluded: false
+  };
 }
 
-function favoriteCount() {
-  return state.recipes.filter((recipe) => getRecipeSummary(recipe.id).average >= 4.2).length;
+function nearestRepeatOption(days) {
+  return repeatOptions
+    .filter((option) => option.days !== null)
+    .reduce((best, option) => {
+      if (!best) return option;
+      return Math.abs(option.days - days) < Math.abs(best.days - days) ? option : best;
+    }, null);
 }
 
-function uncookedCount() {
-  return state.recipes.filter((recipe) => getRecipeSummary(recipe.id).count === 0).length;
+function repeatLabel(id) {
+  return repeatOptions.find((option) => option.id === normalizeRepeatCycle(id))?.label || "";
 }
 
-function repeatSoonCount() {
-  return state.evaluations.filter((evaluation) => /来週|すぐ|また|2週間/.test(evaluation.nextTiming)).length;
+function buildWeeklyPlan() {
+  const candidates = getMealCandidates();
+  const used = new Set();
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(today(), index);
+    const candidate = candidates.find((item) => !used.has(item.recipe.id) && item.dueDate <= date)
+      || candidates.find((item) => !used.has(item.recipe.id));
+    if (candidate) used.add(candidate.recipe.id);
+    return {
+      date,
+      label: weekdayLabel(date),
+      dateLabel: formatDate(date),
+      candidate
+    };
+  });
+}
+
+function getMealCandidates() {
+  return state.recipes
+    .map((recipe) => {
+      const summary = getRecipeRepeatSummary(recipe.id);
+      if (summary.excluded) return null;
+      const dueDate = summary.unrecorded ? today() : summary.nextDate;
+      const daysUntil = summary.unrecorded ? 0 : summary.daysUntil;
+      return {
+        recipe,
+        summary,
+        dueDate,
+        daysUntil,
+        reason: candidateReason(summary, dueDate, daysUntil)
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.summary.unrecorded !== b.summary.unrecorded) return a.summary.unrecorded ? 1 : -1;
+      return a.daysUntil - b.daysUntil || a.recipe.title.localeCompare(b.recipe.title, "ja");
+    });
+}
+
+function candidateReason(summary, dueDate, daysUntil) {
+  if (summary.unrecorded) return "まだ周期未設定";
+  if (daysUntil < 0) return `${Math.abs(daysUntil)}日過ぎています`;
+  if (daysUntil === 0) return "今日が食べ頃";
+  if (daysUntil <= 7) return `あと${daysUntil}日で食べ頃`;
+  return `${formatDate(dueDate)}頃に再登場`;
+}
+
+function repeatReadyCount() {
+  return getMealCandidates().filter((candidate) => candidate.daysUntil <= 7).length;
+}
+
+function unrecordedCount() {
+  return state.recipes.filter((recipe) => getRecipeRepeatSummary(recipe.id).unrecorded).length;
+}
+
+function excludedRepeatCount() {
+  return state.recipes.filter((recipe) => getRecipeRepeatSummary(recipe.id).excluded).length;
 }
 
 function countIngredientNames() {
@@ -1024,6 +1309,28 @@ function countIngredientNames() {
 
 function mealLabel(id) {
   return mealTypes.find((type) => type.id === id)?.label || "未分類";
+}
+
+function dateValue(date) {
+  return new Date(`${date}T00:00:00`).getTime();
+}
+
+function addDays(date, days) {
+  const next = new Date(dateValue(date));
+  next.setDate(next.getDate() + days);
+  const year = next.getFullYear();
+  const month = String(next.getMonth() + 1).padStart(2, "0");
+  const day = String(next.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function daysBetween(from, to) {
+  return Math.round((dateValue(to) - dateValue(from)) / 86400000);
+}
+
+function weekdayLabel(date) {
+  const labels = ["日", "月", "火", "水", "木", "金", "土"];
+  return labels[new Date(dateValue(date)).getDay()];
 }
 
 function today() {
@@ -1069,7 +1376,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 document.querySelector('[data-action="reset-demo"]').addEventListener("click", () => {
-  if (!window.confirm("この端末に保存したレシピと評価をすべて削除して、最初の状態に戻します。よろしいですか？")) return;
+  if (!window.confirm("この端末に保存したレシピとリピ記録をすべて削除して、最初の状態に戻します。よろしいですか？")) return;
   localStorage.removeItem(STORAGE_KEY);
   state = clone(demoState);
   showToast("データをリセットしました。");

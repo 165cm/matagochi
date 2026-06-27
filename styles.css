@@ -102,7 +102,7 @@ h3 {
   width: min(100%, 430px);
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   padding: 8px 8px 12px;
   background: rgba(255, 255, 255, 0.95);
@@ -117,6 +117,7 @@ h3 {
 .text-button,
 .slot,
 .chip,
+.cycle-button,
 .choice-button,
 .calendar-day {
   border: 0;
@@ -319,6 +320,11 @@ h3 {
 .badge.hot {
   background: #f9e7e2;
   color: var(--tomato);
+}
+
+.badge.stop {
+  background: #ede7df;
+  color: #6e6358;
 }
 
 .actions {
@@ -628,28 +634,27 @@ body.is-onboarding .icon-button {
   border-bottom: 0;
 }
 
-.rating-buttons {
+.cycle-buttons {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
 }
 
-.star-button {
+.cycle-button {
   min-width: 0;
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
-  color: #c8bda8;
-  cursor: pointer;
-  font-size: 16px;
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 900;
 }
 
-.star-button.is-active {
-  border-color: #ecc65a;
-  background: #fff6d4;
-  color: #b87d00;
+.cycle-button.is-active {
+  border-color: var(--sage);
+  background: #edf3e8;
+  color: var(--sage-dark);
 }
 
 .compact-textarea {
