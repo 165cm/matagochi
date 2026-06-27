@@ -102,7 +102,7 @@ h3 {
   width: min(100%, 430px);
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   padding: 8px 8px 12px;
   background: rgba(255, 255, 255, 0.95);
@@ -355,6 +355,29 @@ h3 {
 .text-button {
   background: transparent;
   color: var(--sage-dark);
+}
+
+.secondary-button.danger {
+  border-color: #e7c6bf;
+  color: var(--tomato);
+}
+
+.secondary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.member-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.member-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
 }
 
 .form-grid {
