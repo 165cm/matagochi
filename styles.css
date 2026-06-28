@@ -639,19 +639,28 @@ body.is-onboarding .icon-button {
 }
 
 .rating-target {
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffaf0;
 }
 
+.rating-target strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 18px;
+}
+
 .rating-row {
   display: grid;
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: 74px 1fr;
   gap: 8px;
   align-items: start;
-  padding: 10px 0;
+  padding: 8px 0;
   border-bottom: 1px solid #f0e9df;
 }
 
@@ -661,11 +670,25 @@ body.is-onboarding .icon-button {
 
 .repeat-person {
   display: grid;
-  gap: 3px;
-  padding-top: 5px;
+  gap: 2px;
+  justify-items: center;
+  padding-top: 2px;
+  text-align: center;
 }
 
-.repeat-person span {
+.family-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--sage);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.repeat-person span:not(.family-avatar) {
   color: var(--sage-dark);
   font-size: 11px;
   font-weight: 900;
@@ -673,7 +696,7 @@ body.is-onboarding .icon-button {
 
 .repeat-choice-wrap {
   display: grid;
-  gap: 7px;
+  gap: 5px;
 }
 
 .mood-meter {
@@ -684,6 +707,53 @@ body.is-onboarding .icon-button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: linear-gradient(90deg, #fff1e8 0%, #fff7d9 34%, #edf3e8 70%, #eef4fb 100%);
+}
+
+.repeat-recipe-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.repeat-recipe-row {
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+}
+
+.repeat-recipe-row.is-active {
+  border-color: var(--sage);
+  background: #f3f8ef;
+}
+
+.repeat-recipe-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.repeat-thumb {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: #fffaf0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .mood-button,

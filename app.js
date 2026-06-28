@@ -569,8 +569,9 @@ function renderCandidateCard(candidate) {
 }
 
 function renderRepeatCycles() {
-  const selected = recipeById(state.selectedRecipeId) || state.recipes[0];
-  const history = selected ? state.evaluations.filter((evaluation) => evaluation.recipeId === selected.id) : [];
+  const repeatRecipes = getRepeatRecipes();
+  const selected = repeatRecipes.find((recipe) => recipe.id === state.selectedRecipeId) || repeatRecipes[0] || state.recipes[0];
+  const history = selected ? getRecipeEvaluationHistory(selected.id) : [];
   const summary = selected ? getRecipeRepeatSummary(selected.id) : null;
 
   return `
@@ -583,26 +584,34 @@ function renderRepeatCycles() {
         <span class="badge">${state.evaluations.length}件</span>
       </div>
       <div class="hero-row">
-        <div class="hero-stat"><strong>${summary ? summary.shortLabel : "-"}</strong><span>選択中の周期</span></div>
-        <div class="hero-stat"><strong>${summary ? summary.count : 0}</strong><span>作った回数</span></div>
+        <div class="hero-stat"><strong>${state.recipes.length}</strong><span>保存レシピ</span></div>
+        <div class="hero-stat"><strong>${state.evaluations.length}</strong><span>食べた記録</span></div>
         <div class="hero-stat"><strong>${repeatReadyCount()}</strong><span>今週候補</span></div>
       </div>
     </section>
 
     <section class="panel">
-      <div class="field">
-        <label for="repeat-recipe">リピ周期を記録するレシピ</label>
-        <select id="repeat-recipe" class="select">
-          ${state.recipes.map((recipe) => `<option value="${escapeAttr(recipe.id)}" ${selected?.id === recipe.id ? "selected" : ""}>${escapeHtml(recipe.title)}</option>`).join("")}
-        </select>
+      <div class="section-head">
+        <div>
+          <h3>食べた順</h3>
+          <p>直近で食べた日が新しい順に並びます。タグで絞り込めます。</p>
+        </div>
       </div>
+      ${renderMealFilter()}
+      <div class="repeat-recipe-list">
+        ${repeatRecipes.map((recipe) => renderRepeatRecipeRow(recipe, selected?.id)).join("") || renderEmpty("表示できるレシピがありません。")}
+      </div>
+    </section>
+
+    <section class="panel">
       ${selected ? `
         <div class="rating-target">
-          <strong>${escapeHtml(selected.title)}</strong>
-          <p class="muted small">${escapeHtml(selected.note)}</p>
-          <div class="chip-row">
-            ${selected.ingredients.slice(0, 5).map(renderIngredientChip).join("")}
+          <div>
+            <span class="badge">${escapeHtml(summary?.badgeLabel || "未記録")}</span>
+            <strong>${escapeHtml(selected.title)}</strong>
+            <p class="muted small">${escapeHtml(repeatRecipeMeta(selected))}</p>
           </div>
+          ${renderLatestPhoto(selected.id)}
         </div>
       ` : renderEmpty("先にレシピを保存してください。")}
     </section>
@@ -652,7 +661,8 @@ function renderRepeatInput(name) {
   return `
     <div class="rating-row repeat-meter-row">
       <div class="repeat-person">
-        <strong>${name}</strong>
+        <span class="family-avatar" aria-hidden="true">${escapeHtml(familyInitial(name))}</span>
+        <strong>${escapeHtml(name)}</strong>
         <span>${escapeHtml(repeatLabel(cycle))}</span>
       </div>
       <div class="repeat-choice-wrap" role="group" aria-label="${name}のリピ周期">
@@ -675,6 +685,56 @@ function renderRepeatInput(name) {
 
 function repeatMoodHint(index) {
   return ["すぐ", "好き", "ほどよく", "たまに", "お休み"][index] || "";
+}
+
+function renderRepeatRecipeRow(recipe, selectedId) {
+  const summary = getRecipeRepeatSummary(recipe.id);
+  return `
+    <button class="repeat-recipe-row ${recipe.id === selectedId ? "is-active" : ""}" type="button" data-action="select-repeat-recipe" data-recipe="${escapeAttr(recipe.id)}">
+      ${renderLatestPhoto(recipe.id)}
+      <span>
+        <strong>${escapeHtml(recipe.title)}</strong>
+        <small>${escapeHtml(repeatRecipeMeta(recipe))}</small>
+      </span>
+      <span class="badge ${summary.badgeClass}">${escapeHtml(summary.count ? `${summary.count}回` : "未記録")}</span>
+    </button>
+  `;
+}
+
+function renderLatestPhoto(recipeId) {
+  const latest = getRecipeEvaluationHistory(recipeId).find((evaluation) => evaluation.photo);
+  return latest?.photo
+    ? `<img class="repeat-thumb" src="${escapeAttr(latest.photo)}" alt="料理写真">`
+    : `<span class="repeat-thumb is-empty" aria-hidden="true">写真</span>`;
+}
+
+function repeatRecipeMeta(recipe) {
+  const history = getRecipeEvaluationHistory(recipe.id);
+  const latest = history[0];
+  const lastDate = latest ? formatDate(latest.cookedAt) : "まだ食べた記録なし";
+  return `${mealLabel(recipe.mealType)} / 直近 ${lastDate} / ${history.length}回`;
+}
+
+function getRecipeEvaluationHistory(recipeId) {
+  return state.evaluations
+    .filter((evaluation) => evaluation.recipeId === recipeId)
+    .sort((a, b) => dateValue(b.cookedAt) - dateValue(a.cookedAt));
+}
+
+function getRepeatRecipes() {
+  return state.recipes
+    .filter(matchesMealFilter)
+    .sort((a, b) => {
+      const latestA = getRecipeEvaluationHistory(a.id)[0]?.cookedAt || "";
+      const latestB = getRecipeEvaluationHistory(b.id)[0]?.cookedAt || "";
+      const dateDiff = dateValue(latestB) - dateValue(latestA);
+      if (dateDiff) return dateDiff;
+      return a.title.localeCompare(b.title, "ja");
+    });
+}
+
+function familyInitial(name) {
+  return String(name || "?").trim().slice(0, 1) || "?";
 }
 
 function renderEvaluationCard(evaluation) {
@@ -1024,6 +1084,12 @@ async function handleAction(event) {
   if (action === "record-repeat") {
     state.selectedRecipeId = event.currentTarget.dataset.recipe;
     state.view = "repeat";
+    saveState();
+    render();
+  }
+
+  if (action === "select-repeat-recipe") {
+    state.selectedRecipeId = event.currentTarget.dataset.recipe;
     saveState();
     render();
   }
