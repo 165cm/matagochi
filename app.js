@@ -181,13 +181,15 @@ function normalizeRepeatDraft(draft, family) {
     familyRepeatCycles: normalizeFamilyRepeatCycles(draft?.familyRepeatCycles, draft?.familyRatings, family, draft?.nextTiming),
     memo: draft?.memo || "",
     photo: draft?.photo || "",
-    cookedAt: normalizeDateInput(draft?.cookedAt) || today()
+    cookedAt: normalizeDateInput(draft?.cookedAt) || today(),
+    mealType: normalizeRepeatMealType(draft?.mealType) || "dinner"
   };
 }
 
 function normalizeEvaluations(evaluations, family) {
   return evaluations.map((evaluation) => ({
     ...evaluation,
+    mealType: normalizeRepeatMealType(evaluation.mealType) || "",
     familyRepeatCycles: normalizeFamilyRepeatCycles(
       evaluation.familyRepeatCycles,
       evaluation.familyRatings,
@@ -201,6 +203,10 @@ function normalizeEvaluations(evaluations, family) {
 
 function normalizeDateInput(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? value : "";
+}
+
+function normalizeRepeatMealType(value) {
+  return mealSlots().some((meal) => meal.id === value) ? value : "";
 }
 
 function normalizeFamilyRepeatCycles(cycles, ratings, family, nextTiming = "") {
@@ -642,6 +648,7 @@ function renderRepeatCycles() {
           <input id="repeat-cooked-at" class="input" type="date" value="${escapeAttr(state.repeatDraft.cookedAt || today())}">
           <span class="muted small">${escapeHtml(firstDateText(history))}</span>
         </div>
+        ${renderRepeatMealPicker(state.repeatDraft.mealType || selected.mealType)}
         <div class="feedback-list">
           ${state.family.map((name) => renderRepeatInput(name)).join("")}
         </div>
@@ -703,6 +710,19 @@ function renderRepeatInput(name) {
 
 function repeatMoodHint(index) {
   return ["すぐ", "好き", "ほどよく", "たまに", "お休み"][index] || "";
+}
+
+function renderRepeatMealPicker(selectedId) {
+  return `
+    <div class="repeat-meal-picker" role="group" aria-label="食べた時間帯">
+      <span>時間帯</span>
+      ${mealSlots().map((meal) => `
+        <button class="choice-button ${meal.id === selectedId ? "is-active" : ""}" type="button" data-action="set-repeat-meal" data-meal="${meal.id}">
+          ${meal.icon} ${escapeHtml(meal.shortLabel)}
+        </button>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderRepeatWeekGrid(days) {
@@ -789,6 +809,11 @@ function getRecipeEvaluationHistory(recipeId) {
     .sort((a, b) => dateValue(b.cookedAt) - dateValue(a.cookedAt));
 }
 
+function evaluationMealType(evaluation) {
+  const recipe = recipeById(evaluation.recipeId);
+  return normalizeRepeatMealType(evaluation.mealType) || normalizeRepeatMealType(recipe?.mealType) || "dinner";
+}
+
 function getRepeatRecipes() {
   return state.recipes
     .filter(matchesMealFilter)
@@ -814,7 +839,7 @@ function buildRepeatWeekReview() {
       .forEach((evaluation) => {
         const recipe = recipeById(evaluation.recipeId);
         if (!recipe) return;
-        const mealId = slots.some((meal) => meal.id === recipe.mealType) ? recipe.mealType : "dinner";
+        const mealId = normalizeRepeatMealType(evaluation.mealType) || (slots.some((meal) => meal.id === recipe.mealType) ? recipe.mealType : "dinner");
         const slot = daySlots.find((item) => item.mealId === mealId);
         if (slot && !slot.candidate) {
           slot.candidate = { recipe };
@@ -873,7 +898,7 @@ function renderEvaluationCard(evaluation) {
     <article class="recipe-card">
       <div class="recipe-top">
         <div>
-          <strong>${formatDate(evaluation.cookedAt)}</strong>
+          <strong>${formatDate(evaluation.cookedAt)} / ${escapeHtml(mealLabel(evaluationMealType(evaluation)))}</strong>
           <p class="muted small">${escapeHtml(summary.description)}</p>
         </div>
         <span class="badge ${summary.badgeClass}">${escapeHtml(summary.shortLabel)}</span>
@@ -1213,6 +1238,7 @@ async function handleAction(event) {
 
   if (action === "record-repeat") {
     state.selectedRecipeId = event.currentTarget.dataset.recipe;
+    state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || state.repeatDraft.mealType || "dinner";
     state.view = "repeat";
     saveState();
     render();
@@ -1220,6 +1246,13 @@ async function handleAction(event) {
 
   if (action === "select-repeat-recipe") {
     state.selectedRecipeId = event.currentTarget.dataset.recipe;
+    state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || state.repeatDraft.mealType || "dinner";
+    saveState();
+    render();
+  }
+
+  if (action === "set-repeat-meal") {
+    state.repeatDraft.mealType = normalizeRepeatMealType(event.currentTarget.dataset.meal) || "dinner";
     saveState();
     render();
   }
@@ -1238,6 +1271,7 @@ async function handleAction(event) {
       id: `e${Date.now()}`,
       recipeId: state.selectedRecipeId,
       cookedAt: state.repeatDraft.cookedAt || today(),
+      mealType: state.repeatDraft.mealType || recipeById(state.selectedRecipeId)?.mealType || "dinner",
       familyRepeatCycles: { ...state.repeatDraft.familyRepeatCycles },
       memo: state.repeatDraft.memo,
       photo: state.repeatDraft.photo || "",
@@ -1246,6 +1280,7 @@ async function handleAction(event) {
     state.evaluations.unshift(evaluation);
     state.repeatDraft.photo = "";
     state.repeatDraft.cookedAt = today();
+    state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || "dinner";
     saveState();
     showToast("リピ記録を保存しました。");
     render();
@@ -1274,6 +1309,7 @@ function captureDraft() {
 function captureRepeatDraft() {
   state.repeatDraft.memo = document.querySelector("#repeat-memo")?.value.trim() || "";
   state.repeatDraft.cookedAt = normalizeDateInput(document.querySelector("#repeat-cooked-at")?.value) || today();
+  state.repeatDraft.mealType = normalizeRepeatMealType(state.repeatDraft.mealType) || "dinner";
 }
 
 function renameMember(index, rawValue) {

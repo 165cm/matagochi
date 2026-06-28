@@ -822,6 +822,19 @@ body.is-onboarding .icon-button {
   height: 38px;
 }
 
+.repeat-meal-picker {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-items: center;
+}
+
+.repeat-meal-picker > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .rating-row {
   display: grid;
   grid-template-columns: 74px 1fr;
@@ -1237,6 +1250,10 @@ body.is-onboarding .icon-button {
 
   .repeat-date-row .muted {
     grid-column: 2;
+  }
+
+  .repeat-meal-picker {
+    grid-template-columns: auto repeat(3, minmax(0, 1fr));
   }
 
   .repeat-recipe-row {
