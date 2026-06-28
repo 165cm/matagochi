@@ -46,7 +46,7 @@ const demoState = {
   },
   repeatDraft: {
     familyRepeatCycles: { "ママ": "weekly", "パパ": "weekly", "子ども1": "twice_month", "子ども2": "twice_month" },
-    memo: "魚の日としてリピート候補。子ども用はしょうゆ少なめ。",
+    memo: "",
     photo: ""
   },
   recipes: [
@@ -575,8 +575,12 @@ function renderCandidateCard(candidate) {
 
 function renderRepeatCycles() {
   const repeatRecipes = getRepeatRecipes();
-  const todayCandidate = buildWeeklyPlan()[0]?.candidate;
-  const todayRecipe = todayCandidate?.recipe;
+  const weekReview = buildRepeatWeekReview();
+  const todayCandidate = weekReview.days.find((day) => day.date === today())?.slots.find((slot) => slot.candidate)?.candidate
+    || buildWeeklyPlan()[0]?.candidate;
+  const firstMissing = weekReview.missing[0]?.candidate;
+  const focusCandidate = firstMissing || todayCandidate;
+  const todayRecipe = focusCandidate?.recipe;
   const selected = repeatRecipes.find((recipe) => recipe.id === state.selectedRecipeId)
     || repeatRecipes.find((recipe) => recipe.id === todayRecipe?.id)
     || repeatRecipes[0]
@@ -584,18 +588,34 @@ function renderRepeatCycles() {
   if (selected && state.selectedRecipeId !== selected.id) state.selectedRecipeId = selected.id;
   const history = selected ? getRecipeEvaluationHistory(selected.id) : [];
   const summary = selected ? getRecipeRepeatSummary(selected.id) : null;
-  const latest = history[0];
 
   return `
+    <section class="hero-card repeat-week-card">
+      <div class="section-head compact-head">
+        <div>
+          <h2>直近1週間の記録</h2>
+          <p>献立候補の記入漏れを朝昼晩で確認します。</p>
+        </div>
+        <span class="badge ${weekReview.missing.length ? "warn" : ""}">未記入 ${weekReview.missing.length}件</span>
+      </div>
+      ${renderRepeatWeekGrid(weekReview.days)}
+      <div class="missing-strip">
+        <strong>評価未記入のごちそう</strong>
+        <div class="missing-chip-row">
+          ${weekReview.missing.slice(0, 3).map(renderMissingChip).join("") || `<span class="chip">記入漏れなし</span>`}
+        </div>
+      </div>
+    </section>
+
     <section class="hero-card repeat-focus-card">
-      <span class="badge">今日の候補</span>
-      ${todayCandidate ? `
+      <span class="badge">${firstMissing ? "次に評価" : "今日の候補"}</span>
+      ${focusCandidate ? `
         <div class="repeat-focus-main">
           <div>
-            <h2>${escapeHtml(todayCandidate.recipe.title)}</h2>
-            <p>${escapeHtml(todayCandidate.reason)} / ${escapeHtml(repeatRecipeMeta(todayCandidate.recipe))}</p>
+            <h2>${escapeHtml(focusCandidate.recipe.title)}</h2>
+            <p>${escapeHtml(focusCandidate.reason)} / ${escapeHtml(repeatRecipeMeta(focusCandidate.recipe))}</p>
           </div>
-          <button class="secondary-button" type="button" data-action="select-repeat-recipe" data-recipe="${escapeAttr(todayCandidate.recipe.id)}">評価する</button>
+          <button class="secondary-button" type="button" data-action="select-repeat-recipe" data-recipe="${escapeAttr(focusCandidate.recipe.id)}">評価する</button>
         </div>
       ` : `
         <div class="repeat-focus-main">
@@ -615,29 +635,21 @@ function renderRepeatCycles() {
             <strong>${escapeHtml(selected.title)}</strong>
             <p class="muted small">${escapeHtml(repeatRecipeMeta(selected))}</p>
           </div>
-          ${renderLatestPhoto(selected.id)}
+          ${renderRepeatPhotoPicker(selected.id)}
         </div>
         <div class="repeat-date-row">
           <label for="repeat-cooked-at">食べた日</label>
           <input id="repeat-cooked-at" class="input" type="date" value="${escapeAttr(state.repeatDraft.cookedAt || today())}">
-          ${latest ? `
-            <label for="latest-cooked-at">直近日を修正</label>
-            <input id="latest-cooked-at" class="input" type="date" data-eval="${escapeAttr(latest.id)}" value="${escapeAttr(latest.cookedAt)}">
-          ` : ""}
+          <span class="muted small">${escapeHtml(firstDateText(history))}</span>
         </div>
         <div class="feedback-list">
           ${state.family.map((name) => renderRepeatInput(name)).join("")}
         </div>
         <div class="repeat-compact-fields">
-          <textarea id="repeat-memo" class="textarea compact-textarea">${escapeHtml(state.repeatDraft.memo)}</textarea>
-          <input id="repeat-photo" type="file" accept="image/*" class="input file-input" aria-label="料理写真">
+          <textarea id="repeat-memo" class="textarea compact-textarea" placeholder="メモ（例: 次は具を多めに）">${escapeHtml(state.repeatDraft.memo)}</textarea>
         </div>
-        ${state.repeatDraft.photo ? `
-          <div class="photo-preview repeat-photo-preview">
-            <img src="${escapeAttr(state.repeatDraft.photo)}" alt="料理写真プレビュー">
-            <button class="secondary-button danger" type="button" data-action="remove-photo">写真を外す</button>
-          </div>
-        ` : ""}
+        <input id="repeat-photo" type="file" accept="image/*" hidden>
+        ${state.repeatDraft.photo ? `<button class="secondary-button danger full-button compact-remove" type="button" data-action="remove-photo">写真を外す</button>` : ""}
         <button class="primary-button full-button" type="button" data-action="save-repeat">リピ記録を保存</button>
       </section>
 
@@ -693,6 +705,50 @@ function repeatMoodHint(index) {
   return ["すぐ", "好き", "ほどよく", "たまに", "お休み"][index] || "";
 }
 
+function renderRepeatWeekGrid(days) {
+  return `
+    <div class="repeat-week-grid" aria-label="直近1週間の朝昼晩の記録">
+      <div class="week-corner"></div>
+      ${days.map((day) => `<div class="week-day ${day.date === today() ? "is-today" : ""}">${escapeHtml(shortDateLabel(day.date))}</div>`).join("")}
+      ${mealSlots().map((meal) => `
+        <div class="week-meal-label">${meal.icon}<span>${escapeHtml(meal.shortLabel)}</span></div>
+        ${days.map((day) => renderWeekCell(day, meal.id)).join("")}
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderWeekCell(day, mealId) {
+  const slot = day.slots.find((item) => item.mealId === mealId);
+  if (!slot?.candidate) return `<div class="week-cell is-empty">-</div>`;
+  const status = slot.completed ? "済" : "未";
+  const className = slot.completed ? "is-done" : "is-missing";
+  return `
+    <button class="week-cell ${className}" type="button" data-action="select-repeat-recipe" data-recipe="${escapeAttr(slot.candidate.recipe.id)}">
+      <span>${status}</span>
+      <small>${escapeHtml(shortRecipeTitle(slot.candidate.recipe.title))}</small>
+    </button>
+  `;
+}
+
+function renderMissingChip(item) {
+  return `
+    <button class="missing-chip" type="button" data-action="select-repeat-recipe" data-recipe="${escapeAttr(item.candidate.recipe.id)}">
+      ${escapeHtml(shortDateLabel(item.date))} ${escapeHtml(item.meal.icon)} ${escapeHtml(shortRecipeTitle(item.candidate.recipe.title))}
+    </button>
+  `;
+}
+
+function renderRepeatPhotoPicker(recipeId) {
+  const latest = getRecipeEvaluationHistory(recipeId).find((evaluation) => evaluation.photo);
+  const photo = state.repeatDraft.photo || latest?.photo || "";
+  return `
+    <label class="repeat-photo-tap" for="repeat-photo" title="写真を追加">
+      ${photo ? `<img src="${escapeAttr(photo)}" alt="料理写真">` : `<span>写真<br>追加</span>`}
+    </label>
+  `;
+}
+
 function renderRepeatRecipeRow(recipe, selectedId) {
   const summary = getRecipeRepeatSummary(recipe.id);
   return `
@@ -721,6 +777,12 @@ function repeatRecipeMeta(recipe) {
   return `${mealLabel(recipe.mealType)} / 直近 ${lastDate} / ${history.length}回`;
 }
 
+function firstDateText(history) {
+  if (!history.length) return "初回として記録";
+  const first = history[history.length - 1];
+  return `初回 ${formatDate(first.cookedAt)} / ${history.length}回`;
+}
+
 function getRecipeEvaluationHistory(recipeId) {
   return state.evaluations
     .filter((evaluation) => evaluation.recipeId === recipeId)
@@ -737,6 +799,68 @@ function getRepeatRecipes() {
       if (dateDiff) return dateDiff;
       return a.title.localeCompare(b.title, "ja");
     });
+}
+
+function buildRepeatWeekReview() {
+  const plan = buildWeeklyPlan();
+  const slots = mealSlots();
+  const start = addDays(today(), -6);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(start, index);
+    const daySlots = slots.map((meal) => ({ mealId: meal.id, meal, candidate: null, completed: false }));
+
+    state.evaluations
+      .filter((evaluation) => evaluation.cookedAt === date)
+      .forEach((evaluation) => {
+        const recipe = recipeById(evaluation.recipeId);
+        if (!recipe) return;
+        const mealId = slots.some((meal) => meal.id === recipe.mealType) ? recipe.mealType : "dinner";
+        const slot = daySlots.find((item) => item.mealId === mealId);
+        if (slot && !slot.candidate) {
+          slot.candidate = { recipe };
+          slot.completed = true;
+        }
+      });
+
+    const planDay = plan.find((day) => day.date === date);
+    if (date === today() && planDay?.candidate) {
+      const mealId = slots.some((meal) => meal.id === planDay.candidate.recipe.mealType)
+        ? planDay.candidate.recipe.mealType
+        : "dinner";
+      const slot = daySlots.find((item) => item.mealId === mealId);
+      if (slot && !slot.candidate) {
+        slot.candidate = planDay.candidate;
+        slot.completed = state.evaluations.some((evaluation) => (
+          evaluation.recipeId === planDay.candidate.recipe.id && evaluation.cookedAt === date
+        ));
+      }
+    }
+    return { date, slots: daySlots };
+  });
+  return {
+    days,
+    missing: days.flatMap((day) => day.slots
+      .filter((slot) => slot.candidate && !slot.completed)
+      .map((slot) => ({ date: day.date, meal: slot.meal, candidate: slot.candidate })))
+  };
+}
+
+function mealSlots() {
+  return [
+    { id: "breakfast", shortLabel: "朝", icon: "☀️" },
+    { id: "lunch", shortLabel: "昼", icon: "🍙" },
+    { id: "dinner", shortLabel: "夜", icon: "🌙" }
+  ];
+}
+
+function shortDateLabel(date) {
+  const [, month, day] = date.split("-");
+  return `${Number(month)}/${Number(day)}`;
+}
+
+function shortRecipeTitle(title) {
+  const value = String(title || "");
+  return value.length > 5 ? `${value.slice(0, 5)}…` : value;
 }
 
 function familyInitial(name) {
@@ -861,17 +985,6 @@ function bindEvents() {
   document.querySelector("#import-file")?.addEventListener("change", handleImportFile);
 
   document.querySelector("#repeat-photo")?.addEventListener("change", handlePhotoFile);
-
-  document.querySelector("#latest-cooked-at")?.addEventListener("change", (event) => {
-    const evaluation = state.evaluations.find((item) => item.id === event.target.dataset.eval);
-    const cookedAt = normalizeDateInput(event.target.value);
-    if (evaluation && cookedAt) {
-      evaluation.cookedAt = cookedAt;
-      saveState();
-      showToast("直近の日付を更新しました。");
-      render();
-    }
-  });
 }
 
 async function handleAction(event) {
