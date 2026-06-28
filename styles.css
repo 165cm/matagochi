@@ -198,6 +198,15 @@ h3 {
   padding: 14px;
 }
 
+.danger-zone {
+  border-color: #efd3cc;
+  background: #fff8f6;
+}
+
+.danger-zone h3 {
+  color: #9f3d34;
+}
+
 .section-head {
   display: flex;
   align-items: center;

@@ -975,6 +975,16 @@ function renderSettings() {
       </div>
       <input id="import-file" type="file" accept="application/json,.json" hidden>
     </section>
+
+    <section class="panel danger-zone">
+      <div class="section-head">
+        <div>
+          <h3>全件削除</h3>
+          <p>保存したレシピとリピ記録を空にします。家族メンバー設定は残ります。</p>
+        </div>
+      </div>
+      <button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピとリピ記録を全件削除</button>
+    </section>
   `;
 }
 
@@ -1208,6 +1218,7 @@ async function handleAction(event) {
       showToast("レシピを削除しました。");
       render();
     }
+    return;
   }
 
   if (action === "delete-evaluation") {
@@ -1218,6 +1229,7 @@ async function handleAction(event) {
       showToast("リピ記録を削除しました。");
       render();
     }
+    return;
   }
 
   if (action === "add-member") {
@@ -1234,6 +1246,12 @@ async function handleAction(event) {
 
   if (action === "import-data") {
     document.querySelector("#import-file")?.click();
+    return;
+  }
+
+  if (action === "reset-all-data") {
+    resetAllUserData();
+    return;
   }
 
   if (action === "record-repeat") {
@@ -1364,6 +1382,28 @@ function removeMember(index) {
   delete state.repeatDraft.familyRepeatCycles[name];
   saveState();
   showToast("メンバーを削除しました。");
+  render();
+}
+
+function resetAllUserData() {
+  const message = "保存したレシピ、材料メモ、リピ記録、料理写真をすべて削除します。家族メンバー設定は残ります。よろしいですか？";
+  if (!window.confirm(message)) return;
+  state.recipes = [];
+  state.evaluations = [];
+  state.selectedRecipeId = null;
+  state.editingRecipeId = null;
+  state.searchText = "";
+  state.mealFilter = "all";
+  state.showAllMealTypes = false;
+  state.draft = clone(emptyDraft);
+  state.repeatDraft = normalizeRepeatDraft({}, state.family);
+  state.extractedIngredients = [];
+  state.extractedSteps = [];
+  state.fetchStatus = "";
+  state.view = "collection";
+  state.onboarded = true;
+  saveState();
+  showToast("レシピとリピ記録を全件削除しました。");
   render();
 }
 
