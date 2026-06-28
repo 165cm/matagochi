@@ -102,7 +102,7 @@ h3 {
   width: min(100%, 430px);
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
   padding: 8px 8px 12px;
   background: rgba(255, 255, 255, 0.95);
@@ -137,6 +137,26 @@ h3 {
 .tab.is-active {
   background: #edf3e8;
   color: var(--sage-dark);
+}
+
+.add-tab {
+  min-height: 56px;
+  margin-top: -14px;
+  background: var(--sage);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(79, 112, 77, 0.28);
+}
+
+.add-tab.is-active {
+  background: var(--sage-dark);
+  color: #fff;
+}
+
+.add-icon {
+  display: block;
+  margin-bottom: 1px;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .icon-button {
@@ -457,6 +477,36 @@ body.is-onboarding .icon-button {
 .form-grid {
   display: grid;
   gap: 10px;
+}
+
+.register-hero {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 8px;
+  align-items: end;
+}
+
+.fetch-button {
+  min-height: 44px;
+}
+
+.quick-entry-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.compact-source {
+  padding: 9px 10px;
+}
+
+.entry-detail-panel .actions {
+  grid-template-columns: 1fr 1.1fr;
 }
 
 .two-col {
@@ -1272,6 +1322,12 @@ body.is-onboarding .icon-button {
   .repeat-recipe-row .badge {
     grid-column: 2;
     justify-self: start;
+  }
+}
+
+@media (max-width: 360px) {
+  .quick-url-row {
+    grid-template-columns: 1fr;
   }
 }
 

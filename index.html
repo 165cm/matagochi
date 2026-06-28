@@ -26,14 +26,18 @@
       <main id="app" class="screen" aria-live="polite"></main>
 
       <nav class="bottom-tabs" aria-label="主要画面">
-        <button class="tab is-active" type="button" data-view="collection">
-          <span>コレクション</span>
+        <button class="tab is-active" type="button" data-view="collection" aria-label="コレクション">
+          <span>探す</span>
         </button>
         <button class="tab" type="button" data-view="plan">
           <span>献立</span>
         </button>
-        <button class="tab" type="button" data-view="repeat">
-          <span>リピ周期</span>
+        <button class="tab add-tab" type="button" data-view="register" aria-label="新規登録">
+          <span class="add-icon">＋</span>
+          <span>登録</span>
+        </button>
+        <button class="tab" type="button" data-view="repeat" aria-label="リピ周期">
+          <span>リピ</span>
         </button>
         <button class="tab" type="button" data-view="settings">
           <span>設定</span>
