@@ -180,7 +180,8 @@ function normalizeRepeatDraft(draft, family) {
   return {
     familyRepeatCycles: normalizeFamilyRepeatCycles(draft?.familyRepeatCycles, draft?.familyRatings, family, draft?.nextTiming),
     memo: draft?.memo || "",
-    photo: draft?.photo || ""
+    photo: draft?.photo || "",
+    cookedAt: normalizeDateInput(draft?.cookedAt) || today()
   };
 }
 
@@ -196,6 +197,10 @@ function normalizeEvaluations(evaluations, family) {
     memo: evaluation.memo || "",
     photo: evaluation.photo || ""
   }));
+}
+
+function normalizeDateInput(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? value : "";
 }
 
 function normalizeFamilyRepeatCycles(cycles, ratings, family, nextTiming = "") {
@@ -570,41 +575,40 @@ function renderCandidateCard(candidate) {
 
 function renderRepeatCycles() {
   const repeatRecipes = getRepeatRecipes();
-  const selected = repeatRecipes.find((recipe) => recipe.id === state.selectedRecipeId) || repeatRecipes[0] || state.recipes[0];
+  const todayCandidate = buildWeeklyPlan()[0]?.candidate;
+  const todayRecipe = todayCandidate?.recipe;
+  const selected = repeatRecipes.find((recipe) => recipe.id === state.selectedRecipeId)
+    || repeatRecipes.find((recipe) => recipe.id === todayRecipe?.id)
+    || repeatRecipes[0]
+    || state.recipes[0];
+  if (selected && state.selectedRecipeId !== selected.id) state.selectedRecipeId = selected.id;
   const history = selected ? getRecipeEvaluationHistory(selected.id) : [];
   const summary = selected ? getRecipeRepeatSummary(selected.id) : null;
+  const latest = history[0];
 
   return `
-    <section class="hero-card">
-      <div class="section-head">
-        <div>
-          <h2>リピ周期</h2>
-          <p>「どのくらいの周期でリピートしたい？」を家族ごとに残します。</p>
+    <section class="hero-card repeat-focus-card">
+      <span class="badge">今日の候補</span>
+      ${todayCandidate ? `
+        <div class="repeat-focus-main">
+          <div>
+            <h2>${escapeHtml(todayCandidate.recipe.title)}</h2>
+            <p>${escapeHtml(todayCandidate.reason)} / ${escapeHtml(repeatRecipeMeta(todayCandidate.recipe))}</p>
+          </div>
+          <button class="secondary-button" type="button" data-action="select-repeat-recipe" data-recipe="${escapeAttr(todayCandidate.recipe.id)}">評価する</button>
         </div>
-        <span class="badge">${state.evaluations.length}件</span>
-      </div>
-      <div class="hero-row">
-        <div class="hero-stat"><strong>${state.recipes.length}</strong><span>保存レシピ</span></div>
-        <div class="hero-stat"><strong>${state.evaluations.length}</strong><span>食べた記録</span></div>
-        <div class="hero-stat"><strong>${repeatReadyCount()}</strong><span>今週候補</span></div>
-      </div>
+      ` : `
+        <div class="repeat-focus-main">
+          <div>
+            <h2>今日の候補なし</h2>
+            <p>レシピを保存すると、ここからすぐ評価できます。</p>
+          </div>
+        </div>
+      `}
     </section>
 
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h3>食べた順</h3>
-          <p>直近で食べた日が新しい順に並びます。タグで絞り込めます。</p>
-        </div>
-      </div>
-      ${renderMealFilter()}
-      <div class="repeat-recipe-list">
-        ${repeatRecipes.map((recipe) => renderRepeatRecipeRow(recipe, selected?.id)).join("") || renderEmpty("表示できるレシピがありません。")}
-      </div>
-    </section>
-
-    <section class="panel">
-      ${selected ? `
+    ${selected ? `
+      <section class="panel repeat-entry-panel">
         <div class="rating-target">
           <div>
             <span class="badge">${escapeHtml(summary?.badgeLabel || "未記録")}</span>
@@ -613,42 +617,44 @@ function renderRepeatCycles() {
           </div>
           ${renderLatestPhoto(selected.id)}
         </div>
-      ` : renderEmpty("先にレシピを保存してください。")}
-    </section>
-
-    ${selected ? `
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h3>今日のリピ周期</h3>
-            <p>食べたい気持ちの強さで、家族それぞれのペースを選びます。</p>
-          </div>
+        <div class="repeat-date-row">
+          <label for="repeat-cooked-at">食べた日</label>
+          <input id="repeat-cooked-at" class="input" type="date" value="${escapeAttr(state.repeatDraft.cookedAt || today())}">
+          ${latest ? `
+            <label for="latest-cooked-at">直近日を修正</label>
+            <input id="latest-cooked-at" class="input" type="date" data-eval="${escapeAttr(latest.id)}" value="${escapeAttr(latest.cookedAt)}">
+          ` : ""}
         </div>
         <div class="feedback-list">
           ${state.family.map((name) => renderRepeatInput(name)).join("")}
         </div>
-        <div class="field">
-          <label for="repeat-memo">メモ</label>
+        <div class="repeat-compact-fields">
           <textarea id="repeat-memo" class="textarea compact-textarea">${escapeHtml(state.repeatDraft.memo)}</textarea>
+          <input id="repeat-photo" type="file" accept="image/*" class="input file-input" aria-label="料理写真">
         </div>
-        <div class="field">
-          <label for="repeat-photo">料理写真（任意）</label>
-          ${state.repeatDraft.photo ? `
-            <div class="photo-preview">
-              <img src="${escapeAttr(state.repeatDraft.photo)}" alt="料理写真プレビュー">
-              <button class="secondary-button danger" type="button" data-action="remove-photo">写真を外す</button>
-            </div>
-          ` : ""}
-          <input id="repeat-photo" type="file" accept="image/*" class="input file-input">
-        </div>
+        ${state.repeatDraft.photo ? `
+          <div class="photo-preview repeat-photo-preview">
+            <img src="${escapeAttr(state.repeatDraft.photo)}" alt="料理写真プレビュー">
+            <button class="secondary-button danger" type="button" data-action="remove-photo">写真を外す</button>
+          </div>
+        ` : ""}
         <button class="primary-button full-button" type="button" data-action="save-repeat">リピ記録を保存</button>
       </section>
 
       <section class="panel">
-        <h3>リピ記録履歴</h3>
-        <div class="recipe-list">
-          ${history.map(renderEvaluationCard).join("") || renderEmpty("まだリピ記録がありません。")}
-        </div>
+        <details class="repeat-picker">
+          <summary>ほかのレシピを選ぶ</summary>
+          ${renderMealFilter()}
+          <div class="repeat-recipe-list">
+            ${repeatRecipes.map((recipe) => renderRepeatRecipeRow(recipe, selected?.id)).join("") || renderEmpty("表示できるレシピがありません。")}
+          </div>
+        </details>
+        <details class="repeat-picker">
+          <summary>直近5回の履歴</summary>
+          <div class="recipe-list compact-history">
+            ${history.slice(0, 5).map(renderEvaluationCard).join("") || renderEmpty("まだリピ記録がありません。")}
+          </div>
+        </details>
       </section>
     ` : ""}
   `;
@@ -855,6 +861,17 @@ function bindEvents() {
   document.querySelector("#import-file")?.addEventListener("change", handleImportFile);
 
   document.querySelector("#repeat-photo")?.addEventListener("change", handlePhotoFile);
+
+  document.querySelector("#latest-cooked-at")?.addEventListener("change", (event) => {
+    const evaluation = state.evaluations.find((item) => item.id === event.target.dataset.eval);
+    const cookedAt = normalizeDateInput(event.target.value);
+    if (evaluation && cookedAt) {
+      evaluation.cookedAt = cookedAt;
+      saveState();
+      showToast("直近の日付を更新しました。");
+      render();
+    }
+  });
 }
 
 async function handleAction(event) {
@@ -1107,7 +1124,7 @@ async function handleAction(event) {
     const evaluation = {
       id: `e${Date.now()}`,
       recipeId: state.selectedRecipeId,
-      cookedAt: today(),
+      cookedAt: state.repeatDraft.cookedAt || today(),
       familyRepeatCycles: { ...state.repeatDraft.familyRepeatCycles },
       memo: state.repeatDraft.memo,
       photo: state.repeatDraft.photo || "",
@@ -1115,6 +1132,7 @@ async function handleAction(event) {
     };
     state.evaluations.unshift(evaluation);
     state.repeatDraft.photo = "";
+    state.repeatDraft.cookedAt = today();
     saveState();
     showToast("リピ記録を保存しました。");
     render();
@@ -1142,6 +1160,7 @@ function captureDraft() {
 
 function captureRepeatDraft() {
   state.repeatDraft.memo = document.querySelector("#repeat-memo")?.value.trim() || "";
+  state.repeatDraft.cookedAt = normalizeDateInput(document.querySelector("#repeat-cooked-at")?.value) || today();
 }
 
 function renameMember(index, rawValue) {

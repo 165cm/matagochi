@@ -649,10 +649,56 @@ body.is-onboarding .icon-button {
   background: #fffaf0;
 }
 
+.repeat-focus-card {
+  display: grid;
+  gap: 8px;
+}
+
+.repeat-focus-main {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.repeat-focus-main h2 {
+  margin-bottom: 2px;
+  font-size: 22px;
+}
+
+.repeat-focus-main p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.repeat-entry-panel {
+  display: grid;
+  gap: 8px;
+}
+
 .rating-target strong {
   display: block;
   margin-top: 6px;
   font-size: 18px;
+}
+
+.repeat-date-row {
+  display: grid;
+  grid-template-columns: auto minmax(128px, 1fr) auto minmax(128px, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.repeat-date-row label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.repeat-date-row .input {
+  height: 38px;
 }
 
 .rating-row {
@@ -774,6 +820,49 @@ body.is-onboarding .icon-button {
   gap: 2px;
   place-items: center;
   padding: 5px 2px;
+}
+
+.repeat-compact-fields {
+  display: grid;
+  grid-template-columns: 1fr minmax(120px, 160px);
+  gap: 8px;
+  align-items: start;
+}
+
+.repeat-compact-fields .compact-textarea {
+  min-height: 48px;
+}
+
+.repeat-photo-preview {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.repeat-photo-preview img {
+  width: 72px;
+  height: 54px;
+}
+
+.repeat-picker {
+  border-top: 1px solid #f0e9df;
+  padding-top: 10px;
+}
+
+.repeat-picker + .repeat-picker {
+  margin-top: 10px;
+}
+
+.repeat-picker summary {
+  cursor: pointer;
+  color: var(--sage-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.compact-history {
+  margin-top: 8px;
 }
 
 .mood-button span:not(.mood-dot) {
@@ -987,6 +1076,27 @@ body.is-onboarding .icon-button {
 .empty-state {
   padding: 16px;
   text-align: center;
+}
+
+@media (max-width: 520px) {
+  .repeat-focus-main,
+  .rating-target,
+  .repeat-compact-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .repeat-date-row {
+    grid-template-columns: auto 1fr;
+  }
+
+  .repeat-recipe-row {
+    grid-template-columns: 42px 1fr;
+  }
+
+  .repeat-recipe-row .badge {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 @media (min-width: 700px) {
