@@ -536,6 +536,30 @@ body.is-onboarding .icon-button {
   color: var(--sage-dark);
 }
 
+.meal-picker,
+.meal-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.meal-picker-secondary {
+  margin-top: 6px;
+}
+
+.meal-more-button {
+  background: #fffaf0;
+}
+
+.meal-more-button.is-expanded {
+  border: 1px solid #ead8b9;
+  color: #8a6338;
+}
+
+.meal-filter {
+  margin-top: 10px;
+}
+
 .ingredient-list,
 .recipe-list,
 .shopping-list,

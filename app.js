@@ -1,4 +1,5 @@
 const STORAGE_KEY = "matagochi-mvp-v1";
+const API_BASE_URL = (globalThis.MATAGOCHI_API_BASE_URL || "").replace(/\/$/, "");
 
 const defaultFamily = ["ママ", "パパ", "子ども1", "子ども2"];
 const emptyDraft = { title: "", videoUrl: "", source: "", mealType: "dinner", caption: "", note: "" };
@@ -12,10 +13,14 @@ const repeatOptions = [
   { id: "never", label: "リピなし", days: null, tone: "stop" }
 ];
 const mealTypes = [
-  { id: "breakfast", label: "朝ごはん" },
-  { id: "lunch", label: "昼ごはん" },
-  { id: "dinner", label: "夜ごはん" },
-  { id: "side", label: "副菜" }
+  { id: "breakfast", label: "朝ごはん", featured: true },
+  { id: "lunch", label: "昼ごはん", featured: true },
+  { id: "dinner", label: "夜ごはん", featured: true },
+  { id: "bento", label: "お弁当", featured: true },
+  { id: "side", label: "副菜", featured: false },
+  { id: "prep", label: "作り置き", featured: false },
+  { id: "snack", label: "おやつ", featured: false },
+  { id: "soup", label: "汁物", featured: false }
 ];
 
 const demoState = {
@@ -24,6 +29,9 @@ const demoState = {
   selectedRecipeId: "r2",
   editingRecipeId: null,
   searchText: "",
+  mealFilter: "all",
+  showAllMealTypes: false,
+  servingCount: 1,
   family: [...defaultFamily],
   extractedIngredients: [],
   extractedSteps: [],
@@ -119,6 +127,7 @@ const demoState = {
 
 let state = loadState();
 let toastTimer = null;
+let isCaptionImporting = false;
 
 function ingredient(name, amount, category) {
   return { name, amount, category };
@@ -150,10 +159,21 @@ function normalizeState(saved) {
     view,
     onboarded: saved.onboarded ?? true,
     editingRecipeId: null,
+    servingCount: normalizeServingCount(saved.servingCount),
     draft: { ...base.draft, ...(saved.draft || {}) },
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
     evaluations: normalizeEvaluations(Array.isArray(saved.evaluations) ? saved.evaluations : base.evaluations, family)
   };
+}
+
+function normalizeServingCount(value) {
+  const count = Number.parseInt(value, 10);
+  if (!Number.isFinite(count)) return 1;
+  return Math.min(Math.max(count, 1), 12);
+}
+
+function getServingCount() {
+  return normalizeServingCount(state.servingCount);
 }
 
 function normalizeRepeatDraft(draft, family) {
@@ -274,6 +294,7 @@ function renderCollection() {
   const extracted = state.extractedIngredients.length ? state.extractedIngredients : parseIngredients(state.draft.caption);
   const steps = state.extractedSteps.length ? state.extractedSteps : parseCookingSteps(state.draft.caption);
   const platform = detectPlatform(state.draft.videoUrl);
+  const servingCount = getServingCount();
 
   return `
     <section class="hero-card">
@@ -320,10 +341,8 @@ function renderCollection() {
             <input id="recipe-source" class="input" value="${escapeAttr(state.draft.source)}">
           </div>
           <div class="field">
-            <label for="recipe-meal">分類</label>
-            <select id="recipe-meal" class="select">
-              ${mealTypes.map((type) => `<option value="${type.id}" ${state.draft.mealType === type.id ? "selected" : ""}>${type.label}</option>`).join("")}
-            </select>
+            <label>タグ</label>
+            ${renderMealTypePicker(state.draft.mealType)}
           </div>
         </div>
         <div class="field">
@@ -336,7 +355,7 @@ function renderCollection() {
         </div>
         <div class="actions">
           <button class="primary-button" type="button" data-action="save-recipe">${state.editingRecipeId ? "更新する" : "保存する"}</button>
-          <button class="secondary-button" type="button" data-action="fetch-caption">URLから取得</button>
+          <button class="secondary-button" type="button" data-action="fetch-caption" ${isCaptionImporting ? "disabled" : ""}>${isCaptionImporting ? "取得中" : "URLから取得"}</button>
         </div>
         <button class="secondary-button full-button" type="button" data-action="extract-caption">キャプションから材料・作り方を抽出</button>
         ${state.editingRecipeId ? `<button class="text-button full-button" type="button" data-action="cancel-edit">編集をやめる</button>` : ""}
@@ -348,15 +367,16 @@ function renderCollection() {
       <div class="section-head">
         <div>
           <h3>抽出プレビュー</h3>
-          <p>材料と調理方法を保存前に確認できます。</p>
+          <p>材料は1人前で保存し、表示人数に合わせて換算します。</p>
         </div>
+        <span class="badge">${servingCount}人分</span>
       </div>
       <h3 class="subhead">材料</h3>
       <div class="ingredient-list">
         ${extracted.map((item) => `
           <div class="ingredient-row">
             <strong>${escapeHtml(item.name)}</strong>
-            <span class="muted small">${escapeHtml(item.amount)}・${escapeHtml(item.category)}</span>
+            <span class="muted small">${escapeHtml(displayIngredientAmount(item))}・${escapeHtml(item.category)}</span>
           </div>
         `).join("")}
       </div>
@@ -374,10 +394,52 @@ function renderCollection() {
         </div>
       </div>
       <input id="recipe-search" class="input" placeholder="レシピ名・材料・メモで検索" value="${escapeAttr(state.searchText)}">
+      ${renderMealFilter()}
       <div class="recipe-list mvp-list">
         ${filteredRecipes.map(renderRecipeCard).join("") || renderEmpty("保存済みレシピがありません。")}
       </div>
     </section>
+  `;
+}
+
+function renderMealTypePicker(selectedId) {
+  const featured = mealTypes.filter((type) => type.featured);
+  const hidden = mealTypes.filter((type) => !type.featured);
+  return `
+    <div class="meal-picker" role="group" aria-label="レシピタグ">
+      ${featured.map((type) => renderMealTypeButton(type, selectedId)).join("")}
+      <button class="choice-button meal-more-button ${state.showAllMealTypes ? "is-expanded" : ""}" type="button" data-action="toggle-meal-types">
+        その他
+      </button>
+    </div>
+    ${state.showAllMealTypes ? `
+      <div class="meal-picker meal-picker-secondary" role="group" aria-label="その他のレシピタグ">
+        ${hidden.map((type) => renderMealTypeButton(type, selectedId)).join("")}
+      </div>
+    ` : ""}
+  `;
+}
+
+function renderMealTypeButton(type, selectedId) {
+  return `
+    <button class="choice-button ${type.id === selectedId ? "is-active" : ""}" type="button" data-action="set-meal-type" data-meal="${type.id}">
+      ${escapeHtml(type.label)}
+    </button>
+  `;
+}
+
+function renderMealFilter() {
+  const featured = mealTypes.filter((type) => type.featured);
+  return `
+    <div class="meal-filter" role="group" aria-label="保存済みレシピの絞り込み">
+      <button class="choice-button ${state.mealFilter === "all" ? "is-active" : ""}" type="button" data-action="filter-meal" data-meal="all">すべて</button>
+      ${featured.map((type) => `
+        <button class="choice-button ${state.mealFilter === type.id ? "is-active" : ""}" type="button" data-action="filter-meal" data-meal="${type.id}">
+          ${escapeHtml(type.label)}
+        </button>
+      `).join("")}
+      <button class="choice-button ${state.mealFilter === "other" ? "is-active" : ""}" type="button" data-action="filter-meal" data-meal="other">その他</button>
+    </div>
   `;
 }
 
@@ -394,7 +456,7 @@ function renderRecipeCard(recipe) {
       </div>
       <p class="muted small">${escapeHtml(recipe.note)}</p>
       <div class="chip-row">
-        ${recipe.ingredients.slice(0, 5).map((item) => `<span class="chip">${escapeHtml(item.name)}</span>`).join("")}
+        ${recipe.ingredients.slice(0, 5).map(renderIngredientChip).join("")}
       </div>
       <div class="actions">
         <a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>
@@ -406,6 +468,10 @@ function renderRecipeCard(recipe) {
       </div>
     </article>
   `;
+}
+
+function renderIngredientChip(item) {
+  return `<span class="chip">${escapeHtml(item.name)} ${escapeHtml(displayIngredientAmount(item))}</span>`;
 }
 
 function renderMealPlan() {
@@ -535,7 +601,7 @@ function renderRepeatCycles() {
           <strong>${escapeHtml(selected.title)}</strong>
           <p class="muted small">${escapeHtml(selected.note)}</p>
           <div class="chip-row">
-            ${selected.ingredients.slice(0, 5).map((item) => `<span class="chip">${escapeHtml(item.name)}</span>`).join("")}
+            ${selected.ingredients.slice(0, 5).map(renderIngredientChip).join("")}
           </div>
         </div>
       ` : renderEmpty("先にレシピを保存してください。")}
@@ -645,6 +711,20 @@ function renderSettings() {
         <div class="hero-stat"><strong>${state.family.length}</strong><span>家族メンバー</span></div>
         <div class="hero-stat"><strong>${state.recipes.length}</strong><span>レシピ</span></div>
         <div class="hero-stat"><strong>${state.evaluations.length}</strong><span>リピ記録</span></div>
+        <div class="hero-stat"><strong>${getServingCount()}</strong><span>表示人数</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h3>材料表示</h3>
+          <p>材料メモは1人前で保存し、画面では人数分に換算します。</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="serving-count">表示人数</label>
+        <input id="serving-count" class="input" type="number" min="1" max="12" step="1" value="${getServingCount()}">
       </div>
     </section>
 
@@ -694,6 +774,12 @@ function bindEvents() {
     render();
   });
 
+  document.querySelector("#serving-count")?.addEventListener("change", (event) => {
+    state.servingCount = normalizeServingCount(event.target.value);
+    saveState();
+    render();
+  });
+
   document.querySelector("#repeat-recipe")?.addEventListener("change", (event) => {
     state.selectedRecipeId = event.target.value;
     saveState();
@@ -711,7 +797,7 @@ function bindEvents() {
   document.querySelector("#repeat-photo")?.addEventListener("change", handlePhotoFile);
 }
 
-function handleAction(event) {
+async function handleAction(event) {
   const { action } = event.currentTarget.dataset;
 
   if (action === "start-demo") {
@@ -750,13 +836,60 @@ function handleAction(event) {
 
   if (action === "fetch-caption") {
     captureDraft();
-    const result = prepareCaptionImport(state.draft.videoUrl);
-    state.draft.source = result.platform.label;
-    state.fetchStatus = result.message;
-    state.extractedIngredients = parseIngredients(state.draft.caption);
-    state.extractedSteps = parseCookingSteps(state.draft.caption);
+    if (isCaptionImporting) return;
+
+    if (!API_BASE_URL || !isYouTubePlatform(detectPlatform(state.draft.videoUrl))) {
+      const result = prepareCaptionImport(state.draft.videoUrl);
+      state.draft.source = result.platform.label;
+      state.fetchStatus = result.message;
+      state.extractedIngredients = parseIngredients(state.draft.caption);
+      state.extractedSteps = parseCookingSteps(state.draft.caption);
+      saveState();
+      showToast(result.toast);
+      render();
+      return;
+    }
+
+    isCaptionImporting = true;
+    state.fetchStatus = "YouTubeの説明文を取得して、材料メモを作成しています。";
     saveState();
-    showToast(result.toast);
+    render();
+
+    try {
+      const result = await importRecipeFromYouTube(state.draft.videoUrl);
+      applyImportedRecipe(result);
+      state.fetchStatus = "YouTubeの説明文から材料メモを作成しました。保存前に内容を確認してください。";
+      saveState();
+      showToast("材料メモを作成しました。");
+    } catch (error) {
+      state.fetchStatus = `${error.message || "URLから取得できませんでした。"} キャプションを手動で貼り付けて抽出できます。`;
+      state.extractedIngredients = parseIngredients(state.draft.caption);
+      state.extractedSteps = parseCookingSteps(state.draft.caption);
+      saveState();
+      showToast("URL取得に失敗しました。");
+    } finally {
+      isCaptionImporting = false;
+      render();
+    }
+  }
+
+  if (action === "set-meal-type") {
+    captureDraft();
+    state.draft.mealType = event.currentTarget.dataset.meal || "dinner";
+    saveState();
+    render();
+  }
+
+  if (action === "toggle-meal-types") {
+    captureDraft();
+    state.showAllMealTypes = !state.showAllMealTypes;
+    saveState();
+    render();
+  }
+
+  if (action === "filter-meal") {
+    state.mealFilter = event.currentTarget.dataset.meal || "all";
+    saveState();
     render();
   }
 
@@ -935,7 +1068,7 @@ function captureDraft() {
     title: document.querySelector("#recipe-title")?.value.trim() || "",
     videoUrl: currentUrl,
     source: document.querySelector("#recipe-source")?.value.trim() || platform.label,
-    mealType: document.querySelector("#recipe-meal")?.value || "dinner",
+    mealType: state.draft.mealType || "dinner",
     caption: document.querySelector("#recipe-caption")?.value.trim() || "",
     note: document.querySelector("#recipe-note")?.value.trim() || ""
   };
@@ -1083,8 +1216,9 @@ function recipeById(id) {
 
 function getFilteredRecipes() {
   const query = state.searchText.trim().toLowerCase();
-  if (!query) return state.recipes;
   return state.recipes.filter((recipe) => {
+    if (!matchesMealFilter(recipe)) return false;
+    if (!query) return true;
     const haystack = [
       recipe.title,
       recipe.caption,
@@ -1095,6 +1229,14 @@ function getFilteredRecipes() {
     ].join(" ").toLowerCase();
     return haystack.includes(query);
   });
+}
+
+function matchesMealFilter(recipe) {
+  if (!state.mealFilter || state.mealFilter === "all") return true;
+  if (state.mealFilter === "other") {
+    return !mealTypes.find((type) => type.id === recipe.mealType)?.featured;
+  }
+  return recipe.mealType === state.mealFilter;
 }
 
 function parseIngredients(caption) {
@@ -1147,7 +1289,10 @@ function detectPlatform(url) {
     return { label: "TikTok", supported: true, help: "TikTok動画URLを保存できます。説明文取得はサーバー側の取得処理で対応します。" };
   }
   if (/youtube\.com\/shorts\/|youtu\.be\//.test(value)) {
-    return { label: "YouTube Shorts", supported: true, help: "Shorts URLを保存できます。説明文取得はYouTube API連携で対応します。" };
+    return { id: "youtube", label: "YouTube Shorts", supported: true, help: "Shorts URLを保存できます。API設定済み環境では説明文から材料メモを作成できます。" };
+  }
+  if (/youtube\.com\/watch\?/.test(value)) {
+    return { id: "youtube", label: "YouTube", supported: true, help: "YouTube URLを保存できます。API設定済み環境では説明文から材料メモを作成できます。" };
   }
   if (!value) {
     return { label: "ショート動画", supported: false, help: "URLを入力すると対応サービスを判定します。" };
@@ -1169,6 +1314,72 @@ function prepareCaptionImport(url) {
     toast: `${platform.label}のURLを認識しました。`,
     message: `${platform.label} のURLを認識しました。静的MVPではSNSページから直接キャプション取得は行わず、貼り付けたキャプションから材料と調理方法を抽出します。バックエンド追加後はこのボタンを実取得に差し替えできます。`
   };
+}
+
+function isYouTubePlatform(platform) {
+  return platform.id === "youtube" || /^YouTube/.test(platform.label);
+}
+
+async function importRecipeFromYouTube(videoUrl) {
+  const response = await fetch(`${API_BASE_URL}/api/import/youtube`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: videoUrl })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error?.message || "YouTubeの説明文を取得できませんでした。");
+  }
+  return data;
+}
+
+function applyImportedRecipe(result) {
+  const platform = detectPlatform(state.draft.videoUrl);
+  state.draft = {
+    ...state.draft,
+    title: state.draft.title || result.title || "",
+    videoUrl: result.videoUrl || state.draft.videoUrl,
+    source: result.source || platform.label,
+    caption: result.caption || state.draft.caption,
+    note: state.draft.note || result.note || ""
+  };
+  state.extractedIngredients = normalizeImportedIngredients(result.ingredients);
+  state.extractedSteps = Array.isArray(result.steps) && result.steps.length
+    ? result.steps.map((step) => String(step || "").trim()).filter(Boolean)
+    : parseCookingSteps(state.draft.caption);
+}
+
+function normalizeImportedIngredients(items) {
+  if (!Array.isArray(items) || !items.length) return parseIngredients(state.draft.caption);
+  return items
+    .map((item) => ingredient(item.name || "", item.amount || "適量", item.category || "その他"))
+    .filter((item) => item.name);
+}
+
+function displayIngredientAmount(item) {
+  return scaleAmountForServings(item.amount, getServingCount());
+}
+
+function scaleAmountForServings(amount, servingCount) {
+  const value = String(amount || "").trim();
+  const count = normalizeServingCount(servingCount);
+  if (!value || count === 1 || /適量|少々|お好み|ひとつまみ/.test(value)) return value || "適量";
+
+  const halfMatch = value.match(/^半(.+)$/);
+  if (halfMatch) {
+    return `${formatScaledNumber(0.5 * count)}${halfMatch[1]}`;
+  }
+
+  return value.replace(/(\d+)\s*\/\s*(\d+)|\d+(?:\.\d+)?/g, (match, numerator, denominator) => {
+    const base = numerator ? Number(numerator) / Number(denominator) : Number(match);
+    return formatScaledNumber(base * count);
+  });
+}
+
+function formatScaledNumber(value) {
+  if (!Number.isFinite(value)) return "";
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/\.?0+$/, "");
 }
 
 function getRecipeRepeatSummary(recipeId) {
