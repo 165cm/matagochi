@@ -112,6 +112,7 @@ h3 {
 
 .tab,
 .icon-button,
+.stepper-button,
 .primary-button,
 .secondary-button,
 .text-button,
@@ -364,6 +365,10 @@ h3 {
   margin-top: 12px;
 }
 
+.compact-actions {
+  margin-top: 8px;
+}
+
 .primary-button,
 .secondary-button,
 .text-button {
@@ -507,6 +512,90 @@ body.is-onboarding .icon-button {
 
 .entry-detail-panel .actions {
   grid-template-columns: 1fr 1.1fr;
+}
+
+.ingredient-edit-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.ingredient-head {
+  align-items: start;
+}
+
+.serving-stepper,
+.ingredient-amount-controls {
+  display: grid;
+  grid-template-columns: 34px minmax(70px, auto) 34px;
+  gap: 5px;
+  align-items: center;
+}
+
+.serving-stepper {
+  min-width: 132px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.serving-stepper strong {
+  color: var(--sage-dark);
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stepper-button {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f0e8;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.ingredient-toolbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ingredient-editor-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ingredient-editor-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(116px, 0.9fr) minmax(74px, 0.7fr) auto;
+  gap: 6px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffaf0;
+}
+
+.ingredient-editor-row .input,
+.ingredient-editor-row .select {
+  height: 38px;
+  padding-inline: 9px;
+}
+
+.ingredient-delete-button {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.ingredient-display-amount {
+  grid-column: 2 / -1;
+  margin-bottom: 0;
+  text-align: right;
 }
 
 .two-col {
@@ -1297,10 +1386,29 @@ body.is-onboarding .icon-button {
 }
 
 @media (max-width: 520px) {
+  .ingredient-head,
   .repeat-focus-main,
   .rating-target,
   .repeat-compact-fields {
     grid-template-columns: 1fr;
+  }
+
+  .ingredient-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ingredient-head .serving-stepper {
+    width: 100%;
+  }
+
+  .ingredient-editor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ingredient-display-amount {
+    grid-column: auto;
+    text-align: left;
   }
 
   .repeat-date-row {

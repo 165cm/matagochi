@@ -32,8 +32,9 @@ const demoState = {
   searchText: "",
   mealFilter: "all",
   showAllMealTypes: false,
-  servingCount: 1,
+  servingCount: defaultFamily.length,
   family: [...defaultFamily],
+  originalIngredients: [],
   extractedIngredients: [],
   extractedSteps: [],
   fetchStatus: "",
@@ -140,11 +141,11 @@ function clone(value) {
 
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return clone(demoState);
+  if (!saved) return normalizeState(clone(demoState));
   try {
     return normalizeState(JSON.parse(saved));
   } catch {
-    return clone(demoState);
+    return normalizeState(clone(demoState));
   }
 }
 
@@ -161,11 +162,34 @@ function normalizeState(saved) {
     onboarded: saved.onboarded ?? true,
     editingRecipeId: null,
     draftExpanded: Boolean(saved.draftExpanded),
-    servingCount: normalizeServingCount(saved.servingCount),
+    servingCount: normalizeServingCount(saved.servingCount ?? family.length),
     draft: { ...base.draft, ...(saved.draft || {}) },
+    originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
+    extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
+    recipes: normalizeRecipes(Array.isArray(saved.recipes) ? saved.recipes : base.recipes),
     evaluations: normalizeEvaluations(Array.isArray(saved.evaluations) ? saved.evaluations : base.evaluations, family)
   };
+}
+
+function normalizeRecipes(recipes) {
+  return recipes.map((recipe) => {
+    const ingredients = normalizeIngredientList(recipe.ingredients);
+    const originalIngredients = normalizeIngredientList(recipe.originalIngredients || recipe.sourceIngredients || ingredients);
+    return {
+      ...recipe,
+      ingredients,
+      originalIngredients: originalIngredients.length ? originalIngredients : clone(ingredients),
+      steps: Array.isArray(recipe.steps) ? recipe.steps.map((step) => String(step || "").trim()).filter(Boolean) : []
+    };
+  });
+}
+
+function normalizeIngredientList(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => ingredient(item?.name || "", item?.amount || "適量", item?.category || "その他"))
+    .filter((item) => item.name);
 }
 
 function normalizeServingCount(value) {
@@ -305,7 +329,7 @@ function renderOnboarding() {
 }
 
 function renderRecipeEntry() {
-  const extracted = state.extractedIngredients.length ? state.extractedIngredients : parseIngredients(state.draft.caption);
+  const extracted = getDraftIngredients();
   const steps = state.extractedSteps.length ? state.extractedSteps : parseCookingSteps(state.draft.caption);
   const platform = detectPlatform(state.draft.videoUrl);
   const servingCount = getServingCount();
@@ -382,22 +406,20 @@ function renderRecipeEntry() {
       </div>
     </section>
 
-    <section class="panel">
-      <div class="section-head">
+    <section class="panel ingredient-edit-panel">
+      <div class="section-head ingredient-head">
         <div>
-          <h3>抽出プレビュー</h3>
-          <p>材料は1人前で保存し、表示人数に合わせて換算します。</p>
+          <h3>材料メモ</h3>
+          <p>保存は1人前。表示人数と材料はここで調整できます。</p>
         </div>
-        <span class="badge">${servingCount}人分</span>
+        ${renderServingStepper(servingCount)}
       </div>
-      <h3 class="subhead">材料</h3>
-      <div class="ingredient-list">
-        ${extracted.map((item) => `
-          <div class="ingredient-row">
-            <strong>${escapeHtml(item.name)}</strong>
-            <span class="muted small">${escapeHtml(displayIngredientAmount(item))}・${escapeHtml(item.category)}</span>
-          </div>
-        `).join("")}
+      <div class="ingredient-toolbar">
+        <button class="secondary-button" type="button" data-action="add-ingredient">材料を追加</button>
+        <button class="secondary-button" type="button" data-action="reset-ingredients" ${getOriginalIngredients().length ? "" : "disabled"}>取得時に戻す</button>
+      </div>
+      <div class="ingredient-editor-list">
+        ${extracted.map((item, index) => renderIngredientEditorRow(item, index, servingCount)).join("") || renderEmpty("材料を追加してください。")}
       </div>
       <h3 class="subhead">調理方法</h3>
       <ol class="step-list">
@@ -419,6 +441,45 @@ function shouldShowDraftDetails() {
     || state.extractedIngredients.length
     || state.extractedSteps.length
   );
+}
+
+function getDraftIngredients() {
+  return state.extractedIngredients.length ? state.extractedIngredients : parseIngredients(state.draft.caption);
+}
+
+function getOriginalIngredients() {
+  return state.originalIngredients?.length ? state.originalIngredients : [];
+}
+
+function renderServingStepper(servingCount) {
+  return `
+    <div class="serving-stepper" role="group" aria-label="材料の表示人数">
+      <button class="stepper-button" type="button" data-action="adjust-serving" data-delta="-1" aria-label="人数を減らす">−</button>
+      <strong>${servingCount}人分</strong>
+      <button class="stepper-button" type="button" data-action="adjust-serving" data-delta="1" aria-label="人数を増やす">＋</button>
+    </div>
+  `;
+}
+
+function renderIngredientEditorRow(item, index, servingCount) {
+  return `
+    <div class="ingredient-editor-row" data-index="${index}">
+      <div class="field ingredient-name-field">
+        <label for="ingredient-name-${index}">材料</label>
+        <input id="ingredient-name-${index}" class="input ingredient-name-input" data-index="${index}" value="${escapeAttr(item.name)}">
+      </div>
+      <div class="ingredient-amount-controls">
+        <button class="stepper-button" type="button" data-action="adjust-ingredient-amount" data-index="${index}" data-delta="-1" aria-label="${escapeAttr(item.name)}の量を減らす">−</button>
+        <select class="select ingredient-amount-select" data-index="${index}" aria-label="${escapeAttr(item.name)}の数量">
+          ${buildAmountOptions(item.amount).map((amount) => `<option value="${escapeAttr(amount)}" ${amount === item.amount ? "selected" : ""}>${escapeHtml(amount)}</option>`).join("")}
+        </select>
+        <button class="stepper-button" type="button" data-action="adjust-ingredient-amount" data-index="${index}" data-delta="1" aria-label="${escapeAttr(item.name)}の量を増やす">＋</button>
+      </div>
+      <input class="input ingredient-category-input" data-index="${index}" value="${escapeAttr(item.category)}" aria-label="${escapeAttr(item.name)}のカテゴリ">
+      <button class="secondary-button danger ingredient-delete-button" type="button" data-action="remove-ingredient" data-index="${index}">削除</button>
+      <p class="muted small ingredient-display-amount">表示: ${escapeHtml(scaleAmountForServings(item.amount, servingCount))}</p>
+    </div>
+  `;
 }
 
 function renderCollection() {
@@ -985,6 +1046,11 @@ function renderSettings() {
         <label for="serving-count">表示人数</label>
         <input id="serving-count" class="input" type="number" min="1" max="12" step="1" value="${getServingCount()}">
       </div>
+      <div class="actions compact-actions">
+        <button class="secondary-button" type="button" data-action="adjust-serving" data-delta="-1">− 1人</button>
+        <button class="secondary-button" type="button" data-action="adjust-serving" data-delta="1">＋ 1人</button>
+      </div>
+      <button class="secondary-button full-button" type="button" data-action="set-family-serving">家族人数（${state.family.length}人）に合わせる</button>
     </section>
 
     <section class="panel">
@@ -1049,6 +1115,15 @@ function bindEvents() {
     render();
   });
 
+  document.querySelectorAll(".ingredient-name-input, .ingredient-amount-select, .ingredient-category-input").forEach((input) => {
+    input.addEventListener("change", () => {
+      captureDraft();
+      state.draftExpanded = true;
+      saveState();
+      render();
+    });
+  });
+
   document.querySelector("#repeat-recipe")?.addEventListener("change", (event) => {
     state.selectedRecipeId = event.target.value;
     saveState();
@@ -1088,6 +1163,7 @@ async function handleAction(event) {
     state.draft = clone(emptyDraft);
     state.draftExpanded = false;
     state.repeatDraft = normalizeRepeatDraft({}, state.family);
+    state.originalIngredients = [];
     state.extractedIngredients = [];
     state.extractedSteps = [];
     saveState();
@@ -1100,6 +1176,7 @@ async function handleAction(event) {
     captureDraft();
     state.draftExpanded = true;
     state.extractedIngredients = parseIngredients(state.draft.caption);
+    state.originalIngredients = clone(state.extractedIngredients);
     state.extractedSteps = parseCookingSteps(state.draft.caption);
     saveState();
     showToast("材料と調理方法を抽出しました。");
@@ -1116,6 +1193,7 @@ async function handleAction(event) {
       state.draft.source = result.platform.label;
       state.fetchStatus = result.message;
       state.extractedIngredients = parseIngredients(state.draft.caption);
+      state.originalIngredients = clone(state.extractedIngredients);
       state.extractedSteps = parseCookingSteps(state.draft.caption);
       saveState();
       showToast(result.toast);
@@ -1137,6 +1215,7 @@ async function handleAction(event) {
     } catch (error) {
       state.fetchStatus = `${error.message || "URLから取得できませんでした。"} キャプションを手動で貼り付けて抽出できます。`;
       state.extractedIngredients = parseIngredients(state.draft.caption);
+      state.originalIngredients = clone(state.extractedIngredients);
       state.extractedSteps = parseCookingSteps(state.draft.caption);
       saveState();
       showToast("URL取得に失敗しました。");
@@ -1185,6 +1264,66 @@ async function handleAction(event) {
     return;
   }
 
+  if (action === "adjust-serving") {
+    if (state.view === "register") captureDraft();
+    const delta = Number.parseInt(event.currentTarget.dataset.delta, 10) || 0;
+    state.servingCount = normalizeServingCount(getServingCount() + delta);
+    saveState();
+    render();
+    return;
+  }
+
+  if (action === "set-family-serving") {
+    if (state.view === "register") captureDraft();
+    state.servingCount = normalizeServingCount(state.family.length);
+    saveState();
+    render();
+    return;
+  }
+
+  if (action === "add-ingredient") {
+    captureDraft();
+    state.draftExpanded = true;
+    state.extractedIngredients.push(ingredient("新しい材料", "適量", "その他"));
+    saveState();
+    render();
+    return;
+  }
+
+  if (action === "remove-ingredient") {
+    captureDraft();
+    const index = Number.parseInt(event.currentTarget.dataset.index, 10);
+    if (Number.isInteger(index)) {
+      state.extractedIngredients.splice(index, 1);
+      saveState();
+      render();
+    }
+    return;
+  }
+
+  if (action === "reset-ingredients") {
+    captureDraft();
+    const original = getOriginalIngredients();
+    state.extractedIngredients = clone(original.length ? original : parseIngredients(state.draft.caption));
+    state.draftExpanded = true;
+    saveState();
+    showToast("取得時の材料に戻しました。");
+    render();
+    return;
+  }
+
+  if (action === "adjust-ingredient-amount") {
+    captureDraft();
+    const index = Number.parseInt(event.currentTarget.dataset.index, 10);
+    const delta = Number.parseInt(event.currentTarget.dataset.delta, 10) || 0;
+    if (state.extractedIngredients[index]) {
+      state.extractedIngredients[index].amount = adjustAmount(state.extractedIngredients[index].amount, delta);
+      saveState();
+      render();
+    }
+    return;
+  }
+
   if (action === "save-recipe") {
     captureDraft();
     if (!state.draft.title) {
@@ -1198,6 +1337,7 @@ async function handleAction(event) {
       return;
     }
     const ingredients = state.extractedIngredients.length ? state.extractedIngredients : parseIngredients(state.draft.caption);
+    const originalIngredients = state.originalIngredients.length ? clone(state.originalIngredients) : clone(ingredients);
     const steps = state.extractedSteps.length ? state.extractedSteps : parseCookingSteps(state.draft.caption);
     const existing = state.editingRecipeId ? recipeById(state.editingRecipeId) : null;
     if (existing) {
@@ -1207,6 +1347,7 @@ async function handleAction(event) {
       existing.mealType = state.draft.mealType;
       existing.caption = state.draft.caption;
       existing.ingredients = ingredients;
+      existing.originalIngredients = originalIngredients;
       existing.steps = steps;
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.note = state.draft.note;
@@ -1214,6 +1355,7 @@ async function handleAction(event) {
       state.editingRecipeId = null;
       state.draft = clone(emptyDraft);
       state.draftExpanded = false;
+      state.originalIngredients = [];
       state.extractedIngredients = [];
       state.extractedSteps = [];
       state.fetchStatus = "";
@@ -1230,6 +1372,7 @@ async function handleAction(event) {
         mealType: state.draft.mealType,
         caption: state.draft.caption,
         ingredients,
+        originalIngredients,
         steps,
         tags: [mealLabel(state.draft.mealType), state.draft.source, "動画"],
         savedAt: today(),
@@ -1239,6 +1382,7 @@ async function handleAction(event) {
       state.selectedRecipeId = recipe.id;
       state.draft = clone(emptyDraft);
       state.draftExpanded = false;
+      state.originalIngredients = [];
       state.extractedIngredients = [];
       state.extractedSteps = [];
       state.fetchStatus = "";
@@ -1261,6 +1405,7 @@ async function handleAction(event) {
         caption: recipe.caption,
         note: recipe.note
       };
+      state.originalIngredients = clone(recipe.originalIngredients || recipe.ingredients);
       state.extractedIngredients = clone(recipe.ingredients);
       state.extractedSteps = [...recipe.steps];
       state.fetchStatus = "";
@@ -1276,6 +1421,7 @@ async function handleAction(event) {
     state.editingRecipeId = null;
     state.draft = clone(emptyDraft);
     state.draftExpanded = false;
+    state.originalIngredients = [];
     state.extractedIngredients = [];
     state.extractedSteps = [];
     state.fetchStatus = "";
@@ -1391,6 +1537,7 @@ async function handleAction(event) {
 function captureDraft() {
   const currentUrl = document.querySelector("#recipe-url")?.value.trim() || "";
   const platform = detectPlatform(currentUrl);
+  captureIngredientEdits();
   state.draft = {
     title: document.querySelector("#recipe-title")?.value.trim() || "",
     videoUrl: currentUrl,
@@ -1399,6 +1546,19 @@ function captureDraft() {
     caption: document.querySelector("#recipe-caption")?.value.trim() || "",
     note: document.querySelector("#recipe-note")?.value.trim() || ""
   };
+}
+
+function captureIngredientEdits() {
+  const rows = Array.from(document.querySelectorAll(".ingredient-editor-row"));
+  if (!rows.length) return;
+  state.extractedIngredients = rows
+    .map((row) => {
+      const name = row.querySelector(".ingredient-name-input")?.value.trim() || "";
+      const amount = row.querySelector(".ingredient-amount-select")?.value.trim() || "適量";
+      const category = row.querySelector(".ingredient-category-input")?.value.trim() || "その他";
+      return ingredient(name, amount, category);
+    })
+    .filter((item) => item.name);
 }
 
 function captureRepeatDraft() {
@@ -1438,6 +1598,7 @@ function migrateMemberKey(previous, next) {
 }
 
 function addMember() {
+  const wasFamilySized = getServingCount() === state.family.length;
   let index = state.family.length + 1;
   let name = `メンバー${index}`;
   while (state.family.includes(name)) {
@@ -1445,6 +1606,7 @@ function addMember() {
     name = `メンバー${index}`;
   }
   state.family.push(name);
+  if (wasFamilySized) state.servingCount = normalizeServingCount(state.family.length);
   state.repeatDraft.familyRepeatCycles[name] = defaultRepeatCycle;
   saveState();
   showToast("メンバーを追加しました。名前を編集してください。");
@@ -1455,7 +1617,9 @@ function removeMember(index) {
   if (state.family.length <= 1) return;
   const name = state.family[index];
   if (!window.confirm(`「${name}」を家族メンバーから外します。よろしいですか？`)) return;
+  const wasFamilySized = getServingCount() === state.family.length;
   state.family.splice(index, 1);
+  if (wasFamilySized) state.servingCount = normalizeServingCount(state.family.length);
   delete state.repeatDraft.familyRepeatCycles[name];
   saveState();
   showToast("メンバーを削除しました。");
@@ -1475,6 +1639,7 @@ function resetAllUserData() {
   state.draft = clone(emptyDraft);
   state.repeatDraft = normalizeRepeatDraft({}, state.family);
   state.draftExpanded = false;
+  state.originalIngredients = [];
   state.extractedIngredients = [];
   state.extractedSteps = [];
   state.fetchStatus = "";
@@ -1695,7 +1860,8 @@ function applyImportedRecipe(result) {
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
   };
-  state.extractedIngredients = normalizeImportedIngredients(result.ingredients);
+  state.originalIngredients = normalizeImportedIngredients(result.ingredients);
+  state.extractedIngredients = clone(state.originalIngredients);
   state.extractedSteps = Array.isArray(result.steps) && result.steps.length
     ? result.steps.map((step) => String(step || "").trim()).filter(Boolean)
     : parseCookingSteps(state.draft.caption);
@@ -1710,6 +1876,62 @@ function normalizeImportedIngredients(items) {
 
 function displayIngredientAmount(item) {
   return scaleAmountForServings(item.amount, getServingCount());
+}
+
+function buildAmountOptions(amount) {
+  const current = String(amount || "適量").trim() || "適量";
+  const parsed = parseAmountParts(current);
+  if (!parsed) {
+    return uniqueValues([current, "少々", "適量", "1個", "2個", "3個"]);
+  }
+  const values = [];
+  for (let i = -3; i <= 5; i += 1) {
+    const nextValue = parsed.value + parsed.step * i;
+    if (nextValue > 0) values.push(formatAmountFromParts(parsed, nextValue));
+  }
+  values.push(current);
+  return uniqueValues(values);
+}
+
+function adjustAmount(amount, delta) {
+  const current = String(amount || "適量").trim() || "適量";
+  const parsed = parseAmountParts(current);
+  if (!parsed) return delta > 0 ? "1個" : current;
+  return formatAmountFromParts(parsed, Math.max(parsed.step, parsed.value + parsed.step * delta));
+}
+
+function parseAmountParts(amount) {
+  const value = String(amount || "").trim();
+  const halfMatch = value.match(/^半(.+)$/);
+  if (halfMatch) {
+    return { prefix: "", value: 0.5, unit: halfMatch[1], step: 0.5 };
+  }
+  const match = value.match(/^(大さじ|小さじ)?(\d+(?:\.\d+)?)(.*)$/);
+  if (!match) return null;
+  const prefix = match[1] || "";
+  const number = Number(match[2]);
+  const unit = match[3] || "";
+  if (!Number.isFinite(number)) return null;
+  return { prefix, value: number, unit, step: amountStep(prefix, unit, number) };
+}
+
+function amountStep(prefix, unit, value) {
+  if (prefix || /杯|合/.test(unit)) return 0.5;
+  if (/g|ml|ｍｌ|グラム/.test(unit)) {
+    if (value >= 100) return 25;
+    if (value >= 20) return 10;
+    return 5;
+  }
+  if (/玉|丁|袋|缶|束|本|枚|個|切れ|膳/.test(unit)) return 1;
+  return 0.5;
+}
+
+function formatAmountFromParts(parts, value) {
+  return `${parts.prefix}${formatScaledNumber(value)}${parts.unit}`;
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function scaleAmountForServings(amount, servingCount) {
