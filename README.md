@@ -63,4 +63,5 @@ MIT
 
 ## 関連リンク
 
+- 紹介ページ（LP）: https://165cm.github.io/matagochi/lp/ （ソースは `lp/`、画像生成プロンプトは `lp/IMAGE_PROMPTS.md`）
 - ポートフォリオ: https://165cm.github.io/portfolio/apps/matagochi

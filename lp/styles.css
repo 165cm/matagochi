@@ -1,0 +1,539 @@
+:root {
+  color-scheme: light;
+  --bg: #f8f6f0;
+  --surface: #ffffff;
+  --surface-soft: #fffaf0;
+  --ink: #2d2925;
+  --muted: #746d63;
+  --line: #e7dfd2;
+  --sage: #7c9a75;
+  --sage-dark: #4f704d;
+  --tomato: #c95b48;
+  --egg: #f3c95a;
+  --shadow: 0 10px 28px rgba(68, 54, 38, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "YuGothic", "Segoe UI", sans-serif;
+  line-height: 1.75;
+}
+
+img {
+  max-width: 100%;
+}
+
+h1, h2, h3 {
+  line-height: 1.4;
+  font-weight: 800;
+}
+
+h2 {
+  font-size: clamp(22px, 4.4vw, 32px);
+  margin: 0 0 28px;
+}
+
+.container {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.center {
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--sage-dark);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.lead {
+  color: var(--muted);
+  font-size: clamp(14px, 2.6vw, 16px);
+}
+
+/* ボタン */
+.button {
+  display: inline-block;
+  padding: 14px 28px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 15px;
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+.button-primary {
+  background: var(--sage-dark);
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+
+.button-primary:hover {
+  background: var(--sage);
+}
+
+.button-ghost {
+  background: transparent;
+  color: var(--sage-dark);
+  border: 2px solid var(--sage);
+}
+
+.button-ghost:hover {
+  background: #edf3e8;
+}
+
+.button-small {
+  padding: 9px 18px;
+  font-size: 13px;
+  background: var(--sage-dark);
+  color: #fff;
+}
+
+.button-large {
+  padding: 18px 44px;
+  font-size: 17px;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.cta-row.center {
+  justify-content: center;
+}
+
+.cta-note {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ヘッダー */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 253, 247, 0.94);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(231, 223, 210, 0.8);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 17px;
+}
+
+.brand img {
+  border-radius: 9px;
+}
+
+/* ヒーロー */
+.hero {
+  padding: 56px 0 64px;
+  background: linear-gradient(180deg, #fffdf7 0%, var(--bg) 100%);
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 40px;
+  align-items: center;
+}
+
+.hero h1 {
+  margin: 0 0 18px;
+  font-size: clamp(30px, 5.6vw, 46px);
+}
+
+.hero-media img {
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+/* 画像スロット（画像未設置でも成立させる）
+   初期状態はプレースホルダー表示で、画像のロード成功時にis-emptyを外す */
+.media-slot {
+  position: relative;
+}
+
+.media-slot .media-fallback {
+  display: none;
+}
+
+.media-slot.is-empty img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.media-slot.is-empty .media-fallback {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #edf3e8 0%, #f4eadb 100%);
+  border: 1px dashed var(--line);
+  font-size: 64px;
+}
+
+/* 悩み */
+.pains {
+  padding: 72px 0;
+}
+
+.pains h2 {
+  text-align: center;
+}
+
+.card-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.card-grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.card-grid.four {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.pain-card,
+.trust-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px 20px;
+  box-shadow: var(--shadow);
+}
+
+.pain-card h3,
+.trust-card h3 {
+  margin: 10px 0 8px;
+  font-size: 16px;
+}
+
+.pain-card p,
+.trust-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.pain-icon,
+.trust-icon {
+  font-size: 30px;
+}
+
+/* 機能 */
+.features {
+  padding: 72px 0;
+  background: var(--surface-soft);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.features > .container > .eyebrow,
+.features h2 {
+  text-align: center;
+}
+
+.feature {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 44px;
+  align-items: center;
+  padding: 44px 0;
+}
+
+.feature + .feature {
+  border-top: 1px solid var(--line);
+}
+
+.feature.reverse .feature-copy {
+  order: 2;
+}
+
+.feature.reverse .feature-media {
+  order: 1;
+}
+
+.feature-number {
+  display: inline-block;
+  color: var(--tomato);
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+
+.feature h3 {
+  margin: 0 0 12px;
+  font-size: clamp(19px, 3.4vw, 24px);
+}
+
+.feature p {
+  color: var(--muted);
+  margin: 0 0 14px;
+  font-size: 14.5px;
+}
+
+.feature-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature-list li {
+  position: relative;
+  padding-left: 24px;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.feature-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--sage-dark);
+  font-weight: 800;
+}
+
+.feature-media img {
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+/* 使い方 */
+.how {
+  padding: 72px 0;
+}
+
+.how h2 {
+  text-align: center;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.steps li {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 26px 22px;
+  box-shadow: var(--shadow);
+}
+
+.step-number {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--sage-dark);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.steps h3 {
+  margin: 14px 0 8px;
+  font-size: 16px;
+}
+
+.steps p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+/* 安心 */
+.trust {
+  padding: 72px 0;
+  background: var(--surface-soft);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.trust h2 {
+  text-align: center;
+}
+
+/* FAQ */
+.faq {
+  padding: 72px 0;
+}
+
+.faq h2 {
+  text-align: center;
+}
+
+.faq details {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 20px;
+  margin-bottom: 10px;
+}
+
+.faq summary {
+  cursor: pointer;
+  padding: 16px 0;
+  font-weight: 800;
+  font-size: 14.5px;
+  list-style-position: outside;
+}
+
+.faq details p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+/* 最終CTA */
+.final-cta {
+  padding: 80px 0;
+  background: linear-gradient(160deg, var(--sage-dark) 0%, var(--sage) 100%);
+  color: #fff;
+}
+
+.final-cta h2 {
+  color: #fff;
+}
+
+.final-cta .lead {
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 28px;
+}
+
+.final-cta .button-primary {
+  background: #fff;
+  color: var(--sage-dark);
+}
+
+.final-cta .button-primary:hover {
+  background: var(--surface-soft);
+}
+
+/* フッター */
+.site-footer {
+  padding: 32px 0;
+}
+
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.footer-links {
+  display: flex;
+  gap: 20px;
+}
+
+.footer-links a {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--sage-dark);
+}
+
+.copyright {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sp-only {
+  display: none;
+}
+
+/* レスポンシブ */
+@media (max-width: 840px) {
+  .hero-grid,
+  .feature {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .feature.reverse .feature-copy {
+    order: 1;
+  }
+
+  .feature.reverse .feature-media {
+    order: 2;
+  }
+
+  .card-grid.three,
+  .steps {
+    grid-template-columns: 1fr;
+  }
+
+  .card-grid.four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .sp-only {
+    display: inline;
+  }
+
+  .hero {
+    padding: 40px 0 48px;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-grid.four {
+    grid-template-columns: 1fr;
+  }
+
+  .cta-row .button {
+    width: 100%;
+    text-align: center;
+  }
+}
