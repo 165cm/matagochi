@@ -90,6 +90,10 @@ MVPでは以下の3つに集中します。
 
 - 7日分の献立提案
 - 今週食べ頃、周期未設定、リピなしのサマリー
+- 日ごとの候補の差し替え（`planOverrides` に日付単位で保存、過去日は読み込み時に破棄）
+- 差し替え済みの日の「自動にもどす」
+- 今日の候補の「作った！」1タップ記録（直近リピ記録の周期を引き継いで保存。初回はリピ周期画面へ誘導）
+- 今週候補の材料を集計した買い物リスト（カテゴリ別、表示人数換算、チェック・コピー・Web Share API共有。チェックは週替わりでリセット）
 - 食べ頃候補一覧
 - 候補からリピ周期画面への導線
 - 候補から元動画を開く導線
@@ -157,7 +161,7 @@ MVPでは以下の3つに集中します。
 
 ## 8. 対応ショート動画サービス
 
-現状はURL判定と、YouTube説明文ベースの材料メモ作成に対応しています。
+現状はURL判定と、YouTube説明文ベースの材料メモ作成、TikTok oEmbedによるタイトル・サムネイル取得に対応しています。
 
 - Instagram Reel
 - Facebook Reel / Watch / Video
@@ -170,6 +174,8 @@ MVPでは以下の3つに集中します。
 - 動画元フィールドへ反映する
 - 対応URLかどうかを表示する
 - 保存済みレシピから動画URLを開く
+- YouTube URLからサムネイル画像を表示する（`img.youtube.com` を表示時に参照）
+- TikTok URLからタイトルとサムネイルを取得する（oEmbed。API設定済み環境では `GET /api/oembed/tiktok` を経由、未設定時はTikTokのoEmbedエンドポイントへ直接アクセスを試みる）
 - Cloud Run API設定済み環境では、YouTube動画のタイトル・説明文・チャンネル名を取得する
 - Gemini FlashでYouTube説明文から材料、作り方、タグ、自分用メモ候補を作成する
 
@@ -186,12 +192,24 @@ MVPでは以下の3つに集中します。
 
 ## 9. データ仕様
 
-データは現状 `localStorage` に保存します。
+データは `IndexedDB`（DB名 `matagochi` / ストア `state`）へJSON文字列として保存します。
+旧バージョンの `localStorage`（キー `matagochi-mvp-v1`）にデータがある場合は、初回読み込み時にIndexedDBへ自動移行し、localStorage側は削除します。IndexedDBが使えない環境では従来どおりlocalStorageへ保存します。
+起動時に `navigator.storage.persist()` で永続ストレージを要求します。
 PCとスマホなど別端末で使う場合は、JSONファイルを書き出して読み込みます。
 
-保存キー:
+旧localStorage保存キー（移行元）:
 
 - `matagochi-mvp-v1`
+
+追加の状態フィールド:
+
+- `planOverrides`: 献立の差し替え（`{ "YYYY-MM-DD": recipeId }`。過去日は読み込み時に破棄）
+- `shopping`: 買い物リストのチェック状態（`{ week, checked }`。週が変わるとリセット）
+- `lastBackupAt` / `backupRemindSnoozedAt`: バックアップリマインドの表示判定
+- `draftThumbnailUrl`: 登録中レシピのサムネイルURL下書き
+- レシピの `thumbnailUrl`: TikTok oEmbed等で取得したサムネイルURL（YouTubeは保存せず表示時にURLから導出）
+
+バックアップリマインドは、レシピまたはリピ記録があり、書き出し・スヌーズから14日以上経過（未書き出しの場合は件数3件以上）で、コレクション画面に表示します。
 
 ### JSON Backup
 
@@ -338,6 +356,7 @@ Cloud Run上の `api/` バックエンドで、YouTube説明文から材料メ�
 エンドポイント:
 
 - `POST /api/import/youtube`
+- `GET /api/oembed/tiktok?url=...`（TikTok oEmbedのプロキシ。`{ title, author, thumbnailUrl, videoUrl }` を返す）
 
 リクエスト:
 
@@ -381,22 +400,27 @@ Cloud Run上の `api/` バックエンドで、YouTube説明文から材料メ�
 - ログインなし
 - ユーザーアカウントなし
 - 端末間の自動同期なし（JSON書き出し／読み込みによる手動移行は可能）
-- 写真はサーバーへアップロードせず、リサイズして端末内（localStorage）に保存
+- 写真はサーバーへアップロードせず、リサイズして端末内（IndexedDB）に保存
 - YouTube連携は説明文ベースで、字幕トラックは取得しない
 - Instagram / Facebook / TikTok のSNSキャプション実取得なし
 - データは端末ごとのブラウザ保存
 - 保存・記録の日付は端末の現在日付を使用（既存デモデータの日付は固定）
+- 共有シートからの受け取り（Web Share Target）はPWAをホーム画面に追加したAndroid/Chrome系が対象（iOS Safariは未対応）
 
 GitHub Pagesで動くこと:
 
 - アプリ画面表示
+- ホーム画面追加（PWA）とオフライン表示
+- 共有シートからのURL受け取り（対応環境のみ）
 - URL入力
 - URL種別判定
+- YouTubeサムネイル表示
 - キャプション貼り付け
 - 材料・調理方法の簡易抽出
 - レシピ保存
 - リピ周期保存
-- 献立提案
+- 献立提案・差し替え・「作った！」記録
+- 買い物リスト
 - レシピ編集・削除
 - リピ記録削除
 - 料理写真の登録
@@ -414,9 +438,9 @@ GitHub Pagesだけでは動かないこと:
 
 優先度高:
 
-- バックエンド/API連携によるSNS本文取得
-- 週単位の献立編集
-- 買い物リスト
+- バックエンド/API連携によるSNS本文取得（Instagram / Facebook）
+- 週単位の献立編集の拡張（実装済みの日別差し替えに加え、曜日の入れ替えや複数枠）
+- 買い物リストの拡張（数量の手動調整、常備品の除外）※基本機能は実装済み
 - 端末間同期
 
 優先度中:

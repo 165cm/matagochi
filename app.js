@@ -1,4 +1,6 @@
 const STORAGE_KEY = "matagochi-mvp-v1";
+const IDB_NAME = "matagochi";
+const IDB_STORE = "state";
 const API_BASE_URL = (globalThis.MATAGOCHI_API_BASE_URL || "").replace(/\/$/, "");
 
 const defaultFamily = ["ママ", "パパ", "子ども1", "子ども2"];
@@ -38,6 +40,11 @@ const demoState = {
   extractedIngredients: [],
   extractedSteps: [],
   fetchStatus: "",
+  draftThumbnailUrl: "",
+  planOverrides: {},
+  shopping: { week: "", checked: {} },
+  lastBackupAt: "",
+  backupRemindSnoozedAt: "",
   draft: {
     title: "鮭ときのこの包み焼き",
     videoUrl: "https://www.instagram.com/reel/example-salmon/",
@@ -127,9 +134,10 @@ const demoState = {
   ]
 };
 
-let state = loadState();
+let state = null;
 let toastTimer = null;
 let isCaptionImporting = false;
+let idbAvailable = typeof indexedDB !== "undefined";
 
 function ingredient(name, amount, category) {
   return { name, amount, category };
@@ -139,14 +147,95 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function loadState() {
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(IDB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(IDB_STORE)) {
+        request.result.createObjectStore(IDB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function idbRead() {
+  return openDatabase().then((db) => new Promise((resolve, reject) => {
+    const request = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get("state");
+    request.onsuccess = () => {
+      db.close();
+      resolve(request.result || null);
+    };
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+  }));
+}
+
+function idbWrite(serialized) {
+  return openDatabase().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(serialized, "state");
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  }));
+}
+
+function idbClear() {
+  if (!idbAvailable) return Promise.resolve();
+  return openDatabase().then((db) => new Promise((resolve) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).delete("state");
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
+  })).catch(() => {});
+}
+
+async function loadStateAsync() {
+  if (idbAvailable) {
+    try {
+      const stored = await idbRead();
+      if (stored) return normalizeState(JSON.parse(stored));
+    } catch {
+      idbAvailable = false;
+    }
+  }
   const saved = localStorage.getItem(STORAGE_KEY);
   if (!saved) return normalizeState(clone(demoState));
   try {
-    return normalizeState(JSON.parse(saved));
+    const migrated = normalizeState(JSON.parse(saved));
+    if (idbAvailable) {
+      // localStorageの5MB上限とSafariの7日削除を避けるため、IndexedDBへ引っ越す
+      await idbWrite(JSON.stringify(migrated));
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    return migrated;
   } catch {
     return normalizeState(clone(demoState));
   }
+}
+
+function requestPersistentStorage() {
+  navigator.storage?.persist?.().catch(() => {});
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
 
 function normalizeState(saved) {
@@ -164,11 +253,33 @@ function normalizeState(saved) {
     draftExpanded: Boolean(saved.draftExpanded),
     servingCount: normalizeServingCount(saved.servingCount ?? family.length),
     draft: { ...base.draft, ...(saved.draft || {}) },
+    draftThumbnailUrl: typeof saved.draftThumbnailUrl === "string" ? saved.draftThumbnailUrl : "",
+    planOverrides: normalizePlanOverrides(saved.planOverrides),
+    shopping: normalizeShopping(saved.shopping),
+    lastBackupAt: normalizeDateInput(saved.lastBackupAt),
+    backupRemindSnoozedAt: normalizeDateInput(saved.backupRemindSnoozedAt),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
     recipes: normalizeRecipes(Array.isArray(saved.recipes) ? saved.recipes : base.recipes),
     evaluations: normalizeEvaluations(Array.isArray(saved.evaluations) ? saved.evaluations : base.evaluations, family)
+  };
+}
+
+function normalizePlanOverrides(overrides) {
+  if (!overrides || typeof overrides !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(overrides).filter(([date, recipeId]) => (
+      normalizeDateInput(date) && typeof recipeId === "string" && date >= today()
+    ))
+  );
+}
+
+function normalizeShopping(shopping) {
+  if (!shopping || typeof shopping !== "object") return { week: "", checked: {} };
+  return {
+    week: normalizeDateInput(shopping.week),
+    checked: shopping.checked && typeof shopping.checked === "object" ? { ...shopping.checked } : {}
   };
 }
 
@@ -273,11 +384,56 @@ function repeatCycleFromTiming(value) {
 }
 
 function saveState() {
+  const serialized = JSON.stringify(state);
+  if (idbAvailable) {
+    idbWrite(serialized).catch(() => {
+      showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
+    });
+    return;
+  }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, serialized);
   } catch {
     showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
   }
+}
+
+function applySharedUrlFromLocation() {
+  const params = new URLSearchParams(location.search);
+  const sharedText = [params.get("url"), params.get("text"), params.get("title")]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (!sharedText) return false;
+  history.replaceState(null, "", location.pathname);
+  const urlMatch = sharedText.match(/https?:\/\/\S+/);
+  if (!urlMatch) return false;
+  const sharedUrl = urlMatch[0];
+  const sharedTitle = sharedText.replace(sharedUrl, "").replace(/\s+/g, " ").trim();
+  if (!state.onboarded) {
+    // オンボーディング前の共有はデモデータを持ち込まず、空の状態で始める
+    state.recipes = [];
+    state.evaluations = [];
+    state.selectedRecipeId = null;
+    state.repeatDraft = normalizeRepeatDraft({}, state.family);
+    state.onboarded = true;
+  }
+  state.view = "register";
+  state.editingRecipeId = null;
+  state.draft = {
+    ...clone(emptyDraft),
+    title: sharedTitle.length >= 2 ? sharedTitle : "",
+    videoUrl: sharedUrl,
+    source: detectPlatform(sharedUrl).label
+  };
+  state.draftThumbnailUrl = "";
+  state.originalIngredients = [];
+  state.extractedIngredients = [];
+  state.extractedSteps = [];
+  state.draftExpanded = false;
+  state.fetchStatus = "共有からURLを受け取りました。「URLから取得」で材料メモを作れます。";
+  saveState();
+  return true;
 }
 
 function setView(view) {
@@ -502,6 +658,8 @@ function renderCollection() {
       <button class="secondary-button full-button" type="button" data-action="go-view" data-view="register">新規登録へ</button>
     </section>
 
+    ${renderBackupReminder()}
+
     <section class="panel">
       <div class="section-head">
         <div>
@@ -559,11 +717,37 @@ function renderMealFilter() {
   `;
 }
 
+function youtubeVideoId(url) {
+  const value = String(url || "");
+  const match = value.match(/youtube\.com\/shorts\/([\w-]{6,})/)
+    || value.match(/youtu\.be\/([\w-]{6,})/)
+    || value.match(/youtube\.com\/watch\?[^#]*v=([\w-]{6,})/);
+  return match ? match[1] : "";
+}
+
+function recipeThumbnail(recipe) {
+  if (recipe.thumbnailUrl) return recipe.thumbnailUrl;
+  const videoId = youtubeVideoId(recipe.videoUrl);
+  if (videoId) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+  return getRecipeEvaluationHistory(recipe.id).find((evaluation) => evaluation.photo)?.photo || "";
+}
+
+function renderRecipeThumb(recipe) {
+  const thumb = recipeThumbnail(recipe);
+  if (!thumb) return "";
+  return `
+    <a class="recipe-thumb-link" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer" aria-label="${escapeAttr(recipe.title)}の動画を開く">
+      <img class="recipe-thumb" src="${escapeAttr(thumb)}" alt="" loading="lazy" onerror="this.parentElement.remove()">
+    </a>
+  `;
+}
+
 function renderRecipeCard(recipe) {
   const summary = getRecipeRepeatSummary(recipe.id);
   return `
     <article class="recipe-card">
       <div class="recipe-top">
+        ${renderRecipeThumb(recipe)}
         <div>
           <strong>${escapeHtml(recipe.title)}</strong>
           <p class="muted small">${mealLabel(recipe.mealType)} / ${escapeHtml(recipe.source)} / 保存 ${escapeHtml(recipe.savedAt)}</p>
@@ -623,6 +807,8 @@ function renderMealPlan() {
       </div>
     </section>
 
+    ${renderShoppingList()}
+
     <section class="panel">
       <div class="section-head">
         <div>
@@ -652,23 +838,162 @@ function renderPlanDay(day) {
   }
 
   const { recipe, summary, reason } = day.candidate;
+  const isToday = day.date === today();
+  const hasHistory = getRecipeEvaluationHistory(recipe.id).length > 0;
   return `
     <div class="day-row">
       <div class="day-label">${escapeHtml(day.label)}</div>
-      <div class="slot">
-        <span class="slot-meal">${escapeHtml(day.dateLabel)} / ${escapeHtml(mealLabel(recipe.mealType))}</span>
+      <div class="slot ${day.pinned ? "is-pinned" : ""}">
+        <span class="slot-meal">${escapeHtml(day.dateLabel)} / ${escapeHtml(mealLabel(recipe.mealType))}${day.pinned ? " / 差し替え済み" : ""}</span>
         <strong class="slot-title">${escapeHtml(recipe.title)}</strong>
         <span class="slot-meta">${escapeHtml(summary.badgeLabel)}・${escapeHtml(reason)}</span>
+        <div class="slot-actions">
+          ${isToday ? `<button class="secondary-button slot-button" type="button" data-action="${hasHistory ? "quick-record" : "record-repeat"}" data-recipe="${escapeAttr(recipe.id)}">作った！</button>` : ""}
+          <button class="text-button slot-button" type="button" data-action="swap-plan-day" data-date="${escapeAttr(day.date)}">差し替え</button>
+          ${day.pinned ? `<button class="text-button slot-button" type="button" data-action="reset-plan-day" data-date="${escapeAttr(day.date)}">自動にもどす</button>` : ""}
+        </div>
       </div>
     </div>
   `;
 }
 
+function shoppingWeekKey() {
+  const offset = (new Date(dateValue(today())).getDay() + 6) % 7;
+  return addDays(today(), -offset);
+}
+
+function getShoppingChecks() {
+  if (state.shopping?.week !== shoppingWeekKey()) {
+    state.shopping = { week: shoppingWeekKey(), checked: {} };
+  }
+  return state.shopping;
+}
+
+function buildShoppingList() {
+  const recipes = [...new Map(
+    buildWeeklyPlan()
+      .filter((day) => day.candidate)
+      .map((day) => [day.candidate.recipe.id, day.candidate.recipe])
+  ).values()];
+  const servingCount = getServingCount();
+  const grouped = new Map();
+  recipes.forEach((recipe) => {
+    recipe.ingredients.forEach((item) => {
+      if (!grouped.has(item.name)) {
+        grouped.set(item.name, { name: item.name, category: item.category || "その他", amounts: [], recipes: [] });
+      }
+      const entry = grouped.get(item.name);
+      entry.amounts.push(scaleAmountForServings(item.amount, servingCount));
+      entry.recipes.push(recipe.title);
+    });
+  });
+  const categoryOrder = ["野菜", "肉", "魚", "卵・乳製品", "大豆・加工品", "主食", "缶詰", "調味料", "その他"];
+  return [...grouped.values()]
+    .map((entry) => ({ ...entry, amount: combineAmounts(entry.amounts) }))
+    .sort((a, b) => {
+      const orderA = categoryOrder.indexOf(a.category) === -1 ? categoryOrder.length : categoryOrder.indexOf(a.category);
+      const orderB = categoryOrder.indexOf(b.category) === -1 ? categoryOrder.length : categoryOrder.indexOf(b.category);
+      return orderA - orderB || a.name.localeCompare(b.name, "ja");
+    });
+}
+
+function combineAmounts(amounts) {
+  const parsedList = amounts.map((amount) => parseAmountParts(amount));
+  const first = parsedList[0];
+  if (first && parsedList.every((parts) => parts && parts.unit === first.unit && parts.prefix === first.prefix)) {
+    const total = parsedList.reduce((sum, parts) => sum + parts.value, 0);
+    return formatAmountFromParts(first, total);
+  }
+  return uniqueValues(amounts).join(" + ");
+}
+
+function renderShoppingList() {
+  const items = buildShoppingList();
+  if (!items.length) {
+    return `
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h3>買い物リスト</h3>
+            <p>献立候補ができると、材料をまとめてここに出します。</p>
+          </div>
+        </div>
+        ${renderEmpty("今週の候補がまだありません。")}
+      </section>
+    `;
+  }
+  const checks = getShoppingChecks();
+  const remaining = items.filter((item) => !checks.checked[item.name]).length;
+  let lastCategory = "";
+  const rows = items.map((item) => {
+    const heading = item.category !== lastCategory ? `<p class="shopping-category">${escapeHtml(item.category)}</p>` : "";
+    lastCategory = item.category;
+    const checked = Boolean(checks.checked[item.name]);
+    return `
+      ${heading}
+      <label class="shopping-item ${checked ? "is-checked" : ""}">
+        <input type="checkbox" class="shopping-check" data-name="${escapeAttr(item.name)}" ${checked ? "checked" : ""}>
+        <span class="shopping-name">${escapeHtml(item.name)}</span>
+        <span class="shopping-amount">${escapeHtml(item.amount)}</span>
+      </label>
+    `;
+  }).join("");
+  return `
+    <section class="panel shopping-panel">
+      <div class="section-head">
+        <div>
+          <h3>買い物リスト</h3>
+          <p>今週の献立候補の材料を${getServingCount()}人分でまとめました。</p>
+        </div>
+        <span class="badge ${remaining ? "" : "hot"}">残り${remaining}品</span>
+      </div>
+      <div class="shopping-list">${rows}</div>
+      <div class="actions">
+        <button class="secondary-button" type="button" data-action="copy-shopping">リストをコピー</button>
+        <button class="secondary-button" type="button" data-action="share-shopping">共有する</button>
+      </div>
+    </section>
+  `;
+}
+
+function shoppingListText() {
+  const checks = getShoppingChecks();
+  const items = buildShoppingList().filter((item) => !checks.checked[item.name]);
+  if (!items.length) return "";
+  const lines = [`今週の買い物リスト（リピごち ${formatDate(today())}）`];
+  let lastCategory = "";
+  items.forEach((item) => {
+    if (item.category !== lastCategory) {
+      lines.push(`■${item.category}`);
+      lastCategory = item.category;
+    }
+    lines.push(`・${item.name} ${item.amount}`);
+  });
+  return lines.join("\n");
+}
+
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    document.body.append(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  }
+}
+
 function renderCandidateCard(candidate) {
   const { recipe, summary, reason } = candidate;
+  const hasHistory = getRecipeEvaluationHistory(recipe.id).length > 0;
   return `
     <article class="recipe-card">
       <div class="recipe-top">
+        ${renderRecipeThumb(recipe)}
         <div>
           <strong>${escapeHtml(recipe.title)}</strong>
           <p class="muted small">${escapeHtml(reason)}</p>
@@ -677,7 +1002,7 @@ function renderCandidateCard(candidate) {
       </div>
       <p class="muted small">${escapeHtml(recipe.note)}</p>
       <div class="actions">
-        <button class="secondary-button" type="button" data-action="record-repeat" data-recipe="${escapeAttr(recipe.id)}">リピ記録</button>
+        <button class="secondary-button" type="button" data-action="${hasHistory ? "quick-record" : "record-repeat"}" data-recipe="${escapeAttr(recipe.id)}">${hasHistory ? "作った！" : "リピ記録"}</button>
         <a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>
       </div>
     </article>
@@ -889,9 +1214,11 @@ function renderRepeatRecipeRow(recipe, selectedId) {
 }
 
 function renderLatestPhoto(recipeId) {
-  const latest = getRecipeEvaluationHistory(recipeId).find((evaluation) => evaluation.photo);
-  return latest?.photo
-    ? `<img class="repeat-thumb" src="${escapeAttr(latest.photo)}" alt="料理写真">`
+  const recipe = recipeById(recipeId);
+  const photo = getRecipeEvaluationHistory(recipeId).find((evaluation) => evaluation.photo)?.photo
+    || (recipe ? recipeThumbnail(recipe) : "");
+  return photo
+    ? `<img class="repeat-thumb" src="${escapeAttr(photo)}" alt="料理写真" loading="lazy" onerror="this.outerHTML='<span class=&quot;repeat-thumb is-empty&quot;>写真</span>'">`
     : `<span class="repeat-thumb is-empty" aria-hidden="true">写真</span>`;
 }
 
@@ -1079,6 +1406,7 @@ function renderSettings() {
         </div>
       </div>
       <p class="notice">この端末のブラウザにだけ保存されています。書き出したファイルを保管しておくと、別の端末や再インストール後に読み込んで復元できます。</p>
+      <p class="muted small">前回の書き出し: ${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}</p>
       <div class="actions">
         <button class="primary-button" type="button" data-action="export-data">書き出す</button>
         <button class="secondary-button" type="button" data-action="import-data">読み込む</button>
@@ -1094,6 +1422,7 @@ function renderSettings() {
         </div>
       </div>
       <button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピとリピ記録を全件削除</button>
+      <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>
     </section>
   `;
 }
@@ -1139,6 +1468,20 @@ function bindEvents() {
   document.querySelector("#import-file")?.addEventListener("change", handleImportFile);
 
   document.querySelector("#repeat-photo")?.addEventListener("change", handlePhotoFile);
+
+  document.querySelectorAll(".shopping-check").forEach((input) => {
+    input.addEventListener("change", (event) => {
+      const checks = getShoppingChecks();
+      const name = event.target.dataset.name;
+      if (event.target.checked) {
+        checks.checked[name] = true;
+      } else {
+        delete checks.checked[name];
+      }
+      saveState();
+      render();
+    });
+  });
 }
 
 async function handleAction(event) {
@@ -1188,7 +1531,35 @@ async function handleAction(event) {
     state.draftExpanded = true;
     if (isCaptionImporting) return;
 
-    if (!API_BASE_URL || !isYouTubePlatform(detectPlatform(state.draft.videoUrl))) {
+    const platform = detectPlatform(state.draft.videoUrl);
+
+    if (isTikTokPlatform(platform)) {
+      isCaptionImporting = true;
+      state.fetchStatus = "TikTokの動画情報を取得しています。";
+      saveState();
+      render();
+      try {
+        const preview = await fetchTikTokPreview(state.draft.videoUrl);
+        state.draft.title = state.draft.title || preview.title;
+        state.draft.source = "TikTok";
+        state.draftThumbnailUrl = preview.thumbnailUrl || "";
+        state.fetchStatus = "TikTokからタイトルとサムネイルを取得しました。キャプションを貼り付けると材料メモを作れます。";
+        showToast("動画情報を取得しました。");
+      } catch {
+        state.draft.source = platform.label;
+        state.fetchStatus = "TikTokの動画情報を取得できませんでした。キャプションを貼り付けて材料メモを作れます。";
+        showToast("URL取得に失敗しました。");
+      }
+      state.extractedIngredients = parseIngredients(state.draft.caption);
+      state.originalIngredients = clone(state.extractedIngredients);
+      state.extractedSteps = parseCookingSteps(state.draft.caption);
+      isCaptionImporting = false;
+      saveState();
+      render();
+      return;
+    }
+
+    if (!API_BASE_URL || !isYouTubePlatform(platform)) {
       const result = prepareCaptionImport(state.draft.videoUrl);
       state.draft.source = result.platform.label;
       state.fetchStatus = result.message;
@@ -1351,9 +1722,11 @@ async function handleAction(event) {
       existing.steps = steps;
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.note = state.draft.note;
+      existing.thumbnailUrl = state.draftThumbnailUrl || existing.thumbnailUrl || "";
       state.selectedRecipeId = existing.id;
       state.editingRecipeId = null;
       state.draft = clone(emptyDraft);
+      state.draftThumbnailUrl = "";
       state.draftExpanded = false;
       state.originalIngredients = [];
       state.extractedIngredients = [];
@@ -1376,11 +1749,13 @@ async function handleAction(event) {
         steps,
         tags: [mealLabel(state.draft.mealType), state.draft.source, "動画"],
         savedAt: today(),
-        note: state.draft.note
+        note: state.draft.note,
+        thumbnailUrl: state.draftThumbnailUrl || ""
       };
       state.recipes.unshift(recipe);
       state.selectedRecipeId = recipe.id;
       state.draft = clone(emptyDraft);
+      state.draftThumbnailUrl = "";
       state.draftExpanded = false;
       state.originalIngredients = [];
       state.extractedIngredients = [];
@@ -1408,6 +1783,7 @@ async function handleAction(event) {
       state.originalIngredients = clone(recipe.originalIngredients || recipe.ingredients);
       state.extractedIngredients = clone(recipe.ingredients);
       state.extractedSteps = [...recipe.steps];
+      state.draftThumbnailUrl = recipe.thumbnailUrl || "";
       state.fetchStatus = "";
       state.draftExpanded = true;
       state.view = "register";
@@ -1420,6 +1796,7 @@ async function handleAction(event) {
   if (action === "cancel-edit") {
     state.editingRecipeId = null;
     state.draft = clone(emptyDraft);
+    state.draftThumbnailUrl = "";
     state.draftExpanded = false;
     state.originalIngredients = [];
     state.extractedIngredients = [];
@@ -1435,6 +1812,9 @@ async function handleAction(event) {
     if (recipe && window.confirm(`「${recipe.title}」を削除します。関連するリピ記録も消えます。よろしいですか？`)) {
       state.recipes = state.recipes.filter((item) => item.id !== id);
       state.evaluations = state.evaluations.filter((item) => item.recipeId !== id);
+      Object.keys(state.planOverrides).forEach((date) => {
+        if (state.planOverrides[date] === id) delete state.planOverrides[date];
+      });
       if (state.editingRecipeId === id) state.editingRecipeId = null;
       if (state.selectedRecipeId === id) state.selectedRecipeId = state.recipes[0]?.id || null;
       saveState();
@@ -1477,9 +1857,55 @@ async function handleAction(event) {
     return;
   }
 
+  if (action === "reset-everything") {
+    resetEverything();
+    return;
+  }
+
+  if (action === "snooze-backup") {
+    state.backupRemindSnoozedAt = today();
+    saveState();
+    showToast("2週間後にもう一度お知らせします。");
+    render();
+    return;
+  }
+
+  if (action === "swap-plan-day") {
+    swapPlanDay(event.currentTarget.dataset.date);
+    return;
+  }
+
+  if (action === "reset-plan-day") {
+    delete state.planOverrides[event.currentTarget.dataset.date];
+    saveState();
+    render();
+    return;
+  }
+
+  if (action === "quick-record") {
+    quickRecordRepeat(event.currentTarget.dataset.recipe);
+    return;
+  }
+
+  if (action === "copy-shopping" || action === "share-shopping") {
+    const text = shoppingListText();
+    if (!text) {
+      showToast("買うものはすべてチェック済みです。");
+      return;
+    }
+    if (action === "share-shopping" && navigator.share) {
+      navigator.share({ text }).catch(() => {});
+      return;
+    }
+    const copied = await copyTextToClipboard(text);
+    showToast(copied ? "買い物リストをコピーしました。" : "コピーできませんでした。");
+    return;
+  }
+
   if (action === "record-repeat") {
     state.selectedRecipeId = event.currentTarget.dataset.recipe;
     state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || state.repeatDraft.mealType || "dinner";
+    applyRepeatDraftDefaults(state.selectedRecipeId);
     state.view = "repeat";
     saveState();
     render();
@@ -1488,6 +1914,7 @@ async function handleAction(event) {
   if (action === "select-repeat-recipe") {
     state.selectedRecipeId = event.currentTarget.dataset.recipe;
     state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || state.repeatDraft.mealType || "dinner";
+    applyRepeatDraftDefaults(state.selectedRecipeId);
     saveState();
     render();
   }
@@ -1626,6 +2053,80 @@ function removeMember(index) {
   render();
 }
 
+function applyRepeatDraftDefaults(recipeId) {
+  const latest = getRecipeEvaluationHistory(recipeId)[0];
+  if (!latest) return;
+  state.repeatDraft.familyRepeatCycles = normalizeFamilyRepeatCycles(latest.familyRepeatCycles, null, state.family);
+}
+
+function quickRecordRepeat(recipeId) {
+  const recipe = recipeById(recipeId);
+  if (!recipe) return;
+  const latest = getRecipeEvaluationHistory(recipeId)[0];
+  if (!latest) {
+    state.selectedRecipeId = recipeId;
+    state.repeatDraft.mealType = recipe.mealType || "dinner";
+    state.view = "repeat";
+    saveState();
+    showToast("初回は家族の周期を選んで記録してください。");
+    render();
+    return;
+  }
+  state.evaluations.unshift({
+    id: `e${Date.now()}`,
+    recipeId,
+    cookedAt: today(),
+    mealType: normalizeRepeatMealType(recipe.mealType) || "dinner",
+    familyRepeatCycles: normalizeFamilyRepeatCycles(latest.familyRepeatCycles, null, state.family),
+    memo: "",
+    photo: "",
+    photoLabel: "食卓写真"
+  });
+  saveState();
+  showToast("前回の周期のまま記録しました。変更はリピ画面からできます。");
+  render();
+}
+
+function swapPlanDay(date) {
+  if (!date) return;
+  const candidates = getMealCandidates();
+  if (candidates.length < 2) {
+    showToast("差し替えられる候補がまだありません。");
+    return;
+  }
+  const plan = buildWeeklyPlan();
+  const day = plan.find((item) => item.date === date);
+  const currentId = day?.candidate?.recipe.id || "";
+  // 自動配置の日は再構築で並び直せるので、差し替え済みの日のレシピだけ重複を避ける
+  const pinnedElsewhere = new Set(
+    plan.filter((item) => item.date !== date && item.pinned && item.candidate).map((item) => item.candidate.recipe.id)
+  );
+  const startIndex = Math.max(candidates.findIndex((item) => item.recipe.id === currentId), 0);
+  for (let step = 1; step <= candidates.length; step += 1) {
+    const next = candidates[(startIndex + step) % candidates.length];
+    if (next.recipe.id !== currentId && !pinnedElsewhere.has(next.recipe.id)) {
+      state.planOverrides[date] = next.recipe.id;
+      saveState();
+      showToast(`${formatDate(date)}を「${next.recipe.title}」に差し替えました。`);
+      render();
+      return;
+    }
+  }
+  showToast("差し替えられる候補がまだありません。");
+}
+
+function resetEverything() {
+  const message = "この端末に保存したレシピ、リピ記録、家族メンバー設定をすべて削除して、最初の状態に戻します。よろしいですか？";
+  if (!window.confirm(message)) return;
+  localStorage.removeItem(STORAGE_KEY);
+  idbClear().then(() => {
+    state = normalizeState(clone(demoState));
+    state.onboarded = false;
+    showToast("データをリセットしました。");
+    render();
+  });
+}
+
 function resetAllUserData() {
   const message = "保存したレシピ、材料メモ、リピ記録、料理写真をすべて削除します。家族メンバー設定は残ります。よろしいですか？";
   if (!window.confirm(message)) return;
@@ -1642,6 +2143,9 @@ function resetAllUserData() {
   state.originalIngredients = [];
   state.extractedIngredients = [];
   state.extractedSteps = [];
+  state.draftThumbnailUrl = "";
+  state.planOverrides = {};
+  state.shopping = { week: "", checked: {} };
   state.fetchStatus = "";
   state.view = "collection";
   state.onboarded = true;
@@ -1660,7 +2164,38 @@ function exportData() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  state.lastBackupAt = today();
+  saveState();
   showToast("データを書き出しました。");
+  render();
+}
+
+function backupReminderDue() {
+  if (!state.recipes.length && !state.evaluations.length) return false;
+  const reference = [state.lastBackupAt, state.backupRemindSnoozedAt].filter(Boolean).sort().pop();
+  if (!reference) return state.recipes.length + state.evaluations.length >= 3;
+  return daysBetween(reference, today()) >= 14;
+}
+
+function renderBackupReminder() {
+  if (!backupReminderDue()) return "";
+  const lastText = state.lastBackupAt
+    ? `前回の書き出しは${formatDate(state.lastBackupAt)}です。`
+    : "まだ一度も書き出していません。";
+  return `
+    <section class="panel backup-reminder">
+      <div class="section-head">
+        <div>
+          <h3>バックアップのおすすめ</h3>
+          <p>データはこの端末にだけ保存されています。${lastText}</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary-button" type="button" data-action="export-data">いま書き出す</button>
+        <button class="secondary-button" type="button" data-action="snooze-backup">2週間後に再通知</button>
+      </div>
+    </section>
+  `;
 }
 
 function handleImportFile(event) {
@@ -1835,6 +2370,24 @@ function prepareCaptionImport(url) {
 
 function isYouTubePlatform(platform) {
   return platform.id === "youtube" || /^YouTube/.test(platform.label);
+}
+
+function isTikTokPlatform(platform) {
+  return platform.label === "TikTok";
+}
+
+async function fetchTikTokPreview(videoUrl) {
+  const endpoint = API_BASE_URL
+    ? `${API_BASE_URL}/api/oembed/tiktok?url=${encodeURIComponent(videoUrl)}`
+    : `https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`;
+  const response = await fetch(endpoint);
+  if (!response.ok) throw new Error("TikTokの動画情報を取得できませんでした。");
+  const data = await response.json();
+  return {
+    title: String(data.title || "").trim(),
+    thumbnailUrl: String(data.thumbnailUrl || data.thumbnail_url || "").trim(),
+    author: String(data.author || data.author_name || "").trim()
+  };
 }
 
 async function importRecipeFromYouTube(videoUrl) {
@@ -2050,18 +2603,37 @@ function repeatLabel(id) {
 function buildWeeklyPlan() {
   const candidates = getMealCandidates();
   const used = new Set();
-  return Array.from({ length: 7 }, (_, index) => {
+  const days = Array.from({ length: 7 }, (_, index) => {
     const date = addDays(today(), index);
-    const candidate = candidates.find((item) => !used.has(item.recipe.id) && item.dueDate <= date)
-      || candidates.find((item) => !used.has(item.recipe.id));
-    if (candidate) used.add(candidate.recipe.id);
     return {
       date,
       label: weekdayLabel(date),
       dateLabel: formatDate(date),
-      candidate
+      candidate: null,
+      pinned: false
     };
   });
+
+  days.forEach((day) => {
+    const overrideId = state.planOverrides?.[day.date];
+    if (!overrideId || used.has(overrideId)) return;
+    const candidate = candidates.find((item) => item.recipe.id === overrideId);
+    if (candidate) {
+      day.candidate = candidate;
+      day.pinned = true;
+      used.add(overrideId);
+    }
+  });
+
+  days.forEach((day) => {
+    if (day.candidate) return;
+    const candidate = candidates.find((item) => !used.has(item.recipe.id) && item.dueDate <= day.date)
+      || candidates.find((item) => !used.has(item.recipe.id));
+    if (candidate) used.add(candidate.recipe.id);
+    day.candidate = candidate;
+  });
+
+  return days;
 }
 
 function getMealCandidates() {
@@ -2178,12 +2750,11 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => setView(tab.dataset.view));
 });
 
-document.querySelector('[data-action="reset-demo"]').addEventListener("click", () => {
-  if (!window.confirm("この端末に保存したレシピとリピ記録をすべて削除して、最初の状態に戻します。よろしいですか？")) return;
-  localStorage.removeItem(STORAGE_KEY);
-  state = clone(demoState);
-  showToast("データをリセットしました。");
+(async function init() {
+  registerServiceWorker();
+  state = await loadStateAsync();
+  const hasSharedUrl = applySharedUrlFromLocation();
+  requestPersistentStorage();
   render();
-});
-
-render();
+  if (hasSharedUrl) showToast("共有されたURLを受け取りました。");
+})();
