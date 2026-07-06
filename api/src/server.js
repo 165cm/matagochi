@@ -3,6 +3,7 @@ import { analyzeRecipeDescription } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { toErrorResponse } from "./errors.js";
 import { importYouTubeRecipe, requireAnalyzer } from "./importRecipe.js";
+import { fetchTikTokOEmbed } from "./tiktok.js";
 
 export function createApp(env = process.env) {
   const app = express();
@@ -17,6 +18,16 @@ export function createApp(env = process.env) {
     try {
       const analyzer = requireAnalyzer((snippet) => analyzeRecipeDescription(snippet, env));
       const result = await importYouTubeRecipe(req.body?.url, { analyzeRecipeDescription: analyzer });
+      res.json(result);
+    } catch (error) {
+      const { status, body } = toErrorResponse(error);
+      res.status(status).json(body);
+    }
+  });
+
+  app.get("/api/oembed/tiktok", async (req, res) => {
+    try {
+      const result = await fetchTikTokOEmbed(req.query?.url);
       res.json(result);
     } catch (error) {
       const { status, body } = toErrorResponse(error);
