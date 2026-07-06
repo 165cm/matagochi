@@ -3,11 +3,20 @@ import { analyzeRecipeDescription } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { toErrorResponse } from "./errors.js";
 import { importYouTubeRecipe, requireAnalyzer } from "./importRecipe.js";
+import { getSyncRoom, putSyncRoom } from "./sync.js";
+import { createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
 
-export function createApp(env = process.env) {
+export function createApp(env = process.env, deps = {}) {
   const app = express();
-  app.use(express.json({ limit: "64kb" }));
+  const syncStore = "syncStore" in deps ? deps.syncStore : createSyncStore(env);
+  const defaultJson = express.json({ limit: "64kb" });
+  // 同期データは料理写真(data URL)を含むため、同期ルートだけ上限を広げる
+  const syncJson = express.json({ limit: "24mb" });
+  app.use((req, res, next) => {
+    const parser = req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
+    parser(req, res, next);
+  });
   app.use(createCorsMiddleware(env));
 
   app.get("/health", (req, res) => {
@@ -35,6 +44,26 @@ export function createApp(env = process.env) {
     }
   });
 
+  app.get("/api/sync/rooms/:roomId", async (req, res) => {
+    try {
+      const result = await getSyncRoom(syncStore, req.params.roomId);
+      res.json(result);
+    } catch (error) {
+      const { status, body } = toErrorResponse(error);
+      res.status(status).json(body);
+    }
+  });
+
+  app.put("/api/sync/rooms/:roomId", async (req, res) => {
+    try {
+      const result = await putSyncRoom(syncStore, req.params.roomId, req.body);
+      res.json(result);
+    } catch (error) {
+      const { status, body } = toErrorResponse(error);
+      res.status(status).json(body);
+    }
+  });
+
   return app;
 }
 
@@ -52,7 +81,7 @@ function createCorsMiddleware(env) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
     }
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     if (req.method === "OPTIONS") {
