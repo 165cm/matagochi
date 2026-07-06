@@ -2,6 +2,10 @@ const STORAGE_KEY = "matagochi-mvp-v1";
 const IDB_NAME = "matagochi";
 const IDB_STORE = "state";
 const API_BASE_URL = (globalThis.MATAGOCHI_API_BASE_URL || "").replace(/\/$/, "");
+const SYNC_ROOM_SALT = "matagochi-sync-v1";
+const SYNC_MIN_CODE_LENGTH = 6;
+const SYNC_DEBOUNCE_MS = 8000;
+const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["ママ", "パパ", "子ども1", "子ども2"];
 const emptyDraft = { title: "", videoUrl: "", source: "", mealType: "dinner", caption: "", note: "" };
@@ -45,6 +49,9 @@ const demoState = {
   shopping: { week: "", checked: {} },
   lastBackupAt: "",
   backupRemindSnoozedAt: "",
+  settingsUpdatedAt: "",
+  tombstones: { recipes: {}, evaluations: {} },
+  sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     title: "鮭ときのこの包み焼き",
     videoUrl: "https://www.instagram.com/reel/example-salmon/",
@@ -138,6 +145,11 @@ let state = null;
 let toastTimer = null;
 let isCaptionImporting = false;
 let idbAvailable = typeof indexedDB !== "undefined";
+let syncTimer = null;
+let syncInFlight = false;
+let syncQueued = false;
+let lastSyncedFingerprint = "";
+let syncRuntimeStatus = "";
 
 function ingredient(name, amount, category) {
   return { name, amount, category };
@@ -258,6 +270,9 @@ function normalizeState(saved) {
     shopping: normalizeShopping(saved.shopping),
     lastBackupAt: normalizeDateInput(saved.lastBackupAt),
     backupRemindSnoozedAt: normalizeDateInput(saved.backupRemindSnoozedAt),
+    settingsUpdatedAt: normalizeTimestamp(saved.settingsUpdatedAt),
+    tombstones: normalizeTombstones(saved.tombstones),
+    sync: normalizeSyncSettings(saved.sync),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -342,6 +357,31 @@ function normalizeDateInput(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? value : "";
 }
 
+function normalizeTimestamp(value) {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value)) ? value : "";
+}
+
+function normalizeTombstones(tombstones) {
+  // 消したことの記録は半年で掃除する（それ以降に届いた古いバックアップからは復活しうる）
+  const cutoff = new Date(Date.now() - 180 * 86400000).toISOString();
+  const pick = (entries) => {
+    if (!entries || typeof entries !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(entries).filter(([, deletedAt]) => normalizeTimestamp(deletedAt) && deletedAt >= cutoff)
+    );
+  };
+  return { recipes: pick(tombstones?.recipes), evaluations: pick(tombstones?.evaluations) };
+}
+
+function normalizeSyncSettings(sync) {
+  const roomId = typeof sync?.roomId === "string" && SYNC_ROOM_ID_PATTERN.test(sync.roomId) ? sync.roomId : "";
+  return {
+    code: roomId && typeof sync?.code === "string" ? sync.code : "",
+    roomId,
+    lastSyncAt: roomId ? normalizeTimestamp(sync?.lastSyncAt) : ""
+  };
+}
+
 function normalizeRepeatMealType(value) {
   return mealSlots().some((meal) => meal.id === value) ? value : "";
 }
@@ -383,8 +423,9 @@ function repeatCycleFromTiming(value) {
   return "";
 }
 
-function saveState() {
+function saveState({ scheduleSync = true } = {}) {
   const serialized = JSON.stringify(state);
+  if (scheduleSync) scheduleAutoSync();
   if (idbAvailable) {
     idbWrite(serialized).catch(() => {
       showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
@@ -396,6 +437,246 @@ function saveState() {
   } catch {
     showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
   }
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function touchSettings() {
+  state.settingsUpdatedAt = nowIso();
+}
+
+function generateId(prefix) {
+  return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function syncEnabled() {
+  return Boolean(API_BASE_URL && state?.sync?.roomId);
+}
+
+function normalizeSyncCode(code) {
+  return String(code || "").normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function deriveSyncRoomId(code) {
+  const bytes = new TextEncoder().encode(`${SYNC_ROOM_SALT}:${code}`);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// 端末間で共有するのはデータ本体だけ。画面状態や入力中の下書きは端末ごとに残す。
+function buildSyncPayload() {
+  return {
+    version: 1,
+    settingsUpdatedAt: state.settingsUpdatedAt || "",
+    family: state.family,
+    servingCount: getServingCount(),
+    recipes: state.recipes,
+    evaluations: state.evaluations,
+    tombstones: state.tombstones,
+    planOverrides: state.planOverrides
+  };
+}
+
+function recipeStamp(recipe) {
+  return recipe.updatedAt || recipe.savedAt || "";
+}
+
+function evaluationStamp(evaluation) {
+  return evaluation.updatedAt || evaluation.cookedAt || "";
+}
+
+function mergeSyncPayloads(local, remote) {
+  const tombstones = mergeTombstones(local.tombstones, remote.tombstones);
+  const recipes = mergeItemsById(local.recipes, remote.recipes, tombstones.recipes, recipeStamp);
+  recipes.sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
+  const evaluations = mergeItemsById(local.evaluations, remote.evaluations, tombstones.evaluations, evaluationStamp);
+  evaluations.sort((a, b) => evaluationStamp(b).localeCompare(evaluationStamp(a)));
+  const settingsSource = (local.settingsUpdatedAt || "") >= (remote.settingsUpdatedAt || "") ? local : remote;
+  return {
+    version: 1,
+    settingsUpdatedAt: settingsSource.settingsUpdatedAt || "",
+    family: Array.isArray(settingsSource.family) && settingsSource.family.length ? settingsSource.family : local.family,
+    servingCount: settingsSource.servingCount,
+    recipes,
+    evaluations,
+    tombstones,
+    planOverrides: { ...(remote.planOverrides || {}), ...(local.planOverrides || {}) }
+  };
+}
+
+function mergeTombstones(local, remote) {
+  const merge = (a = {}, b = {}) => {
+    const result = { ...a };
+    Object.entries(b).forEach(([id, deletedAt]) => {
+      if (!result[id] || result[id] < deletedAt) result[id] = deletedAt;
+    });
+    return result;
+  };
+  return {
+    recipes: merge(local?.recipes, remote?.recipes),
+    evaluations: merge(local?.evaluations, remote?.evaluations)
+  };
+}
+
+function mergeItemsById(localItems, remoteItems, tombstones, stampOf) {
+  const byId = new Map();
+  [...(Array.isArray(remoteItems) ? remoteItems : []), ...(Array.isArray(localItems) ? localItems : [])].forEach((item) => {
+    if (!item?.id) return;
+    const existing = byId.get(item.id);
+    if (!existing || stampOf(item) >= stampOf(existing)) byId.set(item.id, item);
+  });
+  return Array.from(byId.values()).filter((item) => {
+    const deletedAt = tombstones[item.id];
+    // 削除より後に更新された記録だけ復活を許す
+    return !deletedAt || stampOf(item) > deletedAt;
+  });
+}
+
+function applySyncPayload(payload) {
+  const family = Array.isArray(payload.family) && payload.family.length ? payload.family : state.family;
+  state.family = family;
+  state.servingCount = normalizeServingCount(payload.servingCount ?? family.length);
+  state.settingsUpdatedAt = normalizeTimestamp(payload.settingsUpdatedAt);
+  state.recipes = normalizeRecipes(Array.isArray(payload.recipes) ? payload.recipes : []);
+  state.evaluations = normalizeEvaluations(Array.isArray(payload.evaluations) ? payload.evaluations : [], family);
+  state.tombstones = normalizeTombstones(payload.tombstones);
+  state.planOverrides = normalizePlanOverrides(payload.planOverrides);
+  state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
+  if (state.selectedRecipeId && !recipeById(state.selectedRecipeId)) {
+    state.selectedRecipeId = state.recipes[0]?.id || null;
+  }
+  if (state.editingRecipeId && !recipeById(state.editingRecipeId)) {
+    state.editingRecipeId = null;
+  }
+  Object.keys(state.planOverrides).forEach((date) => {
+    if (!recipeById(state.planOverrides[date])) delete state.planOverrides[date];
+  });
+}
+
+function scheduleAutoSync() {
+  if (!syncEnabled()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    if (!syncEnabled()) return;
+    if (JSON.stringify(buildSyncPayload()) === lastSyncedFingerprint) return;
+    syncNow({ silent: true });
+  }, SYNC_DEBOUNCE_MS);
+}
+
+// サーバーの最新を取り込み→マージ→書き戻し。他端末が先に書いた場合(409)は取り直して繰り返す。
+async function syncOnce() {
+  const roomUrl = `${API_BASE_URL}/api/sync/rooms/${state.sync.roomId}`;
+  const response = await fetch(roomUrl);
+  if (!response.ok) throw new Error("sync_fetch_failed");
+  const remote = await response.json();
+  let changedLocal = false;
+  let payload = buildSyncPayload();
+  if (remote.found) {
+    const before = JSON.stringify(payload);
+    const merged = mergeSyncPayloads(payload, remote.data || {});
+    if (JSON.stringify(merged) !== before) {
+      if (state.view === "register") captureDraft();
+      applySyncPayload(merged);
+      changedLocal = true;
+    }
+    payload = buildSyncPayload();
+    if (JSON.stringify(payload) === JSON.stringify(remote.data)) {
+      lastSyncedFingerprint = JSON.stringify(payload);
+      return { done: true, changedLocal };
+    }
+  }
+  const putResponse = await fetch(roomUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseRevision: remote.found ? remote.revision : "", data: payload })
+  });
+  if (putResponse.status === 409) return { done: false, changedLocal };
+  if (!putResponse.ok) throw new Error("sync_push_failed");
+  lastSyncedFingerprint = JSON.stringify(payload);
+  return { done: true, changedLocal };
+}
+
+async function syncNow({ silent = false } = {}) {
+  if (!syncEnabled()) return false;
+  if (syncInFlight) {
+    syncQueued = true;
+    return false;
+  }
+  syncInFlight = true;
+  let changedLocal = false;
+  let succeeded = false;
+  try {
+    for (let attempt = 0; attempt < 3 && !succeeded; attempt += 1) {
+      const result = await syncOnce();
+      changedLocal = changedLocal || result.changedLocal;
+      succeeded = result.done;
+    }
+    if (!succeeded) throw new Error("sync_conflict");
+    state.sync.lastSyncAt = nowIso();
+    syncRuntimeStatus = "";
+    saveState({ scheduleSync: false });
+    if (!silent) showToast("同期しました。");
+  } catch {
+    syncRuntimeStatus = "前回の同期に失敗しました。通信環境を確認してください。";
+    if (changedLocal) saveState({ scheduleSync: false });
+    if (!silent) showToast("同期に失敗しました。通信環境を確認してください。");
+  } finally {
+    syncInFlight = false;
+    if (changedLocal) {
+      if (state.view === "register") captureDraft();
+      render();
+    }
+    if (syncQueued) {
+      syncQueued = false;
+      scheduleAutoSync();
+    }
+  }
+  return succeeded;
+}
+
+async function connectSync() {
+  const rawCode = document.querySelector("#sync-code")?.value || "";
+  const code = normalizeSyncCode(rawCode);
+  if (code.length < SYNC_MIN_CODE_LENGTH) {
+    showToast(`合言葉は${SYNC_MIN_CODE_LENGTH}文字以上にしてください。`);
+    return;
+  }
+  if (!crypto?.subtle) {
+    showToast("この環境では同期機能を使えません。");
+    return;
+  }
+  state.sync = { code: rawCode.trim(), roomId: await deriveSyncRoomId(code), lastSyncAt: "" };
+  lastSyncedFingerprint = "";
+  saveState({ scheduleSync: false });
+  const succeeded = await syncNow({ silent: true });
+  if (!succeeded) {
+    state.sync = { code: "", roomId: "", lastSyncAt: "" };
+    saveState({ scheduleSync: false });
+    showToast("同期サーバーに接続できませんでした。時間をおいて試してください。");
+    render();
+    return;
+  }
+  showToast("合言葉でつながりました。同じ合言葉の端末とデータがそろいます。");
+  render();
+}
+
+function disconnectSync() {
+  if (!window.confirm("この端末の共有をやめます。データはこの端末に残り、家族の端末にも残ります。よろしいですか？")) return;
+  clearTimeout(syncTimer);
+  state.sync = { code: "", roomId: "", lastSyncAt: "" };
+  lastSyncedFingerprint = "";
+  syncRuntimeStatus = "";
+  saveState({ scheduleSync: false });
+  showToast("共有をやめました。");
+  render();
+}
+
+function formatSyncTime(iso) {
+  const date = new Date(iso);
+  if (!iso || Number.isNaN(date.getTime())) return "まだありません";
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 function applySharedUrlFromLocation() {
@@ -1398,6 +1679,8 @@ function renderSettings() {
       <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>
     </section>
 
+    ${renderSyncPanel()}
+
     <section class="panel">
       <div class="section-head">
         <div>
@@ -1427,6 +1710,43 @@ function renderSettings() {
   `;
 }
 
+function renderSyncPanel() {
+  if (!API_BASE_URL) return "";
+  if (!state.sync.roomId) {
+    return `
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h3>家族と同期・共有</h3>
+          <p>合言葉を決めるだけで、スマホとPC、家族の端末で同じデータを使えます。アカウント登録は不要です。</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="sync-code">家族の合言葉（${SYNC_MIN_CODE_LENGTH}文字以上）</label>
+        <input id="sync-code" class="input" type="text" placeholder="例: たなかけ・ごはん・2026" autocomplete="off">
+      </div>
+      <button class="primary-button full-button" type="button" data-action="sync-connect">この合言葉でつなぐ</button>
+      <p class="muted small">最初の端末でつなぐと今のデータが共有され、家族の端末で同じ合言葉を入れると同じデータにつながります。変更はしばらくすると自動で同期されます。</p>
+      <p class="notice">合言葉を知っている人はだれでもこのデータを見たり変えたりできます。ほかの家庭とかぶらない、推測されにくい合言葉にしてください。</p>
+    </section>`;
+  }
+  return `
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h3>家族と同期・共有</h3>
+          <p>合言葉「${escapeHtml(state.sync.code)}」でつながっています。</p>
+        </div>
+      </div>
+      <p class="notice">家族の端末でも設定画面から同じ合言葉を入れると、レシピとリピ記録がそろいます。</p>
+      <p class="muted small">最終同期: ${formatSyncTime(state.sync.lastSyncAt)}${syncRuntimeStatus ? `<br>${escapeHtml(syncRuntimeStatus)}` : ""}</p>
+      <div class="actions">
+        <button class="primary-button" type="button" data-action="sync-now">今すぐ同期</button>
+        <button class="secondary-button" type="button" data-action="sync-disconnect">共有をやめる</button>
+      </div>
+    </section>`;
+}
+
 function bindEvents() {
   document.querySelectorAll("[data-action]").forEach((element) => {
     element.addEventListener("click", handleAction);
@@ -1440,6 +1760,7 @@ function bindEvents() {
 
   document.querySelector("#serving-count")?.addEventListener("change", (event) => {
     state.servingCount = normalizeServingCount(event.target.value);
+    touchSettings();
     saveState();
     render();
   });
@@ -1639,6 +1960,7 @@ async function handleAction(event) {
     if (state.view === "register") captureDraft();
     const delta = Number.parseInt(event.currentTarget.dataset.delta, 10) || 0;
     state.servingCount = normalizeServingCount(getServingCount() + delta);
+    touchSettings();
     saveState();
     render();
     return;
@@ -1647,6 +1969,7 @@ async function handleAction(event) {
   if (action === "set-family-serving") {
     if (state.view === "register") captureDraft();
     state.servingCount = normalizeServingCount(state.family.length);
+    touchSettings();
     saveState();
     render();
     return;
@@ -1723,6 +2046,7 @@ async function handleAction(event) {
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.note = state.draft.note;
       existing.thumbnailUrl = state.draftThumbnailUrl || existing.thumbnailUrl || "";
+      existing.updatedAt = nowIso();
       state.selectedRecipeId = existing.id;
       state.editingRecipeId = null;
       state.draft = clone(emptyDraft);
@@ -1738,7 +2062,7 @@ async function handleAction(event) {
       render();
     } else {
       const recipe = {
-        id: `r${Date.now()}`,
+        id: generateId("r"),
         title: state.draft.title,
         videoUrl: state.draft.videoUrl,
         source: state.draft.source,
@@ -1749,6 +2073,7 @@ async function handleAction(event) {
         steps,
         tags: [mealLabel(state.draft.mealType), state.draft.source, "動画"],
         savedAt: today(),
+        updatedAt: nowIso(),
         note: state.draft.note,
         thumbnailUrl: state.draftThumbnailUrl || ""
       };
@@ -1809,7 +2134,12 @@ async function handleAction(event) {
   if (action === "delete-recipe") {
     const id = event.currentTarget.dataset.recipe;
     const recipe = recipeById(id);
-    if (recipe && window.confirm(`「${recipe.title}」を削除します。関連するリピ記録も消えます。よろしいですか？`)) {
+    if (recipe && window.confirm(`「${recipe.title}」を削除します。関連するリピ記録も消えます。${syncEnabled() ? "共有中の家族の端末からも消えます。" : ""}よろしいですか？`)) {
+      const deletedAt = nowIso();
+      state.tombstones.recipes[id] = deletedAt;
+      state.evaluations.filter((item) => item.recipeId === id).forEach((item) => {
+        state.tombstones.evaluations[item.id] = deletedAt;
+      });
       state.recipes = state.recipes.filter((item) => item.id !== id);
       state.evaluations = state.evaluations.filter((item) => item.recipeId !== id);
       Object.keys(state.planOverrides).forEach((date) => {
@@ -1827,6 +2157,7 @@ async function handleAction(event) {
   if (action === "delete-evaluation") {
     const id = event.currentTarget.dataset.eval;
     if (window.confirm("このリピ記録を削除します。よろしいですか？")) {
+      state.tombstones.evaluations[id] = nowIso();
       state.evaluations = state.evaluations.filter((item) => item.id !== id);
       saveState();
       showToast("リピ記録を削除しました。");
@@ -1845,6 +2176,22 @@ async function handleAction(event) {
 
   if (action === "export-data") {
     exportData();
+  }
+
+  if (action === "sync-connect") {
+    await connectSync();
+    return;
+  }
+
+  if (action === "sync-now") {
+    await syncNow();
+    render();
+    return;
+  }
+
+  if (action === "sync-disconnect") {
+    disconnectSync();
+    return;
   }
 
   if (action === "import-data") {
@@ -1936,14 +2283,15 @@ async function handleAction(event) {
   if (action === "save-repeat") {
     captureRepeatDraft();
     const evaluation = {
-      id: `e${Date.now()}`,
+      id: generateId("e"),
       recipeId: state.selectedRecipeId,
       cookedAt: state.repeatDraft.cookedAt || today(),
       mealType: state.repeatDraft.mealType || recipeById(state.selectedRecipeId)?.mealType || "dinner",
       familyRepeatCycles: { ...state.repeatDraft.familyRepeatCycles },
       memo: state.repeatDraft.memo,
       photo: state.repeatDraft.photo || "",
-      photoLabel: "食卓写真"
+      photoLabel: "食卓写真",
+      updatedAt: nowIso()
     };
     state.evaluations.unshift(evaluation);
     state.repeatDraft.photo = "";
@@ -2008,6 +2356,7 @@ function renameMember(index, rawValue) {
   }
   state.family[index] = next;
   migrateMemberKey(previous, next);
+  touchSettings();
   saveState();
   showToast("メンバー名を変更しました。");
   render();
@@ -2021,7 +2370,13 @@ function migrateMemberKey(previous, next) {
     }
   };
   move(state.repeatDraft.familyRepeatCycles);
-  state.evaluations.forEach((evaluation) => move(evaluation.familyRepeatCycles));
+  state.evaluations.forEach((evaluation) => {
+    if (evaluation.familyRepeatCycles && Object.prototype.hasOwnProperty.call(evaluation.familyRepeatCycles, previous)) {
+      move(evaluation.familyRepeatCycles);
+      // 改名を他端末のリピ記録にも同期で反映させる
+      evaluation.updatedAt = nowIso();
+    }
+  });
 }
 
 function addMember() {
@@ -2035,6 +2390,7 @@ function addMember() {
   state.family.push(name);
   if (wasFamilySized) state.servingCount = normalizeServingCount(state.family.length);
   state.repeatDraft.familyRepeatCycles[name] = defaultRepeatCycle;
+  touchSettings();
   saveState();
   showToast("メンバーを追加しました。名前を編集してください。");
   render();
@@ -2048,6 +2404,7 @@ function removeMember(index) {
   state.family.splice(index, 1);
   if (wasFamilySized) state.servingCount = normalizeServingCount(state.family.length);
   delete state.repeatDraft.familyRepeatCycles[name];
+  touchSettings();
   saveState();
   showToast("メンバーを削除しました。");
   render();
@@ -2073,14 +2430,15 @@ function quickRecordRepeat(recipeId) {
     return;
   }
   state.evaluations.unshift({
-    id: `e${Date.now()}`,
+    id: generateId("e"),
     recipeId,
     cookedAt: today(),
     mealType: normalizeRepeatMealType(recipe.mealType) || "dinner",
     familyRepeatCycles: normalizeFamilyRepeatCycles(latest.familyRepeatCycles, null, state.family),
     memo: "",
     photo: "",
-    photoLabel: "食卓写真"
+    photoLabel: "食卓写真",
+    updatedAt: nowIso()
   });
   saveState();
   showToast("前回の周期のまま記録しました。変更はリピ画面からできます。");
@@ -2116,8 +2474,11 @@ function swapPlanDay(date) {
 }
 
 function resetEverything() {
-  const message = "この端末に保存したレシピ、リピ記録、家族メンバー設定をすべて削除して、最初の状態に戻します。よろしいですか？";
+  const message = `この端末に保存したレシピ、リピ記録、家族メンバー設定をすべて削除して、最初の状態に戻します。${syncEnabled() ? "共有はこの端末だけ解除され、家族の端末のデータは残ります。" : ""}よろしいですか？`;
   if (!window.confirm(message)) return;
+  clearTimeout(syncTimer);
+  lastSyncedFingerprint = "";
+  syncRuntimeStatus = "";
   localStorage.removeItem(STORAGE_KEY);
   idbClear().then(() => {
     state = normalizeState(clone(demoState));
@@ -2128,8 +2489,15 @@ function resetEverything() {
 }
 
 function resetAllUserData() {
-  const message = "保存したレシピ、材料メモ、リピ記録、料理写真をすべて削除します。家族メンバー設定は残ります。よろしいですか？";
+  const message = `保存したレシピ、材料メモ、リピ記録、料理写真をすべて削除します。家族メンバー設定は残ります。${syncEnabled() ? "共有中の家族の端末からも消えます。" : ""}よろしいですか？`;
   if (!window.confirm(message)) return;
+  const deletedAt = nowIso();
+  state.recipes.forEach((recipe) => {
+    state.tombstones.recipes[recipe.id] = deletedAt;
+  });
+  state.evaluations.forEach((evaluation) => {
+    state.tombstones.evaluations[evaluation.id] = deletedAt;
+  });
   state.recipes = [];
   state.evaluations = [];
   state.selectedRecipeId = null;
@@ -2172,6 +2540,8 @@ function exportData() {
 
 function backupReminderDue() {
   if (!state.recipes.length && !state.evaluations.length) return false;
+  // 同期済みならサーバー側にもコピーがあるので、バックアップ催促は控える
+  if (syncEnabled() && state.sync.lastSyncAt) return false;
   const reference = [state.lastBackupAt, state.backupRemindSnoozedAt].filter(Boolean).sort().pop();
   if (!reference) return state.recipes.length + state.evaluations.length >= 3;
   return daysBetween(reference, today()) >= 14;
@@ -2750,6 +3120,11 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => setView(tab.dataset.view));
 });
 
+document.addEventListener("visibilitychange", () => {
+  // アプリに戻ってきたら、他の端末の変更を取り込む
+  if (document.visibilityState === "visible" && state && syncEnabled()) syncNow({ silent: true });
+});
+
 (async function init() {
   registerServiceWorker();
   state = await loadStateAsync();
@@ -2757,4 +3132,5 @@ document.querySelectorAll(".tab").forEach((tab) => {
   requestPersistentStorage();
   render();
   if (hasSharedUrl) showToast("共有されたURLを受け取りました。");
+  if (syncEnabled()) syncNow({ silent: true });
 })();

@@ -131,6 +131,7 @@ MVPでは以下の3つに集中します。
 - 表示人数の±調整
 - 表示人数を家族人数に合わせる操作
 - 家族メンバーの追加・名称変更・削除
+- 家族と同期・共有（合言葉の入力・接続・今すぐ同期・共有解除。API設定済み環境のみ表示）
 - データの書き出し（JSONバックアップ）
 - データの読み込み（JSONバックアップからの復元）
 - レシピ・リピ記録の全件削除（家族メンバー設定は維持）
@@ -208,6 +209,23 @@ PCとスマホなど別端末で使う場合は、JSONファイルを書き出�
 - `lastBackupAt` / `backupRemindSnoozedAt`: バックアップリマインドの表示判定
 - `draftThumbnailUrl`: 登録中レシピのサムネイルURL下書き
 - レシピの `thumbnailUrl`: TikTok oEmbed等で取得したサムネイルURL（YouTubeは保存せず表示時にURLから導出）
+- `sync`: 合言葉同期の接続情報（`{ code, roomId, lastSyncAt }`。`roomId` は合言葉のSHA-256ハッシュ）
+- `tombstones`: 削除の同期用記録（`{ recipes: { id: deletedAt }, evaluations: { id: deletedAt } }`。180日で掃除）
+- `settingsUpdatedAt`: 家族メンバー・表示人数の最終更新時刻（同期のマージ判定に使用）
+- レシピ・リピ記録の `updatedAt`: 最終更新時刻（同期でIDが同じ場合は新しい方を採用）
+
+### 合言葉同期（家族と同期・共有）
+
+Cloud Run API設定済み環境では、アカウント登録なしで端末間同期と家族共有ができます。
+
+- 設定画面で合言葉（6文字以上）を入力すると、正規化（NFKC・小文字化・空白整理）した合言葉のSHA-256ハッシュをルームIDとして接続する。合言葉そのものはサーバーへ送らない
+- 同じ合言葉を入れた端末は同じルームにつながり、レシピ・リピ記録・家族メンバー・表示人数・献立差し替えを共有する
+- 画面状態や入力中の下書きは同期しない（端末ごとに保持）
+- 同期はGET→マージ→PUTの楽観ロック（`baseRevision` 不一致は409で取り直し）。データ変更の約8秒後に自動同期し、起動時・画面復帰時・「今すぐ同期」でも同期する
+- マージはIDごとに `updatedAt` の新しい方を採用し、削除は `tombstones` で他端末へ伝播する。家族メンバーと表示人数は `settingsUpdatedAt` の新しい側を採用する
+- 接続中はレシピ削除・全件削除の確認文に家族の端末にも影響する旨を表示し、バックアップリマインドは表示しない
+- 「共有をやめる」はこの端末の接続だけを解除し、データはローカルとサーバーの両方に残る
+- 合言葉を知っている人はだれでもデータの閲覧・変更ができる前提の、低機密データ向けのゆるい共有とする
 
 バックアップリマインドは、レシピまたはリピ記録があり、書き出し・スヌーズから14日以上経過（未書き出しの場合は件数3件以上）で、コレクション画面に表示します。
 
@@ -357,6 +375,8 @@ Cloud Run上の `api/` バックエンドで、YouTube説明文から材料メ�
 
 - `POST /api/import/youtube`
 - `GET /api/oembed/tiktok?url=...`（TikTok oEmbedのプロキシ。`{ title, author, thumbnailUrl, videoUrl }` を返す）
+- `GET /api/sync/rooms/:roomId`（合言葉同期。`{ found, revision, updatedAt, data }` を返す。未作成ルームは `{ found: false }`）
+- `PUT /api/sync/rooms/:roomId`（合言葉同期の保存。`{ baseRevision, data }` を受け取り、`baseRevision` が現在と違えば409。保存先はCloud Storageの `rooms/<roomId>.json`）
 
 リクエスト:
 
@@ -391,16 +411,18 @@ Cloud Run上の `api/` バックエンドで、YouTube説明文から材料メ�
 - `GOOGLE_CLOUD_LOCATION=us-central1`
 - `GEMINI_MODEL=gemini-2.5-flash`
 - `ALLOWED_ORIGINS=https://165cm.github.io,http://localhost:8000,http://127.0.0.1:8000`
+- `SYNC_BUCKET`（合言葉同期の保存先Cloud Storageバケット。未設定時は同期APIが503を返す。ローカル開発は `SYNC_STORE=memory` でメモリ保存）
 
 1本あたりの処理は、YouTube Data API `videos.list` 1回とGemini Flashの短いテキスト解析1回です。説明文ベースのMVPでは、おおむね1円未満の想定です。
 
 ## 12. 現状の制約
 
-- Cloud Run API未設定環境ではSNS本文の自動取得なし
+- Cloud Run API未設定環境ではSNS本文の自動取得・合言葉同期なし
 - ログインなし
 - ユーザーアカウントなし
-- 端末間の自動同期なし（JSON書き出し／読み込みによる手動移行は可能）
-- 写真はサーバーへアップロードせず、リサイズして端末内（IndexedDB）に保存
+- 端末間同期は合言葉ベース（API設定済み環境のみ。未設定環境はJSON書き出し／読み込みによる手動移行）
+- 合言葉同期は認証なしの割り切り共有で、合言葉を知っていればだれでも読み書きできる
+- 写真はリサイズして端末内（IndexedDB）に保存し、合言葉同期を使う場合のみ同期データの一部としてサーバーにも保存
 - YouTube連携は説明文ベースで、字幕トラックは取得しない
 - Instagram / Facebook / TikTok のSNSキャプション実取得なし
 - データは端末ごとのブラウザ保存
@@ -431,8 +453,7 @@ GitHub Pagesだけでは動かないこと:
 
 - SNS URLからの本文自動取得（YouTube説明文取得にはCloud Run API設定が必要）
 - ログイン
-- 端末間同期
-- サーバー保存
+- 合言葉同期・家族共有（Cloud Run APIと `SYNC_BUCKET` の設定が必要）
 
 ## 13. 将来拡張候補
 
@@ -441,7 +462,7 @@ GitHub Pagesだけでは動かないこと:
 - バックエンド/API連携によるSNS本文取得（Instagram / Facebook）
 - 週単位の献立編集の拡張（実装済みの日別差し替えに加え、曜日の入れ替えや複数枠）
 - 買い物リストの拡張（数量の手動調整、常備品の除外）※基本機能は実装済み
-- 端末間同期
+- 端末間同期の拡張（リアルタイム反映、写真の分離保存）※合言葉ベースの同期・家族共有は実装済み
 
 優先度中:
 
@@ -463,3 +484,4 @@ GitHub Pagesだけでは動かないこと:
 - 「今週何を作るか」の候補が見える
 - 静的サイトとしてGitHub Pagesで利用できる
 - JSONで手動バックアップできる
+- 合言葉だけでスマホ・PC・家族の端末とデータをそろえられる（API設定済み環境）
