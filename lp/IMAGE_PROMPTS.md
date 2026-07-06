@@ -1,7 +1,7 @@
 # LP用 画像生成プロンプト集
 
 LP（`lp/index.html`）が参照する画像の生成プロンプトです。
-生成した画像は `lp/assets/` に以下のファイル名で保存してください。
+**現在は全画像設置済み**（`lp/assets/` にWebP形式で配置）。作り直す場合はこのプロンプトで再生成し、下記のファイル名で上書きしてください。
 **画像が無い間もLPはプレースホルダー表示で成立します**（設置すると自動で差し替わります）。
 
 ## 共通スタイル指定（全プロンプトの末尾に付けてください）
@@ -19,7 +19,7 @@ no watermark. Soft natural lighting, friendly and homely mood, Japanese home set
 
 ---
 
-## 1. hero.png — ヒーロー画像
+## 1. hero.webp — ヒーロー画像
 
 - **サイズ**: 1200×900px（4:3）
 - **用途**: ファーストビュー右側
@@ -34,7 +34,7 @@ Composition: characters slightly right of center, space on the left.
 + 共通スタイル指定
 ```
 
-## 2. feature-save.png — 機能01「3秒で保存」
+## 2. feature01.webp — 機能01「3秒で保存」
 
 - **サイズ**: 800×600px（4:3）
 - **用途**: 共有シートからの保存の説明
@@ -49,7 +49,7 @@ to express "instant and easy". Background: plain warm cream.
 + 共通スタイル指定
 ```
 
-## 3. feature-cycle.png — 機能02「家族のリピ周期」
+## 3. feature02.webp — 機能02「家族のリピ周期」
 
 - **サイズ**: 800×600px（4:3）
 - **用途**: 家族別6段階記録の説明
@@ -64,7 +64,7 @@ Top-down slightly angled view.
 + 共通スタイル指定
 ```
 
-## 4. feature-plan.png — 機能03「今週の献立」
+## 4. feature03.webp — 機能03「今週の献立」
 
 - **サイズ**: 800×600px（4:3）
 - **用途**: 1週間の献立提案の説明
@@ -79,7 +79,7 @@ a cup of tea rests near the planner. Background: warm wooden table surface.
 + 共通スタイル指定
 ```
 
-## 5. feature-shopping.png — 機能04「買い物リスト」
+## 5. feature04.webp — 機能04「買い物リスト」
 
 - **サイズ**: 800×600px（4:3）
 - **用途**: 自動買い物リストの説明
@@ -93,7 +93,7 @@ the background, softly blurred. One hand picks up a tomato.
 + 共通スタイル指定
 ```
 
-## 6. ogp.png — OGP / SNSシェア画像
+## 6. ogp.webp — OGP / SNSシェア画像
 
 - **サイズ**: 1200×630px（1.91:1）※このサイズ厳守
 - **用途**: SNSでLPをシェアした時のカード画像
@@ -114,8 +114,8 @@ a small tomato). Soft and appetizing atmosphere.
 
 ## 生成後のチェックリスト
 
-- [ ] ファイル名・サイズが上記どおりか（特にogp.pngは1200×630）
+- [ ] ファイル名・サイズが上記どおりか（特にogp.webpは横長1.91:1推奨）
 - [ ] 画像内に崩れた文字・意味不明のロゴが写り込んでいないか
 - [ ] 配色がLPのセージグリーン×クリームと馴染んでいるか
 - [ ] `lp/assets/` に配置後、LPを開いてプレースホルダーが画像に置き換わったか
-- [ ] ogp.pngにはタイトル文字を別途載せたか（例:「また作って！を、忘れない。リピごち」）
+- [ ] ogp.webpにはタイトル文字を別途載せたか（例:「また作って！を、忘れない。リピごち」）
