@@ -84,3 +84,18 @@ test('image timeout restores manual entry status rather than leaving analysis pr
   assert.match(run('state.fetchStatus'),/手動入力/);
   assert.equal(run('state.draftExpanded'),true);
 });
+
+test('late image analysis cannot replace edits made while waiting', async () => {
+  const run=app();
+  run(`state=clone(demoState);state.view='register';state.draft={...emptyDraft};state.editingRecipeId=null;
+    const imageFields={'#recipe-title':{value:'自分の題名'},'#recipe-url':{value:''}};
+    document.querySelector=key=>imageFields[key]||null;
+    let finishImage;
+    imageSession={version:0,analyze:()=>new Promise(resolve=>finishImage=resolve)};
+    saveState=()=>{};render=()=>{};`);
+  const work=run(`handleAction({currentTarget:{dataset:{action:'analyze-images'}}})`);
+  run(`imageFields['#recipe-title'].value='待機中の編集';captureDraft();finishImage({title:'AIの題名'});`);
+  await work;
+  assert.equal(run('state.draft.title'),'待機中の編集');
+  assert.match(run('state.fetchStatus'),/上書きを止めました/);
+});
