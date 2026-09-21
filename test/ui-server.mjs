@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 process.env.NODE_ENV = 'test';
 const { createApp } = await import('../api/src/server.js');
 const app = createApp({ RECIPE_STORE:'memory', RECIPE_ADMIN_TOKEN:'local-test-only' }, {
+  analyzeImages: async () => ({title:"画像のツナ丼（テスト）",sourceServings:2,ingredients:[{name:"ご飯",amount:"300g"},{name:"ツナ",amount:null}],steps:["ご飯をよそう","ツナをのせる"],warnings:["ツナの分量を元画像で確認してください。"]}),
   importRecipe: async () => ({ title:'ツナ丼（テスト）', videoUrl:'https://www.youtube.com/watch?v=abcdefghijk', source:'YouTube', sourceServings:2, ingredients:[{name:'ご飯',amount:'300g',category:'主食'},{name:'ツナ',amount:'2缶',category:'缶詰'}], steps:['ご飯をよそう','ツナをのせる'] })
 });
 const root = fileURLToPath(new URL('../',import.meta.url));

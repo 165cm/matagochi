@@ -147,6 +147,8 @@ let state = null;
 let toastTimer = null;
 let isCaptionImporting = false;
 let sharedRecipeComparison = null;
+let imageSession = null;
+function getImageSession() { return imageSession ||= new globalThis.RecipeImageSession(); }
 let idbAvailable = typeof indexedDB !== "undefined";
 let syncTimer = null;
 let syncInFlight = false;
@@ -727,6 +729,7 @@ function applySharedUrlFromLocation() {
 }
 
 function setView(view) {
+  imageSession?.cancel();
   if (state.view === "register") captureDraft();
   state.view = view;
   saveState();
@@ -786,7 +789,7 @@ function renderRecipeEntry() {
       <div class="section-head">
         <div>
           <h2>${state.editingRecipeId ? "レシピを編集" : "新規登録"}</h2>
-          <p>まず動画URLを入れて、材料メモの下書きを作ります。</p>
+          <p>動画URLまたはレシピ画像から下書きを作り、確認して保存します。</p>
         </div>
         <span class="badge">${state.editingRecipeId ? "編集中" : "URLから"}</span>
       </div>
@@ -795,7 +798,7 @@ function renderRecipeEntry() {
           <label for="recipe-url">ショート動画リンク</label>
           <input id="recipe-url" class="input url-input" value="${escapeAttr(state.draft.videoUrl)}" placeholder="https://youtube.com/shorts/...">
         </div>
-        <button class="primary-button fetch-button" type="button" data-action="fetch-caption" ${isCaptionImporting ? "disabled" : ""}>${isCaptionImporting ? "取得中" : "URLから取得"}</button>
+        <button class="primary-button fetch-button" type="button" data-action="fetch-caption" ${isCaptionImporting || imageSession?.busy ? "disabled" : ""}>${isCaptionImporting ? "取得中" : "URLから取得"}</button>
       </div>
       <div class="quick-entry-actions">
         <button class="secondary-button" type="button" data-action="show-manual-entry">手動で入力</button>
@@ -812,6 +815,8 @@ function renderRecipeEntry() {
         </div>
       ` : ""}
     </section>
+
+    ${renderImageImport()}
 
     ${showDetails ? `
     <section class="panel entry-detail-panel">
@@ -848,6 +853,8 @@ function renderRecipeEntry() {
           <label for="recipe-note">自分用メモ</label>
           <input id="recipe-note" class="input" value="${escapeAttr(state.draft.note)}">
         </div>
+        ${state.draft.requiresImageReview ? `<p class="notice">${escapeHtml((state.draft.imageWarnings || []).join(" / ") || "AIは読み違えることがあります。元画像と材料・分量・手順を照合してください。")}</p>
+        <label><input id="image-reviewed" type="checkbox" ${state.draft.imageReviewed ? "checked" : ""}> 元画像と材料・分量・手順を確認しました</label>` : ""}
         <div class="actions">
           <button class="primary-button" type="button" data-action="save-recipe">${state.editingRecipeId ? "更新する" : "保存する"}</button>
           <button class="secondary-button" type="button" data-action="extract-caption">材料・作り方を再抽出</button>
@@ -885,6 +892,44 @@ function renderRecipeEntry() {
     </section>
     ` : ""}
   `;
+}
+
+function renderImageImport() {
+  const images = imageSession?.images || [];
+  const busy = imageSession?.busy || imageSession?.preparing || isCaptionImporting;
+  return `<section class="panel image-import-panel">
+    <h3>スクリーンショット・画像から取り込む</h3>
+    <p class="muted small">Instagram・TikTokなどのレシピ画面を1つの料理につき5枚まで選べます。画像は解析のためサーバーとGoogleのAIへ送信します。共通レシピには登録せず、元画像はアプリ側で保存しません。</p>
+    <label for="recipe-images">画像を選ぶ（JPEG・PNG・WebP）</label>
+    <input id="recipe-images" type="file" accept="image/jpeg,image/png,image/webp" multiple ${busy ? "disabled" : ""}>
+    <label for="recipe-camera">写真を撮る</label>
+    <input id="recipe-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" ${busy ? "disabled" : ""}>
+    ${imageSession?.preparing ? '<p role="status">画像を縮小しています…</p>' : ""}
+    <div class="image-previews">${images.map((image, index) => `<figure>
+      <img src="${image.preview}" alt="選択したレシピ画像 ${index + 1}">
+      <figcaption>画像 ${index + 1}</figcaption>
+      <div class="actions"><button class="secondary-button" type="button" data-action="image-up" data-index="${index}" ${busy || index === 0 ? "disabled" : ""}>前へ</button>
+      <button class="secondary-button" type="button" data-action="image-down" data-index="${index}" ${busy || index === images.length - 1 ? "disabled" : ""}>後へ</button>
+      <button class="secondary-button" type="button" data-action="image-remove" data-index="${index}" ${busy ? "disabled" : ""}>画像を外す</button></div>
+    </figure>`).join("")}</div>
+    <div class="actions"><button class="primary-button" type="button" data-action="analyze-images" ${busy || !images.length || !API_BASE_URL ? "disabled" : ""}>${imageSession?.busy ? "解析中…" : "画像を解析する"}</button>
+    ${imageSession?.busy || imageSession?.preparing ? '<button class="secondary-button" type="button" data-action="cancel-images">キャンセルして手動入力</button>' : ""}
+    ${images.length ? '<button class="text-button" type="button" data-action="clear-images">画像をすべて外す</button>' : ""}</div>
+    <p class="muted small">キャンセルは画面での受け取りを止めます。開始済みのサーバー解析は続く場合があります。再送は同じ画像の結果を短時間だけ再利用します。画面を閉じると画像は消えます。</p>
+    ${!API_BASE_URL ? '<p class="notice">画像解析APIが未設定です。手動入力をご利用ください。</p>' : ""}
+  </section>`;
+}
+
+async function handleRecipeImages(event) {
+  captureDraft();
+  const files = [...event.target.files];
+  if (!files.length) return;
+  const session = getImageSession();
+  const pending = session.add(files);
+  render();
+  try { await pending; }
+  catch (error) { state.fetchStatus = error.message; showToast(error.message); }
+  render();
 }
 
 function renderCommonComparison() {
@@ -1786,6 +1831,14 @@ function renderSyncPanel() {
 }
 
 function bindEvents() {
+  document.querySelectorAll("#recipe-url, #recipe-title, #recipe-source, #recipe-caption, #recipe-note, #recipe-steps, #source-servings, .ingredient-name-input, .ingredient-amount-select, .ingredient-category-input").forEach(input => {
+    input.addEventListener("input", () => {
+      // Keep edits made during image decoding/network work before its completion renders.
+      if (imageSession?.busy || imageSession?.preparing) captureDraft();
+    });
+  });
+  document.querySelector("#recipe-images")?.addEventListener("change", handleRecipeImages);
+  document.querySelector("#recipe-camera")?.addEventListener("change", handleRecipeImages);
   document.querySelectorAll("[data-action]").forEach((element) => {
     element.addEventListener("click", handleAction);
   });
@@ -1846,6 +1899,58 @@ function bindEvents() {
 async function handleAction(event) {
   const { action } = event.currentTarget.dataset;
 
+  if (["image-up", "image-down", "image-remove", "clear-images", "cancel-images"].includes(action)) {
+    captureDraft();
+    const session = getImageSession();
+    const index = Number(event.currentTarget.dataset.index);
+    if (action === "image-up") session.move(index, -1);
+    if (action === "image-down") session.move(index, 1);
+    if (action === "image-remove") session.remove(index);
+    if (action === "clear-images") session.clear();
+    if (action === "cancel-images") { session.cancel(); state.draftExpanded = true; state.fetchStatus = "画像解析の受け取りを中止しました。画像を見ながら手動入力できます。"; }
+    saveState(); render(); return;
+  }
+  if (action === "analyze-images") {
+    captureDraft();
+    if (isCaptionImporting || imageSession?.busy) return;
+    const session = getImageSession();
+    if (session.busy || session.preparing) return;
+    const originalDraft = state.draft;
+    const operationVersion = session.version;
+    const originalUrl = state.draft.videoUrl;
+    const editingId = state.editingRecipeId;
+    const pending = session.analyze(API_BASE_URL);
+    state.fetchStatus = "画像を解析しています。送信後もキャンセルして手動入力できます。";
+    render();
+    try {
+      const result = await pending;
+      if (!result || state.view !== "register" || state.editingRecipeId !== editingId) return;
+      if (state.draft !== originalDraft) {
+        state.fetchStatus = "解析中に入力が変更されたため、結果の上書きを止めました。同じ画像で再取得できます。";
+        return;
+      }
+      captureDraft();
+      if (state.draft.videoUrl !== originalUrl) return;
+      state.draft = { ...state.draft, title: result.title || state.draft.title, catalog: null, sourceServings: result.sourceServings,
+        source: state.draft.videoUrl ? detectPlatform(state.draft.videoUrl).label : "画像から取り込み", requiresImageReview: true, imageReviewed: false, imageWarnings: result.warnings || [] };
+      state.originalIngredients = clone(result.ingredients);
+      state.extractedIngredients = clone(result.ingredients);
+      state.extractedSteps = [...result.steps];
+      state.draftExpanded = true;
+      state.fetchStatus = result.cacheHit ? "直前の画像解析結果を再利用しました。元画像と照合して保存してください。" : "画像から下書きを作りました。元画像と照合して保存してください。";
+      saveState();
+    } catch (error) {
+      if (state.view === "register" && state.editingRecipeId === editingId && state.draft.videoUrl === originalUrl && session.version === operationVersion) {
+        captureDraft();
+        state.fetchStatus = error.name === "AbortError" ? "受け取りを中止しました。同じ画像で再試行するか手動入力をご利用ください。" : error.message;
+        state.draftExpanded = true; saveState();
+      }
+    } finally { render(); }
+    return;
+  }
+  if (["go-view", "edit-recipe", "cancel-edit", "start-empty", "start-demo"].includes(action)) imageSession?.cancel();
+
+
   if (action === "start-demo") {
     state = clone(demoState);
     state.extractedIngredients = parseIngredients(state.draft.caption);
@@ -1891,7 +1996,7 @@ async function handleAction(event) {
   if (action === "fetch-caption") {
     captureDraft();
     state.draftExpanded = true;
-    if (isCaptionImporting) return;
+    if (isCaptionImporting || imageSession?.busy) return;
 
     const platform = detectPlatform(state.draft.videoUrl);
 
@@ -2124,6 +2229,10 @@ async function handleAction(event) {
 
   if (action === "save-recipe") {
     captureDraft();
+    if (state.draft.requiresImageReview && !state.draft.imageReviewed) {
+      showToast("元画像と材料・分量・手順を確認し、確認済みにチェックしてください。");
+      return;
+    }
     if (!state.draft.title) {
       showToast("レシピ名を入力してください。");
       render();
@@ -2158,6 +2267,7 @@ async function handleAction(event) {
       state.extractedSteps = [];
       state.fetchStatus = "";
       state.view = "collection";
+      imageSession?.clear();
       saveState();
       showToast("レシピを更新しました。");
       render();
@@ -2190,6 +2300,7 @@ async function handleAction(event) {
       state.extractedSteps = [];
       state.fetchStatus = "";
       state.view = "collection";
+      imageSession?.clear();
       saveState();
       showToast("レシピを保存しました。");
       render();
@@ -2427,6 +2538,7 @@ function captureDraft() {
     ...state.draft,
     catalog: currentUrl === state.draft.videoUrl ? state.draft.catalog : null,
     correctionReason: document.querySelector("#correction-reason")?.value || "",
+    imageReviewed: document.querySelector("#image-reviewed")?.checked || false,
     sourceServings: sourceInput ? (Number.isInteger(count) && count > 0 && count <= 100 ? count : null) : state.draft.sourceServings,
     title: document.querySelector("#recipe-title")?.value.trim() || "",
     videoUrl: currentUrl,
@@ -2891,6 +3003,9 @@ function applyImportedRecipe(result) {
   const platform = detectPlatform(state.draft.videoUrl);
   state.draft = {
     ...state.draft,
+    requiresImageReview: false,
+    imageReviewed: false,
+    imageWarnings: [],
     sourceServings: result.sourceServings ?? null,
     catalog: result.catalog || null,
     title: state.draft.title || result.title || "",

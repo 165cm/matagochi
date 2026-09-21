@@ -60,3 +60,27 @@ test('invalid imported portion metadata never divides by zero', () => {
   const run = app();
   assert.equal(run(`scaleAmountForServings('300g', 1, 0)`), '300g（元の人数未確認）');
 });
+
+test('image drafts cannot be saved without explicit review; accepted text has no shared catalog', async () => {
+  const run = app();
+  run(`state=clone(demoState); state.recipes=[]; state.draft={...emptyDraft,requiresImageReview:true,catalog:null}; state.extractedIngredients=[ingredient('米','不明','主食')]; state.extractedSteps=['炊く'];
+    const fields={'#recipe-title':{value:'画像の丼'},'#recipe-url':{value:''},'#image-reviewed':{checked:false}};
+    document.querySelector=key=>fields[key]||null; showToast=()=>{};saveState=()=>{};render=()=>{};`);
+  await run(`handleAction({currentTarget:{dataset:{action:'save-recipe'}}})`);
+  assert.equal(run('state.recipes.length'),0);
+  run(`fields['#image-reviewed'].checked=true;`);
+  await run(`handleAction({currentTarget:{dataset:{action:'save-recipe'}}})`);
+  assert.equal(run('state.recipes.length'),1);
+  assert.equal(run('state.recipes[0].catalog'),null);
+  assert.equal(run('state.recipes[0].ingredients[0].amount'),'不明');
+});
+
+test('image timeout restores manual entry status rather than leaving analysis progress', async () => {
+  const run=app();
+  run(`state=clone(demoState);state.view='register';state.draft={...emptyDraft};state.editingRecipeId=null;
+    imageSession={version:0,analyze:async()=>{throw Object.assign(new Error('timeout'),{name:'AbortError'});}};
+    saveState=()=>{};render=()=>{};`);
+  await run(`handleAction({currentTarget:{dataset:{action:'analyze-images'}}})`);
+  assert.match(run('state.fetchStatus'),/手動入力/);
+  assert.equal(run('state.draftExpanded'),true);
+});

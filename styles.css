@@ -1553,3 +1553,10 @@ body.is-onboarding .icon-button {
 .serving-controls { min-width: 0; display: grid; gap: 8px; }
 .serving-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .serving-presets button { white-space: nowrap; min-height: 44px; }
+
+.image-import-panel input[type="file"] { display:block; width:100%; margin:8px 0 16px; }
+.image-previews { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+.image-previews figure { margin:0; min-width:0; }
+.image-previews img { width:100%; max-height:280px; object-fit:contain; background:#f4f0e8; border-radius:8px; }
+.image-previews .actions { flex-wrap:wrap; }
+.image-previews button { min-height:44px; }

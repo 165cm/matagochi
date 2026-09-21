@@ -60,6 +60,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     }
   }
   return {
+    async reserveAnalysisBudget() { required(); await reserveBudget(); },
     async import(rawUrl) {
       const id = extractYouTubeVideoId(rawUrl);
       if (!inFlight.has(id)) inFlight.set(id, run(id).finally(() => inFlight.delete(id)));

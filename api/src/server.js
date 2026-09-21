@@ -1,7 +1,8 @@
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
-import { analyzeRecipeDescription } from "./analyzer.js";
+import { createImageImporter } from "./imageImport.js";
+import { analyzeRecipeDescription, analyzeRecipeImages } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { toErrorResponse } from "./errors.js";
 import { importYouTubeRecipe, requireAnalyzer } from "./importRecipe.js";
@@ -12,12 +13,14 @@ import { fetchTikTokOEmbed } from "./tiktok.js";
 export function createApp(env = process.env, deps = {}) {
   const app = express();
   const syncStore = "syncStore" in deps ? deps.syncStore : createSyncStore(env);
-  const catalog = createRecipeCatalog(deps.recipeStore ?? createRecipeStore(env),
+  const recipeStore = deps.recipeStore ?? createRecipeStore(env);
+  const catalog = createRecipeCatalog(recipeStore,
     deps.importRecipe || ((url) => importYouTubeRecipe(url, {
       analyzeRecipeDescription: requireAnalyzer((snippet) => analyzeRecipeDescription(snippet, env))
     })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
       enabled: env.AI_IMPORT_ENABLED !== "false" });
+  const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
   const requestWindows = new Map();
@@ -37,8 +40,9 @@ export function createApp(env = process.env, deps = {}) {
   const defaultJson = express.json({ limit: "64kb" });
   // 同期データは料理写真(data URL)を含むため、同期ルートだけ上限を広げる
   const syncJson = express.json({ limit: "24mb" });
+  const imageJson = express.json({ limit: "7mb" });
   app.use((req, res, next) => {
-    const parser = req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
+    const parser = req.path === "/api/import/images" ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
     parser(req, res, next);
   });
 
@@ -54,6 +58,12 @@ export function createApp(env = process.env, deps = {}) {
       const { status, body } = toErrorResponse(error);
       res.status(status).json(body);
     }
+  });
+
+  app.post("/api/import/images", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    try { res.json(await importImages(req.body)); }
+    catch (error) { const { status, body } = toErrorResponse(error); res.status(status).json(body); }
   });
 
   app.get("/api/recipes/:id", async (req, res) => {

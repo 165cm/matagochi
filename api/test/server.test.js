@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import sharp from 'sharp';
+import { randomBytes } from 'node:crypto';
 import { createMemorySyncStore } from '../src/syncStore.js';
 process.env.NODE_ENV = 'test';
 const { createApp } = await import('../src/server.js');
@@ -9,6 +11,7 @@ async function fixture(t, env = {}) {
   let calls = 0;
   const app = createApp({ RECIPE_ADMIN_TOKEN: 'test-only-admin', ...env }, {
     recipeStore: createMemorySyncStore(), syncStore: null,
+    analyzeImages: async () => ({title:"画像の丼",ingredients:[{name:"米",amount:null}],steps:[]}),
     importRecipe: async () => { calls++; return { title: '丼', ingredients: [{ name:'米', amount:'2合' }], steps:['炊く'], sourceServings:2 }; }
   });
   const server = app.listen(0, '127.0.0.1');
@@ -41,4 +44,16 @@ test('HTTP oversize errors return JSON and rate limiting includes allowed CORS',
   assert.equal(limited.status,429);
   assert.equal(limited.headers.get('Access-Control-Allow-Origin'),'https://example.com');
   assert.equal(limited.headers.get('Retry-After'),'60');
+});
+
+
+test('HTTP image import accepts bounded images above normal JSON limit and returns private review draft', async t => {
+  const f = await fixture(t);
+  const bytes = await sharp(randomBytes(200*200*3),{raw:{width:200,height:200,channels:3}}).png().toBuffer();
+  assert.ok(bytes.length > 65536);
+  const body={clientKey:'a'.repeat(64),images:[{mimeType:'image/png',data:bytes.toString('base64')}]};
+  const response=await f.request('/api/import/images',body);assert.equal(response.status,200);
+  const result=await response.json();assert.equal(result.requiresReview,true);assert.equal(result.catalog,null);assert.equal(result.ingredients[0].amount,'不明');
+  assert.equal((await f.request('/api/import/images',body).then(r=>r.json())).cacheHit,true);
+  assert.equal((await f.request('/api/import/images',{...body,images:[]})).status,400);
 });
