@@ -36,8 +36,15 @@ test("reports an empty YouTube description as an import error", async () => {
   await assert.rejects(
     fetchYouTubeSnippet("abcdefghijk", { YOUTUBE_API_KEY: "test" }, async () => ({
       ok: true,
-      json: async () => ({ items: [{ snippet: { title: "no description", description: "" } }] })
+      json: async () => ({ items: [{ status: { privacyStatus: "public" }, snippet: { title: "no description", description: "" } }] })
     })),
     /説明文/
   );
+});
+
+
+test("rejects unlisted videos before their contents can enter shared catalog", async () => {
+  await assert.rejects(fetchYouTubeSnippet("abcdefghijk", {YOUTUBE_API_KEY:"test"}, async () => ({
+    ok:true, json:async () => ({items:[{status:{privacyStatus:"unlisted"},snippet:{title:"private",description:"private recipe"}}]})
+  })), {code:"non_public_video"});
 });

@@ -23,6 +23,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}) {
 export function normalizeImportResult(result) {
   return {
     title: cleanText(result.title),
+    sourceServings: Number.isInteger(result.sourceServings) && result.sourceServings > 0 && result.sourceServings <= 100 ? result.sourceServings : null,
     source: cleanText(result.source || "YouTube"),
     caption: cleanText(result.caption),
     ingredients: normalizeIngredients(result.ingredients),

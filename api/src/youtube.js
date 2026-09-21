@@ -14,6 +14,9 @@ export function extractYouTubeVideoId(rawUrl) {
     throw new ApiError(400, "invalid_url", "YouTube URLとして読み取れませんでした。");
   }
 
+  if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new ApiError(400, "invalid_url", "HTTPまたはHTTPSのYouTube URLを入力してください。");
+  }
   const host = parsed.hostname.replace(/^www\./, "").replace(/^m\./, "");
   let videoId = "";
 
@@ -49,11 +52,11 @@ export async function fetchYouTubeSnippet(videoId, env = process.env, fetchImpl 
   }
 
   const params = new URLSearchParams({
-    part: "snippet",
+    part: "snippet,status",
     id: videoId,
     key: apiKey
   });
-  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/videos?${params.toString()}`);
+  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/videos?${params.toString()}`, { signal: AbortSignal.timeout(15_000) });
 
   if (!response.ok) {
     throw new ApiError(502, "youtube_api_error", "YouTubeの動画情報を取得できませんでした。");
@@ -65,6 +68,9 @@ export async function fetchYouTubeSnippet(videoId, env = process.env, fetchImpl 
     throw new ApiError(404, "video_not_found", "YouTube動画が見つかりませんでした。");
   }
 
+  if (item.status?.privacyStatus !== "public") {
+    throw new ApiError(422, "non_public_video", "共通レシピへの取り込みは公開動画のみ対応しています。手動入力をご利用ください。");
+  }
   const snippet = item.snippet;
   if (!String(snippet.description || "").trim()) {
     throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");

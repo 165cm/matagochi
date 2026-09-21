@@ -1549,3 +1549,7 @@ body.is-onboarding .icon-button {
   border-color: var(--egg);
   background: #fff9e6;
 }
+
+.serving-controls { min-width: 0; display: grid; gap: 8px; }
+.serving-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.serving-presets button { white-space: nowrap; min-height: 44px; }

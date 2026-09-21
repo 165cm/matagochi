@@ -30,7 +30,7 @@ export function createMemorySyncStore() {
 
 // Cloud Runのデフォルトサービスアカウントでオブジェクト rooms/<roomId>.json を読み書きする。
 // ifGenerationMatch で同時書き込みを弾き、アプリ側のrevision照合とあわせて後勝ち消失を防ぐ。
-export function createGcsSyncStore(bucket, { fetch = globalThis.fetch } = {}) {
+export function createGcsSyncStore(bucket, { fetch = globalThis.fetch, prefix = "rooms" } = {}) {
   let cachedToken = null;
 
   async function accessToken() {
@@ -48,7 +48,7 @@ export function createGcsSyncStore(bucket, { fetch = globalThis.fetch } = {}) {
   }
 
   function objectName(roomId) {
-    return encodeURIComponent(`rooms/${roomId}.json`);
+    return encodeURIComponent(`${prefix}/${roomId}.json`);
   }
 
   return {
@@ -70,7 +70,7 @@ export function createGcsSyncStore(bucket, { fetch = globalThis.fetch } = {}) {
     },
     async put(roomId, envelope, { ifGeneration } = {}) {
       const token = await accessToken();
-      const params = new URLSearchParams({ uploadType: "media", name: `rooms/${roomId}.json` });
+      const params = new URLSearchParams({ uploadType: "media", name: `${prefix}/${roomId}.json` });
       if (ifGeneration !== undefined) params.set("ifGenerationMatch", String(ifGeneration));
       const response = await fetch(
         `https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?${params}`,

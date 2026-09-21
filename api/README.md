@@ -60,3 +60,19 @@ gcloud storage buckets add-iam-policy-binding gs://<bucket-name> \
 ```
 
 作成後、Cloud Runサービスに `SYNC_BUCKET=<bucket-name>` を設定します。データは `rooms/<roomId>.json` に1ルーム1オブジェクトで保存されます。長期間使われないルームを掃除したい場合は、バケットのライフサイクルルールで対応できます。
+
+## 共通レシピDB
+
+`RECIPE_BUCKET`（省略時は`SYNC_BUCKET`）を設定すると、既存GCSアダプターを使用して `recipe-catalog/` に共通レシピ・分析予約・修正提案・版履歴・使用枠を保存します。非公開バケットにCloud Runサービスアカウントの読み書き権限が必要です。ローカルのみ `RECIPE_STORE=memory` を利用できます。保存先未設定時は分析を503で停止します。
+
+`POST /api/import/youtube` は動画IDで再利用し、応答に `catalog`（ID・版等）、`cacheHit`、`sourceServings`（不明はnull）を追加します。同一インスタンスの同時要求は結果を共有、別インスタンスが分析中なら409です。失敗は1分後に再試行可能です。
+
+- `GET /api/recipes/:id`: 比較用の現在の共通版。分析は実行しません。
+- `POST /api/recipes/corrections`: `{ catalogId, baseRevision, reason, recipe: { title, ingredients, steps, sourceServings } }` を送り、201で `{ proposalId, status: "pending" }` を返します。共通版は変更しません。
+- `POST /api/admin/corrections/:id/review`: `Authorization: Bearer <RECIPE_ADMIN_TOKEN>` と `{ decision: "approve" | "reject" }`。管理トークン未設定・不一致は403。審査は運営が出典を照合した後に実行します。
+
+`AI_DAILY_LIMIT=100`、`AI_MONTHLY_LIMIT=1000` が既定値。UTC基準、失敗分を含めて全インスタンス共通で予約します。`AI_IMPORT_ENABLED=false` で新規分析のみ停止します。単なる回数上限であり金額上限ではないため、公開前に予算監視も設定してください。データ・入力本文をアプリのログに出力しません。
+
+API全体にプロセス内IP毎分60回の補助制限を設けています。プロキシのIP転送を無条件に信頼せず、実際のデプロイ経路でIP制限を検証してください。JSON上限は通常64KB・同期24MBで、超過は413 JSON応答です。
+
+復旧・審査・取り消しの手順は `../docs/RECIPE_DB_POLICY.md` を参照してください。pending/reviewingを時間だけで自動解除しません。GCSのusageと履歴は利用期間中にライフサイクル削除しないでください。
