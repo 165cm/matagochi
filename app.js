@@ -730,6 +730,7 @@ function applySharedUrlFromLocation() {
 
 function setView(view) {
   imageSession?.cancel();
+  if (imageFeedback?.tone === "pending") imageFeedback = null;
   if (state.view === "register") captureDraft();
   state.view = view;
   saveState();
@@ -1980,7 +1981,7 @@ async function handleAction(event) {
     } finally { render(); document.querySelector(".image-feedback")?.scrollIntoView?.({block:"nearest"}); }
     return;
   }
-  if (["go-view", "edit-recipe", "cancel-edit", "start-empty", "start-demo"].includes(action)) imageSession?.cancel();
+  if (["go-view", "edit-recipe", "cancel-edit", "start-empty", "start-demo"].includes(action)) { imageSession?.cancel(); imageFeedback = null; }
 
 
   if (action === "start-demo") {
@@ -2309,6 +2310,7 @@ async function handleAction(event) {
       state.fetchStatus = "";
       state.view = "collection";
       imageSession?.clear();
+      imageFeedback = null;
       saveState();
       showToast("レシピを更新しました。");
       render();
@@ -2342,6 +2344,7 @@ async function handleAction(event) {
       state.fetchStatus = "";
       state.view = "collection";
       imageSession?.clear();
+      imageFeedback = null;
       saveState();
       showToast("レシピを保存しました。");
       render();
