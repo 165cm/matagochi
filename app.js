@@ -30,7 +30,14 @@ const mealTypes = [
 ];
 
 const demoState = {
-  view: "register",
+  view: "today",
+  foodProfile: null,
+  onboardingDraft: null,
+  householdProfile: null,
+  mealSlots: {},
+  shoppingMarks: {},
+  manualShopping: {},
+  planLength: 3,
   onboarded: false,
   selectedRecipeId: "r2",
   editingRecipeId: null,
@@ -223,27 +230,15 @@ function idbClear() {
 }
 
 async function loadStateAsync() {
+  let indexed = null, pending = null;
+  try { pending = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch {}
   if (idbAvailable) {
-    try {
-      const stored = await idbRead();
-      if (stored) return normalizeState(JSON.parse(stored));
-    } catch {
-      idbAvailable = false;
-    }
+    try { const stored = await idbRead(); if (stored) indexed = JSON.parse(stored); }
+    catch { idbAvailable = false; }
   }
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return normalizeState(clone(demoState));
-  try {
-    const migrated = normalizeState(JSON.parse(saved));
-    if (idbAvailable) {
-      // localStorageの5MB上限とSafariの7日削除を避けるため、IndexedDBへ引っ越す
-      await idbWrite(JSON.stringify(migrated));
-      localStorage.removeItem(STORAGE_KEY);
-    }
-    return migrated;
-  } catch {
-    return normalizeState(clone(demoState));
-  }
+  const saved = pending && (!indexed || (pending.savedAtMs || 0) >= (indexed.savedAtMs || 0)) ? pending : indexed;
+  if (!saved) return freshState();
+  try { return normalizeState(saved); } catch { return freshState(); }
 }
 
 function requestPersistentStorage() {
@@ -255,11 +250,15 @@ function registerServiceWorker() {
   navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
 
+function freshState() {
+  return normalizeState({...clone(demoState), recipes: [], evaluations: [], draft: clone(emptyDraft), selectedRecipeId: null});
+}
+
 function normalizeState(saved) {
   const base = clone(demoState);
   const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
   const savedView = saved.view === "ratings" ? "repeat" : saved.view;
-  const view = ["register", "collection", "plan", "repeat", "settings"].includes(savedView) ? savedView : base.view;
+  const view = ["today", "register", "collection", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings"].includes(savedView) ? savedView : base.view;
   return {
     ...base,
     ...saved,
@@ -271,6 +270,13 @@ function normalizeState(saved) {
     servingCount: normalizeServingCount(saved.servingCount ?? family.length),
     draft: { ...base.draft, ...(saved.draft || {}) },
     draftThumbnailUrl: typeof saved.draftThumbnailUrl === "string" ? saved.draftThumbnailUrl : "",
+    foodProfile: saved.foodProfile ? Lifestyle.profile(saved.foodProfile) : null,
+    onboardingDraft: saved.onboardingDraft ? Lifestyle.profile(saved.onboardingDraft) : null,
+    householdProfile: saved.householdProfile ? {equipment:Lifestyle.profile(saved.householdProfile).equipment,pantry:Lifestyle.profile(saved.householdProfile).pantry,updatedAt:normalizeTimestamp(saved.householdProfile.updatedAt)} : null,
+    mealSlots: Lifestyle.normalizeSlots(saved.mealSlots),
+    shoppingMarks: normalizeShoppingMarks(saved.shoppingMarks),
+    manualShopping: normalizeManualShopping(saved.manualShopping),
+    planLength: Number(saved.planLength) === 7 ? 7 : 3,
     planOverrides: normalizePlanOverrides(saved.planOverrides),
     shopping: normalizeShopping(saved.shopping),
     lastBackupAt: normalizeDateInput(saved.lastBackupAt),
@@ -293,6 +299,13 @@ function normalizePlanOverrides(overrides) {
       normalizeDateInput(date) && typeof recipeId === "string" && date >= today()
     ))
   );
+}
+
+function normalizeShoppingMarks(raw) {
+  return Object.fromEntries(Object.entries(raw || {}).filter(([,v])=>v && ['buy','have','purchased'].includes(v.status)).map(([k,v])=>[k,{status:v.status,signature:String(v.signature||''),updatedAt:normalizeTimestamp(v.updatedAt)}]));
+}
+function normalizeManualShopping(raw) {
+  return Object.fromEntries(Object.entries(raw || {}).filter(([k,v])=>k.startsWith('manual-') && v && typeof v.name==='string').map(([k,v])=>[k,{name:v.name.slice(0,100),amount:String(v.amount||'').slice(0,80),deleted:!!v.deleted,updatedAt:normalizeTimestamp(v.updatedAt)}]));
 }
 
 function normalizeShopping(shopping) {
@@ -353,7 +366,7 @@ function normalizeEvaluations(evaluations, family) {
   return evaluations.map((evaluation) => ({
     ...evaluation,
     mealType: normalizeRepeatMealType(evaluation.mealType) || "",
-    familyRepeatCycles: normalizeFamilyRepeatCycles(
+    familyRepeatCycles: evaluation.preferencePending ? {} : evaluation.personalPreference ? Object.fromEntries(Object.entries(evaluation.familyRepeatCycles || {}).filter(([name,cycle])=>family.includes(name) && normalizeRepeatCycle(cycle))) : normalizeFamilyRepeatCycles(
       evaluation.familyRepeatCycles,
       evaluation.familyRatings,
       family,
@@ -434,20 +447,19 @@ function repeatCycleFromTiming(value) {
   return "";
 }
 
+let stateWriteQueue = Promise.resolve();
 function saveState({ scheduleSync = true } = {}) {
+  state.savedAtMs = Math.max(Date.now(), (state.savedAtMs || 0) + 1);
   const serialized = JSON.stringify(state);
+  // A synchronous recovery copy protects the last keystroke on reload before IDB commits.
+  let recoverySaved = false;
+  try { localStorage.setItem(STORAGE_KEY, serialized); recoverySaved = true; } catch {}
   if (scheduleSync) scheduleAutoSync();
   if (idbAvailable) {
-    idbWrite(serialized).catch(() => {
-      showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
-    });
-    return;
-  }
-  try {
-    localStorage.setItem(STORAGE_KEY, serialized);
-  } catch {
-    showToast("保存容量が上限に達しました。写真を減らすか、書き出して整理してください。");
-  }
+    stateWriteQueue = stateWriteQueue.catch(()=>{}).then(()=>idbWrite(serialized)).then(()=> {
+      if (localStorage.getItem(STORAGE_KEY) === serialized) localStorage.removeItem(STORAGE_KEY);
+    }).catch(()=>showToast("保存容量が上限に達しました。書き出して整理してください。"));
+  } else if (!recoverySaved) showToast("保存できませんでした。書き出して整理してください。");
 }
 
 function nowIso() {
@@ -486,7 +498,11 @@ function buildSyncPayload() {
     recipes: state.recipes,
     evaluations: state.evaluations,
     tombstones: state.tombstones,
-    planOverrides: state.planOverrides
+    planOverrides: state.planOverrides,
+    householdProfile: state.householdProfile,
+    mealSlots: state.mealSlots,
+    shoppingMarks: state.shoppingMarks,
+    manualShopping: state.manualShopping
   };
 }
 
@@ -513,7 +529,11 @@ function mergeSyncPayloads(local, remote) {
     recipes,
     evaluations,
     tombstones,
-    planOverrides: { ...(remote.planOverrides || {}), ...(local.planOverrides || {}) }
+    planOverrides: { ...(remote.planOverrides || {}), ...(local.planOverrides || {}) },
+    householdProfile: Object.values(Lifestyle.mergeMap({household:local.householdProfile || {updatedAt:''}}, {household:remote.householdProfile || {updatedAt:''}}))[0],
+    mealSlots: Lifestyle.mergeMap(local.mealSlots, remote.mealSlots),
+    shoppingMarks: Lifestyle.mergeMap(local.shoppingMarks, remote.shoppingMarks),
+    manualShopping: Lifestyle.mergeMap(local.manualShopping, remote.manualShopping)
   };
 }
 
@@ -554,6 +574,11 @@ function applySyncPayload(payload) {
   state.evaluations = normalizeEvaluations(Array.isArray(payload.evaluations) ? payload.evaluations : [], family);
   state.tombstones = normalizeTombstones(payload.tombstones);
   state.planOverrides = normalizePlanOverrides(payload.planOverrides);
+  state.mealSlots = Lifestyle.normalizeSlots(payload.mealSlots || state.mealSlots);
+  state.shoppingMarks = normalizeShoppingMarks(payload.shoppingMarks || state.shoppingMarks);
+  state.manualShopping = normalizeManualShopping(payload.manualShopping || state.manualShopping);
+  if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
+  // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
   if (state.selectedRecipeId && !recipeById(state.selectedRecipeId)) {
     state.selectedRecipeId = state.recipes[0]?.id || null;
@@ -732,51 +757,41 @@ function setView(view) {
   imageSession?.cancel();
   if (imageFeedback?.tone === "pending") imageFeedback = null;
   if (state.view === "register") captureDraft();
+  profileEditing = false;
   state.view = view;
   saveState();
   render();
+  globalThis.scrollTo?.({top:0,behavior:"instant"});
 }
 
 function render() {
-  if (!state.onboarded) {
+  if (!state.onboarded || profileEditing) {
     renderOnboarding();
     return;
   }
   document.body.classList.remove("is-onboarding");
 
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.classList.toggle("is-active", tab.dataset.view === state.view);
+    tab.setAttribute("aria-current", tab.dataset.view === ({register:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view) ? "page" : "false");
+    tab.classList.toggle("is-active", tab.dataset.view === ({register:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view));
   });
 
   const views = {
+    today: renderToday,
+    shopping: renderDailyShopping,
+    cooking: renderCooking,
+    recordDetails: renderRepeatCycles,
     register: renderRecipeEntry,
     collection: renderCollection,
-    plan: renderMealPlan,
-    repeat: renderRepeatCycles,
+    plan: renderDailyPlan,
+    repeat: renderReflection,
     settings: renderSettings
   };
   document.querySelector("#app").innerHTML = views[state.view]();
   bindEvents();
 }
 
-function renderOnboarding() {
-  document.body.classList.add("is-onboarding");
-  document.querySelector("#app").innerHTML = `
-    <section class="hero-card onboarding">
-      <p class="eyebrow">ようこそ</p>
-      <h2>リピごちをはじめましょう</h2>
-      <p class="muted">1人・2人暮らしの、今夜の一品を決めるごはんメモです。<br>まずは始め方を選んでください。あとからいつでも切り替えられます。</p>
-      <div class="onboarding-actions">
-        <button class="primary-button full-button" type="button" data-action="start-empty">空ではじめる</button>
-        <button class="secondary-button full-button" type="button" data-action="start-demo">サンプルを見てみる</button>
-      </div>
-      <p class="muted small">サンプルには操作を試すためのレシピとリピ記録が入っています。「設定」からいつでもリセットできます。</p>
-    </section>
-  `;
-  document.querySelectorAll("[data-action]").forEach((element) => {
-    element.addEventListener("click", handleAction);
-  });
-}
+function renderOnboarding() { renderProfileWizard(); }
 
 let entryMethod = "url";
 let imageFeedback = null;
@@ -896,6 +911,7 @@ function renderRecipeEntry() {
         <button class="secondary-button" type="button" data-action="compare-common">共通レシピの最新版と比較</button>
       </div></details>` : ""}
       ${renderCommonComparison()}
+      ${renderPlanningFields()}
       <p class="muted small">保存後も編集できます。同期中は共有相手にも反映されます。</p>
       <button class="primary-button full-button save-recipe-button" type="button" data-action="save-recipe">${state.editingRecipeId ? "更新する" : "このレシピを保存する"}</button>
     </section>
@@ -1047,7 +1063,7 @@ function renderCollection() {
         <div class="hero-stat"><strong>${unrecordedCount()}</strong><span>未リピ記録</span></div>
         <div class="hero-stat"><strong>${countIngredientNames()}</strong><span>材料メモ</span></div>
       </div>
-      <button class="secondary-button full-button" type="button" data-action="go-view" data-view="register">新規登録へ</button>
+      <button class="secondary-button full-button" type="button" data-action="go-view" data-view="register">レシピを追加する</button>
     </section>
 
     ${renderBackupReminder()}
@@ -1261,33 +1277,7 @@ function getShoppingChecks() {
   return state.shopping;
 }
 
-function buildShoppingList() {
-  const recipes = [...new Map(
-    buildWeeklyPlan()
-      .filter((day) => day.candidate)
-      .map((day) => [day.candidate.recipe.id, day.candidate.recipe])
-  ).values()];
-  const servingCount = getServingCount();
-  const grouped = new Map();
-  recipes.forEach((recipe) => {
-    recipe.ingredients.forEach((item) => {
-      if (!grouped.has(item.name)) {
-        grouped.set(item.name, { name: item.name, category: item.category || "その他", amounts: [], recipes: [] });
-      }
-      const entry = grouped.get(item.name);
-      entry.amounts.push(scaleAmountForServings(item.amount, servingCount, recipe.sourceServings));
-      entry.recipes.push(recipe.title);
-    });
-  });
-  const categoryOrder = ["野菜", "肉", "魚", "卵・乳製品", "大豆・加工品", "主食", "缶詰", "調味料", "その他"];
-  return [...grouped.values()]
-    .map((entry) => ({ ...entry, amount: combineAmounts(entry.amounts) }))
-    .sort((a, b) => {
-      const orderA = categoryOrder.indexOf(a.category) === -1 ? categoryOrder.length : categoryOrder.indexOf(a.category);
-      const orderB = categoryOrder.indexOf(b.category) === -1 ? categoryOrder.length : categoryOrder.indexOf(b.category);
-      return orderA - orderB || a.name.localeCompare(b.name, "ja");
-    });
-}
+function buildShoppingList() { return dailyShopping(); }
 
 function combineAmounts(amounts) {
   const parsedList = amounts.map((amount) => parseAmountParts(amount));
@@ -1349,19 +1339,8 @@ function renderShoppingList() {
 }
 
 function shoppingListText() {
-  const checks = getShoppingChecks();
-  const items = buildShoppingList().filter((item) => !checks.checked[item.name]);
-  if (!items.length) return "";
-  const lines = [`今週の買い物リスト（リピごち ${formatDate(today())}）`];
-  let lastCategory = "";
-  items.forEach((item) => {
-    if (item.category !== lastCategory) {
-      lines.push(`■${item.category}`);
-      lastCategory = item.category;
-    }
-    lines.push(`・${item.name} ${item.amount}`);
-  });
-  return lines.join("\n");
+  const items = dailyShopping().filter(item=>item.status==='buy');
+  return items.length ? [`買い物リスト（リピごち ${formatDate(today())}）`,...items.map(item=>`・${item.name} ${item.amount}`)].join('\n') : '';
 }
 
 async function copyTextToClipboard(text) {
@@ -1467,7 +1446,7 @@ function renderRepeatCycles() {
         </div>
         <div class="repeat-date-row">
           <label for="repeat-cooked-at">食べた日</label>
-          <input id="repeat-cooked-at" class="input" type="date" value="${escapeAttr(state.repeatDraft.cookedAt || today())}">
+          <input id="repeat-cooked-at" class="input" type="date" ${editingEvaluationId.startsWith("meal-") ? "readonly" : ""} value="${escapeAttr(state.repeatDraft.cookedAt || today())}">
           <span class="muted small">${escapeHtml(firstDateText(history))}</span>
         </div>
         ${renderRepeatMealPicker(state.repeatDraft.mealType || selected.mealType)}
@@ -1739,6 +1718,7 @@ function renderEvaluationCard(evaluation) {
 
 function renderSettings() {
   return `
+    <section class="panel"><h2>食生活の設定</h2><p>好み・人数・器具・常備品をまとめて調整できます。</p><button class="primary-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "食生活を設定する"}</button><p class="muted small">同期するのは器具・常備品・確定した献立・買い物です。個人の食材制限と好みは共有しません。</p></section>
     <section class="hero-card">
       <div class="section-head">
         <div>
@@ -1859,6 +1839,12 @@ function renderSyncPanel() {
 }
 
 function bindEvents() {
+  bindDailyEvents();
+  document.querySelectorAll('.ingredient-name-input, #recipe-steps').forEach(input=>input.addEventListener('input',()=> {
+    const checkbox=document.querySelector('#planning-verified'); if(checkbox)checkbox.checked=false;
+    if(state.draft.planning)state.draft.planning.ingredientsVerified=false;
+  }));
+
   document.querySelectorAll("#recipe-url, #recipe-title, #recipe-source, #recipe-caption, #recipe-note, #recipe-steps, #source-servings, .ingredient-name-input, .ingredient-amount-select, .ingredient-category-input").forEach(input => {
     input.addEventListener("input", () => {
       // Keep edits made during image decoding/network work before its completion renders.
@@ -1926,6 +1912,7 @@ function bindEvents() {
 
 async function handleAction(event) {
   const { action } = event.currentTarget.dataset;
+  if (handleDailyAction(action, event.currentTarget.dataset)) return;
 
   if (["image-up", "image-down", "image-remove", "clear-images", "cancel-images"].includes(action)) {
     captureDraft();
@@ -2141,9 +2128,7 @@ async function handleAction(event) {
 
   if (action === "go-view") {
     if (state.view === "register") captureDraft();
-    state.view = event.currentTarget.dataset.view || "collection";
-    saveState();
-    render();
+    setView(event.currentTarget.dataset.view || "collection");
     return;
   }
 
@@ -2297,6 +2282,7 @@ async function handleAction(event) {
       existing.steps = steps;
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.note = state.draft.note;
+      existing.planning = state.draft.planning || undefined;
       existing.thumbnailUrl = state.draftThumbnailUrl || existing.thumbnailUrl || "";
       existing.updatedAt = nowIso();
       state.selectedRecipeId = existing.id;
@@ -2331,6 +2317,7 @@ async function handleAction(event) {
         savedAt: today(),
         updatedAt: nowIso(),
         note: state.draft.note,
+        planning: state.draft.planning || undefined,
         thumbnailUrl: state.draftThumbnailUrl || ""
       };
       state.recipes.unshift(recipe);
@@ -2364,7 +2351,8 @@ async function handleAction(event) {
         source: recipe.source,
         mealType: recipe.mealType,
         caption: recipe.caption,
-        note: recipe.note
+        note: recipe.note,
+        planning: recipe.planning ? clone(recipe.planning) : undefined
       };
       state.originalIngredients = clone(recipe.originalIngredients || recipe.ingredients);
       state.extractedIngredients = clone(recipe.ingredients);
@@ -2419,6 +2407,8 @@ async function handleAction(event) {
     const id = event.currentTarget.dataset.eval;
     if (window.confirm("このリピ記録を削除します。よろしいですか？")) {
       state.tombstones.evaluations[id] = nowIso();
+      const date = id.startsWith('meal-') ? id.slice(5) : '';
+      if (state.mealSlots[date]?.status === 'cooked') state.mealSlots[date] = {...state.mealSlots[date],status:'confirmed',updatedAt:nowIso()};
       state.evaluations = state.evaluations.filter((item) => item.id !== id);
       saveState();
       showToast("リピ記録を削除しました。");
@@ -2514,7 +2504,7 @@ async function handleAction(event) {
     state.selectedRecipeId = event.currentTarget.dataset.recipe;
     state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || state.repeatDraft.mealType || "dinner";
     applyRepeatDraftDefaults(state.selectedRecipeId);
-    state.view = "repeat";
+    state.view = "recordDetails";
     saveState();
     render();
   }
@@ -2554,7 +2544,10 @@ async function handleAction(event) {
       photoLabel: "食卓写真",
       updatedAt: nowIso()
     };
-    state.evaluations.unshift(evaluation);
+    const dailyEntry = state.evaluations.find(e=>e.id===editingEvaluationId) || state.evaluations.find(e=>e.id===`meal-${evaluation.cookedAt}` && e.recipeId===evaluation.recipeId);
+    if (dailyEntry) Object.assign(dailyEntry, evaluation, {id:dailyEntry.id, preferencePending:false, personalPreference:false});
+    else state.evaluations.unshift(evaluation);
+    editingEvaluationId = "";
     state.repeatDraft.photo = "";
     state.repeatDraft.cookedAt = today();
     state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || "dinner";
@@ -2571,6 +2564,7 @@ async function handleAction(event) {
 }
 
 function captureDraft() {
+  capturePlanningFields();
   const currentUrl = document.querySelector("#recipe-url")?.value.trim() || "";
   const platform = detectPlatform(currentUrl);
   captureIngredientEdits();
@@ -2750,9 +2744,11 @@ function resetEverything() {
   lastSyncedFingerprint = "";
   syncRuntimeStatus = "";
   localStorage.removeItem(STORAGE_KEY);
-  idbClear().then(() => {
-    state = normalizeState(clone(demoState));
+  stateWriteQueue.catch(()=>{}).then(()=>idbClear()).then(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    state = freshState();
     state.onboarded = false;
+    profileEditing = false;
     showToast("データをリセットしました。");
     render();
   });
@@ -2782,6 +2778,9 @@ function resetAllUserData() {
   state.extractedIngredients = [];
   state.extractedSteps = [];
   state.draftThumbnailUrl = "";
+  Object.keys(state.mealSlots || {}).forEach(date=>state.mealSlots[date]={date,status:'removed',updatedAt:deletedAt});
+  Object.keys(state.manualShopping || {}).forEach(id=>state.manualShopping[id]={...state.manualShopping[id],deleted:true,updatedAt:deletedAt});
+  state.shoppingMarks = {};
   state.planOverrides = {};
   state.shopping = { week: "", checked: {} };
   state.fetchStatus = "";
@@ -3158,7 +3157,7 @@ function formatScaledNumber(value) {
 
 function getRecipeRepeatSummary(recipeId) {
   const evaluations = state.evaluations
-    .filter((evaluation) => evaluation.recipeId === recipeId)
+    .filter((evaluation) => evaluation.recipeId === recipeId && !evaluation.preferencePending)
     .sort((a, b) => dateValue(b.cookedAt) - dateValue(a.cookedAt));
   if (!evaluations.length) {
     return {
@@ -3398,6 +3397,8 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => setView(tab.dataset.view));
 });
 
+document.querySelector("#profile-button")?.addEventListener("click", () => setView("settings"));
+
 document.addEventListener("visibilitychange", () => {
   // アプリに戻ってきたら、他の端末の変更を取り込む
   if (document.visibilityState === "visible" && state && syncEnabled()) syncNow({ silent: true });
@@ -3406,6 +3407,7 @@ document.addEventListener("visibilitychange", () => {
 (async function init() {
   registerServiceWorker();
   state = await loadStateAsync();
+  state.view = "today";
   const hasSharedUrl = applySharedUrlFromLocation();
   requestPersistentStorage();
   render();

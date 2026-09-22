@@ -1,9 +1,11 @@
-const CACHE_NAME = "ripigochi-v5";
-const APP_VERSION = "20260922-design";
+const CACHE_NAME = "ripigochi-v6";
+const APP_VERSION = "20260923-daily";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
+  `./lifestyle.js?v=${APP_VERSION}`,
+  `./daily-ui.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
   "./manifest.webmanifest",

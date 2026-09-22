@@ -6,6 +6,7 @@ const fullSource = fs.readFileSync(require('node:path').join(__dirname, '../app.
 const source = fullSource.slice(0, fullSource.lastIndexOf('document.querySelectorAll(".tab")'));
 function app() {
   const context = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] } });
+  for (const file of ['lifestyle.js','daily-ui.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
   vm.runInContext(source, context);
   return (code) => vm.runInContext(code, context);
 }
@@ -50,7 +51,7 @@ test('shopping scales each saved recipe independently of an unrelated draft', ()
   const run = app();
   run(`state = clone(demoState); state.evaluations=[]; state.servingCount=1; state.draft.sourceServings=10;
     state.recipes = [{id:'a',title:'A',mealType:'dinner',sourceServings:2,ingredients:[{name:'米',amount:'300g'}]},
-    {id:'b',title:'B',mealType:'dinner',sourceServings:4,ingredients:[{name:'米',amount:'400g'}]}];`);
+    {id:'b',title:'B',mealType:'dinner',sourceServings:4,ingredients:[{name:'米',amount:'400g'}]}]; state.mealSlots=Object.fromEntries(state.recipes.map((recipe,i)=>[addDays(today(),i),{date:addDays(today(),i),recipe,servings:1,status:'confirmed'}]));`);
   assert.equal(run('buildShoppingList()[0].amount'), '250g');
   run('state.draft.sourceServings = null');
   assert.equal(run('buildShoppingList()[0].amount'), '250g');

@@ -18,6 +18,8 @@ jobs:
       - run: npm ci --prefix api --ignore-scripts
       - run: npm test --prefix api
       - run: node --test test/*.test.cjs
+      - run: node --check lifestyle.js
+      - run: node --check daily-ui.js
       - run: node --check app.js
       - run: node --check image-import.js
       - run: git diff --check
