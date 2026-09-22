@@ -99,3 +99,25 @@ test('late image analysis cannot replace edits made while waiting', async () => 
   assert.equal(run('state.draft.title'),'待機中の編集');
   assert.match(run('state.fetchStatus'),/上書きを止めました/);
 });
+
+test('comparison aligns inserted ingredients and escapes user markup', () => {
+  const run=app();
+  const rows=JSON.parse(run(`JSON.stringify(recipeDiff(['米: 100g','塩: 適量','焼く'],['米: 100g','油: 小さじ1','塩: 適量','焼く']))`));
+  assert.deepEqual(rows.filter(x=>x.kind!=='same'),[{kind:'common',text:'油: 小さじ1'}]);
+  run(`state=clone(demoState);state.draft={title:'<img src=x onerror=alert(1)>',catalog:{id:'x'},sourceServings:1}; state.extractedIngredients=[];state.extractedSteps=[]; sharedRecipeComparison={title:'ご飯',catalog:{id:'x'},ingredients:[],steps:[],sourceServings:1};`);
+  assert.match(run('renderCommonComparison()'), /&lt;img/);
+  assert.doesNotMatch(run('renderCommonComparison()'), /<img src=x/);
+});
+
+test('unchanged draft capture during analysis does not discard successful image result', async () => {
+  const run=app();
+  run(`state=clone(demoState);state.view='register';state.editingRecipeId=null;state.draft=clone(emptyDraft);state.extractedIngredients=[];state.extractedSteps=[];
+    const imageFields={'#recipe-title':{value:''},'#recipe-url':{value:''}};
+    document.querySelector=key=>imageFields[key]||null;render=()=>{};saveState=()=>{};
+    let finishImage;imageSession={version:0,analyze:()=>new Promise(resolve=>finishImage=resolve)};`);
+  const work=run(`handleAction({currentTarget:{dataset:{action:'analyze-images'}}})`);
+  run(`captureDraft();finishImage({title:'画像のごはん',ingredients:[{name:'米',amount:'100g'}],steps:['盛る']});`);
+  await work;
+  assert.equal(run('state.draft.title'),'画像のごはん');
+  assert.equal(run('imageFeedback.tone'),'success');
+});

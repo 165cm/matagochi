@@ -67,7 +67,7 @@ export function createImageImporter({ store, analyze, reserveBudget, now = Date.
     if (inFlight.size >= 4) throw new ApiError(429, "image_capacity", "画像解析が混雑しています。しばらくしてからお試しください。");
     const work = (async () => {
       const current = await store.get(id);
-      if (current && current.envelope.status !== "failed") throw new ApiError(409, "image_result_unavailable", "この画像は分析中、または結果の再取得ができない状態です。重複分析を防いでいます。しばらくしてから同じ画面で再試行するか、手動入力をご利用ください。");
+      if (current && current.envelope.status !== "failed") throw new ApiError(409, "image_result_unavailable", "前の解析結果を取得できません。追加のAI費用を防ぐため、この画像の自動再解析を停止しました。読み取れる内容を手入力してください。");
       const prepared = await prepareImages(images);
       const claim = await store.put(id, { status: "pending", createdAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
       if (!claim) throw new ApiError(409, "image_analysis_pending", "この画像は分析中です。しばらくしてから再試行してください。");

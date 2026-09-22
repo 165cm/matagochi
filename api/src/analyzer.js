@@ -86,7 +86,16 @@ export async function analyzeRecipeImages(images, env = process.env) {
   const response = await ai.models.generateContent({
     model: env.GEMINI_MODEL || "gemini-2.5-flash",
     contents: [{role:"user",parts:[{text:prompt}, ...images.map(image => ({inlineData:image}))]}],
-    config:{httpOptions:{timeout:60_000,retryOptions:{attempts:1}},maxOutputTokens:4096,temperature:0.1,responseMimeType:"application/json"}
+    config:{
+      httpOptions:{timeout:60_000,retryOptions:{attempts:1}},
+      maxOutputTokens:8192, temperature:0.1, responseMimeType:"application/json",
+      responseSchema:{type:"OBJECT",required:["title","ingredients","steps","warnings","multipleRecipes"],properties:{
+        title:{type:"STRING"}, sourceServings:{type:"INTEGER",nullable:true},
+        ingredients:{type:"ARRAY",maxItems:50,items:{type:"OBJECT",required:["name","amount","category"],properties:{name:{type:"STRING"},amount:{type:"STRING",nullable:true},category:{type:"STRING"}}}},
+        steps:{type:"ARRAY",maxItems:30,items:{type:"STRING"}},
+        warnings:{type:"ARRAY",maxItems:10,items:{type:"STRING"}},multipleRecipes:{type:"BOOLEAN"}
+      }}
+    }
   }).catch(() => { throw new ApiError(503,"analysis_uncertain","画像解析の応答を確認できませんでした。重複分析を防ぐため再分析を保留しています。手動入力をご利用ください。"); });
   return parseJsonResponse(response.text || "");
 }

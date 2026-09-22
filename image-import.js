@@ -77,9 +77,13 @@ class RecipeImageSession {
         body: JSON.stringify({ clientKey: this.key(), images: this.images.map(({mimeType, data}) => ({mimeType, data})) })
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error?.message || "画像解析に失敗しました。手動入力も利用できます。");
+      if (!response.ok) throw Object.assign(new Error(result.error?.message || "画像解析に失敗しました。手動入力も利用できます。"), {code:result.error?.code || `http_${response.status}`});
+      if (!Array.isArray(result.ingredients) || !Array.isArray(result.steps)) throw Object.assign(new Error("解析結果を読み込めませんでした。画像を残したまま、もう一度お試しください。"), {code:"invalid_response"});
       if (version !== this.version) return null;
       return result;
+    } catch (error) {
+      if (error instanceof TypeError) throw Object.assign(new Error("通信が途切れました。接続を確認して、同じ画像でもう一度お試しください。"), {code:"network_error"});
+      throw error;
     } finally {
       clearTimeout(timeout);
       if (this.controller === controller) { this.controller = null; this.busy = false; }
