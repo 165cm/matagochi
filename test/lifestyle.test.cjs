@@ -323,3 +323,16 @@ test('equipment tap switches ownership once and persists through normalization w
   assert.equal(run('state.onboardingDraft.equipment.フライパン'),'have');
   assert.equal(run('state.onboardingDraft.pantry.塩'),'unknown');
 });
+
+test('pantry cards preserve unknown until tapped and toggle without changing equipment', () => {
+  const run=app();
+  run('state.onboardingDraft=Lifestyle.profile({equipment:{コンロ:"none"},pantry:{塩:"unknown",砂糖:"none"}})');
+  assert.match(run('ownershipFields("pantry",["塩","砂糖"])'), /aria-pressed="mixed"/);
+  assert.equal(run('state.onboardingDraft.pantry.塩'),'unknown');
+  run('handleDailyAction("life-pantry-toggle",{name:"塩"});state=normalizeState(JSON.parse(JSON.stringify(state)))');
+  assert.equal(run('state.onboardingDraft.pantry.塩'),'have');
+  run('handleDailyAction("life-pantry-toggle",{name:"塩"})');
+  assert.equal(run('state.onboardingDraft.pantry.塩'),'none');
+  assert.equal(run('state.onboardingDraft.pantry.砂糖'),'none');
+  assert.equal(run('state.onboardingDraft.equipment.コンロ'),'none');
+});

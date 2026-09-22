@@ -30,7 +30,7 @@ const assert = require("node:assert/strict");
       }
     }
     if (step === 8)
-      await page.locator('[data-owned="しょうゆ"]').selectOption("have");
+      await page.locator('[data-action="life-pantry-toggle"][data-name="しょうゆ"]').click();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth > innerWidth,
     );
@@ -73,6 +73,31 @@ const assert = require("node:assert/strict");
   await page.locator("[data-action=life-profile]").click();
   await page.waitForSelector(".profile-wizard");
   assert.match(await page.locator(".wizard-progress").innerText(), /16 \/ 16/);
+  // All choice screens fit small phones; controls keep a 44px touch target.
+  const layout = [];
+  for (const width of [320, 390, 430]) {
+    await page.setViewportSize({width,height:844});
+    for (const step of [0,1,2,4,5,6,7,8,9,10,11,12,13,15]) {
+      await page.evaluate(step=>{profileDraft().step=step;render();},step);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`setup ${step} at ${width}`);
+      const choices=page.locator('.profile-wizard .equipment-choice, .profile-wizard .profile-choice');
+      for (const box of await choices.evaluateAll(nodes=>nodes.map(n=>({h:n.getBoundingClientRect().height,w:n.getBoundingClientRect().width})))) assert.ok(box.h>=44 && box.w>=44,`small tap target ${step} at ${width}`);
+      if (width===390 && [7,8,10].includes(step)) {
+        if (step===7) await page.locator('.equipment-group[data-group="0"]').click();
+        const height=await page.locator('.profile-wizard').evaluate(el=>Math.round(el.getBoundingClientRect().height));
+        layout.push({step,height});
+        await page.screenshot({path:`/tmp/compact-step-${step}.png`,fullPage:true});
+      }
+    }
+  }
+  // Unknown pantry items stay unknown until tapped; keyboard activation is equivalent.
+  await page.evaluate(()=>{profileDraft().step=8;render();});
+  const salt=page.locator('[data-action="life-pantry-toggle"][data-name="塩"]');
+  assert.equal(await salt.getAttribute('aria-pressed'),'mixed');
+  await salt.focus();await page.keyboard.press('Space');assert.equal(await salt.getAttribute('aria-pressed'),'true');
+  await page.keyboard.press('Enter');assert.equal(await salt.getAttribute('aria-pressed'),'false');
+  await page.evaluate(()=>{profileDraft().step=15;render();});
+  console.log(JSON.stringify({setupLayout:layout}));
   // Personal recipe registration remains available, with optional planning metadata.
   await page.locator("[data-action=life-pause]").click();
   await page.locator(".tab[data-view=collection]").click();

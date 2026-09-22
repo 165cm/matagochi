@@ -1686,3 +1686,59 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 .equipment-choice[aria-pressed="mixed"] { border-style:dashed; }
 .equipment-custom { margin-top:18px; font-size:14px; }
 .equipment-custom summary { padding:12px 0; cursor:pointer; }
+
+/* Dense mobile selection: readable labels, 44px+ targets, decorative emoji. */
+.choice-emoji { display:inline-block; margin-right:6px; font-size:1.12em; line-height:1.2; }
+.profile-wizard { padding:16px; }
+.profile-wizard .wizard-progress { margin:0; }
+.profile-wizard h2 { font-size:21px; line-height:1.4; margin:14px 0 10px; }
+.profile-wizard p { font-size:13px; line-height:1.55; margin-bottom:12px; }
+.profile-wizard .profile-options { gap:6px; margin:10px 0 14px; }
+.profile-wizard .profile-choice { min-height:44px; padding:8px 10px; gap:6px; flex:1 1 95px; font-size:14px; }
+.profile-wizard .profile-choice > span { display:flex; align-items:center; flex-wrap:wrap; gap:2px; }
+.profile-wizard .profile-choice input { width:16px; height:16px; }
+.profile-wizard .field { margin:12px 0; gap:6px; }
+.profile-wizard .field small { font-size:11px; }
+.profile-wizard .input { min-height:44px; font-size:16px; padding:9px 10px; }
+.profile-wizard fieldset { margin:12px 0; }
+.profile-wizard fieldset .profile-choice { flex:1 1 60px; }
+.profile-wizard[data-step="1"] .profile-options:first-of-type { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
+.profile-wizard[data-step="1"] .profile-options:first-of-type .profile-choice { justify-content:center; padding:6px 1px; }
+.profile-wizard[data-step="1"] .profile-options:first-of-type input { position:absolute; opacity:0; width:1px; height:1px; }
+.profile-wizard .profile-choice:has(input:focus-visible) { outline:3px solid var(--sage-dark); outline-offset:2px; }
+.profile-wizard .equipment-groups { margin:10px 0; gap:6px; }
+.profile-wizard .equipment-group { flex-direction:row; justify-content:center; min-height:44px; padding:8px 2px; gap:2px; font-size:12px; }
+.profile-wizard .equipment-group .choice-emoji { margin-right:2px; }
+.profile-wizard .equipment-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.profile-wizard .equipment-choice { min-height:78px; padding:9px 5px; gap:4px; align-items:center; text-align:center; font-size:13px; border-radius:12px; }
+.profile-wizard .equipment-choice .choice-emoji { margin:0; font-size:22px; }
+.profile-wizard .equipment-choice strong { font-size:11px; }
+.profile-wizard .equipment-custom { margin-top:10px; font-size:13px; }
+.profile-wizard .equipment-custom summary { min-height:44px; padding:12px 0; }
+.profile-wizard .wizard-footer { margin:14px 0 4px; gap:8px; }
+.profile-wizard button { min-height:44px; }
+.profile-wizard .profile-summary { margin:10px 0; }
+.profile-summary div { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:10px; padding:10px 0; }
+.profile-summary dt { grid-column:1; margin-bottom:3px; }
+.profile-summary dd { grid-column:1; font-size:14px; }
+.profile-summary button { grid-column:2; grid-row:1 / span 2; align-self:center; padding:8px 10px; font-size:12px; }
+.topbar { padding-top:10px; padding-bottom:10px; }
+.topbar .eyebrow { display:none; }
+.today-heading { padding-top:10px; }
+.today-heading h2 { font-size:25px; }
+.daily-plan-row { padding:14px 0; }
+.daily-shopping-row { padding:12px 0; }
+@media(max-width:359px) {
+ .profile-wizard { padding:12px; }
+ .profile-wizard h2 { font-size:20px; }
+ .profile-wizard .equipment-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .profile-wizard .equipment-group { font-size:11px; }
+}
+@media(max-width:359px) {
+ .profile-wizard[data-step="1"] .profile-options:first-of-type { grid-template-columns:repeat(4,minmax(0,1fr)); }
+}
+.profile-wizard .equipment-choice { min-height:76px; padding:8px 5px; gap:2px; }
+.profile-wizard .equipment-choice .choice-emoji { font-size:20px; line-height:1; }
+.profile-wizard .wizard-secondary { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:4px; }
+.profile-wizard .wizard-secondary > button { flex:1; font-size:13px; padding:8px 4px; }
+.profile-wizard .wizard-secondary > p { margin:8px 0 0; width:100%; text-align:center; }

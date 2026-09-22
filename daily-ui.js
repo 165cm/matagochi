@@ -24,18 +24,18 @@ const profileChapters = [
   "確認",
 ];
 const profileTitles = [
-  "何人分の夜ごはんを作りますか？",
-  "自炊する日を教えてください",
-  "食べられない食材はありますか？",
-  "苦手な食材も避けましょう",
-  "好きな味は、どれですか？",
-  "料理に使える時間は？",
-  "無理なくできる作り方で",
+  "何人分つくる？",
+  "自炊する曜日は？",
+  "食べられないもの",
+  "苦手な食材",
+  "好きな味は？",
+  "料理に使える時間",
+  "どんな作り方がいい？",
   "キッチンの持ちもの",
   ...Object.keys(Lifestyle.pantry),
-  "買い物のスタイルは？",
-  "先に使いたい食材はありますか？",
-  "あなたの夜ごはん設定",
+  "買い物のペース",
+  "先に使いたい食材",
+  "あなたの設定",
 ];
 function profileDraft() {
   if (!state.onboardingDraft) {
@@ -48,15 +48,23 @@ function profileDraft() {
   }
   return state.onboardingDraft;
 }
+const setupEmoji = ["🍽️", "📅", "🔎", "🥬", "😋", "⏱️", "🧑‍🍳", "🍳", "🧂", "🧈", "🍲", "🌿", "🍚", "🛒", "🥕", "✨"];
+const itemEmojis = {"コンロ":"🔥","電子レンジ":"♨️","フライパン":"🍳","鍋":"🍲","包丁":"🔪","まな板":"🥕","ざる":"🥬","ふた":"🍲","計量スプーン":"🥄","炊飯器":"🍚","トースター":"🍞","キッチンばさみ":"✂️","耐熱ボウル":"🥣","電気ケトル":"🫖","オーブン":"🥧","はかり":"⚖️","圧力鍋":"🍲","ミキサー":"🥤","ホットプレート":"🥞","塩":"🧂","砂糖":"🍬","しょうゆ":"🫙","みそ":"🥣","酢":"🍶","みりん":"🍶","料理酒":"🍶","サラダ油":"🌻","オリーブ油":"🫒","ごま油":"🫙","バター":"🧈","マヨネーズ":"🥚","こしょう":"🧂","にんにく":"🧄","しょうが":"🌿","カレー粉":"🍛","米":"🌾","パスタ":"🍝","うどん":"🍜","食パン":"🍞","小麦粉":"🌾","片栗粉":"🥔","ツナ缶":"🐟","トマト缶":"🍅","のり":"🍙","卵":"🥚","乳":"🥛","小麦":"🌾","えび":"🦐","かに":"🦀","そば":"🍜","落花生":"🥜","くるみ":"🌰","大豆":"🫘","魚":"🐟","肉":"🥩","和風":"🍙","洋風":"🍝","中華風":"🥟","和風だし":"🍲","鶏ガラスープの素":"🐓","コンソメ":"🥣","めんつゆ":"🥢","ポン酢":"🍋","ケチャップ":"🍅","中濃ソース":"🥫","焼肉のたれ":"🍖","オイスターソース":"🦪","七味":"🌶️","ごま":"🌱","豆板醤":"🌶️"};
+function emojiMark(value) { return `<span class="choice-emoji" aria-hidden="true">${value}</span>`; }
+function ownershipCard(field, name) {
+  const value = profileDraft()[field][name] || "unknown";
+  const action = field === "equipment" ? "life-equipment-toggle" : "life-pantry-toggle";
+  return `<button type="button" class="equipment-choice" data-action="${action}" data-name="${escapeAttr(name)}" aria-pressed="${value === 'unknown' ? 'mixed' : value === 'have'}">${emojiMark(itemEmojis[name] || (field === 'equipment' ? '🍴' : '🫙'))}<span>${escapeHtml(name)}</span><strong>${value === 'have' ? '✓ ある' : value === 'none' ? '− ない' : '未確認'}</strong></button>`;
+}
 function optionInput(field, value, label, multiple = false) {
   const p = profileDraft();
   const selected = multiple
     ? (p[field] || []).includes(value)
     : String(p[field]) === String(value);
-  return `<label class="profile-choice"><input type="${multiple ? "checkbox" : "radio"}" name="${field}" data-profile="${field}" ${multiple ? 'data-multiple="true"' : ""} value="${escapeAttr(value)}" ${selected ? "checked" : ""}><span>${escapeHtml(label)}</span></label>`;
+  return `<label class="profile-choice"><input type="${multiple ? "checkbox" : "radio"}" name="${field}" data-profile="${field}" ${multiple ? 'data-multiple="true"' : ""} value="${escapeAttr(value)}" ${selected ? "checked" : ""}><span>${itemEmojis[value] ? emojiMark(itemEmojis[value]) : field === "servings" ? emojiMark(Number(value) === 1 ? "🧑" : "🧑‍🤝‍🧑") : ""}${escapeHtml(label)}</span></label>`;
 }
 function textInput(field, label, placeholder) {
-  return `<label class="field">${label}<input class="input" data-profile="${field}" data-list="true" value="${escapeAttr(profileDraft()[field].join("、"))}" placeholder="${escapeAttr(placeholder)}"><small>複数ある場合は「、」で区切れます。</small></label>`;
+  return `<label class="field">${label}<input class="input" data-profile="${field}" data-list="true" value="${escapeAttr(profileDraft()[field].join("、"))}" placeholder="${escapeAttr(placeholder)}"><small>複数は「、」で区切る</small></label>`;
 }
 function renderEquipmentFields() {
   const p = profileDraft();
@@ -68,34 +76,16 @@ function renderEquipmentFields() {
   const group = Lifestyle.equipmentGroups[equipmentGroupIndex];
   const extras = Object.keys(p.equipment).filter(name => !Lifestyle.equipment.includes(name));
   const names = [...group.names, ...(equipmentGroupIndex === 2 ? extras : [])];
-  return `<p class="muted">基本は「ある」、ほかは「ない」からスタート。違うものだけタップしてください。</p>
-    <div class="equipment-groups" role="group" aria-label="調理器具のグループ">${Lifestyle.equipmentGroups.map((g,index) => `<button type="button" class="equipment-group" data-action="life-equipment-group" data-group="${index}" aria-pressed="${index === equipmentGroupIndex}"><small>${index + 1}</small><span>${g.label}</span></button>`).join('')}</div>
-    <p class="equipment-hint">${group.hint}</p>
-    <div class="equipment-grid" role="group" aria-label="${group.label}">${names.map(name => {
-      const value = p.equipment[name] || 'unknown';
-      return `<button type="button" class="equipment-choice" data-action="life-equipment-toggle" data-name="${escapeAttr(name)}" aria-pressed="${value === 'unknown' ? 'mixed' : value === 'have'}"><span>${escapeHtml(name)}</span><strong>${value === 'have' ? '✓ ある' : value === 'none' ? '− ない' : '未確認'}</strong></button>`;
-    }).join('')}</div>
-    ${equipmentGroupIndex < 2 ? `<button class="text-button full-button" type="button" data-action="life-equipment-group" data-group="${equipmentGroupIndex + 1}">次のグループを見る →</button>` : ''}
-    <details class="equipment-custom"><summary>一覧にない道具を追加</summary><label class="field">道具の名前<input id="custom-owned" class="input" maxlength="99" placeholder="例：蒸し器"></label><button class="secondary-button" data-action="life-custom" data-field="equipment" type="button">持っているものとして追加</button></details>`;
+  return `<p class="muted">違うものだけタップ（基本は「ある」、ほかは「ない」）</p>
+    <div class="equipment-groups" role="group" aria-label="調理器具のグループ">${Lifestyle.equipmentGroups.map((g,index) => `<button type="button" class="equipment-group" data-action="life-equipment-group" data-group="${index}" aria-pressed="${index === equipmentGroupIndex}">${emojiMark(["🍳","🥣","✨"][index])}<span>${["基本","便利","こだわり"][index]}</span></button>`).join('')}</div>
+    <div class="equipment-grid" role="group" aria-label="${group.label}">${names.map(name => ownershipCard('equipment', name)).join('')}</div>
+
+    <details class="equipment-custom"><summary>＋ 道具を追加</summary><label class="field">道具の名前<input id="custom-owned" class="input" maxlength="99" placeholder="例：蒸し器"></label><button class="secondary-button" data-action="life-custom" data-field="equipment" type="button">追加する</button></details>`;
 }
 function ownershipFields(field, names) {
-  const p = profileDraft();
-  return `<p class="muted">「ある・ない・未確認」を選べます。選んでいないものは未確認のまま残ります。</p><div class="ownership-list">${names
-    .map(
-      (name) =>
-        `<label><span>${escapeHtml(name)}</span><select class="input" data-profile="${field}" data-owned="${escapeAttr(name)}">${[
-          ["unknown", "未確認"],
-          ["have", "ある"],
-          ["none", "ない"],
-        ]
-          .map(
-            ([v, l]) =>
-              `<option value="${v}" ${(p[field][name] || "unknown") === v ? "selected" : ""}>${l}</option>`,
-          )
-          .join("")}</select></label>`,
-    )
-    .join("")}</div>
-    <label class="field">一覧にないもの<input id="custom-owned" class="input" placeholder="名前を入力"></label><button class="secondary-button" data-action="life-custom" data-field="${field}" type="button">持っているものとして追加</button>`;
+  const extras = Object.keys(profileDraft()[field]).filter(name => !Object.values(Lifestyle.pantry).flat().includes(name));
+  return `<p class="muted">タップで「ある／ない」。未選択は未確認です。</p><div class="equipment-grid pantry-grid" role="group" aria-label="常備品の選択">${[...new Set([...names,...extras])].map(name => ownershipCard(field,name)).join('')}</div>
+    <details class="equipment-custom"><summary>＋ 一覧にないもの</summary><label class="field">名前<input id="custom-owned" class="input" maxlength="99" placeholder="例：白だし"></label><button class="secondary-button" data-action="life-custom" data-field="${field}" type="button">追加する</button></details>`;
 }
 function profileSummary(p) {
   const owned = (field) =>
@@ -137,15 +127,15 @@ function renderProfileWizard() {
     step = p.step;
   let content = "";
   if (step === 0)
-    content = `<p>最初に好みやキッチンのことを教えてください。回答は途中でも保存されます。</p><div class="profile-options">${optionInput("servings", 1, "1人分")}${optionInput("servings", 2, "2人分")}</div>`;
+    content = `<p>好みとキッチンに合わせて献立を提案します。</p><div class="profile-options">${optionInput("servings", 1, "1人分")}${optionInput("servings", 2, "2人分")}</div>`;
   if (step === 1)
-    content = `<p>選んだ曜日に夜ごはんを提案します。未指定なら毎日が対象です。</p><div class="profile-options">${[1, 2, 3, 4, 5, 6, 0].map((d) => optionInput("days", String(d), "日月火水木金土"[d] + "曜日", true)).join("")}</div><h3>まず決めたい日数</h3><div class="profile-options">${optionInput("period", 3, "3日分")}${optionInput("period", 7, "7日分")}</div>`;
+    content = `<p>複数選択OK。未選択なら毎日提案します。</p><div class="profile-options">${[1, 2, 3, 4, 5, 6, 0].map((d) => optionInput("days", String(d), "日月火水木金土"[d], true)).join("")}</div><h3>何日分？</h3><div class="profile-options">${optionInput("period", 3, "3日分")}${optionInput("period", 7, "7日分")}</div>`;
   if (step === 2)
-    content = `<p>含まれる料理を提案から外します。市販品の原材料・注意表示も調理前に確認してください。</p><div class="profile-options">${Lifestyle.restrictionOptions.map((n) => optionInput("restrictions", n, n, true)).join("")}</div><p class="muted small">その他の制限は次の入力欄へ。自動照合できない制限がある場合は候補を確定せず、確認を案内します。</p>${textInput("restrictions", "食べられない食材の一覧", "例：卵、乳")}`;
+    content = `<p>含む料理を除外。市販品の原材料表示も確認してください。</p><div class="profile-options">${Lifestyle.restrictionOptions.map((n) => optionInput("restrictions", n, n, true)).join("")}</div><p class="muted small">一覧外は下に入力。照合できない場合は候補を出しません。</p>${textInput("restrictions", "食べられない食材の一覧", "例：卵、乳")}`;
   if (step === 3)
     content = `<p>嫌いなものを我慢せず、楽しめる料理を。</p>${textInput("dislikes", "苦手な食材", "例：なす、パクチー")}`;
   if (step === 4)
-    content = `<p>複数選べます。料理の候補を並べる順番に使います。</p><div class="profile-options">${["和風", "洋風", "中華風"].map((n) => optionInput("tastes", n, n, true)).join("")}</div>`;
+    content = `<p>好きなものをいくつでも。</p><div class="profile-options">${["和風", "洋風", "中華風"].map((n) => optionInput("tastes", n, n, true)).join("")}</div>`;
   if (step === 5)
     content =
       ["weekdayMinutes", "weekendMinutes"]
@@ -154,9 +144,9 @@ function renderProfileWizard() {
             `<fieldset><legend>${i ? "休日" : "平日"}</legend><div class="profile-options">${[10, 20, 30, 60].map((n) => optionInput(f, n, `${n}分以内`)).join("")}${optionInput(f, "null", "未指定")}</div></fieldset>`,
         )
         .join("") +
-      '<p class="muted small">時間は調理の目安です。ごはんを炊く時間などは別途必要です。</p>';
+      '<p class="muted small">炊飯時間は別です。</p>';
   if (step === 6)
-    content = `<div class="profile-options">${optionInput("skill", "easy", "かんたんな料理が安心")}${optionInput("skill", "any", "難易度は気にしない")}${optionInput("skill", "unknown", "まだ決めない")}</div><h3>避けたい作業</h3><div class="profile-options">${["肉を切る", "揚げる", "長く煮込む"].map((n) => optionInput("avoidTasks", n, n, true)).join("")}</div>`;
+    content = `<div class="profile-options">${optionInput("skill", "easy", "かんたん優先")}${optionInput("skill", "any", "こだわらない")}${optionInput("skill", "unknown", "未指定")}</div><h3>避けたい作業</h3><div class="profile-options">${["肉を切る", "揚げる", "長く煮込む"].map((n) => optionInput("avoidTasks", n, n, true)).join("")}</div>`;
   if (step === 7) content = renderEquipmentFields();
   if (step >= 8 && step <= 12) {
     const names = Object.values(Lifestyle.pantry)[step - 8];
@@ -175,14 +165,14 @@ function renderProfileWizard() {
     );
   }
   if (step === 13)
-    content = `<div class="profile-options">${optionInput("shoppingFrequency", "daily", "その日ごとに買う")}${optionInput("shoppingFrequency", "3days", "数日分まとめたい")}${optionInput("shoppingFrequency", "weekly", "週に一度まとめたい")}${optionInput("shoppingFrequency", "unknown", "まだ決めない")}</div><label class="profile-choice"><input type="checkbox" data-profile="savings" ${p.savings ? "checked" : ""}><span>同じ食材を使い回して、買う種類を減らしたい</span></label><p class="muted small">価格の比較や節約額の計算は行いません。</p>`;
+    content = `<div class="profile-options">${optionInput("shoppingFrequency", "daily", "その日ごと")}${optionInput("shoppingFrequency", "3days", "数日分")}${optionInput("shoppingFrequency", "weekly", "週まとめ")}${optionInput("shoppingFrequency", "unknown", "未指定")}</div><label class="profile-choice"><input type="checkbox" data-profile="savings" ${p.savings ? "checked" : ""}><span>食材を使い回して節約</span></label><p class="muted small">価格の比較や節約額の計算は行いません。</p>`;
   if (step === 14)
-    content = `<p>ここは任意です。今回の献立で優先し、7日後には優先設定が切れます。</p>${textInput("useUp", "冷蔵庫で使い切りたいもの", "例：キャベツ、豆腐")}`;
+    content = `<p>任意。これから7日間の提案で優先します。</p>${textInput("useUp", "冷蔵庫で使い切りたいもの", "例：キャベツ、豆腐")}`;
   if (step === 15)
-    content = `<p>この条件で最初の献立を提案します。未確認のものは、わかったときに設定できます。</p>${profileSummary(p)}<p class="muted small">個人の好み・食材制限はこの端末に保存します。バックアップには含まれます。</p>`;
+    content = `<p>この条件で提案します。あとから変更できます。</p>${profileSummary(p)}<p class="muted small">好み・食材制限は端末内に保存（バックアップには含む）。</p>`;
   document.body.classList.toggle("is-onboarding", !state.onboarded);
   document.querySelector("#app").innerHTML =
-    `<section class="hero-card profile-wizard"><p class="eyebrow">あなたの夜ごはんを、一緒に。</p><div class="wizard-progress"><span>${profileChapters[step]}</span><span>${step + 1} / 16</span></div><progress max="16" value="${step + 1}" aria-label="初回設定の進捗"></progress><h2 tabindex="-1">${profileTitles[step]}</h2>${content}<div class="wizard-footer"><button type="button" class="text-button" data-action="life-back" ${step === 0 ? "disabled" : ""}>戻る</button><button type="button" class="primary-button" data-action="${step === 15 ? "life-finish" : "life-next"}">${step === 15 ? "この条件で献立を見る" : "保存して次へ"}</button></div>${step < 15 && state.foodProfile?.completed ? '<button type="button" class="secondary-button full-button" data-action="life-review">設定一覧に戻る</button>' : ""}${step < 15 && step !== 7 ? '<button type="button" class="text-button full-button" data-action="life-next">今わからない項目は保留して進む</button>' : ""}${state.onboarded ? '<button type="button" class="text-button full-button" data-action="life-pause">保存して設定を閉じる</button>' : '<p class="muted small">ここで閉じても、次回は続きから再開できます。</p>'}</section>`;
+    `<section class="hero-card profile-wizard" data-step="${step}"><div class="wizard-progress"><span>${profileChapters[step]}</span><span>${step + 1} / 16</span></div><progress max="16" value="${step + 1}" aria-label="初回設定の進捗"></progress><h2 tabindex="-1">${emojiMark(setupEmoji[step])}${profileTitles[step]}</h2>${content}<div class="wizard-footer"><button type="button" class="text-button" data-action="life-back" ${step === 0 ? "disabled" : ""}>戻る</button><button type="button" class="primary-button" data-action="${step === 15 ? "life-finish" : "life-next"}">${step === 15 ? "献立を見る" : "次へ"}</button></div><div class="wizard-secondary">${step < 15 && state.foodProfile?.completed ? '<button type="button" class="text-button" data-action="life-review">設定一覧へ</button>' : ""}${state.onboarded ? '<button type="button" class="text-button" data-action="life-pause">保存して閉じる</button>' : '<p class="muted small">未回答でも進めます · 自動保存</p>'}</div></section>`;
   document
     .querySelectorAll("[data-profile]")
     .forEach((el) => el.addEventListener("input", () => captureProfile(el)));
@@ -286,7 +276,7 @@ function renderDailyPlan() {
     })
     .join("");
   const ready = plan.filter((d) => d.candidate).length;
-  return `<section class="hero-card"><p class="eyebrow">LESS THINKING, MORE TASTING</p><h2>数日先まで、ほっとする。</h2><p>${dailyProfile().servings}人分の夜ごはん。気に入ったら確定しましょう。</p><div class="actions">${[3, 7].map((n) => `<button class="choice-button" aria-pressed="${(state.planLength || 3) === n}" data-action="life-length" data-length="${n}">${n}日分</button>`).join("")}${dailyButton("life-profile", "条件を調整")}</div></section><section class="panel">${cards}${ready ? dailyButton("life-confirm", `提案${ready}日分をまとめて確定`, "", true) : ""}<p class="muted small">食材制限・未確認の器具は、作り方と市販品の表示も確認してください。</p></section>${swapDate ? renderSwapChoices() : ""}`;
+  return `<section class="hero-card"><p class="eyebrow">LESS THINKING, MORE TASTING</p><h2>📅 数日先まで、ほっとする。</h2><p>${dailyProfile().servings}人分の夜ごはん。気に入ったら確定しましょう。</p><div class="actions">${[3, 7].map((n) => `<button class="choice-button" aria-pressed="${(state.planLength || 3) === n}" data-action="life-length" data-length="${n}">${n}日分</button>`).join("")}${dailyButton("life-profile", "条件を調整")}</div></section><section class="panel">${cards}${ready ? dailyButton("life-confirm", `提案${ready}日分をまとめて確定`, "", true) : ""}<p class="muted small">食材制限・未確認の器具は、作り方と市販品の表示も確認してください。</p></section>${swapDate ? renderSwapChoices() : ""}`;
 }
 function renderSwapChoices() {
   const p = dailyProfile();
@@ -358,8 +348,8 @@ function renderToday() {
   return `<section class="today-heading"><p class="eyebrow">${formatDate(today())}（${weekdayLabel(today())}） · ${slot?.servings || dailyProfile().servings}人分</p><h2>${off ? "今日は、ひと休み。" : slot?.status === "cooked" ? "今日も、ごちそうさま。" : "今夜も、おいしく。"}</h2></section>
   ${!state.foodProfile?.completed ? `<section class="setup-invitation"><p>好みとキッチンを教えると、提案があなた向けに。</p>${dailyButton("life-profile", state.onboardingDraft ? "初回設定の続きをする" : "食生活を設定する")}</section>` : ""}
   <section class="hero-card today-dish">${off ? "" : dishVisual(recipe, true)}<div class="today-dish-body"><p class="eyebrow">${off ? "自炊お休み" : slot?.status === "cooked" ? "作った一品" : slot ? "今夜の一品" : "今夜の候補"}</p><h3>${off ? "また次の夜ごはんで。" : recipe ? escapeHtml(recipe.title) : "あなたに合う一品を探しましょう"}</h3>${!off && day?.candidate ? `<p class="muted">${escapeHtml(day.candidate.reasons.join(" · "))}</p>` : ""}${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}${cta}${slot?.status === "confirmed" ? dailyButton("life-cook", "すぐ作り方を見る", `data-date="${today()}"`) : ""}${slot?.status === "cooked" ? dailyButton("life-again", "また食べたい", `data-date="${today()}"`) : ""}${!off && slot?.status !== "cooked" ? `<button class="text-button" data-action="life-off" data-date="${today()}">今日は自炊お休み</button>` : ""}</div></section>
-  <section class="panel"><div class="section-head"><h3>買うもの</h3><span class="badge">残り${remaining}品</span></div>${dailyButton("go-view", "買い物リストを開く", 'data-view="shopping"')}</section>
-  <section class="panel"><h3>この先の夜ごはん</h3>${dailyPlan()
+  <section class="panel"><div class="section-head"><h3>🛒 買うもの</h3><span class="badge">残り${remaining}品</span></div>${dailyButton("go-view", "買い物リストを開く", 'data-view="shopping"')}</section>
+  <section class="panel"><h3>📅 この先の夜ごはん</h3>${dailyPlan()
     .slice(1, 3)
     .map(
       (d) =>
@@ -368,7 +358,7 @@ function renderToday() {
     .join(
       "",
     )}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</section>
-  <section class="panel"><h3>今週のごちそう</h3><p>${recent.length}回の「作った」を記録しました。</p>${dailyButton("go-view", "ふりかえる", 'data-view="repeat"')}${!state.recipes.length ? dailyButton("go-view", "お気に入りのレシピを追加", 'data-view="register"') : ""}</section>`;
+  <section class="panel"><h3>😋 今週のごちそう</h3><p>${recent.length}回の「作った」を記録しました。</p>${dailyButton("go-view", "ふりかえる", 'data-view="repeat"')}${!state.recipes.length ? dailyButton("go-view", "お気に入りのレシピを追加", 'data-view="register"') : ""}</section>`;
 }
 function renderDailyShopping() {
   const items = dailyShopping();
@@ -393,7 +383,7 @@ function renderDailyShopping() {
         )
         .join("") || '<p class="muted">ありません</p>'
     }</section>`;
-  return `<section class="hero-card"><p class="eyebrow">SHOP JUST ENOUGH</p><h2>必要なものだけ、さっと。</h2><p>確定した献立の材料です。買い物頻度の設定に合わせた期間でまとめます。</p>${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}<p class="muted small">調味料の「家にある」は数量を保証しません。残量も確認してください。</p>${dailyButton("life-profile", "常備品・買い物頻度を変更")}</section>${!items.length ? `<section class="panel"><p>献立を確定すると買い物リストができます。</p>${dailyButton("go-view", "献立を決める", 'data-view="plan"', true)}</section>` : ""}${group("buy", "買うもの")}${group("have", "家にある")}${group("purchased", "購入済み")}<section class="panel"><h3>買い足すもの</h3><label class="field">品名<input id="manual-name" class="input" maxlength="100"></label><label class="field">数量<input id="manual-amount" class="input" maxlength="80" placeholder="例：1袋"></label>${dailyButton("life-add-item", "追加する")}<div class="actions">${dailyButton("copy-shopping", "リストをコピー")}${dailyButton("share-shopping", "共有する")}</div></section>`;
+  return `<section class="hero-card"><p class="eyebrow">SHOP JUST ENOUGH</p><h2>🛒 必要なものだけ。</h2><p>確定した献立の材料です。買い物頻度の設定に合わせた期間でまとめます。</p>${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}<p class="muted small">調味料の「家にある」は数量を保証しません。残量も確認してください。</p>${dailyButton("life-profile", "常備品・買い物頻度を変更")}</section>${!items.length ? `<section class="panel"><p>献立を確定すると買い物リストができます。</p>${dailyButton("go-view", "献立を決める", 'data-view="plan"', true)}</section>` : ""}${group("buy", "買うもの")}${group("have", "家にある")}${group("purchased", "購入済み")}<section class="panel"><h3>買い足すもの</h3><label class="field">品名<input id="manual-name" class="input" maxlength="100"></label><label class="field">数量<input id="manual-amount" class="input" maxlength="80" placeholder="例：1袋"></label>${dailyButton("life-add-item", "追加する")}<div class="actions">${dailyButton("copy-shopping", "リストをコピー")}${dailyButton("share-shopping", "共有する")}</div></section>`;
 }
 function renderCooking() {
   const day = dailyPlan().find((d) => d.date === cookingDate);
@@ -405,7 +395,7 @@ function renderCooking() {
   return `<section class="hero-card">${dishVisual(recipe)}<h2>${escapeHtml(recipe.title)}</h2><p>${servings}人分 · ${slot?.recipe ? "確定時の内容" : "提案中"}</p>${recipe.planning ? `<p class="muted small">${recipe.planning.minutes}分目安（炊飯は別途） / 器具：${escapeHtml(recipe.planning.equipment.join("、"))}</p>` : "<p>調理時間・必要な器具は未確認です。</p>"}<p class="notice small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。</p><h3>材料</h3><ul class="cooking-ingredients">${recipe.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></li>`).join("")}</ul><h3>作り方</h3><ol class="cooking-steps">${recipe.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol><div class="actions">${slot?.status === "confirmed" && cookingDate === today() ? dailyButton("life-cooked", "作った", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : ""}${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</div></section>`;
 }
 function renderReflection() {
-  return `<section class="hero-card"><p class="eyebrow">YOUR DELICIOUS DAYS</p><h2>また食べたい、を育てよう。</h2><p>食べた記録は${state.evaluations.length}回。好きな一品が、次の献立につながります。</p>${dailyButton("life-record-details", "記録・写真・好みを編集")}</section><section class="panel">${
+  return `<section class="hero-card"><p class="eyebrow">YOUR DELICIOUS DAYS</p><h2>😋 また食べたい記録。</h2><p>食べた記録は${state.evaluations.length}回。好きな一品が、次の献立につながります。</p>${dailyButton("life-record-details", "記録・写真・好みを編集")}</section><section class="panel">${
     [...state.evaluations]
       .sort((a, b) => b.cookedAt.localeCompare(a.cookedAt))
       .slice(0, 20)
@@ -504,6 +494,10 @@ function handleDailyAction(action, data) {
     state.view = "today";
   }
   if (action === "life-equipment-group") equipmentGroupIndex = Math.max(0, Math.min(2, Number(data.group) || 0));
+  if (action === "life-pantry-toggle") {
+    const p = profileDraft();
+    p.pantry[data.name] = p.pantry[data.name] === "have" ? "none" : "have";
+  }
   if (action === "life-equipment-toggle") {
     const p = profileDraft();
     if (Object.hasOwn(p.equipment, data.name)) p.equipment[data.name] = p.equipment[data.name] === "have" ? "none" : "have";
@@ -690,6 +684,7 @@ function handleDailyAction(action, data) {
       "life-custom",
       "life-equipment-group",
       "life-equipment-toggle",
+      "life-pantry-toggle",
       "life-profile",
       "life-pause",
       "life-section",
@@ -697,6 +692,7 @@ function handleDailyAction(action, data) {
     ].includes(action),
   });
   render();
+  if (action === "life-pantry-toggle") [...document.querySelectorAll('[data-action="life-pantry-toggle"]')].find(el => el.dataset.name === data.name)?.focus({preventScroll:true});
   if (action === "life-equipment-toggle") [...document.querySelectorAll('[data-action="life-equipment-toggle"]')].find(el => el.dataset.name === data.name)?.focus({preventScroll:true});
   if (action === "life-equipment-group") document.querySelector(`[data-action="life-equipment-group"][data-group="${equipmentGroupIndex}"]`)?.focus({preventScroll:true});
   if (oldView !== state.view)
