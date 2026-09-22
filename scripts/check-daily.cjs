@@ -20,17 +20,15 @@ const assert = require("node:assert/strict");
       await page.locator('[data-profile=weekdayMinutes][value="20"]').check();
       await page.locator('[data-profile=weekendMinutes][value="30"]').check();
     }
-    if (step === 7)
-      for (const name of [
-        "コンロ",
-        "フライパン",
-        "電子レンジ",
-        "耐熱ボウル",
-        "鍋",
-        "ざる",
-        "計量スプーン",
-      ])
-        await page.locator(`[data-owned="${name}"]`).selectOption("have");
+    if (step === 7) {
+      for (const group of [0, 1]) {
+        await page.locator(`.equipment-group[data-group="${group}"]`).click();
+        for (const name of (group === 0 ? ["コンロ", "電子レンジ", "フライパン", "鍋", "ざる"] : ["耐熱ボウル"])) {
+          const button = page.locator(`[data-action="life-equipment-toggle"][data-name="${name}"]`);
+          if (await button.getAttribute('aria-pressed') !== 'true') await button.click();
+        }
+      }
+    }
     if (step === 8)
       await page.locator('[data-owned="しょうゆ"]').selectOption("have");
     const overflow = await page.evaluate(

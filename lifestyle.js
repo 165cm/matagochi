@@ -39,6 +39,15 @@
     "ミキサー",
     "ホットプレート",
   ];
+  // Product defaults, not measured ownership statistics. Apply only when this setup screen is visited.
+  const equipmentGroups = [
+    {label: "基本の道具", hint: "まずはここから。未回答の基本の道具は「ある」が初期値です。", defaultValue: "have", names: ["コンロ", "電子レンジ", "フライパン", "鍋", "包丁", "まな板", "ざる", "ふた", "計量スプーン"]},
+    {label: "あると便利", hint: "持っているものをタップして追加しましょう。", defaultValue: "none", names: ["炊飯器", "トースター", "キッチンばさみ", "耐熱ボウル", "電気ケトル"]},
+    {label: "こだわりの道具", hint: "使える道具があれば、料理の幅が広がります。", defaultValue: "none", names: ["オーブン", "はかり", "圧力鍋", "ミキサー", "ホットプレート"]}
+  ];
+  function equipmentDefaults(current = {}) {
+    return {...Object.fromEntries(equipmentGroups.flatMap(group => group.names.map(name => [name, group.defaultValue]))), ...current};
+  }
   const pantry = {
     基本の調味料: ["塩", "砂糖", "しょうゆ", "みそ", "酢", "みりん", "料理酒"],
     "油・乳製品": ["サラダ油", "オリーブ油", "ごま油", "バター", "マヨネーズ"],
@@ -655,6 +664,8 @@
   const api = {
     profile,
     equipment,
+    equipmentGroups,
+    equipmentDefaults,
     pantry,
     restrictionOptions,
     key,

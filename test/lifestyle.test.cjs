@@ -300,3 +300,26 @@ test("a one-day cooking override does not change the weekly schedule", () => {
   assert.equal(run("JSON.stringify(state.foodProfile.days)===previous"), true);
   assert.equal(run("!!dailyPlan()[0].candidate"), true);
 });
+
+test('equipment presets cover all tools once and preserve existing answers, including unknown', () => {
+  const names=L.equipmentGroups.flatMap(g=>g.names);
+  assert.deepEqual([...names].sort(), [...L.equipment].sort());
+  assert.equal(new Set(names).size,names.length);
+  const seeded=L.equipmentDefaults({コンロ:'none',電子レンジ:'unknown',圧力鍋:'have',蒸し器:'have'});
+  assert.equal(seeded.フライパン,'have');
+  assert.equal(seeded.ミキサー,'none');
+  assert.equal(seeded.コンロ,'none');
+  assert.equal(seeded.電子レンジ,'unknown');
+  assert.equal(seeded.圧力鍋,'have');
+  assert.equal(seeded.蒸し器,'have');
+  assert.deepEqual(L.equipmentDefaults(seeded),seeded);
+  assert.deepEqual(L.profile({}).equipment,{});
+});
+test('equipment tap switches ownership once and persists through normalization without changing pantry', () => {
+  const run=app();
+  run('state.onboardingDraft=Lifestyle.profile({equipment:Lifestyle.equipmentDefaults(),pantry:{塩:"unknown"}});handleDailyAction("life-equipment-toggle",{name:"フライパン"});state=normalizeState(JSON.parse(JSON.stringify(state)))');
+  assert.equal(run('state.onboardingDraft.equipment.フライパン'),'none');
+  run('handleDailyAction("life-equipment-toggle",{name:"フライパン"})');
+  assert.equal(run('state.onboardingDraft.equipment.フライパン'),'have');
+  assert.equal(run('state.onboardingDraft.pantry.塩'),'unknown');
+});

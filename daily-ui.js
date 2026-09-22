@@ -4,6 +4,7 @@ let swapDate = "";
 let cookingDate = "";
 let editingEvaluationId = "";
 let shoppingNotice = "";
+let equipmentGroupIndex = 0;
 const profileChapters = [
   "暮らし",
   "暮らし",
@@ -30,7 +31,7 @@ const profileTitles = [
   "好きな味は、どれですか？",
   "料理に使える時間は？",
   "無理なくできる作り方で",
-  "キッチンの道具を教えてください",
+  "キッチンの持ちもの",
   ...Object.keys(Lifestyle.pantry),
   "買い物のスタイルは？",
   "先に使いたい食材はありますか？",
@@ -56,6 +57,26 @@ function optionInput(field, value, label, multiple = false) {
 }
 function textInput(field, label, placeholder) {
   return `<label class="field">${label}<input class="input" data-profile="${field}" data-list="true" value="${escapeAttr(profileDraft()[field].join("、"))}" placeholder="${escapeAttr(placeholder)}"><small>複数ある場合は「、」で区切れます。</small></label>`;
+}
+function renderEquipmentFields() {
+  const p = profileDraft();
+  const seeded = Lifestyle.equipmentDefaults(p.equipment);
+  if (JSON.stringify(seeded) !== JSON.stringify(p.equipment)) {
+    p.equipment = seeded;
+    saveState({scheduleSync: false});
+  }
+  const group = Lifestyle.equipmentGroups[equipmentGroupIndex];
+  const extras = Object.keys(p.equipment).filter(name => !Lifestyle.equipment.includes(name));
+  const names = [...group.names, ...(equipmentGroupIndex === 2 ? extras : [])];
+  return `<p class="muted">基本は「ある」、ほかは「ない」からスタート。違うものだけタップしてください。</p>
+    <div class="equipment-groups" role="group" aria-label="調理器具のグループ">${Lifestyle.equipmentGroups.map((g,index) => `<button type="button" class="equipment-group" data-action="life-equipment-group" data-group="${index}" aria-pressed="${index === equipmentGroupIndex}"><small>${index + 1}</small><span>${g.label}</span></button>`).join('')}</div>
+    <p class="equipment-hint">${group.hint}</p>
+    <div class="equipment-grid" role="group" aria-label="${group.label}">${names.map(name => {
+      const value = p.equipment[name] || 'unknown';
+      return `<button type="button" class="equipment-choice" data-action="life-equipment-toggle" data-name="${escapeAttr(name)}" aria-pressed="${value === 'unknown' ? 'mixed' : value === 'have'}"><span>${escapeHtml(name)}</span><strong>${value === 'have' ? '✓ ある' : value === 'none' ? '− ない' : '未確認'}</strong></button>`;
+    }).join('')}</div>
+    ${equipmentGroupIndex < 2 ? `<button class="text-button full-button" type="button" data-action="life-equipment-group" data-group="${equipmentGroupIndex + 1}">次のグループを見る →</button>` : ''}
+    <details class="equipment-custom"><summary>一覧にない道具を追加</summary><label class="field">道具の名前<input id="custom-owned" class="input" maxlength="99" placeholder="例：蒸し器"></label><button class="secondary-button" data-action="life-custom" data-field="equipment" type="button">持っているものとして追加</button></details>`;
 }
 function ownershipFields(field, names) {
   const p = profileDraft();
@@ -136,10 +157,7 @@ function renderProfileWizard() {
       '<p class="muted small">時間は調理の目安です。ごはんを炊く時間などは別途必要です。</p>';
   if (step === 6)
     content = `<div class="profile-options">${optionInput("skill", "easy", "かんたんな料理が安心")}${optionInput("skill", "any", "難易度は気にしない")}${optionInput("skill", "unknown", "まだ決めない")}</div><h3>避けたい作業</h3><div class="profile-options">${["肉を切る", "揚げる", "長く煮込む"].map((n) => optionInput("avoidTasks", n, n, true)).join("")}</div>`;
-  if (step === 7)
-    content = ownershipFields("equipment", [
-      ...new Set([...Lifestyle.equipment, ...Object.keys(p.equipment)]),
-    ]);
+  if (step === 7) content = renderEquipmentFields();
   if (step >= 8 && step <= 12) {
     const names = Object.values(Lifestyle.pantry)[step - 8];
     content = ownershipFields(
@@ -164,7 +182,7 @@ function renderProfileWizard() {
     content = `<p>この条件で最初の献立を提案します。未確認のものは、わかったときに設定できます。</p>${profileSummary(p)}<p class="muted small">個人の好み・食材制限はこの端末に保存します。バックアップには含まれます。</p>`;
   document.body.classList.toggle("is-onboarding", !state.onboarded);
   document.querySelector("#app").innerHTML =
-    `<section class="hero-card profile-wizard"><p class="eyebrow">あなたの夜ごはんを、一緒に。</p><div class="wizard-progress"><span>${profileChapters[step]}</span><span>${step + 1} / 16</span></div><progress max="16" value="${step + 1}" aria-label="初回設定の進捗"></progress><h2 tabindex="-1">${profileTitles[step]}</h2>${content}<div class="wizard-footer"><button type="button" class="text-button" data-action="life-back" ${step === 0 ? "disabled" : ""}>戻る</button><button type="button" class="primary-button" data-action="${step === 15 ? "life-finish" : "life-next"}">${step === 15 ? "この条件で献立を見る" : "保存して次へ"}</button></div>${step < 15 && state.foodProfile?.completed ? '<button type="button" class="secondary-button full-button" data-action="life-review">設定一覧に戻る</button>' : ""}${step < 15 ? '<button type="button" class="text-button full-button" data-action="life-next">今わからない項目は保留して進む</button>' : ""}${state.onboarded ? '<button type="button" class="text-button full-button" data-action="life-pause">保存して設定を閉じる</button>' : '<p class="muted small">ここで閉じても、次回は続きから再開できます。</p>'}</section>`;
+    `<section class="hero-card profile-wizard"><p class="eyebrow">あなたの夜ごはんを、一緒に。</p><div class="wizard-progress"><span>${profileChapters[step]}</span><span>${step + 1} / 16</span></div><progress max="16" value="${step + 1}" aria-label="初回設定の進捗"></progress><h2 tabindex="-1">${profileTitles[step]}</h2>${content}<div class="wizard-footer"><button type="button" class="text-button" data-action="life-back" ${step === 0 ? "disabled" : ""}>戻る</button><button type="button" class="primary-button" data-action="${step === 15 ? "life-finish" : "life-next"}">${step === 15 ? "この条件で献立を見る" : "保存して次へ"}</button></div>${step < 15 && state.foodProfile?.completed ? '<button type="button" class="secondary-button full-button" data-action="life-review">設定一覧に戻る</button>' : ""}${step < 15 && step !== 7 ? '<button type="button" class="text-button full-button" data-action="life-next">今わからない項目は保留して進む</button>' : ""}${state.onboarded ? '<button type="button" class="text-button full-button" data-action="life-pause">保存して設定を閉じる</button>' : '<p class="muted small">ここで閉じても、次回は続きから再開できます。</p>'}</section>`;
   document
     .querySelectorAll("[data-profile]")
     .forEach((el) => el.addEventListener("input", () => captureProfile(el)));
@@ -485,6 +503,11 @@ function handleDailyAction(action, data) {
     profileDraft();
     state.view = "today";
   }
+  if (action === "life-equipment-group") equipmentGroupIndex = Math.max(0, Math.min(2, Number(data.group) || 0));
+  if (action === "life-equipment-toggle") {
+    const p = profileDraft();
+    if (Object.hasOwn(p.equipment, data.name)) p.equipment[data.name] = p.equipment[data.name] === "have" ? "none" : "have";
+  }
   if (action === "life-section")
     profileDraft().step = Math.max(0, Math.min(15, Number(data.step) || 0));
   if (action === "life-review") profileDraft().step = 15;
@@ -506,7 +529,7 @@ function handleDailyAction(action, data) {
       .querySelector("#custom-owned")
       ?.value.trim()
       .slice(0, 100);
-    if (name) profileDraft()[data.field][name] = "have";
+    if (name) { profileDraft()[data.field][name] = "have"; if (data.field === "equipment") equipmentGroupIndex = 2; }
   }
   if (action === "life-finish") {
     trackDaily("profile_completed");
@@ -665,6 +688,8 @@ function handleDailyAction(action, data) {
       "life-next",
       "life-back",
       "life-custom",
+      "life-equipment-group",
+      "life-equipment-toggle",
       "life-profile",
       "life-pause",
       "life-section",
@@ -672,6 +697,8 @@ function handleDailyAction(action, data) {
     ].includes(action),
   });
   render();
+  if (action === "life-equipment-toggle") [...document.querySelectorAll('[data-action="life-equipment-toggle"]')].find(el => el.dataset.name === data.name)?.focus({preventScroll:true});
+  if (action === "life-equipment-group") document.querySelector(`[data-action="life-equipment-group"][data-group="${equipmentGroupIndex}"]`)?.focus({preventScroll:true});
   if (oldView !== state.view)
     globalThis.scrollTo?.({ top: 0, behavior: "instant" });
   if (action === "life-swap")
