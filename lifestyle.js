@@ -172,12 +172,15 @@
       return { ok: false, reason: "避けたい調理作業を含みます" };
     const weekend = [0, 6].includes(new Date(date + "T12:00:00").getDay());
     const minutes = weekend ? p.weekendMinutes : p.weekdayMinutes;
-    if (minutes && (!meta?.minutes || meta.minutes > minutes))
+    if (minutes && meta?.minutes > minutes)
       return { ok: false, reason: "調理時間の条件を確認してください" };
-    if (p.skill === "easy" && !meta?.easy)
-      return { ok: false, reason: "調理の難易度が未確認です" };
-    if (p.avoidTasks.length && !meta?.tasks)
-      return { ok: false, reason: "調理作業が未確認です" };
+    // Saved recipes often lack these details. Keep them as lower-ranked candidates
+    // with a visible note; food restrictions above still require verification.
+    const unconfirmed = [];
+    if (minutes && !meta?.minutes) unconfirmed.push("調理時間は未確認");
+    if (p.skill === "easy" && !meta?.easy) unconfirmed.push("難しさは未確認");
+    if (p.avoidTasks.length && !meta?.tasks) unconfirmed.push("作業は未確認");
+    if (!names.length) unconfirmed.push("材料は未確認");
     const knownEquipment =
       !!meta?.equipment?.length &&
       meta.equipment.every((x) => p.equipment[x] === "have");
@@ -198,12 +201,12 @@
     if (exactLike) reasons.push("食べたいと選んだ一皿");
     if (taste) reasons.push("好きな味");
     const priorities = Persona.planning(p.dinnerPriorities, meta, pantryCount);
-    reasons.push(...priorities.reasons);
+    reasons.push(...priorities.reasons, ...unconfirmed);
     return {
       ok: true,
       reasons,
-      score: priorities.score + (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
-      needsReview: !knownEquipment || !meta?.ingredientsVerified,
+      score: priorities.score + (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2 - unconfirmed.length * 4,
+      needsReview: !knownEquipment || !meta?.ingredientsVerified || unconfirmed.length > 0,
     };
   }
   const restrictionOptions = [

@@ -9,6 +9,7 @@ import { importYouTubeRecipe, requireAnalyzer } from "./importRecipe.js";
 import { getSyncRoom, putSyncRoom } from "./sync.js";
 import { createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
+import { extractYouTubePlaylistId, fetchYouTubePlaylist } from "./youtube.js";
 
 export function createApp(env = process.env, deps = {}) {
   const app = express();
@@ -54,6 +55,17 @@ export function createApp(env = process.env, deps = {}) {
     try {
       const result = await catalog.import(req.body?.url);
       res.json(result);
+    } catch (error) {
+      const { status, body } = toErrorResponse(error);
+      res.status(status).json(body);
+    }
+  });
+
+  // AI解析は行わず、再生リスト内の動画情報だけを返す（解析は1品ずつ既存の取り込みで行う）
+  app.post("/api/import/youtube/playlist", async (req, res) => {
+    try {
+      const playlistId = extractYouTubePlaylistId(req.body?.url);
+      res.json(await (deps.fetchPlaylist || ((id) => fetchYouTubePlaylist(id, env)))(playlistId));
     } catch (error) {
       const { status, body } = toErrorResponse(error);
       res.status(status).json(body);

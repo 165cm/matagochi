@@ -67,6 +67,8 @@ gcloud storage buckets add-iam-policy-binding gs://<bucket-name> \
 
 `POST /api/import/youtube` は動画IDで再利用し、応答に `catalog`（ID・版等）、`cacheHit`、`sourceServings`（不明はnull）を追加します。同一インスタンスの同時要求は結果を共有、別インスタンスが分析中なら409です。失敗は1分後に再試行可能です。
 
+`POST /api/import/youtube/playlist` は `{ "url": "https://www.youtube.com/playlist?list=..." }` を受け取り、公開・限定公開の再生リストの動画（ID・URL・タイトル・チャンネル名・説明文先頭3000字・サムネイル）を最大200本返します。AI解析とAI使用枠の消費はありません（YouTube Data APIのクォータは50本ごとに約2ユニット）。非公開・削除済み動画は `skipped` に件数だけ入ります。「後で見る」（WL）・「高評価」（LL）・自動ミックス（RD…）は422、見つからない・非公開の再生リストは404です。
+
 - `GET /api/recipes/:id`: 比較用の現在の共通版。分析は実行しません。
 - `POST /api/recipes/corrections`: `{ catalogId, baseRevision, reason, recipe: { title, ingredients, steps, sourceServings } }` を送り、201で `{ proposalId, status: "pending" }` を返します。共通版は変更しません。
 - `POST /api/admin/corrections/:id/review`: `Authorization: Bearer <RECIPE_ADMIN_TOKEN>` と `{ decision: "approve" | "reject" }`。管理トークン未設定・不一致は403。審査は運営が出典を照合した後に実行します。

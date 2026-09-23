@@ -57,3 +57,17 @@ test('HTTP image import accepts bounded images above normal JSON limit and retur
   assert.equal((await f.request('/api/import/images',body).then(r=>r.json())).cacheHit,true);
   assert.equal((await f.request('/api/import/images',{...body,images:[]})).status,400);
 });
+
+test('playlist route validates the URL and returns items without AI analysis', async t => {
+  const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null,
+    importRecipe: async () => { throw new Error('AI must not run'); },
+    fetchPlaylist: async (id) => ({ playlist: { id, title: 'list' }, items: [{ videoId: 'abcdefghijk' }], skipped: 0, truncated: false }) });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const post = (url) => fetch(`http://127.0.0.1:${server.address().port}/api/import/youtube/playlist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+  const ok = await post('https://www.youtube.com/playlist?list=PLabcdefghijklmnop').then(r => r.json());
+  assert.equal(ok.playlist.id, 'PLabcdefghijklmnop'); assert.equal(ok.items.length, 1);
+  const bad = await post('https://www.youtube.com/playlist?list=WL');
+  assert.equal(bad.status, 422);
+});

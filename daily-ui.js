@@ -5,6 +5,7 @@ let cookingDate = "";
 let editingEvaluationId = "";
 let shoppingNotice = "";
 let equipmentGroupIndex = 0;
+let analyzingDate = "";
 const profileChapters = [
   "暮らし",
   "暮らし",
@@ -365,6 +366,7 @@ function renderToday() {
     .join(
       "",
     )}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</section>
+  ${API_BASE_URL && state.recipes.length < 5 ? `<section class="panel"><h3>📺 保存した料理動画を、献立に</h3><p>YouTubeの再生リストを貼ると、まとめてレシピに追加して献立の候補にします。</p>${dailyButton("go-view", "再生リストから取り込む", 'data-view="playlist"')}</section>` : ""}
   <section class="panel"><h3>😋 今週のごちそう</h3><p>${recent.length}回の「作った」を記録しました。</p>${dailyButton("go-view", "ふりかえる", 'data-view="repeat"')}${!state.recipes.length ? dailyButton("go-view", "お気に入りのレシピを追加", 'data-view="register"') : ""}</section>`;
 }
 function renderDailyShopping() {
@@ -399,7 +401,7 @@ function renderCooking() {
   if (!recipe)
     return `<section class="panel"><h2>料理を選び直してください</h2>${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</section>`;
   const servings = slot?.servings || dailyProfile().servings;
-  return `<section class="hero-card">${dishVisual(recipe)}<h2>${escapeHtml(recipe.title)}</h2><p>${servings}人分 · ${slot?.recipe ? "確定時の内容" : "提案中"}</p>${recipe.planning ? `<p class="muted small">${recipe.planning.minutes}分目安（炊飯は別途） / 器具：${escapeHtml(recipe.planning.equipment.join("、"))}</p>` : "<p>調理時間・必要な器具は未確認です。</p>"}<p class="notice small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。</p><h3>材料</h3><ul class="cooking-ingredients">${recipe.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></li>`).join("")}</ul><h3>作り方</h3><ol class="cooking-steps">${recipe.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol><div class="actions">${slot?.status === "confirmed" && cookingDate === today() ? dailyButton("life-cooked", "作った", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : ""}${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</div></section>`;
+  return `<section class="hero-card">${dishVisual(recipe)}<h2>${escapeHtml(recipe.title)}</h2><p>${servings}人分 · ${slot?.recipe ? "確定時の内容" : "提案中"}</p>${recipe.planning ? `<p class="muted small">${recipe.planning.minutes}分目安（炊飯は別途） / 器具：${escapeHtml(recipe.planning.equipment.join("、"))}</p>` : "<p>調理時間・必要な器具は未確認です。</p>"}<p class="notice small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。</p>${canAnalyzeRecipe(recipe) ? `<div class="notice small"><p>${recipe.ingredients.length ? "材料・作り方は動画の説明文から自動で拾ったもので、未確認です。" : "材料はまだ登録されていません。"}</p>${dailyButton("life-analyze", analyzingDate === cookingDate ? "作成中…" : "動画の説明文から材料と作り方を作る", `data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`, !recipe.ingredients.length)}</div>` : ""}<h3>材料</h3><ul class="cooking-ingredients">${recipe.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></li>`).join("")}</ul><h3>作り方</h3><ol class="cooking-steps">${recipe.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol><div class="actions">${slot?.status === "confirmed" && cookingDate === today() ? dailyButton("life-cooked", "作った", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : ""}${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</div></section>`;
 }
 function renderReflection() {
   return `<section class="hero-card"><p class="eyebrow">YOUR DELICIOUS DAYS</p><h2>😋 また食べたい記録。</h2><p>食べた記録は${state.evaluations.length}回。好きな一品が、次の献立につながります。</p>${dailyButton("life-record-details", "記録・写真・好みを編集")}</section><section class="panel">${
@@ -617,6 +619,7 @@ function handleDailyAction(action, data) {
     cookingDate = data.date;
     state.view = "cooking";
   }
+  if (action === "life-analyze" && !analyzingDate) analyzeCookingRecipe(data.date);
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
     const slot = state.mealSlots[cookingDate];
@@ -784,4 +787,43 @@ function slotHasUpdates(slot) {
         slot.recipe.steps,
       ])
   );
+}
+
+function canAnalyzeRecipe(recipe) {
+  return !!API_BASE_URL && !!youtubeVideoId(recipe?.videoUrl) && !recipe.catalog && !recipe.planning?.ingredientsVerified;
+}
+// Explicit per-dish analysis: updates the saved recipe and, if still uncooked, that day's plan.
+async function analyzeCookingRecipe(date) {
+  const day = dailyPlan().find((d) => d.date === date);
+  const slot = state.mealSlots?.[date];
+  const recipe = slot?.recipe || day?.candidate?.recipe;
+  if (!canAnalyzeRecipe(recipe)) return;
+  analyzingDate = date;
+  render();
+  try {
+    const result = await importRecipeFromYouTube(recipe.videoUrl);
+    const ingredients = (Array.isArray(result.ingredients) ? result.ingredients : [])
+      .map((i) => ingredient(String(i.name || "").trim(), i.amount || "適量", i.category || "その他"))
+      .filter((i) => i.name);
+    const steps = (Array.isArray(result.steps) ? result.steps : []).map((s) => String(s || "").trim()).filter(Boolean);
+    if (!ingredients.length) throw new Error("説明文から材料を見つけられませんでした。レシピ画面で編集できます。");
+    const before = dailyShopping();
+    const update = { ingredients, originalIngredients: clone(ingredients), steps: steps.length ? steps : recipe.steps, sourceServings: result.sourceServings ?? null, catalog: result.catalog || null };
+    const own = state.recipes.find((r) => r.id === recipe.id);
+    if (own) Object.assign(own, clone(update), { updatedAt: nowIso() });
+    const current = state.mealSlots?.[date];
+    if (current?.recipe?.id === recipe.id && current.status === "confirmed") {
+      current.recipe = { ...current.recipe, ...clone(update) };
+      current.updatedAt = nowIso();
+      changedShopping(before);
+    }
+    trackDaily("recipe_analyzed");
+    showToast(result.cacheHit ? "分析済みの材料を反映しました。内容を確認してください。" : "材料と作り方を作りました。内容を確認してください。");
+  } catch (error) {
+    showToast(error.message || "材料を作れませんでした。");
+  } finally {
+    analyzingDate = "";
+    saveState();
+    render();
+  }
 }
