@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v13";
-const APP_VERSION = "20260924-daily-ux";
+const CACHE_NAME = "ripigochi-v14";
+const APP_VERSION = "20260924-playlist-review";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -12,6 +12,7 @@ const CORE_ASSETS = [
   `./starter-recipes.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
+  `./playlist-import.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
   "./manifest.webmanifest",

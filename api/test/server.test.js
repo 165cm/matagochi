@@ -57,3 +57,32 @@ test('HTTP image import accepts bounded images above normal JSON limit and retur
   assert.equal((await f.request('/api/import/images',body).then(r=>r.json())).cacheHit,true);
   assert.equal((await f.request('/api/import/images',{...body,images:[]})).status,400);
 });
+
+test('playlist route validates the URL and returns items without AI analysis', async t => {
+  const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null,
+    importRecipe: async () => { throw new Error('AI must not run'); },
+    fetchPlaylist: async (id) => ({ playlist: { id, title: 'list' }, items: [{ videoId: 'abcdefghijk' }], skipped: 0, truncated: false }) });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const post = (url) => fetch(`http://127.0.0.1:${server.address().port}/api/import/youtube/playlist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+  const ok = await post('https://www.youtube.com/playlist?list=PLabcdefghijklmnop').then(r => r.json());
+  assert.equal(ok.playlist.id, 'PLabcdefghijklmnop'); assert.equal(ok.items.length, 1);
+  const bad = await post('https://www.youtube.com/playlist?list=WL');
+  assert.equal(bad.status, 422);
+});
+
+test('playlist requests are coalesced and separately rate limited; health advertises capability',async t=>{
+ let calls=0,release;
+ const wait=new Promise(r=>{release=r});
+ const app=createApp({}, {recipeStore:createMemorySyncStore(),syncStore:null,fetchPlaylist:async id=>{calls++;await wait;return {playlist:{id},items:[]}}});
+ const server=app.listen(0,'127.0.0.1');await once(server,'listening');t.after(()=>new Promise(r=>server.close(r)));
+ const base=`http://127.0.0.1:${server.address().port}`;
+ const post=()=>fetch(base+'/api/import/youtube/playlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://youtube.com/playlist?list=PLabcdefghijklmnop'})});
+ const requests=[post(),post()];release();
+ assert.ok((await Promise.all(requests)).every(r=>r.status===200));assert.equal(calls,1);
+ for(let i=0;i<4;i++) assert.equal((await post()).status,200);
+ assert.equal((await post()).status,429);assert.equal(calls,1);
+ assert.notEqual((await fetch(base+'/api/recipes/invalid')).status,429);
+ assert.equal((await fetch(base+'/health').then(r=>r.json())).capabilities.playlistImport,true);
+});

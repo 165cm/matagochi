@@ -2,6 +2,7 @@
 let profileEditing = false;
 let swapDate = "";
 let cookingDate = "";
+let analyzingDate = "";
 let editingEvaluationId = "";
 let shoppingNotice = "";
 let preferencePromptId = "";
@@ -368,6 +369,7 @@ function renderToday() {
     .join(
       "",
     )}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</section>
+  ${playlistAvailable && state.recipes.length < 5 ? `<section class="panel"><h3>📺 保存した料理動画をまとめて追加</h3><p>公開・限定公開の再生リストから保存し、条件を確認して献立に使えます。</p>${dailyButton("go-view","再生リストから取り込む",'data-view="playlist"')}</section>` : ""}
   <section class="panel"><h3>😋 今週のごちそう</h3><p>${recent.length}回の「作った」を記録しました。</p>${dailyButton("go-view", "ふりかえる", 'data-view="repeat"')}${!state.recipes.length ? dailyButton("go-view", "お気に入りのレシピを追加", 'data-view="register"') : ""}</section>`;
 }
 function canRecordDate(date) { return date >= addDays(today(), -3) && date <= today(); }
@@ -399,7 +401,7 @@ function renderCooking() {
   if (!recipe)
     return `<section class="panel"><h2>料理を選び直してください</h2>${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</section>`;
   const servings = slot?.servings || dailyProfile().servings;
-  return `<section class="hero-card">${dishVisual(recipe)}<h2>${escapeHtml(recipe.title)}</h2><p>${servings}人分 · ${slot?.recipe ? "確定時の内容" : "提案中"}</p>${recipe.planning ? `<p class="muted small">${recipe.planning.minutes}分目安（炊飯は別途） / 器具：${escapeHtml(recipe.planning.equipment.join("、"))}</p>` : "<p>調理時間・必要な器具は未確認です。</p>"}<p class="notice small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p><h3>材料</h3><ul class="cooking-ingredients">${recipe.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></li>`).join("")}</ul><h3>作り方</h3><ol class="cooking-steps">${recipe.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol><div class="actions">${slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : ""}${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</div></section>`;
+  return `<section class="hero-card">${dishVisual(recipe)}<h2>${escapeHtml(recipe.title)}</h2><p>${servings}人分 · ${slot?.recipe ? "確定時の内容" : "提案中"}</p>${recipe.planning ? `<p class="muted small">${recipe.planning.minutes}分目安（炊飯は別途） / 器具：${escapeHtml(recipe.planning.equipment.join("、"))}</p>` : "<p>調理時間・必要な器具は未確認です。</p>"}<p class="notice small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p>${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}<h3>材料</h3><ul class="cooking-ingredients">${recipe.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></li>`).join("")}</ul><h3>作り方</h3><ol class="cooking-steps">${recipe.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol><div class="actions">${slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : ""}${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</div></section>`;
 }
 function renderReflection() {
   return `<section class="hero-card"><p class="eyebrow">YOUR DELICIOUS DAYS</p><h2>😋 また食べたい記録。</h2><p>食べた記録は${state.evaluations.length}回。好きな一品が、次の献立につながります。</p>${dailyButton("life-record-details", "記録・写真・好みを編集")}</section><section class="panel">${
@@ -651,6 +653,7 @@ function handleDailyAction(action, data) {
     cookingDate = data.date;
     state.view = "cooking";
   }
+  if (action === "life-analyze") { analyzeCookingRecipe(data.date); return true; }
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
     const slot = state.mealSlots[cookingDate];
@@ -855,4 +858,39 @@ function renderQuickSetup() {
  document.querySelector('#app').innerHTML=`<section class="hero-card profile-wizard"><div class="wizard-progress"><span>まずは3問</span><span>${i+1} / 3</span></div><h2>${['🍽️ 何人分つくる？','⏱️ 平日は何分くらい？','🔎 食べられないものは？'][i]}</h2>${content}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i===0?'disabled':''}>戻る</button><button class="primary-button" data-action="${i===2?'life-finish':'life-quick-next'}">${i===2?'3日分の提案を見る':'次へ'}</button></div><p class="muted small">好み・器具・常備品はあとで調整できます。</p></section>`;
  document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('input',()=>captureProfile(el)));
  document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',handleAction));
+}
+
+function canAnalyzeRecipe(recipe) {
+  return !!API_BASE_URL && !!youtubeVideoId(recipe?.videoUrl) && recipe.bulkImport?.privacyStatus !== "unlisted" && !recipe.catalog && !recipe.planning?.ingredientsVerified;
+}
+async function analyzeCookingRecipe(date) {
+  if (analyzingDate) return;
+  const recipe = state.mealSlots?.[date]?.recipe || dailyPlan().find(d=>d.date===date)?.candidate?.recipe;
+  if (!canAnalyzeRecipe(recipe)) return;
+  const own = state.recipes.find(r=>r.id===recipe.id);
+  if (!own) return;
+  const before = JSON.stringify(own);
+  const slotBefore = JSON.stringify(state.mealSlots?.[date]);
+  analyzingDate = date; render();
+  let applied = false;
+  try {
+    const result = await importRecipeFromYouTube(recipe.videoUrl);
+    if (state.view !== "cooking" || cookingDate !== date) return;
+    if (JSON.stringify(state.recipes.find(r=>r.id===recipe.id)) !== before || JSON.stringify(state.mealSlots?.[date]) !== slotBefore)
+      throw new Error("解析中にレシピか献立が変更されたため、上書きせず停止しました。");
+    if (!result.ingredients?.length) throw new Error("材料を取得できませんでした。レシピ画面で編集してください。");
+    await handleAction({currentTarget:{dataset:{action:"edit-recipe",recipe:own.id}}});
+    reviewReturnDate = date;
+    // The saved recipe and confirmed slot remain untouched until user review.
+    applyImportedRecipe(result);
+    state.draft.planning = undefined;
+    state.draftExpanded = true;
+    applied = true;
+    showToast("下書きを作りました。材料・手順・調理条件を確認して保存してください。");
+  } catch (error) { showToast(error.message || "下書きを作れませんでした。"); }
+  finally {
+    analyzingDate = "";
+    if (applied) { saveState(); render(); }
+    else if (state.view === "cooking" && cookingDate === date) render();
+  }
 }

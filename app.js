@@ -258,7 +258,7 @@ function normalizeState(saved) {
   const base = clone(demoState);
   const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
   const savedView = saved.view === "ratings" ? "repeat" : saved.view;
-  const view = ["today", "register", "collection", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings"].includes(savedView) ? savedView : base.view;
+  const view = ["today", "register", "playlist", "collection", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings"].includes(savedView) ? savedView : base.view;
   return {
     ...base,
     ...saved,
@@ -772,8 +772,8 @@ function render() {
   document.body.classList.remove("is-onboarding");
 
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.setAttribute("aria-current", tab.dataset.view === ({register:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view) ? "page" : "false");
-    tab.classList.toggle("is-active", tab.dataset.view === ({register:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view));
+    tab.setAttribute("aria-current", tab.dataset.view === ({register:"collection",playlist:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view) ? "page" : "false");
+    tab.classList.toggle("is-active", tab.dataset.view === ({register:"collection",playlist:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view));
   });
 
   const views = {
@@ -782,6 +782,7 @@ function render() {
     cooking: renderCooking,
     recordDetails: renderRepeatCycles,
     register: renderRecipeEntry,
+    playlist: renderPlaylistImport,
     collection: renderCollection,
     plan: renderDailyPlan,
     repeat: renderReflection,
@@ -815,6 +816,7 @@ function renderRecipeEntry() {
       <div class="entry-methods" role="group" aria-label="保存方法">
         ${[["url", "リンク", "YouTubeから"], ["image", "画像", "SNSのスクショ"], ["manual", "手入力", "自分のレシピ"]].map(([method, label, hint]) => `<button type="button" data-action="entry-method" data-method="${method}" aria-pressed="${entryMethod === method}" ${isCaptionImporting || imageSession?.busy ? "disabled" : ""}><strong>${label}</strong><small>${hint}</small></button>`).join("")}
       </div>
+      ${playlistAvailable && !state.editingRecipeId ? '<button class="text-button" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加する</button>' : ""}
       <div ${entryMethod === "url" ? "" : "hidden"}>
       <div class="quick-url-row">
         <div class="field">
@@ -1064,6 +1066,7 @@ function renderCollection() {
         <div class="hero-stat"><strong>${countIngredientNames()}</strong><span>材料メモ</span></div>
       </div>
       <button class="secondary-button full-button" type="button" data-action="go-view" data-view="register">レシピを追加する</button>
+      ${playlistAvailable ? '<button class="text-button full-button" type="button" data-action="go-view" data-view="playlist">📺 YouTubeの再生リストからまとめて追加</button>' : ""}
     </section>
 
     ${renderBackupReminder()}
@@ -1840,6 +1843,7 @@ function renderSyncPanel() {
 
 function bindEvents() {
   bindDailyEvents();
+  bindPlaylistEvents();
   document.querySelectorAll('.ingredient-name-input, #recipe-steps').forEach(input=>input.addEventListener('input',()=> {
     const checkbox=document.querySelector('#planning-verified'); if(checkbox)checkbox.checked=false;
     const conditions=document.querySelector('#planning-confirmed'); if(conditions)conditions.checked=false;
@@ -1916,6 +1920,7 @@ async function handleAction(event) {
   const saveUnreviewed = action === "save-recipe-unreviewed";
   if (saveUnreviewed) action = "save-recipe";
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
+  if (handlePlaylistAction(action, event.currentTarget.dataset)) return;
 
   if (["image-up", "image-down", "image-remove", "clear-images", "cancel-images"].includes(action)) {
     captureDraft();
@@ -2961,7 +2966,7 @@ function parseIngredients(caption) {
     const cleaned = match.trim().replace(/^と/, "");
     const amountMatch = cleaned.match(/(\d+[個本袋枚丁缶玉膳切れgml]+|半玉|適量|大さじ\d+|小さじ\d+)$/);
     const amount = amountMatch ? amountMatch[0] : "適量";
-    const name = cleaned.replace(amount, "").trim();
+    const name = cleaned.replace(amount, "").trim().replace(/^[【\[]?(?:材料|用意するもの)[】\]]?\s*(?:[（(][^）)]*[）)])?\s*[:：]?\s*/, "").trim();
     const category = categories.find(([, pattern]) => pattern.test(name))?.[0] || "その他";
     return ingredient(name, amount, category);
   }).filter((item) => item.name);
@@ -3448,6 +3453,7 @@ document.addEventListener("visibilitychange", () => {
   }
   requestPersistentStorage();
   render();
+  checkPlaylistAvailability();
   if (hasSharedUrl) showToast("共有されたURLを受け取りました。");
   if (syncEnabled()) syncNow({ silent: true });
 })();
