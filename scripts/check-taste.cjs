@@ -11,7 +11,7 @@ const assert = require("node:assert/strict");
       errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(process.env.TEST_URL || "http://127.0.0.1:8124");
-    await page.waitForSelector(".profile-wizard");
+    await page.locator("[data-action=life-detailed]").click();
     for (let i = 0; i < 4; i++)
       await page.locator("[data-action=life-next]").click();
     await page.waitForSelector("#taste-card img");

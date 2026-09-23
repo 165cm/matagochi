@@ -93,6 +93,7 @@
   }
   function profile(raw = {}) {
     return {
+      detailedSetup: raw.detailedSetup === true,
       quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 2 ? raw.quickSetupIndex : null,
       version: 1,
       completed: raw.completed === true,
@@ -394,6 +395,10 @@
     });
     return result;
   }
+  // Shopping lines ignore notes in brackets (e.g. しょうゆ（濃口）) and never list water.
+  const shoppingName = (name) =>
+    String(name || "").normalize("NFKC").replace(/[（(][^）)]*[）)]/g, "").trim() || String(name || "").trim();
+  const notPurchased = /^(?:水|お湯|湯|熱湯|冷水|氷水|ぬるま湯)$/;
   function shopping({
     slots,
     start,
@@ -412,9 +417,11 @@
       .sort((a, b) => a.date.localeCompare(b.date))
       .forEach((s) => {
         s.recipe.ingredients.forEach((item) => {
-          const k = key(item.name);
+          const name = shoppingName(item.name);
+          if (notPurchased.test(name)) return;
+          const k = key(name);
           if (!groups.has(k))
-            groups.set(k, { id: k, name: item.name, category: item.category || "その他", amounts: [], parts: [] });
+            groups.set(k, { id: k, name, category: item.category || "その他", amounts: [], parts: [] });
           const g = groups.get(k);
           const amount = scale(
             item.amount,
@@ -439,7 +446,7 @@
       const signature = g.parts.join("|");
       const mark = marks[g.id];
       const owned = Object.entries(pantry).some(
-        ([n, v]) => (key(n) === g.id || (key(n) === "米" && /^ごはん(?:（炊飯済み）)?$/.test(g.name))) && v === "have",
+        ([n, v]) => (key(n) === g.id || (key(n) === "米" && g.id === "ごはん")) && v === "have",
       );
       const covered =
         !!mark?.signature &&
