@@ -808,7 +808,7 @@ function renderRecipeEntry() {
     <section class="hero-card register-hero">
       <div class="section-head">
         <div>
-          <p class="eyebrow">MY RECIPE NOTE</p><h2>${state.editingRecipeId ? "わが家の味に、ひと工夫。" : "おいしそう、を残そう。"}</h2>
+          <h2>${state.editingRecipeId ? "わが家の味に、ひと工夫。" : "おいしそう、を残そう。"}</h2>
           <p>まずは1品。保存方法を選んでください。</p>
         </div>
         <span class="badge">${state.editingRecipeId ? "編集中" : "1 / 2 保存方法"}</span>
@@ -1055,7 +1055,7 @@ function renderCollection() {
     <section class="hero-card collection-hero">
       <div class="section-head">
         <div>
-          <p class="eyebrow">MY FAVORITES</p><h2>また食べたい、一品。</h2>
+          <h2>また食べたい、一品。</h2>
           <p>おいしかった記憶を、今夜のごはんに。</p>
         </div>
         <span class="badge">${state.recipes.length}件</span>
@@ -1081,9 +1081,10 @@ function renderCollection() {
       <input id="recipe-search" class="input" placeholder="レシピ名・材料・メモで検索" value="${escapeAttr(state.searchText)}">
       ${renderMealFilter()}
       <div class="recipe-list mvp-list">
-        ${filteredRecipes.map(renderRecipeCard).join("") || renderEmpty("保存済みレシピがありません。")}
+        ${filteredRecipes.map(renderRecipeCard).join("") || (state.searchText.trim() ? renderEmpty("保存済みレシピに一致するものはありません。") : '<p class="muted small">まだ保存したレシピはありません。下のおすすめから1タップで保存できます。</p>')}
       </div>
     </section>
+    ${renderStarterRecipes()}
   `;
 }
 
@@ -1721,47 +1722,13 @@ function renderEvaluationCard(evaluation) {
 
 function renderSettings() {
   return `
-    <section class="panel"><h2>食生活の設定</h2><p>好み・人数・器具・常備品をまとめて調整できます。</p><button class="primary-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "食生活を設定する"}</button><p class="muted small">同期するのは器具・常備品・確定した献立・買い物です。個人の食材制限と好みは共有しません。</p></section>
-    <section class="hero-card">
-      <div class="section-head">
-        <div>
-          <h2>設定</h2>
-          <p>家族メンバーとデータの管理をします。</p>
-        </div>
-      </div>
-      <div class="hero-row">
-        <div class="hero-stat"><strong>${state.family.length}</strong><span>家族メンバー</span></div>
-        <div class="hero-stat"><strong>${state.recipes.length}</strong><span>レシピ</span></div>
-        <div class="hero-stat"><strong>${state.evaluations.length}</strong><span>リピ記録</span></div>
-        <div class="hero-stat"><strong>${getServingCount()}</strong><span>表示人数</span></div>
-      </div>
-    </section>
+    <section class="panel settings-food"><h2>食生活の設定</h2>
+      <div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 2 ? "disabled" : ""}>＋</button></div></div>
+      ${(() => { const p = dailyProfile(); return `<dl class="planning-summary"><div><dt>平日の時間</dt><dd>${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"}</dd></div><div><dt>食べられない</dt><dd>${escapeHtml(p.restrictions.join("・") || "未指定")}</dd></div><div><dt>苦手</dt><dd>${escapeHtml(p.dislikes.join("・") || "未指定")}</dd></div></dl>`; })()}
+      <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p></section>
 
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h3>材料表示</h3>
-          <p>元レシピの人数を確認した材料は、選んだ人数分に換算します。</p>
-        </div>
-      </div>
-      <div class="field">
-        <label for="serving-count">表示人数</label>
-        <input id="serving-count" class="input" type="number" min="1" max="12" step="1" value="${getServingCount()}">
-      </div>
-      <div class="actions compact-actions">
-        <button class="secondary-button" type="button" data-action="adjust-serving" data-delta="-1">− 1人</button>
-        <button class="secondary-button" type="button" data-action="adjust-serving" data-delta="1">＋ 1人</button>
-      </div>
-      <button class="secondary-button full-button" type="button" data-action="set-family-serving">家族人数（${state.family.length}人）に合わせる</button>
-    </section>
-
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h3>家族メンバー</h3>
-          <p>リピ周期を記録する家族を編集できます。</p>
-        </div>
-      </div>
+    <details class="panel settings-fold">
+      <summary><h3>家族メンバー（${state.family.length}人）</h3><small class="muted">また食べたい頻度を記録する人</small></summary>
       <div class="member-list">
         ${state.family.map((name, index) => `
           <div class="member-row">
@@ -1771,7 +1738,7 @@ function renderSettings() {
         `).join("")}
       </div>
       <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>
-    </section>
+    </details>
 
     ${renderSyncPanel()}
 

@@ -64,7 +64,7 @@ function renderPlaylistImport() {
   const selectable = items.filter((i) => !owned.has(i.videoId));
   const count = selectable.filter((i) => p.selected[i.videoId]).length;
   const busy = p.status === "loading";
-  const form = `<section class="hero-card"><p class="eyebrow">BULK IMPORT</p><h2>📺 再生リストから、まとめて。</h2><p>料理動画を集めたYouTubeの再生リストを貼ると、まとめてレシピに追加して条件を確認してから献立に使えます。</p>
+  const form = `<section class="hero-card"><h2>📺 再生リストから、まとめて。</h2><p>料理動画を集めたYouTubeの再生リストを貼ると、まとめてレシピに追加して条件を確認してから献立に使えます。</p>
     ${API_BASE_URL ? `<div class="quick-url-row"><div class="field"><label for="playlist-url">再生リストのURL</label><input id="playlist-url" class="input url-input" inputmode="url" ${busy ? "disabled" : ""} value="${escapeAttr(p.url)}" placeholder="https://youtube.com/playlist?list=..."></div><button class="primary-button fetch-button" type="button" data-action="playlist-load" ${busy ? "disabled" : ""}>${busy ? "読み込み中" : "読み込む"}</button></div>
     ${p.message ? `<p class="notice" role="status">${escapeHtml(p.message)}</p>` : ""}
     <details class="entry-extra"><summary>URLのコピー方法・読み込めないとき</summary><p class="muted small">YouTubeアプリの「ライブラリ」→再生リスト→「︙」→「共有」→「コピー」。公開または限定公開の再生リストが対象です。「後で見る」「高評価」はYouTubeの仕様で読み込めないため、動画を自分の再生リストに移してください。先頭200件まで（重複・取得できない動画を除く）。限定公開動画は一覧保存のみで、AI解析は公開動画が対象です。</p></details>`

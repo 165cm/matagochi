@@ -1888,3 +1888,66 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 .planning-edit { margin: 8px 0; }
 .planning-edit > summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--sage-dark); padding: 8px 0; }
 .planning-confirm { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+
+/* Today: compact dish card when there is no photo; one-tap rows for what's next */
+.today-dish-head { display: grid; gap: 6px; padding: 20px 20px 0; }
+.today-dish-head h3 { font-size: 22px; line-height: 1.4; margin: 0; }
+.today-dish-head p { margin: 0; }
+.today-dish-actions { display: grid; gap: 10px; padding: 14px 20px 20px; }
+.today-dish.is-compact { display: grid; grid-template-columns: 96px minmax(0, 1fr); }
+.today-dish.is-compact .dish-art { margin: 16px 0 0 16px; padding: 4px; height: 88px; border-radius: 14px; display: grid; align-content: center; }
+.today-dish.is-compact .dish-art svg { height: 54px; }
+.today-dish.is-compact .dish-art small { font-size: 10px; line-height: 1.2; }
+.today-dish.is-compact .today-dish-head { padding: 16px 16px 0 12px; }
+.today-dish.is-compact .today-dish-actions { grid-column: 1 / -1; padding: 12px 16px 16px; }
+.today-links { display: grid; gap: 8px; }
+.today-link { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 56px; padding: 6px 12px 6px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.today-link .plan-thumb { width: 44px; height: 44px; font-size: 20px; }
+.today-link span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.today-link small { color: var(--muted); font-size: 12px; }
+.today-link strong { font-size: 15px; overflow-wrap: anywhere; }
+.today-link b { color: var(--muted); font-size: 20px; }
+.starter-list { display: grid; gap: 8px; }
+.starter-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.starter-row .plan-thumb { width: 44px; height: 44px; font-size: 20px; }
+.starter-row span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.starter-row strong { font-size: 15px; overflow-wrap: anywhere; }
+.starter-row small { color: var(--muted); font-size: 12px; }
+
+/* Cooking: compact header, tap-to-tick ingredients and steps, pinned main action */
+.cooking-card { display: grid; gap: 12px; }
+.cooking-back { justify-self: start; padding: 4px 0; }
+.cooking-head { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; }
+.cooking-head .plan-thumb { width: 64px; height: 64px; }
+.cooking-head h2 { margin: 2px 0; font-size: 22px; line-height: 1.35; }
+.cooking-head p { margin: 0; }
+.cooking-safety { border-radius: 12px; background: #fff8ea; padding: 10px 12px; }
+.cooking-safety summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+.cooking-safety p { margin: 8px 0 0; }
+.cooking-card h3 small { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.cooking-check { list-style: none; padding: 0; margin: 0; }
+.cooking-check li { border-bottom: 1px solid var(--line); }
+.cooking-check label { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 48px; padding: 8px 0; cursor: pointer; }
+.cooking-check input { width: 22px; height: 22px; accent-color: var(--sage-dark); }
+.cooking-steps.cooking-check { counter-reset: step; }
+.cooking-steps.cooking-check label { grid-template-columns: 24px minmax(0, 1fr); font-size: 17px; line-height: 1.6; }
+.cooking-steps.cooking-check label span::before { counter-increment: step; content: counter(step) ". "; font-weight: 800; color: var(--sage-dark); }
+.cooking-check label:has(input:checked) span { text-decoration: line-through; opacity: 0.55; }
+.cooking-primary { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); padding-top: 10px; background: linear-gradient(transparent, var(--surface-soft) 35%); }
+.cooking-primary .primary-button { width: 100%; min-height: 54px; font-size: 17px; }
+.settings-food { display: grid; gap: 10px; }
+.settings-food h2 { margin: 0; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-row > span { font-weight: 800; color: var(--muted); font-size: 13px; }
+.settings-stepper { display: flex; align-items: center; gap: 10px; }
+.settings-stepper strong { min-width: 56px; text-align: center; font-size: 17px; }
+.settings-stepper .plan-icon { min-width: 44px; font-size: 18px; }
+.settings-fold > summary { list-style: none; cursor: pointer; display: grid; gap: 2px; }
+.settings-fold > summary::-webkit-details-marker { display: none; }
+.settings-fold > summary h3 { margin: 0; }
+.settings-fold > summary h3::after { content: " ▾"; color: var(--sage-dark); font-size: 13px; }
+.settings-fold[open] > summary { margin-bottom: 10px; }
+.cooking-check li { display: block; padding: 0; }
+.cooking-check label span:nth-of-type(2) { justify-self: end; text-align: right; color: var(--muted); }
+.badge { white-space: nowrap; }
+.planning-summary div { grid-template-columns: 88px minmax(0, 1fr); }
