@@ -1742,3 +1742,28 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 .profile-wizard .wizard-secondary { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:4px; }
 .profile-wizard .wizard-secondary > button { flex:1; font-size:13px; padding:8px 4px; }
 .profile-wizard .wizard-secondary > p { margin:8px 0 0; width:100%; text-align:center; }
+
+/* A compact, touch-first food preference deck. */
+.taste-caption,.taste-secondary {display:flex;justify-content:space-between;align-items:center;gap:8px}
+.taste-caption{font-size:13px!important;margin:6px 0!important}
+.taste-card{position:relative;aspect-ratio:1/1;max-height:360px;overflow:hidden;border-radius:24px;background:#e8dac5;touch-action:pan-y;user-select:none;box-shadow:0 8px 24px #382b171c;will-change:transform}
+.taste-card img{width:100%;height:100%;object-fit:cover;pointer-events:none}
+.taste-card:focus-visible{outline:3px solid #355d45;outline-offset:3px}
+.taste-card-title{position:absolute;inset:auto 0 0;padding:36px 18px 18px;color:white;background:linear-gradient(transparent,#23190adb)}
+.taste-card-title h3{font-size:21px;line-height:1.35;margin:5px 0 0;color:inherit}
+.taste-card-title small{font-size:13px;color:white}
+.taste-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.taste-actions button{min-height:48px;border:1px solid #d8d9ce;border-radius:24px;background:white;font-weight:700;color:#54604f;font-size:14px;padding:8px}
+.taste-actions button:last-child{background:#325c47;color:white;border-color:#325c47}
+.taste-secondary button{min-height:44px;font-size:13px}
+.taste-quiz>p:last-child{margin:0!important;text-align:center;font-size:11px!important}
+.taste-result{text-align:center;padding:8px 0}
+.taste-result-emoji{font-size:64px}
+.taste-result h3{font-size:26px;line-height:1.4;color:#325c47;margin:8px 0 16px}
+.taste-result p{line-height:1.6!important}
+.taste-liked{background:#f4eee3;border-radius:16px;padding:12px}
+.taste-result .text-button{min-height:44px;font-size:13px}
+.image-unavailable img{visibility:hidden}
+.image-unavailable:before{content:'🍽️ 写真を読み込めませんでした';display:block;text-align:center;padding-top:50px;font-size:14px}
+@media(max-width:359px){.taste-card-title h3{font-size:18px}.taste-actions button{font-size:12px}.taste-result h3{font-size:23px}}
+@media(prefers-reduced-motion:reduce){.taste-card{transform:none!important}}

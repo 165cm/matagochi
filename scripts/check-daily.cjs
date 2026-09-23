@@ -91,7 +91,7 @@ const assert = require("node:assert/strict");
     }
   }
   // Unknown pantry items stay unknown until tapped; keyboard activation is equivalent.
-  await page.evaluate(()=>{profileDraft().step=8;render();});
+  await page.evaluate(()=>{profileDraft().step=8;profileDraft().pantry["塩"]="unknown";render();});
   const salt=page.locator('[data-action="life-pantry-toggle"][data-name="塩"]');
   assert.equal(await salt.getAttribute('aria-pressed'),'mixed');
   await salt.focus();await page.keyboard.press('Space');assert.equal(await salt.getAttribute('aria-pressed'),'true');

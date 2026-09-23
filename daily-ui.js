@@ -28,7 +28,7 @@ const profileTitles = [
   "自炊する曜日は？",
   "食べられないもの",
   "苦手な食材",
-  "好きな味は？",
+  "今夜のときめき診断",
   "料理に使える時間",
   "どんな作り方がいい？",
   "キッチンの持ちもの",
@@ -83,8 +83,14 @@ function renderEquipmentFields() {
     <details class="equipment-custom"><summary>＋ 道具を追加</summary><label class="field">道具の名前<input id="custom-owned" class="input" maxlength="99" placeholder="例：蒸し器"></label><button class="secondary-button" data-action="life-custom" data-field="equipment" type="button">追加する</button></details>`;
 }
 function ownershipFields(field, names) {
+  const p = profileDraft();
+  const seeded = Lifestyle.pantryDefaults(p.pantry, names);
+  if (JSON.stringify(seeded) !== JSON.stringify(p.pantry)) {
+    p.pantry = seeded;
+    saveState({scheduleSync:false});
+  }
   const extras = Object.keys(profileDraft()[field]).filter(name => !Object.values(Lifestyle.pantry).flat().includes(name));
-  return `<p class="muted">タップで「ある／ない」。未選択は未確認です。</p><div class="equipment-grid pantry-grid" role="group" aria-label="常備品の選択">${[...new Set([...names,...extras])].map(name => ownershipCard(field,name)).join('')}</div>
+  return `<p class="muted">定番は「ある」で選択済み。違うものだけタップ。</p><div class="equipment-grid pantry-grid" role="group" aria-label="常備品の選択">${[...new Set([...names,...extras])].map(name => ownershipCard(field,name)).join('')}</div>
     <details class="equipment-custom"><summary>＋ 一覧にないもの</summary><label class="field">名前<input id="custom-owned" class="input" maxlength="99" placeholder="例：白だし"></label><button class="secondary-button" data-action="life-custom" data-field="${field}" type="button">追加する</button></details>`;
 }
 function profileSummary(p) {
@@ -103,7 +109,7 @@ function profileSummary(p) {
     ],
     ["食べられない食材", p.restrictions.join("、") || "未指定"],
     ["苦手な食材", p.dislikes.join("、") || "未指定"],
-    ["好きな味", p.tastes.join("、") || "未指定"],
+    ["夜ごはんタイプ", p.tasteVotes.length ? FoodTaste.result(p.tasteVotes).title : p.tastes.join("、") || "未指定"],
     [
       "調理時間",
       `平日 ${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"} / 休日 ${p.weekendMinutes ? `${p.weekendMinutes}分以内` : "未指定"}`,
@@ -135,7 +141,7 @@ function renderProfileWizard() {
   if (step === 3)
     content = `<p>嫌いなものを我慢せず、楽しめる料理を。</p>${textInput("dislikes", "苦手な食材", "例：なす、パクチー")}`;
   if (step === 4)
-    content = `<p>好きなものをいくつでも。</p><div class="profile-options">${["和風", "洋風", "中華風"].map((n) => optionInput("tastes", n, n, true)).join("")}</div>`;
+    content = renderTasteQuiz();
   if (step === 5)
     content =
       ["weekdayMinutes", "weekendMinutes"]
@@ -179,6 +185,7 @@ function renderProfileWizard() {
   document
     .querySelectorAll("[data-action]")
     .forEach((el) => el.addEventListener("click", handleAction));
+  if (step === 4) bindTasteQuiz();
 }
 function captureProfile(el) {
   const p = profileDraft(),
@@ -509,7 +516,10 @@ function handleDailyAction(action, data) {
     const p = profileDraft();
     if (action === "life-next")
       trackDaily("profile_step_completed", { step: p.step });
-    p.step = Math.max(
+    if (p.step === 4 && p.tasteReturnStep !== null) {
+      p.step = p.tasteReturnStep;
+      p.tasteReturnStep = null;
+    } else p.step = Math.max(
       0,
       Math.min(15, p.step + (action === "life-next" ? 1 : -1)),
     );

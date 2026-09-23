@@ -3409,6 +3409,16 @@ document.addEventListener("visibilitychange", () => {
   state = await loadStateAsync();
   state.view = "today";
   const hasSharedUrl = applySharedUrlFromLocation();
+  if (!hasSharedUrl && new URLSearchParams(location.search).get("quiz") === "1") {
+    const draft = profileDraft();
+    draft.tasteReturnStep = draft.step === 4 ? 5 : draft.step;
+    draft.step = 4;
+    profileEditing = state.onboarded;
+    const query = new URLSearchParams(location.search);
+    query.delete("quiz");
+    history.replaceState(null, "", location.pathname + (query.size ? "?" + query : ""));
+    saveState({scheduleSync:false});
+  }
   requestPersistentStorage();
   render();
   if (hasSharedUrl) showToast("共有されたURLを受け取りました。");

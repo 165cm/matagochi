@@ -1,5 +1,6 @@
 /* Pure planning rules, shared by the browser and Node regression tests. */
 (function (root) {
+  const Taste = typeof module !== "undefined" && module.exports ? require("./taste.js") : root.FoodTaste;
   const copy = (value) => JSON.parse(JSON.stringify(value));
   const list = (value) =>
     Array.isArray(value)
@@ -83,6 +84,11 @@
       "のり",
     ],
   };
+  // Source threshold: at least 80% in MyVoice 2024 or Nadia 2026. Only missing answers are seeded.
+  const pantryCommon = ["塩", "しょうゆ", "こしょう", "砂糖", "みそ", "マヨネーズ", "ケチャップ", "めんつゆ", "酢"];
+  function pantryDefaults(current = {}, names = []) {
+    return {...Object.fromEntries(names.filter(n => pantryCommon.includes(n)).map(n => [n, "have"])), ...current};
+  }
   function profile(raw = {}) {
     return {
       version: 1,
@@ -96,6 +102,8 @@
       restrictions: list(raw.restrictions),
       dislikes: list(raw.dislikes),
       tastes: list(raw.tastes),
+      tasteVotes: Taste.normalize(raw.tasteVotes),
+      tasteReturnStep: Number.isInteger(raw.tasteReturnStep) && raw.tasteReturnStep >= 0 && raw.tasteReturnStep <= 15 ? raw.tasteReturnStep : null,
       weekdayMinutes: [10, 20, 30, 60].includes(Number(raw.weekdayMinutes))
         ? Number(raw.weekdayMinutes)
         : null,
@@ -181,12 +189,16 @@
       p.useUpUntil >= date &&
       p.useUp.some((x) => names.some((n) => matches(n, x)));
     if (useUp) reasons.push("使い切りたい食材入り");
-    const taste = meta?.tastes?.some((x) => p.tastes.includes(x));
+    const votedTastes = Taste.preferredTastes(p.tasteVotes);
+    const taste = meta?.tastes?.some((x) => (Taste.normalize(p.tasteVotes).length ? votedTastes : p.tastes).includes(x));
+    const likedTitles = Taste.result(p.tasteVotes).likes.map(c => c.title);
+    const exactLike = likedTitles.includes(recipe.title);
+    if (exactLike) reasons.push("食べたいと選んだ一皿");
     if (taste) reasons.push("好きな味");
     return {
       ok: true,
       reasons,
-      score: (useUp ? 20 : 0) + (taste ? 8 : 0) + pantryCount * 2,
+      score: (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
       needsReview: !knownEquipment || !meta?.ingredientsVerified,
     };
   }
@@ -667,6 +679,8 @@
     equipmentGroups,
     equipmentDefaults,
     pantry,
+    pantryCommon,
+    pantryDefaults,
     restrictionOptions,
     key,
     fit,
