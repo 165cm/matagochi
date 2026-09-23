@@ -1,6 +1,7 @@
 /* Pure planning rules, shared by the browser and Node regression tests. */
 (function (root) {
   const Taste = typeof module !== "undefined" && module.exports ? require("./taste.js") : root.FoodTaste;
+  const Persona = typeof module !== "undefined" && module.exports ? require("./dinner-persona.js") : root.DinnerPersona;
   const copy = (value) => JSON.parse(JSON.stringify(value));
   const list = (value) =>
     Array.isArray(value)
@@ -103,6 +104,7 @@
       dislikes: list(raw.dislikes),
       tastes: list(raw.tastes),
       tasteVotes: Taste.normalize(raw.tasteVotes),
+      dinnerPriorities: Persona.normalize(raw.dinnerPriorities),
       tasteReturnStep: Number.isInteger(raw.tasteReturnStep) && raw.tasteReturnStep >= 0 && raw.tasteReturnStep <= 15 ? raw.tasteReturnStep : null,
       weekdayMinutes: [10, 20, 30, 60].includes(Number(raw.weekdayMinutes))
         ? Number(raw.weekdayMinutes)
@@ -195,10 +197,12 @@
     const exactLike = likedTitles.includes(recipe.title);
     if (exactLike) reasons.push("食べたいと選んだ一皿");
     if (taste) reasons.push("好きな味");
+    const priorities = Persona.planning(p.dinnerPriorities, meta, pantryCount);
+    reasons.push(...priorities.reasons);
     return {
       ok: true,
       reasons,
-      score: (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
+      score: priorities.score + (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
       needsReview: !knownEquipment || !meta?.ingredientsVerified,
     };
   }

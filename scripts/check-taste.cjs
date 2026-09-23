@@ -66,12 +66,36 @@ const assert = require("node:assert/strict");
       );
       await page.locator("[data-taste-vote=like]").click();
     }
+    for (let i = 0; i < 9; i++) {
+      await page.waitForSelector(".priority-card");
+      await page.locator("[data-taste-vote=pass]").click();
+      if (i === 2) {
+        await page.reload();
+        await page.waitForSelector(".priority-card");
+      }
+    }
     await page.waitForSelector("#taste-share");
     assert.match(
       await page.locator(".taste-result").innerText(),
-      /おいしいもの探検系/,
+      /満腹ハムスター/,
     );
     await page.screenshot({ path: "/tmp/taste-result.png", fullPage: true });
+    await page
+      .locator("summary")
+      .filter({ hasText: "全8タイプのマトリックス" })
+      .click();
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+    }
+    await page.locator('.persona-matrix').last().scrollIntoViewIfNeeded();
+  await page.waitForFunction(()=>[...document.querySelectorAll('.persona-matrix img')].every(img=>img.complete && img.naturalWidth>0));
+  await page.evaluate(()=>scrollTo(0,0));
+  await page.screenshot({ path: "/tmp/persona-result.png", fullPage: true });
     const downloadPromise = page.waitForEvent("download");
     await page.locator("#taste-download").click();
     const download = await downloadPromise;

@@ -109,7 +109,7 @@ function profileSummary(p) {
     ],
     ["食べられない食材", p.restrictions.join("、") || "未指定"],
     ["苦手な食材", p.dislikes.join("、") || "未指定"],
-    ["夜ごはんタイプ", p.tasteVotes.length ? FoodTaste.result(p.tasteVotes).title : p.tastes.join("、") || "未指定"],
+    ["夜ごはんタイプ", p.dinnerPriorities.length ? DinnerPersona.result(p.dinnerPriorities).title : "診断で見つける"],
     [
       "調理時間",
       `平日 ${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"} / 休日 ${p.weekendMinutes ? `${p.weekendMinutes}分以内` : "未指定"}`,

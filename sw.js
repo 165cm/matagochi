@@ -1,9 +1,11 @@
-const CACHE_NAME = "ripigochi-v9";
-const APP_VERSION = "20260923-taste";
+const CACHE_NAME = "ripigochi-v10";
+const APP_VERSION = "20260923-persona";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   `./styles.css?v=${APP_VERSION}`,
+  `./dinner-persona.js?v=${APP_VERSION}`,
+  ...["LLL","LLR","LRL","LRR","RLL","RLR","RRL","RRR"].map(code => `./assets/persona/${code}.webp`),
   `./taste.js?v=${APP_VERSION}`,
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),

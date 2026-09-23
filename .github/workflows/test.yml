@@ -18,6 +18,7 @@ jobs:
       - run: npm ci --prefix api --ignore-scripts
       - run: npm test --prefix api
       - run: node --test test/*.test.cjs
+      - run: node --check dinner-persona.js
       - run: node --check taste.js
       - run: node --check taste-ui.js
       - run: node --check lifestyle.js
