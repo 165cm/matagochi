@@ -533,7 +533,12 @@ function bindDailyEvents() {
       if (event.key === "Enter" && !event.isComposing) document.querySelector('[data-action="life-add-item"]')?.click();
     }),
   );
-  const unconfirm = () => { const el=document.querySelector("#planning-confirmed"); if(el)el.checked=false; };
+  const unconfirm = () => { const el=document.querySelector("#planning-verified"); if(el)el.checked=false; };
+  const refreshSummary = () => {
+    const picked = (field) => [...document.querySelectorAll(`[data-planning-field="${field}"]:checked`)].map((el) => el.value);
+    const text = planningSummaryText({ equipment: picked("equipment"), contains: picked("contains"), tasks: picked("tasks"), noEquipment: !!document.querySelector("#planning-no-equipment")?.checked });
+    document.querySelectorAll("[data-planning-summary]").forEach((dd) => (dd.textContent = text[dd.dataset.planningSummary]));
+  };
   document.querySelectorAll("[data-planning-minute], [data-planning-easy]").forEach(el=>el.addEventListener("click",()=>{
     const field=el.dataset.planningMinute !== undefined ? "minute" : "easy";
     document.querySelector(field==="minute" ? "#planning-minutes" : "#planning-easy").value=el.dataset[field==="minute" ? "planningMinute":"planningEasy"];
@@ -545,7 +550,11 @@ function bindDailyEvents() {
     if(el.dataset.planningField==="contains") { const c=document.querySelector("#planning-verified"); if(c)c.checked=false; }
     if(el.dataset.planningField==="equipment" && el.checked) document.querySelector("#planning-no-equipment").checked=false;
     if(el.id==="planning-no-equipment" && el.checked) document.querySelectorAll('[data-planning-field="equipment"]').forEach(e=>e.checked=false);
+    refreshSummary();
   }));
+  document.querySelector("#planning-minutes")?.addEventListener("input", (event) =>
+    document.querySelectorAll("[data-planning-minute]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.planningMinute === event.target.value))),
+  );
 
   document.querySelectorAll("[data-shopping-id]").forEach((el) =>
     el.addEventListener("change", () => {
@@ -842,20 +851,28 @@ function handleDailyAction(action, data) {
   return true;
 }
 
+function planningSummaryText(p) {
+  const list = (values, empty) => (values || []).length ? values.join("・") : empty;
+  return { equipment: p.noEquipment ? "特別な器具なし" : list(p.equipment, "未確認"), contains: list(p.contains, "該当なし"), tasks: list(p.tasks, "なし") };
+}
 function renderPlanningFields() {
   if (!state.draft.planning) state.draft.planning = Lifestyle.suggestPlanning({ingredients:state.extractedIngredients, steps:state.extractedSteps});
   const p = state.draft.planning;
-  const commonEquipment = [...new Set(["コンロ","電子レンジ","フライパン","鍋","包丁","まな板","耐熱ボウル","キッチンばさみ",...(p.equipment||[])])];
   const chips = (values,field) => `<div class="planning-chips">${values.map(v=>`<label class="planning-chip"><input type="checkbox" data-planning-field="${field}" value="${escapeAttr(v)}" ${(p[field]||[]).includes(v)?"checked":""}><span>${escapeHtml(v)}</span></label>`).join("")}</div>`;
-  return `<section id="planning-panel" class="planning-panel"><h3>🍳 献立に使う前に確認</h3><p class="muted small">材料・手順からの自動候補です。市販品の表示と照らして直してください。</p>${dailyButton("life-planning-suggest","材料・手順から候補を作り直す")}
-  <label class="field">何分くらい？<input id="planning-minutes" class="input" type="number" min="1" max="300" value="${escapeAttr(p.minutes||"")}"></label><div class="actions">${[10,20,30].map(n=>`<button type="button" class="choice-button" data-planning-minute="${n}" aria-pressed="${p.minutes===n}">${n}分</button>`).join("")}</div>
-  <h4>使う器具</h4>${chips(commonEquipment,"equipment")}<details><summary>ほかの器具</summary>${chips(Lifestyle.equipment.filter(e=>!commonEquipment.includes(e)),"equipment")}</details><label class="profile-choice"><input id="planning-no-equipment" type="checkbox" ${p.noEquipment?"checked":""}>特別な器具は使わない</label>
-  <h4>作りやすさ</h4><input id="planning-easy" type="hidden" value="${p.easy===true?"true":p.easy===false?"false":""}"><div class="actions"><button type="button" class="choice-button" data-planning-easy="true" aria-pressed="${p.easy===true}">😊 かんたん</button><button type="button" class="choice-button" data-planning-easy="false" aria-pressed="${p.easy===false}">🍳 少し手間をかける</button></div>
-  <h4>含む・市販品によって含む食材</h4>${chips(Lifestyle.restrictionOptions,"contains")}<label class="profile-choice"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified?"checked":""}>材料・市販品の表示と食材区分を確認した</label>
+  const summary = planningSummaryText(p);
+  return `<section id="planning-panel" class="planning-panel"><h3>🍳 献立に使う条件</h3><p class="muted small">材料と手順から読み取りました。違うところだけ直してください。</p>
+  <div class="planning-row"><span>時間</span><div class="planning-options">${[10,15,20,30,45,60].map(n=>`<button type="button" class="choice-button" data-planning-minute="${n}" aria-pressed="${p.minutes===n}">${n}分</button>`).join("")}</div></div>
+  <div class="planning-row"><span>手間</span><div class="planning-options"><input id="planning-easy" type="hidden" value="${p.easy===true?"true":p.easy===false?"false":""}"><button type="button" class="choice-button" data-planning-easy="true" aria-pressed="${p.easy===true}">😊 かんたん</button><button type="button" class="choice-button" data-planning-easy="false" aria-pressed="${p.easy===false}">🍳 手間をかける</button></div></div>
+  <dl class="planning-summary"><div><dt>器具</dt><dd data-planning-summary="equipment">${escapeHtml(summary.equipment)}</dd></div><div><dt>含む食材</dt><dd data-planning-summary="contains">${escapeHtml(summary.contains)}</dd></div><div><dt>作業</dt><dd data-planning-summary="tasks">${escapeHtml(summary.tasks)}</dd></div></dl>
+  <details class="planning-edit" ${p.equipment?.length || p.noEquipment ? "" : "open"}><summary>器具・食材・作業を直す</summary>${p.equipment?.length || p.noEquipment ? "" : '<p class="notice small">使う器具を選んでください（なければ「特別な器具は使わない」）。</p>'}
+  <label class="field">時間を直接入力（分）<input id="planning-minutes" class="input" type="number" inputmode="numeric" min="1" max="300" value="${escapeAttr(p.minutes||"")}"></label>
+  <h4>使う器具</h4>${chips([...new Set([...Lifestyle.equipment, ...(p.equipment||[])])],"equipment")}<label class="profile-choice"><input id="planning-no-equipment" type="checkbox" ${p.noEquipment?"checked":""}>特別な器具は使わない</label>
+  <h4>含む・市販品によって含む食材</h4>${chips(Lifestyle.restrictionOptions,"contains")}
   <h4>必要な作業</h4>${chips(["肉を切る","揚げる","長く煮込む"],"tasks")}
-  <details><summary>味の分類</summary>${chips(["和風","洋風","中華風"],"tastes")}</details>
-  <label class="profile-choice"><input id="planning-confirmed" type="checkbox" ${p.conditionsConfirmed?"checked":""}>時間・器具・作りやすさ・作業を確認した</label>
-  <p class="muted small">わからない項目は推測せず、未確認で保存できます。自動提案には使わず、入れ替え時に確認します。</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button></section>`;
+  <h4>味の分類</h4>${chips(["和風","洋風","中華風"],"tastes")}
+  ${dailyButton("life-planning-suggest","材料・手順から読み取り直す")}</details>
+  <label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified && p.conditionsConfirmed?"checked":""}>材料・市販品の表示と、上の条件を確認した</label>
+  <p class="muted small">わからなければ未確認のまま保存できます。自動の献立には使わず、入れ替え時に確認します。</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button></section>`;
 }
 function capturePlanningFields() {
   const minutes = document.querySelector("#planning-minutes");
@@ -868,7 +885,7 @@ function capturePlanningFields() {
     tasks:selected("tasks"), tastes:selected("tastes"), contains:selected("contains"),
     easy:easy==="true" ? true : easy==="false" ? false : null,
     ingredientsVerified:!!document.querySelector("#planning-verified")?.checked,
-    conditionsConfirmed:!!document.querySelector("#planning-confirmed")?.checked,
+    conditionsConfirmed:!!document.querySelector("#planning-verified")?.checked,
   };
 }
 function conditionWarning(recipe, date) {

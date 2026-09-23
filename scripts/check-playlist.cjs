@@ -27,7 +27,7 @@ const assert=require('node:assert/strict');
  assert.equal(await page.evaluate(()=>dailyPlan().some(d=>d.candidate?.recipe.bulkImport)),false);
  await page.locator('[data-action="life-review-saved"]').click();
  await page.locator('[data-planning-minute="10"]').click();await page.locator('[data-planning-easy="true"]').click();
- await page.locator('#planning-verified').check();await page.locator('#planning-confirmed').check();
+ await page.locator('#planning-verified').check();
  await page.locator('[data-action="save-recipe"]').click();
  assert.equal(await page.evaluate(()=>state.view),'plan');
  assert.equal(await page.evaluate(()=>state.recipes[0].planning.conditionsConfirmed),true);

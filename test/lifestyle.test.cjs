@@ -431,3 +431,10 @@ test("shopping renders one-tap checkboxes and aisle headings instead of status s
   assert.ok(html.includes('🥬 野菜'));assert.ok(html.includes('🥩 肉・魚'));
   assert.ok(!html.includes('<select'));
 });
+test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
+  const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
+  assert.ok(!eq("しょうゆで味を整える").includes("鍋"));
+  assert.ok(!eq("めんつゆで和える").includes("鍋"));
+  assert.ok(eq("パスタをゆでる").includes("鍋"));
+  assert.ok(eq("卵を茹でる").includes("鍋"));
+});

@@ -161,7 +161,8 @@
     const equipment = [];
     if (/レンジ|[56]00[WＷ]/i.test(steps)) equipment.push("電子レンジ", "耐熱ボウル");
     if (/フライパン|炒め|炒める|揚げ/.test(steps)) equipment.push("コンロ", "フライパン");
-    if (/鍋|ゆで|茹で|煮る|煮込/.test(steps)) equipment.push("コンロ", "鍋");
+    // "しょうゆで" / "めんつゆで" are seasonings, not boiling.
+    if (/鍋|(?<![うつ])ゆで|茹で|煮る|煮込/.test(steps)) equipment.push("コンロ", "鍋");
     if (/切|刻/.test(steps)) equipment.push("包丁", "まな板");
     if (/はさみ|ハサミ/.test(steps)) equipment.push("キッチンばさみ");
     if (/ふた|蓋/.test(steps)) equipment.push("ふた");

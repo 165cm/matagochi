@@ -1875,3 +1875,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
   .plan-more > summary { min-width: 28px; }
   .swap-panel { margin-left: 4px; padding-left: 6px; }
 }
+
+/* Recipe conditions: tap chips, auto-detected summary, edits folded */
+.planning-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; margin: 10px 0; }
+.planning-row > span { font-size: 13px; font-weight: 800; color: var(--muted); }
+.planning-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.planning-options .choice-button { min-height: 40px; min-width: 52px; font-size: 14px; }
+.planning-summary { display: grid; gap: 4px; margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-soft); }
+.planning-summary div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+.planning-summary dt { color: var(--muted); font-size: 13px; }
+.planning-summary dd { margin: 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.planning-edit { margin: 8px 0; }
+.planning-edit > summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--sage-dark); padding: 8px 0; }
+.planning-confirm { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }

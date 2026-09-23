@@ -163,10 +163,8 @@ const assert = require("node:assert/strict");
     await invited.reload();
     await invited.waitForSelector("#taste-card");
     await invited.locator("[data-action=life-next]").click();
-    assert.equal(
-      await invited.locator(".profile-wizard").getAttribute("data-step"),
-      "0",
-    );
+    // A new user coming back from the shared quiz lands on the two-choice welcome.
+    await invited.waitForSelector(".welcome-card");
     assert.equal(await invited.evaluate(() => state.onboarded), false);
     await invitation.close();
     assert.deepEqual(errors, []);
