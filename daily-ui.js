@@ -129,11 +129,12 @@ function profileSummary(p) {
   return `<dl class="profile-summary">${rows.map(([k, v], i) => `<div><dt>${k}</dt><dd>${escapeHtml(v)}</dd>${dailyButton("life-section", "変更", `data-step="${[0, 1, 2, 3, 4, 5, 6, 7, 8, 13, 14][i]}"`)}</div>`).join("")}</dl>`;
 }
 function renderProfileWizard() {
+  if (profileDraft().quickSetupIndex !== null) return renderQuickSetup();
   const p = profileDraft(),
     step = p.step;
   let content = "";
   if (step === 0)
-    content = `<p>好みとキッチンに合わせて献立を提案します。</p><div class="profile-options">${optionInput("servings", 1, "1人分")}${optionInput("servings", 2, "2人分")}</div>`;
+    content = `<p>好みとキッチンに合わせて献立を提案します。</p>${!state.onboarded ? `<div class="actions">${dailyButton("life-quick", "3問ではじめる", "", true)}${dailyButton("life-preview", "まずは見てみる")}</div><p class="muted small">下から詳しい設定を続けることもできます。</p>` : ""}<div class="profile-options">${optionInput("servings", 1, "1人分")}${optionInput("servings", 2, "2人分")}</div>`;
   if (step === 1)
     content = `<p>複数選択OK。未選択なら毎日提案します。</p><div class="profile-options">${[1, 2, 3, 4, 5, 6, 0].map((d) => optionInput("days", String(d), "日月火水木金土"[d], true)).join("")}</div><h3>何日分？</h3><div class="profile-options">${optionInput("period", 3, "3日分")}${optionInput("period", 7, "7日分")}</div>`;
   if (step === 2)
@@ -283,7 +284,7 @@ function renderDailyPlan() {
     })
     .join("");
   const ready = plan.filter((d) => d.candidate).length;
-  return `<section class="hero-card"><p class="eyebrow">LESS THINKING, MORE TASTING</p><h2>📅 数日先まで、ほっとする。</h2><p>${dailyProfile().servings}人分の夜ごはん。気に入ったら確定しましょう。</p><div class="actions">${[3, 7].map((n) => `<button class="choice-button" aria-pressed="${(state.planLength || 3) === n}" data-action="life-length" data-length="${n}">${n}日分</button>`).join("")}${dailyButton("life-profile", "条件を調整")}</div></section><section class="panel">${cards}${ready ? dailyButton("life-confirm", `提案${ready}日分をまとめて確定`, "", true) : ""}<p class="muted small">食材制限・未確認の器具は、作り方と市販品の表示も確認してください。</p></section>${swapDate ? renderSwapChoices() : ""}`;
+  return `<section class="hero-card"><p class="eyebrow">LESS THINKING, MORE TASTING</p><h2>📅 数日先まで、ほっとする。</h2>${!state.foodProfile?.completedAt ? '<p class="muted small">お試しの提案です。食材制限・調理時間・器具の条件は、作る前に確認してください。</p>' : ""}<p>${dailyProfile().servings}人分の夜ごはん。気に入ったら確定しましょう。</p><div class="actions">${[3, 7].map((n) => `<button class="choice-button" aria-pressed="${(state.planLength || 3) === n}" data-action="life-length" data-length="${n}">${n}日分</button>`).join("")}${dailyButton("life-profile", "条件を調整")}${!state.foodProfile?.completed ? dailyButton("life-quick", "3問で調整") : ""}</div></section><section class="panel">${cards}${ready ? dailyButton("life-confirm", `提案${ready}日分をまとめて確定`, "", true) : ""}<p class="muted small">食材制限・未確認の器具は、作り方と市販品の表示も確認してください。</p></section>${swapDate ? renderSwapChoices() : ""}`;
 }
 function renderSwapChoices() {
   const p = dailyProfile();
@@ -495,6 +496,12 @@ function handleDailyAction(action, data) {
   const oldView = state.view;
   if (!action.startsWith("life-")) return false;
   const before = dailyShopping();
+  if (action === "life-quick") {profileDraft().quickSetupIndex=0;profileDraft().period=3;profileEditing=true;}
+  if (action === "life-quick-next") profileDraft().quickSetupIndex=Math.min(2,profileDraft().quickSetupIndex+1);
+  if (action === "life-quick-back") profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1);
+  if (action === "life-preview" && !state.onboarded) {
+    state.onboarded=true;state.planLength=3;state.view="plan";profileEditing=false;
+  }
   if (action === "life-profile") {
     profileEditing = true;
     profileDraft();
@@ -538,7 +545,8 @@ function handleDailyAction(action, data) {
   if (action === "life-finish") {
     trackDaily("profile_completed");
     const p = Lifestyle.profile(profileDraft());
-    p.completed = true;
+    p.completed = p.quickSetupIndex === null || p.completed;
+    p.quickSetupIndex = null;
     p.completedAt = nowIso();
     p.useUpUntil = addDays(today(), 6);
     p.step = 15;
@@ -690,6 +698,9 @@ function handleDailyAction(action, data) {
   saveState({
     scheduleSync: ![
       "life-next",
+      "life-quick",
+      "life-quick-next",
+      "life-quick-back",
       "life-back",
       "life-custom",
       "life-equipment-group",
@@ -712,6 +723,9 @@ function handleDailyAction(action, data) {
   else if (
     [
       "life-next",
+      "life-quick",
+      "life-quick-next",
+      "life-quick-back",
       "life-back",
       "life-finish",
       "life-cook",
@@ -784,4 +798,17 @@ function slotHasUpdates(slot) {
         slot.recipe.steps,
       ])
   );
+}
+
+function renderQuickSetup() {
+ const p=profileDraft(),i=p.quickSetupIndex;
+ const content=[
+ `<div class="profile-options">${optionInput('servings',1,'1人分')}${optionInput('servings',2,'2人分')}</div>`,
+ `<div class="profile-options">${[10,20,30,60].map(n=>optionInput('weekdayMinutes',n,`${n}分以内`)).join('')}${optionInput('weekdayMinutes','null','未指定')}</div><p class="muted small">休日の時間はあとで設定できます。炊飯時間は別です。</p>`,
+ `<p>食べられない食材を選んでください。未選択は制限未指定として提案します。</p><div class="profile-options">${Lifestyle.restrictionOptions.map(n=>optionInput('restrictions',n,n,true)).join('')}</div>${textInput('restrictions','一覧にない食材','例：卵、乳')}<p class="muted small">市販品の原材料と、調理器具を確認してから作ってください。</p>`
+ ][i];
+ document.body.classList.toggle('is-onboarding',!state.onboarded);
+ document.querySelector('#app').innerHTML=`<section class="hero-card profile-wizard"><div class="wizard-progress"><span>まずは3問</span><span>${i+1} / 3</span></div><h2>${['🍽️ 何人分つくる？','⏱️ 平日は何分くらい？','🔎 食べられないものは？'][i]}</h2>${content}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i===0?'disabled':''}>戻る</button><button class="primary-button" data-action="${i===2?'life-finish':'life-quick-next'}">${i===2?'3日分の提案を見る':'次へ'}</button></div><p class="muted small">好み・器具・常備品はあとで調整できます。</p></section>`;
+ document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('input',()=>captureProfile(el)));
+ document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',handleAction));
 }

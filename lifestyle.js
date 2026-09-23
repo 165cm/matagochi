@@ -92,6 +92,7 @@
   }
   function profile(raw = {}) {
     return {
+      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 2 ? raw.quickSetupIndex : null,
       version: 1,
       completed: raw.completed === true,
       step: Math.min(15, Math.max(0, Number(raw.step) || 0)),

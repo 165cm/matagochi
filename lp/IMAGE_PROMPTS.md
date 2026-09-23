@@ -119,3 +119,8 @@ a small tomato). Soft and appetizing atmosphere.
 - [ ] 配色がLPのセージグリーン×クリームと馴染んでいるか
 - [ ] `lp/assets/` に配置後、LPを開いてプレースホルダーが画像に置き換わったか
 - [ ] ogp.webpにはタイトル文字を別途載せたか（例:「また作って！を、忘れない。リピごち」）
+
+## 2026-09-23: LP refresh
+
+- `assets/app-today.png`, `assets/app-plan.png`: real application screenshots captured by `scripts/check-lp.cjs` in an isolated browser, using a two-person, 20-minute example setup.
+- `assets/dinner-for-two.webp`: built-in imagegen, original `exec-bb683e71-6183-4c77-9fc6-5813bfabb844.png`. Prompt: Original warm editorial illustration for a Japanese dinner planning app landing page. Two adult housemates sharing a simple evening meal at a small cozy apartment table, each has one bowl dinner, no children. Relaxed natural expressions, unisex everyday clothing, softly textured picture-book art with sage green, ivory and terracotta palette, generous uncluttered space, landscape composition, no text, no logos, no screens with imaginary UI. The theme is easy enjoyable dinner for one or two adults.

@@ -3419,6 +3419,17 @@ document.addEventListener("visibilitychange", () => {
     history.replaceState(null, "", location.pathname + (query.size ? "?" + query : ""));
     saveState({scheduleSync:false});
   }
+  if (!hasSharedUrl && new URLSearchParams(location.search).get("start") === "quick") {
+    profileEditing=true;
+    profileDraft().quickSetupIndex=0;
+    profileDraft().period=3;
+    history.replaceState(null,"",location.pathname);
+    saveState({scheduleSync:false});
+  }
+  if (!hasSharedUrl && new URLSearchParams(location.search).get("start") === "preview") {
+    state.onboarded=true;state.planLength=3;state.view="plan";
+    saveState({scheduleSync:false});
+  }
   requestPersistentStorage();
   render();
   if (hasSharedUrl) showToast("共有されたURLを受け取りました。");

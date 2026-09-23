@@ -336,3 +336,18 @@ test('pantry cards preserve unknown until tapped and toggle without changing equ
   assert.equal(run('state.onboardingDraft.pantry.砂糖'),'none');
   assert.equal(run('state.onboardingDraft.equipment.コンロ'),'none');
 });
+
+test('quick setup persists only its three answers and does not mark detailed setup complete', () => {
+ const run=app();
+ run('handleDailyAction("life-quick",{});state.onboardingDraft.servings=2;state.onboardingDraft.restrictions=["卵"];handleDailyAction("life-quick-next",{});state=normalizeState(JSON.parse(JSON.stringify(state)))');
+ assert.equal(run('state.onboardingDraft.quickSetupIndex'),1);
+ run('state.onboardingDraft.weekdayMinutes=20;handleDailyAction("life-quick-next",{});handleDailyAction("life-finish",{})');
+ assert.equal(run('state.onboarded'),true);
+ assert.equal(run('state.foodProfile.completed'),false);
+ assert.equal(run('state.foodProfile.quickSetupIndex'),null);
+ assert.equal(run('state.foodProfile.weekdayMinutes'),20);
+ assert.equal(run('state.foodProfile.restrictions[0]'),'卵');
+ assert.equal(run('Object.keys(state.foodProfile.equipment).length'),0);
+ assert.equal(run('Object.keys(state.mealSlots).length'),0);
+ assert.equal(run('state.planLength'),3);
+});
