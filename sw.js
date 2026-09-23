@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v11";
-const APP_VERSION = "20260923-lp";
+const CACHE_NAME = "ripigochi-v12";
+const APP_VERSION = "20260923-recipes";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -9,6 +9,7 @@ const CORE_ASSETS = [
   `./taste.js?v=${APP_VERSION}`,
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),
+  `./starter-recipes.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,

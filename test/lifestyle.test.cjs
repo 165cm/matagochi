@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "lifestyle.js", "daily-ui.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "lifestyle.js", "daily-ui.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -48,7 +48,7 @@ test("restriction and unavailable equipment apply without silently relaxing to f
     restrictions: ["卵", "乳", "魚"],
     equipment: { ...profile.equipment, コンロ: "none" },
   });
-  const days = propose(p);
+  const days = propose(p, { recipes: L.curated.slice(0, 12) });
   assert.equal(days.filter((x) => x.candidate).length, 0);
   const egg = propose(L.profile({ ...profile, restrictions: ["卵"] }));
   assert.ok(
@@ -83,7 +83,7 @@ test("weekday/weekend time, tasks, and simplicity constraints apply", () => {
   assert.equal(L.fit(L.curated[10], p, "2026-09-26").ok, true);
 });
 test("curated recipes are unique, single-dish, portioned and complete; serving two does not mutate source", () => {
-  assert.equal(new Set(L.curated.map((r) => r.id)).size, 12);
+  assert.equal(new Set(L.curated.map((r) => r.id)).size, 38);
   assert.ok(
     L.curated.every(
       (r) =>
@@ -350,4 +350,43 @@ test('quick setup persists only its three answers and does not mark detailed set
  assert.equal(run('Object.keys(state.foodProfile.equipment).length'),0);
  assert.equal(run('Object.keys(state.mealSlots).length'),0);
  assert.equal(run('state.planLength'),3);
+});
+
+test("reviewed recipe metadata excludes conditional allergens and composite dislikes", () => {
+  const byId = n => L.curated.find(r => r.id === `starter-${n}`);
+  for (const [id, restriction] of [[21,"大豆"],[23,"卵"],[15,"魚"]])
+    assert.equal(L.fit(byId(id), L.profile({...profile, restrictions:[restriction]}), start).ok, false);
+  for (const [id, dislike] of [[34,"トマト"],[19,"きのこ"]])
+    assert.equal(L.fit(byId(id), L.profile({...profile, dislikes:[dislike]}), start).ok, false);
+  const p = L.profile({...profile, restrictions:["大豆"], weekdayMinutes:20, weekendMinutes:20});
+  assert.equal(L.curated.filter(r => L.fit(r,p,start).ok).length, 5);
+  const days = propose(p,{length:7});
+  assert.equal(days.filter(d => d.candidate).length,7);
+  assert.equal(new Set(days.slice(0,5).map(d => d.candidate.recipe.id)).size,5);
+  assert.ok(days.slice(5).every(d => d.candidate.repeated));
+});
+test("reuse never bypasses exclusions, unavailable tools, time or no-repeat ratings", () => {
+  const only = L.curated.find(r => r.id === "starter-16");
+  const args = {recipes:[only],length:7};
+  assert.ok(propose(profile,args).every(d=>d.candidate));
+  for (const p of [L.profile({...profile,restrictions:["肉"]}),L.profile({...profile,equipment:{電子レンジ:"none"}}),L.profile({...profile,weekdayMinutes:10,weekendMinutes:10})])
+    assert.ok(propose(p,args).every(d=>d.candidate===null));
+  assert.ok(propose(profile,{...args,repeatScore:()=>-Infinity}).every(d=>d.candidate===null));
+});
+test("tool defaults preserve explicit ownership and reviewed recipes stay within schema", () => {
+  assert.equal(L.equipmentDefaults().耐熱ボウル,"have");
+  assert.equal(L.equipmentDefaults({キッチンばさみ:"none",耐熱ボウル:"unknown"}).キッチンばさみ,"none");
+  assert.equal(L.equipmentDefaults({耐熱ボウル:"unknown"}).耐熱ボウル,"unknown");
+  for (const r of L.curated.slice(12)) {
+    assert.ok(r.steps.length<=4);
+    assert.ok(r.planning.equipment.every(e=>L.equipment.includes(e)));
+    assert.ok(r.planning.contains.every(a=>L.restrictionOptions.includes(a)));
+  }
+});
+test("new recipe metadata survives personal save, confirmation and reload", () => {
+  const run = app();
+  run('const added = Lifestyle.curated.find(r=>r.id==="starter-23"); const saved = saveOwnRecipe(added); confirmDaily({date:today()},saved); state=normalizeState(JSON.parse(JSON.stringify(state)))');
+  assert.ok(run('state.mealSlots[today()].recipe.planning.contains.includes("卵")'));
+  assert.ok(run('state.recipes.find(r=>r.starterId==="starter-23").planning.contains.includes("大豆")'));
+  assert.equal(run('allDinnerRecipes().filter(r=>r.id==="starter-23").length'),0);
 });
