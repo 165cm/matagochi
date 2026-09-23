@@ -61,11 +61,31 @@ test("lists public playlist videos with paging, skips private ones and caps the 
   assert.equal(result.items.length, 99);
   assert.equal(result.items[0].url, "https://www.youtube.com/watch?v=vid00000000");
   assert.match(result.items[0].description, /豚こま/);
-  assert.deepEqual(yt.calls, ["playlists", "playlistItems", "playlistItems", "playlistItems", "videos", "videos"]);
+  assert.deepEqual(yt.calls, ["playlists", "playlistItems", "playlistItems", "videos", "videos"]);
 });
 
 test("reports missing or private playlists clearly", async () => {
   const yt = fakeYouTube({ missingPlaylist: true });
   await assert.rejects(fetchYouTubePlaylist("PLabcdefghijklmnop", { YOUTUBE_API_KEY: "test-key" }, yt.fetchImpl), /非公開/);
   await assert.rejects(fetchYouTubePlaylist("PLabcdefghijklmnop", {}, yt.fetchImpl), /APIキー/);
+});
+
+test("duplicate-only and cyclic playlists stop within bounded pages",async()=>{
+ let pages=0;
+ const fetchImpl=async url=>{
+  const u=new URL(url);
+  const body=u.pathname.endsWith('/playlists') ? {items:[{snippet:{title:'duplicates'}}]} : u.pathname.endsWith('/playlistItems') ? (pages++,{items:Array.from({length:50},()=>({contentDetails:{videoId:'abcdefghijk'}})),nextPageToken:'same'}) : {items:[{id:'abcdefghijk',snippet:{title:'dish'},status:{privacyStatus:'public'}}]};
+  return {ok:true,status:200,json:async()=>body};
+ };
+ const result=await fetchYouTubePlaylist('PLabcdefghijklmnop',{YOUTUBE_API_KEY:'test'},fetchImpl);
+ assert.equal(pages,2);assert.equal(result.truncated,true);assert.equal(result.items.length,1);
+});
+test("playlist API cap cannot exceed 200, and exposes unlisted status without AI",async()=>{
+ const yt=fakeYouTube({total:500});
+ const result=await fetchYouTubePlaylist('PLabcdefghijklmnop',{YOUTUBE_API_KEY:'test-key'},yt.fetchImpl,10000);
+ assert.equal(result.items.length,200);assert.equal(result.truncated,true);
+ assert.equal(yt.calls.length,9);assert.equal(result.items[0].privacyStatus,'public');
+});
+test("network failures report a bounded user-facing timeout",async()=>{
+ await assert.rejects(fetchYouTubePlaylist('PLabcdefghijklmnop',{YOUTUBE_API_KEY:'test'},async()=>{throw new Error('network')}),e=>e.status===504 && e.code==='youtube_timeout');
 });

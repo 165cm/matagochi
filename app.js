@@ -258,7 +258,7 @@ function normalizeState(saved) {
   const base = clone(demoState);
   const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
   const savedView = saved.view === "ratings" ? "repeat" : saved.view;
-  const view = ["today", "register", "collection", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings"].includes(savedView) ? savedView : base.view;
+  const view = ["today", "register", "playlist", "collection", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings"].includes(savedView) ? savedView : base.view;
   return {
     ...base,
     ...saved,
@@ -816,7 +816,7 @@ function renderRecipeEntry() {
       <div class="entry-methods" role="group" aria-label="保存方法">
         ${[["url", "リンク", "YouTubeから"], ["image", "画像", "SNSのスクショ"], ["manual", "手入力", "自分のレシピ"]].map(([method, label, hint]) => `<button type="button" data-action="entry-method" data-method="${method}" aria-pressed="${entryMethod === method}" ${isCaptionImporting || imageSession?.busy ? "disabled" : ""}><strong>${label}</strong><small>${hint}</small></button>`).join("")}
       </div>
-      ${API_BASE_URL && !state.editingRecipeId ? '<button class="text-button" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加する</button>' : ""}
+      ${playlistAvailable && !state.editingRecipeId ? '<button class="text-button" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加する</button>' : ""}
       <div ${entryMethod === "url" ? "" : "hidden"}>
       <div class="quick-url-row">
         <div class="field">
@@ -1066,7 +1066,7 @@ function renderCollection() {
         <div class="hero-stat"><strong>${countIngredientNames()}</strong><span>材料メモ</span></div>
       </div>
       <button class="secondary-button full-button" type="button" data-action="go-view" data-view="register">レシピを追加する</button>
-      ${API_BASE_URL ? '<button class="text-button full-button" type="button" data-action="go-view" data-view="playlist">📺 YouTubeの再生リストからまとめて追加</button>' : ""}
+      ${playlistAvailable ? '<button class="text-button full-button" type="button" data-action="go-view" data-view="playlist">📺 YouTubeの再生リストからまとめて追加</button>' : ""}
     </section>
 
     ${renderBackupReminder()}
@@ -1846,7 +1846,8 @@ function bindEvents() {
   bindPlaylistEvents();
   document.querySelectorAll('.ingredient-name-input, #recipe-steps').forEach(input=>input.addEventListener('input',()=> {
     const checkbox=document.querySelector('#planning-verified'); if(checkbox)checkbox.checked=false;
-    if(state.draft.planning)state.draft.planning.ingredientsVerified=false;
+    const conditions=document.querySelector('#planning-confirmed'); if(conditions)conditions.checked=false;
+    if(state.draft.planning) { state.draft.planning.ingredientsVerified=false; state.draft.planning.conditionsConfirmed=false; }
   }));
 
   document.querySelectorAll("#recipe-url, #recipe-title, #recipe-source, #recipe-caption, #recipe-note, #recipe-steps, #source-servings, .ingredient-name-input, .ingredient-amount-select, .ingredient-category-input").forEach(input => {
@@ -1915,7 +1916,9 @@ function bindEvents() {
 }
 
 async function handleAction(event) {
-  const { action } = event.currentTarget.dataset;
+  let { action } = event.currentTarget.dataset;
+  const saveUnreviewed = action === "save-recipe-unreviewed";
+  if (saveUnreviewed) action = "save-recipe";
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
   if (handlePlaylistAction(action, event.currentTarget.dataset)) return;
 
@@ -1955,7 +1958,7 @@ async function handleAction(event) {
       captureDraft();
       if (state.draft.videoUrl !== originalUrl) return;
       state.draft = { ...state.draft, title: result.title || state.draft.title, catalog: null, sourceServings: result.sourceServings,
-        source: state.draft.videoUrl ? detectPlatform(state.draft.videoUrl).label : "画像から取り込み", requiresImageReview: true, imageReviewed: false, imageWarnings: result.warnings || [] };
+        planning: undefined, source: state.draft.videoUrl ? detectPlatform(state.draft.videoUrl).label : "画像から取り込み", requiresImageReview: true, imageReviewed: false, imageWarnings: result.warnings || [] };
       state.originalIngredients = clone(result.ingredients);
       state.extractedIngredients = clone(result.ingredients);
       state.extractedSteps = [...result.steps];
@@ -2270,6 +2273,16 @@ async function handleAction(event) {
       render();
       return;
     }
+    if (!state.draft.planning) state.draft.planning = Lifestyle.suggestPlanning({ingredients:state.extractedIngredients,steps:state.extractedSteps});
+    const planning = state.draft.planning;
+    if (state.draft.mealType === "dinner" && !saveUnreviewed &&
+        (!planning?.conditionsConfirmed || !planning.minutes || planning.easy == null ||
+         !(planning.equipment?.length || planning.noEquipment) || !planning.ingredientsVerified)) {
+      showToast("献立に使う時間・器具・食材区分を確認してください。未確認のまま保存することもできます。");
+      document.querySelector("#planning-panel")?.scrollIntoView({block:"start",behavior:"smooth"});
+      return;
+    }
+    if (saveUnreviewed && planning) { planning.conditionsConfirmed=false; planning.ingredientsVerified=false; }
     const ingredients = clone(state.extractedIngredients);
     const originalIngredients = state.originalIngredients.length ? clone(state.originalIngredients) : clone(ingredients);
     const steps = state.extractedSteps;
@@ -2299,7 +2312,8 @@ async function handleAction(event) {
       state.extractedIngredients = [];
       state.extractedSteps = [];
       state.fetchStatus = "";
-      state.view = "collection";
+      state.view = reviewReturnDate ? "plan" : "collection";
+      if (reviewReturnDate) { swapDate = reviewReturnDate; reviewReturnDate = ""; }
       imageSession?.clear();
       imageFeedback = null;
       saveState();
@@ -2373,6 +2387,7 @@ async function handleAction(event) {
   }
 
   if (action === "cancel-edit") {
+    reviewReturnDate = "";
     state.editingRecipeId = null;
     state.draft = clone(emptyDraft);
     state.draftThumbnailUrl = "";
@@ -3051,6 +3066,7 @@ function applyImportedRecipe(result) {
   const platform = detectPlatform(state.draft.videoUrl);
   state.draft = {
     ...state.draft,
+    planning: undefined,
     requiresImageReview: false,
     imageReviewed: false,
     imageWarnings: [],
@@ -3424,8 +3440,20 @@ document.addEventListener("visibilitychange", () => {
     history.replaceState(null, "", location.pathname + (query.size ? "?" + query : ""));
     saveState({scheduleSync:false});
   }
+  if (!hasSharedUrl && new URLSearchParams(location.search).get("start") === "quick") {
+    profileEditing=true;
+    profileDraft().quickSetupIndex=0;
+    profileDraft().period=3;
+    history.replaceState(null,"",location.pathname);
+    saveState({scheduleSync:false});
+  }
+  if (!hasSharedUrl && new URLSearchParams(location.search).get("start") === "preview") {
+    state.onboarded=true;state.planLength=3;state.view="plan";
+    saveState({scheduleSync:false});
+  }
   requestPersistentStorage();
   render();
+  checkPlaylistAvailability();
   if (hasSharedUrl) showToast("共有されたURLを受け取りました。");
   if (syncEnabled()) syncNow({ silent: true });
 })();

@@ -5,9 +5,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const L = require("../lifestyle.js");
 
-function app() {
-  const ctx = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] } });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "app.js"]) {
+function app(apiUrl="") {
+  const ctx = vm.createContext({ console, URL, Date, MATAGOCHI_API_BASE_URL:apiUrl, window:{scrollTo(){}}, document: { querySelector: () => null, querySelectorAll: () => [] } });
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js") s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
     vm.runInContext(s, ctx);
@@ -34,7 +34,7 @@ test("playlist import preselects cooking videos, skips saved ones and adds dinne
        playlistImport.selected=Object.fromEntries(playlistImport.result.items.map(i=>[i.videoId,!owned.has(i.videoId)&&looksLikeCooking(i)]))`);
   assert.deepEqual(JSON.parse(run("JSON.stringify(playlistImport.selected)")), { aaaaaaaaaaa: true, bbbbbbbbbbb: false, ccccccccccc: false });
   const html = run("renderPlaylistImport()");
-  assert.match(html, /1品をレシピに追加して献立へ/);
+  assert.match(html, /1品を保存して条件を確認/);
   assert.match(html, /登録済み/);
   assert.match(html, /料理以外かも/);
   run("playlistImport.selected.ccccccccccc=true; addPlaylistRecipes()");
@@ -45,7 +45,8 @@ test("playlist import preselects cooking videos, skips saved ones and adds dinne
   assert.equal(added.videoUrl, "https://www.youtube.com/watch?v=aaaaaaaaaaa");
   assert.equal(added.bulkImport.playlistId, "PLtest12345678");
   assert.ok(added.ingredients.some((i) => i.name.includes("豚こま")));
-  assert.equal(added.planning, undefined);
+  assert.equal(added.planning.conditionsConfirmed, false);
+  assert.equal(added.planning.ingredientsVerified, false);
 });
 
 test("descriptions without ingredient amounts produce no placeholder shopping items", () => {
@@ -54,18 +55,16 @@ test("descriptions without ingredient amounts produce no placeholder shopping it
   assert.deepEqual(recipe.ingredients, []);
 });
 
-test("unconfirmed saved recipes stay plannable with visible notes, but food restrictions still exclude them", () => {
-  const saved = { id: "r1", title: "保存した丼", mealType: "dinner", ingredients: [], steps: [] };
-  const busy = L.profile({ weekdayMinutes: 20, skill: "easy", avoidTasks: ["揚げる"] });
-  const fit = L.fit(saved, busy, "2026-09-23");
-  assert.equal(fit.ok, true);
-  assert.equal(fit.needsReview, true);
-  for (const note of ["調理時間は未確認", "難しさは未確認", "作業は未確認", "材料は未確認"]) assert.ok(fit.reasons.includes(note), note);
-  assert.equal(L.fit({ ...saved, planning: { minutes: 45 } }, busy, "2026-09-23").ok, false);
-  assert.equal(L.fit(saved, L.profile({ restrictions: ["卵"] }), "2026-09-23").ok, false);
-  const plan = L.propose({ recipes: [...L.curated, saved], profile: busy, start: "2026-09-23", length: 3,
-    addDays: (d, n) => { const t = new Date(d + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); } });
-  assert.ok(plan.some((d) => d.candidate?.recipe.id === "r1"));
+test("playlist drafts require review before entering automatic meal plans", () => {
+ const saved={id:"r1",title:"保存した丼",mealType:"dinner",ingredients:[],steps:[]};
+ const busy=L.profile({weekdayMinutes:20,skill:"easy",avoidTasks:["揚げる"]});
+ assert.equal(L.fit(saved,busy,"2026-09-23").ok,false);
+ assert.equal(L.reviewable(saved,busy,"2026-09-23"),true);
+ assert.equal(L.fit(saved,L.profile({restrictions:["卵"]}),"2026-09-23").ok,false);
+ const run=app();
+ run('state.onboarded=true;state.recipes=[{id:"r1",title:"未確認",mealType:"dinner",ingredients:[],steps:[]}];swapDate=today()');
+ assert.match(run('renderSwapChoices()'),/確認が必要/);
+ assert.match(run('renderSwapChoices()'),/life-review-saved/);
 });
 
 test("cooking screen offers per-dish analysis only for unanalysed YouTube recipes", () => {
@@ -74,4 +73,23 @@ test("cooking screen offers per-dish analysis only for unanalysed YouTube recipe
   assert.equal(run('canAnalyzeRecipe({videoUrl:"https://www.youtube.com/watch?v=aaaaaaaaaaa",catalog:null})'), false);
   assert.equal(run('canAnalyzeRecipe({videoUrl:"https://www.youtube.com/watch?v=aaaaaaaaaaa",catalog:{id:"c"}})'), false);
   assert.equal(run('canAnalyzeRecipe({videoUrl:"https://www.instagram.com/reel/abc/"})'), false);
+});
+
+test("analysis creates a review draft without changing saved recipes or confirmed meals",async()=>{
+ const run=app('https://api.test');
+ run(`state.onboarded=true;const original={...clone(Lifestyle.curated[0]),id:'saved',videoUrl:'https://youtube.com/watch?v=abcdefghijk',planning:undefined,curated:undefined,catalog:null};state.recipes=[original];confirmDaily({date:today()},original);cookingDate=today();state.view='cooking';const before=JSON.stringify(state.recipes);const slotBefore=JSON.stringify(state.mealSlots);importRecipeFromYouTube=async()=>({title:'AI',ingredients:[{name:'トマト',amount:'1個'}],steps:['切る'],sourceServings:1,catalog:{id:'youtube-abcdefghijk'}});`);
+ await run('analyzeCookingRecipe(today())');
+ assert.equal(run('JSON.stringify(state.recipes)===before'),true);
+ assert.equal(run('JSON.stringify(state.mealSlots)===slotBefore'),true);
+ assert.equal(run('state.view'),'register');assert.equal(run('state.extractedIngredients[0].name'),'トマト');
+});
+test("late analysis never overwrites edits or rerenders another active form",async()=>{
+ const run=app('https://api.test');
+ run(`state.onboarded=true;const r={...clone(Lifestyle.curated[0]),id:'saved',videoUrl:'https://youtube.com/watch?v=abcdefghijk',planning:undefined,curated:undefined,catalog:null};state.recipes=[r];confirmDaily({date:today()},r);cookingDate=today();state.view='cooking';let finish,calls=0,renders=0;render=()=>{renders++};importRecipeFromYouTube=()=>{calls++;return new Promise(resolve=>{finish=resolve})};const pending=analyzeCookingRecipe(today());analyzeCookingRecipe(today());state.view='register';state.recipes[0].note='new edit';finish({ingredients:[{name:'卵'}]});`);
+ await run('pending');assert.equal(run('calls'),1);assert.equal(run('renders'),1);
+ assert.equal(run('state.recipes[0].note'),'new edit');
+});
+test("unlisted videos are stored without offering shared AI analysis",()=>{
+ const run=app('https://api.test');
+ assert.equal(run('canAnalyzeRecipe({videoUrl:"https://youtube.com/watch?v=abcdefghijk",bulkImport:{privacyStatus:"unlisted"}})'),false);
 });

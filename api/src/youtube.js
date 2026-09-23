@@ -118,13 +118,13 @@ export function extractYouTubePlaylistId(rawUrl) {
   return listId;
 }
 
-async function youtubeGet(path, params, env, fetchImpl) {
+async function youtubeGet(path, params, env, fetchImpl, deadline) {
   const apiKey = env.YOUTUBE_API_KEY;
   if (!apiKey) {
     throw new ApiError(500, "missing_youtube_api_key", "YouTube APIキーが設定されていません。");
   }
   const query = new URLSearchParams({ ...params, key: apiKey });
-  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/${path}?${query.toString()}`, { signal: AbortSignal.timeout(15_000) });
+  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/${path}?${query.toString()}`, { signal: deadline ? AbortSignal.any([deadline, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000) }).catch(() => { throw new ApiError(504,"youtube_timeout","YouTubeからの取得に時間がかかっています。時間をおいてお試しください。"); });
   if (response.status === 404) {
     throw new ApiError(404, "playlist_not_found", "再生リストが見つかりません。非公開の場合は、公開または限定公開に変更してください。");
   }
@@ -138,9 +138,11 @@ function bestThumbnail(thumbnails = {}) {
   return thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || "";
 }
 
-// 公開・限定公開の再生リストを、AI解析なしで一覧化する（クォータは50件ごとに約2ユニット）
+// At most 1 metadata + 4 playlist pages + 4 video batches (9 quota units).
 export async function fetchYouTubePlaylist(playlistId, env = process.env, fetchImpl = fetch, maxItems = PLAYLIST_MAX_ITEMS) {
-  const meta = await youtubeGet("playlists", { part: "snippet", id: playlistId }, env, fetchImpl);
+  maxItems = Math.max(1, Math.min(PLAYLIST_MAX_ITEMS, Math.floor(Number(maxItems)) || PLAYLIST_MAX_ITEMS));
+  const deadline = AbortSignal.timeout(45_000);
+  const meta = await youtubeGet("playlists", { part: "snippet", id: playlistId }, env, fetchImpl, deadline);
   const playlist = meta.items?.[0];
   if (!playlist?.snippet) {
     throw new ApiError(404, "playlist_not_found", "再生リストが見つかりません。非公開の場合は、公開または限定公開に変更してください。");
@@ -149,27 +151,35 @@ export async function fetchYouTubePlaylist(playlistId, env = process.env, fetchI
   const videoIds = [];
   let pageToken = "";
   let truncated = false;
+  let scanned = 0, pages = 0;
+  const seenTokens = new Set();
   do {
+    pages++;
+    seenTokens.add(pageToken);
     const page = await youtubeGet("playlistItems", {
       part: "contentDetails",
       playlistId,
-      maxResults: "50",
+      maxResults: String(Math.min(50, maxItems-scanned)),
       ...(pageToken ? { pageToken } : {})
-    }, env, fetchImpl);
+    }, env, fetchImpl, deadline);
     for (const item of page.items || []) {
+      if (scanned >= maxItems) { truncated = true; break; }
+      scanned++;
       const id = item.contentDetails?.videoId;
       if (!/^[a-zA-Z0-9_-]{11}$/.test(id || "") || videoIds.includes(id)) continue;
       if (videoIds.length >= maxItems) { truncated = true; break; }
       videoIds.push(id);
     }
-    pageToken = truncated ? "" : page.nextPageToken || "";
+    pageToken = page.nextPageToken || "";
+    if (pageToken && (scanned >= maxItems || pages >= Math.ceil(maxItems/50) || seenTokens.has(pageToken))) truncated = true;
+    if (truncated) pageToken = "";
   } while (pageToken);
 
   const items = [];
   let skipped = 0;
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);
-    const data = await youtubeGet("videos", { part: "snippet,status", id: batch.join(",") }, env, fetchImpl);
+    const data = await youtubeGet("videos", { part: "snippet,status", id: batch.join(",") }, env, fetchImpl, deadline);
     const byId = new Map((data.items || []).map((video) => [video.id, video]));
     for (const id of batch) {
       const video = byId.get(id);
@@ -177,6 +187,7 @@ export async function fetchYouTubePlaylist(playlistId, env = process.env, fetchI
       if (!video?.snippet || !["public", "unlisted"].includes(video.status?.privacyStatus)) { skipped++; continue; }
       items.push({
         videoId: id,
+        privacyStatus: video.status.privacyStatus,
         url: `https://www.youtube.com/watch?v=${id}`,
         title: String(video.snippet.title || "").slice(0, 200),
         channelTitle: String(video.snippet.channelTitle || "").slice(0, 100),

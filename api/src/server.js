@@ -4,7 +4,7 @@ import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
-import { toErrorResponse } from "./errors.js";
+import { ApiError, toErrorResponse } from "./errors.js";
 import { importYouTubeRecipe, requireAnalyzer } from "./importRecipe.js";
 import { getSyncRoom, putSyncRoom } from "./sync.js";
 import { createSyncStore } from "./syncStore.js";
@@ -25,13 +25,15 @@ export function createApp(env = process.env, deps = {}) {
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
   const requestWindows = new Map();
+  const playlistRequests = new Map();
   app.use((req, res, next) => {
     if (!req.path.startsWith("/api/")) return next();
     const now = Date.now();
     for (const [ip, entry] of requestWindows) if (entry.resetAt <= now) requestWindows.delete(ip);
     const ip = req.ip;
     const entry = requestWindows.get(ip) || { count: 0, resetAt: now + 60_000 };
-    if ((!requestWindows.has(ip) && requestWindows.size >= 10_000) || ++entry.count > 60) {
+    if (req.path === "/api/import/youtube/playlist") entry.playlists = (entry.playlists || 0) + 1;
+    if ((req.path === "/api/import/youtube/playlist" && (entry.playlists || 0) > 6) || (!requestWindows.has(ip) && requestWindows.size >= 10_000) || ++entry.count > 60) {
       res.setHeader("Retry-After", "60");
       return res.status(429).json({ error: { code: "rate_limit", message: "アクセスが集中しています。1分後にお試しください。" } });
     }
@@ -48,7 +50,7 @@ export function createApp(env = process.env, deps = {}) {
   });
 
   app.get("/health", (req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, capabilities: { playlistImport: true } });
   });
 
   app.post("/api/import/youtube", async (req, res) => {
@@ -65,7 +67,18 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/import/youtube/playlist", async (req, res) => {
     try {
       const playlistId = extractYouTubePlaylistId(req.body?.url);
-      res.json(await (deps.fetchPlaylist || ((id) => fetchYouTubePlaylist(id, env)))(playlistId));
+      res.setHeader("Cache-Control", "no-store");
+      const now = Date.now();
+      for (const [id, entry] of playlistRequests) if (entry.expires <= now) playlistRequests.delete(id);
+      let entry = playlistRequests.get(playlistId);
+      if (!entry) {
+        if (playlistRequests.size >= 100) throw new ApiError(429,"playlist_busy","再生リストの読み込みが混み合っています。少し待ってお試しください。");
+        entry = {expires:now+300_000};
+        entry.promise = Promise.resolve().then(()=> (deps.fetchPlaylist || ((id)=>fetchYouTubePlaylist(id,env)))(playlistId));
+        playlistRequests.set(playlistId,entry);
+        entry.promise.catch(()=>{ if (playlistRequests.get(playlistId) === entry) playlistRequests.delete(playlistId); });
+      }
+      res.json(await entry.promise);
     } catch (error) {
       const { status, body } = toErrorResponse(error);
       res.status(status).json(body);

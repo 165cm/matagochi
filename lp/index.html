@@ -1,277 +1,305 @@
 <!doctype html>
 <html lang="ja">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="リピごちは、SNSで見つけたレシピ動画を保存して、自分やパートナーの「また食べたい周期」から今週の献立と買い物リストまで整える無料のごはんメモアプリです。">
-    <meta property="og:title" content="リピごち | 1人・2人暮らしの、今夜の一品が決まる">
-    <meta property="og:description" content="SNSのレシピ動画を確認して保存。1人・2人暮らしのリピート周期から、今週の献立と買い物リストまで自動で整います。無料・登録不要。">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://165cm.github.io/matagochi/lp/">
-    <meta property="og:image" content="https://165cm.github.io/matagochi/lp/assets/ogp.webp">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="theme-color" content="#fffdf7">
-    <link rel="canonical" href="https://165cm.github.io/matagochi/lp/">
-    <link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
-    <title>リピごち | 1人・2人暮らしの、今夜の一品が決まる</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>リピごち | 3問から、今夜の一品と買い物へ</title>
+    <meta
+      name="description"
+      content="1人・2人暮らしの夜ごはん。3問で3日分を提案し、確定した献立から買い物リストへ。無料ではじめられ、保存・記録・バックアップの基本機能はずっと無料。"
+    />
+    <meta
+      property="og:title"
+      content="リピごち | 3問から、今夜の一品と買い物へ"
+    />
+    <meta
+      property="og:description"
+      content="夜ごはんを1日1品。提案を選び、必要なものだけ買って、おいしかった一皿を残そう。夜ごはんタイプ診断も。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://165cm.github.io/matagochi/lp/" />
+    <meta
+      property="og:image"
+      content="https://165cm.github.io/matagochi/lp/assets/dinner-for-two.webp"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://165cm.github.io/matagochi/lp/" />
+    <link rel="icon" href="../icons/icon-192.png" />
+    <link rel="stylesheet" href="styles.css?v=20260923-lp" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <div class="brand">
-          <img src="../icons/icon-192.png" alt="リピごちのアイコン" width="36" height="36">
-          <span>リピごち</span>
-        </div>
-        <a class="button button-small" href="../">アプリを開く</a>
+        <a class="brand" href="#"
+          ><img
+            src="../icons/icon-192.png"
+            width="36"
+            height="36"
+            alt=""
+          /><span>リピごち</span></a
+        ><a class="button button-small" href="../">アプリを開く</a>
       </div>
     </header>
-
     <main>
-      <!-- ヒーロー -->
       <section class="hero">
         <div class="container hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow">無料・登録不要・スマホでそのまま使える</p>
-            <h1>今夜の一品が決まる。<br>1人・2人暮らしのごはんメモ。</h1>
+            <p class="eyebrow">1人・2人暮らしの夜ごはんに</p>
+            <h1>3問から、<br />今夜の一品と<br />買い物が決まる。</h1>
             <p class="lead">
-              SNSで見つけたレシピ動画、あとから探せなくなっていませんか？<br>
-              リピごちは動画を確認して保存して、自分やパートナーの「また食べたい周期」から
-              <strong>今週の献立</strong>と<strong>買い物リスト</strong>まで自動で整えます。
+              人数・調理時間・食べられない食材を教えたら、まずは<strong>3日分の夜ごはん</strong>。食べたい提案を確定すると、必要な材料が買い物リストにまとまります。
             </p>
             <div class="cta-row">
-              <a class="button button-primary" href="../">いますぐ無料で使う</a>
-              <a class="button button-ghost" href="#how">使い方を見る</a>
+              <a class="button button-primary" href="../?start=quick"
+                >3問で無料ではじめる</a
+              ><a class="button button-ghost" href="../?start=preview"
+                >設定せずに見てみる</a
+              >
             </div>
-            <p class="cta-note">アカウント登録なし。保存先は端末内。同期・AI取り込み利用時はサーバーへ送信します。</p>
+            <p class="cta-note">
+              無料ではじめられる。保存・記録・バックアップの基本機能はずっと無料。条件に合う候補がない場合は設定を調整できます。
+            </p>
+            <p class="cta-note">
+              基本は端末内に保存。同期・AI取り込みを使ったときは、対象データをサーバーへ送信します。
+            </p>
           </div>
-          <div class="hero-media media-slot is-empty">
-            <img src="assets/hero.webp" alt="キッチンでリピごちを使う親子のイラスト" loading="eager" onload="this.closest('.media-slot').classList.remove('is-empty')" onerror="this.remove()">
-            <div class="media-fallback" aria-hidden="true"><span>🍚</span></div>
+          <div class="screen-pair">
+            <figure>
+              <img
+                src="assets/app-today.png"
+                alt="リピごちの実際の今日画面。今夜の一品と作り方への入口"
+                width="390"
+                height="844"
+              />
+              <figcaption>今夜の一品を、すぐ確認</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="assets/app-plan.png"
+                alt="実際の献立画面。3日分の提案を確認して確定"
+                width="390"
+                height="844"
+              />
+              <figcaption>3日分から。7日分にも変更OK</figcaption>
+            </figure>
           </div>
         </div>
       </section>
-
-      <!-- 悩み -->
       <section class="pains">
         <div class="container">
-          <h2>毎日の献立、こんなことになっていませんか？</h2>
+          <h2>ひと皿でいい。<br />今日も、おいしく食べよう。</h2>
           <div class="card-grid three">
-            <div class="pain-card">
-              <span class="pain-icon">📱</span>
-              <h3>保存したレシピが行方不明</h3>
-              <p>InstagramやTikTokで「作ろう」と思った動画が、いいねの海に沈んで二度と見つからない。</p>
-            </div>
-            <div class="pain-card">
-              <span class="pain-icon">🤯</span>
-              <h3>献立を毎日ゼロから考える</h3>
-              <p>「今日なに食べたい？」「なんでもいい」の無限ループ。考えること自体がいちばん疲れる。</p>
-            </div>
-            <div class="pain-card">
-              <span class="pain-icon">💭</span>
-              <h3>家族の「おいしかった」を忘れる</h3>
-              <p>あんなに好評だったのに、レシピも「また食べたい」の熱量も、次に活かせないまま消えていく。</p>
-            </div>
+            <article class="pain-card">
+              <span class="pain-icon">🤔</span>
+              <h3>毎日、ゼロから考えない</h3>
+              <p>
+                まずは提案から選ぶだけ。主菜と副菜の組合せに悩まず、夜ごはんを1日1品で。
+              </p>
+            </article>
+            <article class="pain-card">
+              <span class="pain-icon">🛒</span>
+              <h3>作る分だけ、買い物へ</h3>
+              <p>
+                買い物リストに入るのは確定した献立の材料。家にあるものや購入済みのものを整理できます。
+              </p>
+            </article>
+            <article class="pain-card">
+              <span class="pain-icon">💛</span>
+              <h3>おいしかった一品を残す</h3>
+              <p>
+                食べたら「作った」。また食べたい一皿はボタンで記録し、写真やメモも残せます。
+              </p>
+            </article>
           </div>
         </div>
       </section>
-
-      <!-- 機能 -->
-      <section class="features" id="features">
-        <div class="container">
-          <p class="eyebrow center">リピごちができること</p>
-          <h2>保存 → 記録 → 献立 → 買い物まで、ひとつながり。</h2>
-
-          <div class="feature">
-            <div class="feature-copy">
-              <span class="feature-number">01</span>
-              <h3>共有メニューから、確認して保存</h3>
-              <p>
-                YouTubeやTikTokアプリの「共有」から、リピごちに直接送るだけ。
-                サムネイル付きで一覧に並ぶから、あとから見ても一目でわかります。
-                YouTubeなら説明文から材料メモの下書きまで自動で作成。
-              </p>
-              <ul class="feature-list">
-                <li>Instagram / TikTok / YouTube Shorts / Facebook のURLに対応</li>
-                <li>ホーム画面に追加すれば、アプリのように起動</li>
-                <li>材料は人数分に自動換算</li>
-              </ul>
-            </div>
-            <div class="feature-media media-slot is-empty">
-              <img src="assets/feature01.webp" alt="動画アプリの共有シートからリピごちへ保存するイメージ" loading="lazy" onload="this.closest('.media-slot').classList.remove('is-empty')" onerror="this.remove()">
-              <div class="media-fallback" aria-hidden="true"><span>📲</span></div>
-            </div>
-          </div>
-
-          <div class="feature reverse">
-            <div class="feature-copy">
-              <span class="feature-number">02</span>
-              <h3>自分やパートナーの「また食べたい」を記録</h3>
-              <p>
-                作ったら、自分やパートナーの気持ちを「明日でも」「毎週」「月２回」…の6段階でタップするだけ。
-                星の点数より正直な、わが家だけの食の記録がたまっていきます。
-                2回目からは前回の周期が入っているので、記録は数秒で終わります。
-              </p>
-              <ul class="feature-list">
-                <li>「作った！」ボタンで1タップ記録</li>
-                <li>料理写真とメモも残せる</li>
-                <li>「リピなし」も大事なデータ。次から提案に出ません</li>
-              </ul>
-            </div>
-            <div class="feature-media media-slot is-empty">
-              <img src="assets/feature02.webp" alt="食卓を囲む家族と6段階のリピ周期のイメージ" loading="lazy" onload="this.closest('.media-slot').classList.remove('is-empty')" onerror="this.remove()">
-              <div class="media-fallback" aria-hidden="true"><span>😋</span></div>
-            </div>
-          </div>
-
-          <div class="feature">
-            <div class="feature-copy">
-              <span class="feature-number">03</span>
-              <h3>夜ごはんを1日1品、7日分の候補から選ぶ</h3>
-              <p>
-                記録した周期と最後に作った日から、「そろそろ食べ頃」のレシピを7日分並べます。
-                気分に合わなければ「差し替え」をタップするだけ。
-                献立づくりが、ゼロから考える仕事から、選ぶだけの作業に変わります。
-              </p>
-              <ul class="feature-list">
-                <li>食べ頃が近い順に自動で提案</li>
-                <li>同じレシピは1週間の中で重複しない</li>
-                <li>ワンタップで候補を差し替え・固定</li>
-              </ul>
-            </div>
-            <div class="feature-media media-slot is-empty">
-              <img src="assets/feature03.webp" alt="1週間の献立カレンダーのイメージ" loading="lazy" onload="this.closest('.media-slot').classList.remove('is-empty')" onerror="this.remove()">
-              <div class="media-fallback" aria-hidden="true"><span>🗓️</span></div>
-            </div>
-          </div>
-
-          <div class="feature reverse">
-            <div class="feature-copy">
-              <span class="feature-number">04</span>
-              <h3>買い物リストまで、自動でまとまる</h3>
-              <p>
-                今週の献立候補の材料を、野菜・肉・調味料などカテゴリ別に、選んだ人数分でまとめます。
-                スーパーではチェックしながら買うだけ。
-                リストはコピーして、LINEで家族に「これ買ってきて」と送れます。
-              </p>
-              <ul class="feature-list">
-                <li>同じ材料は自動で合算</li>
-                <li>買ったものはチェックで消し込み</li>
-                <li>コピー・共有でパートナーにおまかせ</li>
-              </ul>
-            </div>
-            <div class="feature-media media-slot is-empty">
-              <img src="assets/feature04.webp" alt="スーパーでスマホの買い物リストを見るイメージ" loading="lazy" onload="this.closest('.media-slot').classList.remove('is-empty')" onerror="this.remove()">
-              <div class="media-fallback" aria-hidden="true"><span>🛒</span></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 使い方 -->
       <section class="how" id="how">
         <div class="container">
-          <p class="eyebrow center">はじめかたは簡単</p>
-          <h2>3ステップで、今日から</h2>
-          <ol class="steps">
+          <p class="eyebrow center">実際の使い方</p>
+          <h2>3問から、食べるところまで。</h2>
+          <ol class="steps four-steps">
             <li>
               <span class="step-number">1</span>
-              <h3>開いて、ホーム画面に追加</h3>
-              <p>インストールも登録も不要。ブラウザで開いて「ホーム画面に追加」するだけで、アプリのように使えます。</p>
+              <h3>3問に答える</h3>
+              <p>
+                人数・平日の調理時間・食べられない食材。好みや器具の詳細はあとから。
+              </p>
             </li>
             <li>
               <span class="step-number">2</span>
-              <h3>気になる動画を保存</h3>
-              <p>動画アプリの共有メニューから送るか、URLを貼り付けるだけ。材料メモも一緒に残せます。</p>
+              <h3>提案を確定</h3>
+              <p>
+                3日分を見て、食べたい料理を確定。入れ替えや自炊のお休みも選べます。
+              </p>
             </li>
             <li>
               <span class="step-number">3</span>
-              <h3>作ったら、タップで記録</h3>
-              <p>家族の「また食べたい」をタップで記録。あとは献立と買い物リストが自動で整います。</p>
+              <h3>必要なものを買う</h3>
+              <p>
+                確定した献立からリストを作成。常備品は残量を確認して調整します。
+              </p>
+            </li>
+            <li>
+              <span class="step-number">4</span>
+              <h3>食べたら「作った」</h3>
+              <p>
+                今日の料理から記録。気に入ったら「また食べたい」を残しましょう。
+              </p>
             </li>
           </ol>
           <div class="cta-row center">
-            <a class="button button-primary" href="../">無料ではじめる</a>
+            <a class="button button-primary" href="../?start=quick"
+              >3問ではじめる</a
+            >
           </div>
         </div>
       </section>
-
-      <!-- 安心ポイント -->
-      <section class="trust">
+      <section class="features">
         <div class="container">
-          <h2>安心して使えます</h2>
-          <div class="card-grid four">
-            <div class="trust-card">
-              <span class="trust-icon">🆓</span>
-              <h3>完全無料</h3>
-              <p>すべての機能が無料。課金も広告もありません。</p>
+          <div class="feature">
+            <div class="feature-copy">
+              <p class="eyebrow">好みの違いも、ごちそうに。</p>
+              <h2>あなたの<br />夜ごはんタイプは？</h2>
+              <p>
+                料理写真8枚と、迷ったときの二択9問。「味か彩りか」「節約か栄養バランスか」「時短かひと手間か」の3軸から、あなたのキャラクターを見つけます。
+              </p>
+              <p>
+                結果は画像でシェア。「同じ丼が続いてもあり？」なんて、話すきっかけにも。
+              </p>
+              <a class="button button-primary" href="../?quiz=1"
+                >夜ごはんタイプを診断する</a
+              >
+              <p class="cta-note">
+                今の好みを楽しむ診断です。性格や健康状態の判定ではありません。
+              </p>
             </div>
-            <div class="trust-card">
-              <span class="trust-icon">✉️</span>
-              <h3>登録不要</h3>
-              <p>メールアドレスもパスワードも要りません。開いたら、すぐ。</p>
+            <div class="persona-gallery">
+              <img
+                src="../assets/persona/LLL.webp"
+                alt="満腹ハムスター"
+                loading="lazy"
+              /><img
+                src="../assets/persona/RLR.webp"
+                alt="盛り付けキツネ"
+                loading="lazy"
+              />
             </div>
-            <div class="trust-card">
-              <span class="trust-icon">🔒</span>
-              <h3>データは端末の中だけ</h3>
-              <p>レシピも記録も写真も、あなたの端末にだけ保存。サーバーには送りません。</p>
+          </div>
+          <div class="feature reverse">
+            <div class="feature-copy">
+              <h2>自分のためにも、<br />ふたりのためにも。</h2>
+              <p>
+                1人分・2人分で夜ごはんを計画。SNSで見つけたレシピも、URL・画像・手入力で自分のコレクションに追加できます。
+              </p>
+              <p>
+                AI取り込みは下書きを確認・修正して保存。材料の人数換算は、元レシピの人数が確認できる場合に行います。
+              </p>
             </div>
-            <div class="trust-card">
-              <span class="trust-icon">📦</span>
-              <h3>バックアップも簡単</h3>
-              <p>JSONファイルの書き出し・読み込みで、機種変更のときも安心です。</p>
+            <div class="feature-media">
+              <img
+                src="assets/dinner-for-two.webp"
+                alt="小さな食卓で一皿ずつの夜ごはんを楽しむ大人ふたりのイラスト"
+                loading="lazy"
+              />
             </div>
           </div>
         </div>
       </section>
-
-      <!-- FAQ -->
+      <section class="trust" id="pricing">
+        <div class="container">
+          <h2>無料ではじめられる。<br />基本機能はずっと無料。</h2>
+          <div class="card-grid three">
+            <article class="trust-card">
+              <span class="trust-icon">📖</span>
+              <h3>無料で残す基本機能</h3>
+              <p>
+                レシピの保存・編集、食事の記録、JSONバックアップの書き出し・読み込み。
+              </p>
+            </article>
+            <article class="trust-card">
+              <span class="trust-icon">✨</span>
+              <h3>有料プランを準備中</h3>
+              <p>
+                より豊富な提案レシピ、AI取り込みの利用枠拡張、端末間同期などを有料候補として検討しています。
+              </p>
+            </article>
+            <article class="trust-card">
+              <span class="trust-icon">🔒</span>
+              <h3>基本は端末内に保存</h3>
+              <p>
+                同期・AI取り込みを使ったときは、対象データをサーバーへ送信します。端末内のデータはバックアップできます。
+              </p>
+            </article>
+          </div>
+          <p class="center">
+            現在は無料で提供しています。有料プランの価格・内容・開始時期は未定です。導入前に案内し、同意なく課金することはありません。
+          </p>
+        </div>
+      </section>
       <section class="faq">
         <div class="container">
           <h2>よくある質問</h2>
           <details>
-            <summary>本当に無料ですか？</summary>
-            <p>はい、無料です。個人開発のオープンソース（MITライセンス）アプリで、課金要素や広告はありません。</p>
+            <summary>これからも無料で使えますか？</summary>
+            <p>
+              レシピの保存・編集、食事の記録、JSONバックアップの基本機能は無料で継続します。現在は全機能を無料で提供していますが、将来の有料プランを予定しています。豊富な提案レシピ、AI取り込みの利用枠拡張、同期などが候補です。価格や対象機能は確定前に案内し、自動的に課金へ切り替えることはありません。
+            </p>
+          </details>
+          <details>
+            <summary>最初に16画面の設定が必要ですか？</summary>
+            <p>
+              「3問ではじめる」なら人数・調理時間・食べられない食材の3画面だけです。「設定せずに見てみる」では、用意されたレシピの3日分の提案を確認できます。このプレビューには個人の食材制限や器具の条件が未設定なので、実際に作る前に確認してください。詳細設定や診断はあとから使えます。
+            </p>
+          </details>
+          <details>
+            <summary>3問だけで買い物リストができますか？</summary>
+            <p>
+              3問で献立を提案し、利用者が確定した料理の材料から買い物リストを作ります。提案しただけでは買い物に追加しません。条件に合うレシピがない場合は、条件の見直しやレシピの追加が必要です。
+            </p>
+          </details>
+          <details>
+            <summary>どんなデータをサーバーへ送りますか？</summary>
+            <p>
+              基本は端末内に保存します。同期を有効にすると、共有対象のレシピ・記録・器具・常備品・献立・買い物などをサーバーへ送信・保存します。AI取り込みでは入力したURLや解析対象画像などをサーバーへ送り、AIサービスで処理します。個人の診断回答や食材制限は家族同期に含めません。
+            </p>
+            <p>
+              URLのタイトル・サムネイル取得、外部画像や動画の表示にも通信が発生します。共通レシピの照会・修正提案では、そのURLや提案内容を送信します。「端末内保存」は通信が一切ないという意味ではありません。
+            </p>
           </details>
           <details>
             <summary>iPhoneでも使えますか？</summary>
-            <p>使えます。SafariやChromeで開いて「ホーム画面に追加」すると、アプリのように起動できます。なお、動画アプリの共有メニューからの直接保存はAndroidのChrome系ブラウザが対象で、iPhoneではURLのコピー＆貼り付けで保存します。</p>
+            <p>
+              ブラウザで利用できます。「ホーム画面に追加」でアプリのように起動できます。iPhoneでSNSレシピを保存する場合は、URLのコピー＆貼り付けをご利用ください。
+            </p>
           </details>
           <details>
-            <summary>レシピ動画の中身も自動で取り込めますか？</summary>
-            <p>YouTubeは動画の説明文から材料メモの下書きを自動作成します。TikTokはタイトルとサムネイルを自動取得します。InstagramやFacebookは、キャプションを貼り付けて抽出できます。API設定済み環境では、Instagram・TikTokなどのスクリーンショット（JPEG・PNG・WebP、最大5枚）からAIが下書きを作り、確認・修正して保存できます。解析用画像は共通レシピDBへ保存しません。</p>
-          </details>
-          <details>
-            <summary>家族のスマホと同期できますか？</summary>
-            <p>API設定済み環境では、設定画面から合言葉同期を利用できます。同じ合言葉を知る相手とデータを読み書きし、同期データはサーバーにも保存されます。JSONバックアップの書き出し・読み込みで、別の端末へ手動で移せます。買い物リストはコピーしてLINEなどで共有できます。</p>
-          </details>
-          <details>
-            <summary>データが消えることはありませんか？</summary>
-            <p>ブラウザの保存領域（IndexedDB）に保存し、永続化を要求しています。さらにホーム画面への追加と、アプリが定期的にお知らせするJSONバックアップの書き出しをおすすめしています。</p>
+            <summary>機種変更やデータ消失に備えるには？</summary>
+            <p>
+              設定からJSONバックアップを書き出して保管してください。ブラウザのデータ削除などで端末内の保存内容が消える場合があります。バックアップには個人設定も含まれるため、保管先や共有先に注意してください。
+            </p>
           </details>
         </div>
       </section>
-
-      <!-- 最終CTA -->
       <section class="final-cta">
         <div class="container center">
-          <h2>今夜の「おいしかった」を、<br class="sp-only">来週の献立に。</h2>
-          <p class="lead">開いたその日から使えます。まずはサンプルデータで触ってみてください。</p>
-          <a class="button button-primary button-large" href="../">リピごちを無料で使う</a>
+          <h2>今夜は、考えるより<br />おいしく食べよう。</h2>
+          <p class="lead">まずは3日分を見て、気に入ったらあなたの条件で。</p>
+          <div class="cta-row center">
+            <a class="button button-primary" href="../?start=quick"
+              >3問で無料ではじめる</a
+            ><a class="button button-ghost" href="../?start=preview"
+              >設定せずに見てみる</a
+            >
+          </div>
         </div>
       </section>
     </main>
-
     <footer class="site-footer">
       <div class="container footer-inner">
-        <div class="brand">
-          <img src="../icons/icon-192.png" alt="" width="28" height="28">
-          <span>リピごち</span>
-        </div>
+        <span class="brand">リピごち</span>
         <nav class="footer-links">
-          <a href="../">アプリ</a>
-          <a href="https://github.com/165cm/matagochi" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://165cm.github.io/portfolio/apps/matagochi" target="_blank" rel="noreferrer">ポートフォリオ</a>
+          <a href="../">アプリ</a
+          ><a href="https://github.com/165cm/matagochi">GitHub</a>
         </nav>
         <p class="copyright">MIT License</p>
       </div>

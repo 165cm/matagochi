@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -48,7 +48,7 @@ test("restriction and unavailable equipment apply without silently relaxing to f
     restrictions: ["卵", "乳", "魚"],
     equipment: { ...profile.equipment, コンロ: "none" },
   });
-  const days = propose(p);
+  const days = propose(p, { recipes: L.curated.slice(0, 12) });
   assert.equal(days.filter((x) => x.candidate).length, 0);
   const egg = propose(L.profile({ ...profile, restrictions: ["卵"] }));
   assert.ok(
@@ -83,7 +83,7 @@ test("weekday/weekend time, tasks, and simplicity constraints apply", () => {
   assert.equal(L.fit(L.curated[10], p, "2026-09-26").ok, true);
 });
 test("curated recipes are unique, single-dish, portioned and complete; serving two does not mutate source", () => {
-  assert.equal(new Set(L.curated.map((r) => r.id)).size, 12);
+  assert.equal(new Set(L.curated.map((r) => r.id)).size, 38);
   assert.ok(
     L.curated.every(
       (r) =>
@@ -335,4 +335,99 @@ test('pantry cards preserve unknown until tapped and toggle without changing equ
   assert.equal(run('state.onboardingDraft.pantry.塩'),'none');
   assert.equal(run('state.onboardingDraft.pantry.砂糖'),'none');
   assert.equal(run('state.onboardingDraft.equipment.コンロ'),'none');
+});
+
+test('quick setup persists only its three answers and does not mark detailed setup complete', () => {
+ const run=app();
+ run('handleDailyAction("life-quick",{});state.onboardingDraft.servings=2;state.onboardingDraft.restrictions=["卵"];handleDailyAction("life-quick-next",{});state=normalizeState(JSON.parse(JSON.stringify(state)))');
+ assert.equal(run('state.onboardingDraft.quickSetupIndex'),1);
+ run('state.onboardingDraft.weekdayMinutes=20;handleDailyAction("life-quick-next",{});handleDailyAction("life-finish",{})');
+ assert.equal(run('state.onboarded'),true);
+ assert.equal(run('state.foodProfile.completed'),false);
+ assert.equal(run('state.foodProfile.quickSetupIndex'),null);
+ assert.equal(run('state.foodProfile.weekdayMinutes'),20);
+ assert.equal(run('state.foodProfile.restrictions[0]'),'卵');
+ assert.equal(run('Object.keys(state.foodProfile.equipment).length'),0);
+ assert.equal(run('Object.keys(state.mealSlots).length'),0);
+ assert.equal(run('state.planLength'),3);
+});
+
+test("reviewed recipe metadata excludes conditional allergens and composite dislikes", () => {
+  const byId = n => L.curated.find(r => r.id === `starter-${n}`);
+  for (const [id, restriction] of [[21,"大豆"],[23,"卵"],[15,"魚"]])
+    assert.equal(L.fit(byId(id), L.profile({...profile, restrictions:[restriction]}), start).ok, false);
+  for (const [id, dislike] of [[34,"トマト"],[19,"きのこ"]])
+    assert.equal(L.fit(byId(id), L.profile({...profile, dislikes:[dislike]}), start).ok, false);
+  const p = L.profile({...profile, restrictions:["大豆"], weekdayMinutes:20, weekendMinutes:20});
+  assert.equal(L.curated.filter(r => L.fit(r,p,start).ok).length, 5);
+  const days = propose(p,{length:7});
+  assert.equal(days.filter(d => d.candidate).length,7);
+  assert.equal(new Set(days.slice(0,5).map(d => d.candidate.recipe.id)).size,5);
+  assert.ok(days.slice(5).every(d => d.candidate.repeated));
+});
+test("reuse never bypasses exclusions, unavailable tools, time or no-repeat ratings", () => {
+  const only = L.curated.find(r => r.id === "starter-16");
+  const args = {recipes:[only],length:7};
+  assert.ok(propose(profile,args).every(d=>d.candidate));
+  for (const p of [L.profile({...profile,restrictions:["肉"]}),L.profile({...profile,equipment:{電子レンジ:"none"}}),L.profile({...profile,weekdayMinutes:10,weekendMinutes:10})])
+    assert.ok(propose(p,args).every(d=>d.candidate===null));
+  assert.ok(propose(profile,{...args,repeatScore:()=>-Infinity}).every(d=>d.candidate===null));
+});
+test("tool defaults preserve explicit ownership and reviewed recipes stay within schema", () => {
+  assert.equal(L.equipmentDefaults().耐熱ボウル,"have");
+  assert.equal(L.equipmentDefaults({キッチンばさみ:"none",耐熱ボウル:"unknown"}).キッチンばさみ,"none");
+  assert.equal(L.equipmentDefaults({耐熱ボウル:"unknown"}).耐熱ボウル,"unknown");
+  for (const r of L.curated.slice(12)) {
+    assert.ok(r.steps.length<=4);
+    assert.ok(r.planning.equipment.every(e=>L.equipment.includes(e)));
+    assert.ok(r.planning.contains.every(a=>L.restrictionOptions.includes(a)));
+  }
+});
+test("new recipe metadata survives personal save, confirmation and reload", () => {
+  const run = app();
+  run('const added = Lifestyle.curated.find(r=>r.id==="starter-23"); const saved = saveOwnRecipe(added); confirmDaily({date:today()},saved); state=normalizeState(JSON.parse(JSON.stringify(state)))');
+  assert.ok(run('state.mealSlots[today()].recipe.planning.contains.includes("卵")'));
+  assert.ok(run('state.recipes.find(r=>r.starterId==="starter-23").planning.contains.includes("大豆")'));
+  assert.equal(run('allDinnerRecipes().filter(r=>r.id==="starter-23").length'),0);
+});
+
+test("import planning suggestions never certify allergens or invent duration", () => {
+  const draft=L.suggestPlanning({ingredients:[{name:"鶏肉"},{name:"しょうゆ"}],steps:["フライパンで肉を焼く"]});
+  assert.equal(draft.minutes,null);assert.equal(draft.ingredientsVerified,false);
+  assert.ok(draft.equipment.includes("コンロ"));assert.ok(draft.contains.includes("大豆"));
+  const recipe={id:"saved",mealType:"dinner",ingredients:[{name:"トマト"}],steps:["切る"]};
+  const p=L.profile({...profile,weekdayMinutes:20,skill:"easy",restrictions:["卵"]});
+  assert.equal(L.fit(recipe,p,start).ok,false);
+  assert.equal(L.reviewable(recipe,p,start),true);
+  assert.equal(L.reviewable({...recipe,ingredients:[{name:"卵"}]},p,start),false);
+  assert.equal(L.reviewable({...recipe,planning:{minutes:30}},p,start),false);
+  const ready={...recipe,planning:{minutes:20,equipment:["包丁"],tasks:[],contains:[],easy:true,ingredientsVerified:true,conditionsConfirmed:true}};
+  assert.equal(L.fit(ready,p,start).ok,true);
+});
+test("cooked rice uses rice pantry ownership only when explicitly available", () => {
+  const args={slots:{[start]:{date:start,status:"confirmed",servings:1,recipe:{id:"rice",sourceServings:1,ingredients:[{name:"ごはん（炊飯済み）",amount:"150g",category:"主食"}]}}},start,end:start,scale:a=>a,combine:a=>a.join(" + ")};
+  assert.equal(L.shopping({...args,pantry:{米:"have"}})[0].status,"have");
+  assert.equal(L.shopping({...args,pantry:{米:"none"}})[0].status,"buy");
+  assert.equal(L.shopping(args)[0].category,"主食");
+});
+test("past three days are recordable once, future and older slots are not", () => {
+  const run=app();
+  run('const yesterday=addDays(today(),-1);confirmDaily({date:yesterday},Lifestyle.curated[0]);dailyRecord(state.mealSlots[yesterday]);dailyRecord(state.mealSlots[yesterday]);');
+  assert.equal(run('state.evaluations.length'),1);
+  assert.equal(run('state.evaluations[0].cookedAt===yesterday'),true);
+  assert.equal(run('renderPreferencePrompt().includes("月２回")'),true);
+  run('handleDailyAction("life-frequency",{id:state.evaluations[0].id,cycle:"monthly"})');
+  assert.equal(run('state.evaluations[0].familyRepeatCycles[state.family[0]]'),"monthly");
+  assert.equal(run('renderPreferencePrompt()'),"");
+  assert.equal(run('canRecordDate(addDays(today(),-3))'),true);
+  assert.equal(run('canRecordDate(addDays(today(),-4))'),false);
+  run('confirmDaily({date:addDays(today(),1)},Lifestyle.curated[0]);dailyRecord(state.mealSlots[addDays(today(),1)])');
+  assert.equal(run('state.evaluations.length'),1);
+});
+test("shopping renders one-tap checkboxes and aisle headings instead of status selects",()=>{
+  const run=app();run('confirmDaily({date:today()},Lifestyle.curated[2])');
+  const html=run('renderDailyShopping()');
+  assert.ok(html.includes('type="checkbox" data-shopping-id='));
+  assert.ok(html.includes('🥬 野菜'));assert.ok(html.includes('🥩 肉・魚'));
+  assert.ok(!html.includes('<select'));
 });

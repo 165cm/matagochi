@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v11";
-const APP_VERSION = "20260923-playlist";
+const CACHE_NAME = "ripigochi-v14";
+const APP_VERSION = "20260924-playlist-review";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -9,11 +9,12 @@ const CORE_ASSETS = [
   `./taste.js?v=${APP_VERSION}`,
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),
+  `./starter-recipes.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
+  `./playlist-import.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  `./playlist-import.js?v=${APP_VERSION}`,
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

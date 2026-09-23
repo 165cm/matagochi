@@ -6,7 +6,7 @@ const fullSource = fs.readFileSync(require('node:path').join(__dirname, '../app.
 const source = fullSource.slice(0, fullSource.lastIndexOf('document.querySelectorAll(".tab")'));
 function app() {
   const context = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] } });
-  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','lifestyle.js','daily-ui.js','playlist-import.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
+  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','lifestyle.js','daily-ui.js','playlist-import.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
   vm.runInContext(source, context);
   return (code) => vm.runInContext(code, context);
 }
@@ -70,7 +70,7 @@ test('image drafts cannot be saved without explicit review; accepted text has no
   await run(`handleAction({currentTarget:{dataset:{action:'save-recipe'}}})`);
   assert.equal(run('state.recipes.length'),0);
   run(`fields['#image-reviewed'].checked=true;`);
-  await run(`handleAction({currentTarget:{dataset:{action:'save-recipe'}}})`);
+  await run(`handleAction({currentTarget:{dataset:{action:'save-recipe-unreviewed'}}})`);
   assert.equal(run('state.recipes.length'),1);
   assert.equal(run('state.recipes[0].catalog'),null);
   assert.equal(run('state.recipes[0].ingredients[0].amount'),'不明');

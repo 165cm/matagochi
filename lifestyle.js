@@ -2,6 +2,7 @@
 (function (root) {
   const Taste = typeof module !== "undefined" && module.exports ? require("./taste.js") : root.FoodTaste;
   const Persona = typeof module !== "undefined" && module.exports ? require("./dinner-persona.js") : root.DinnerPersona;
+  const Starter = typeof module !== "undefined" && module.exports ? require("./starter-recipes.js") : root.StarterRecipes;
   const copy = (value) => JSON.parse(JSON.stringify(value));
   const list = (value) =>
     Array.isArray(value)
@@ -43,8 +44,8 @@
   ];
   // Product defaults, not measured ownership statistics. Apply only when this setup screen is visited.
   const equipmentGroups = [
-    {label: "基本の道具", hint: "まずはここから。未回答の基本の道具は「ある」が初期値です。", defaultValue: "have", names: ["コンロ", "電子レンジ", "フライパン", "鍋", "包丁", "まな板", "ざる", "ふた", "計量スプーン"]},
-    {label: "あると便利", hint: "持っているものをタップして追加しましょう。", defaultValue: "none", names: ["炊飯器", "トースター", "キッチンばさみ", "耐熱ボウル", "電気ケトル"]},
+    {label: "基本の道具", hint: "まずはここから。未回答の基本の道具は「ある」が初期値です。", defaultValue: "have", names: ["コンロ", "電子レンジ", "フライパン", "鍋", "包丁", "まな板", "ざる", "ふた", "計量スプーン", "キッチンばさみ", "耐熱ボウル"]},
+    {label: "あると便利", hint: "持っているものをタップして追加しましょう。", defaultValue: "none", names: ["炊飯器", "トースター", "電気ケトル"]},
     {label: "こだわりの道具", hint: "使える道具があれば、料理の幅が広がります。", defaultValue: "none", names: ["オーブン", "はかり", "圧力鍋", "ミキサー", "ホットプレート"]}
   ];
   function equipmentDefaults(current = {}) {
@@ -92,6 +93,7 @@
   }
   function profile(raw = {}) {
     return {
+      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 2 ? raw.quickSetupIndex : null,
       version: 1,
       completed: raw.completed === true,
       step: Math.min(15, Math.max(0, Number(raw.step) || 0)),
@@ -152,10 +154,57 @@
     return aliases[n] || n;
   };
   const matches = (a, b) => key(a).includes(key(b)) || key(b).includes(key(a));
+  function suggestPlanning(recipe) {
+    const names = (recipe.ingredients || []).map(i => i.name).join(" ");
+    const steps = (recipe.steps || []).join(" ");
+    const equipment = [];
+    if (/レンジ|[56]00[WＷ]/i.test(steps)) equipment.push("電子レンジ", "耐熱ボウル");
+    if (/フライパン|炒め|炒める|揚げ/.test(steps)) equipment.push("コンロ", "フライパン");
+    if (/鍋|ゆで|茹で|煮る|煮込/.test(steps)) equipment.push("コンロ", "鍋");
+    if (/切|刻/.test(steps)) equipment.push("包丁", "まな板");
+    if (/はさみ|ハサミ/.test(steps)) equipment.push("キッチンばさみ");
+    if (/ふた|蓋/.test(steps)) equipment.push("ふた");
+    if (/オーブン/.test(steps)) equipment.push("オーブン");
+    if (/トースター/.test(steps)) equipment.push("トースター");
+    const rules = {
+      卵:/卵|たまご|玉子|マヨネーズ|パン粉|粉チーズ/,
+      乳:/牛乳|チーズ|バター|生クリーム|ヨーグルト|パン粉|鶏ガラ/,
+      小麦:/小麦|しょうゆ|醤油|うどん|パスタ|パン|餃子|めんつゆ|ポン酢|豆板醤|鶏ガラ/,
+      大豆:/大豆|豆腐|豆乳|納豆|みそ|味噌|しょうゆ|醤油|油揚げ|厚揚げ|サラダ油|ツナ|めんつゆ|ポン酢|豆板醤|鶏ガラ/,
+      魚:/魚|鮭|さけ|さば|鯖|ツナ|かつお|鰹|しらす|めんつゆ|ポン酢|ナンプラー|みそ|味噌|キムチ/,
+      肉:/肉|鶏|豚|牛ひき|ベーコン|ハム|ソーセージ|鶏ガラ/,
+      えび:/えび|エビ|海老|キムチ/, かに:/かに|カニ|蟹/,
+      そば:/そば|蕎麦/, 落花生:/落花生|ピーナッツ/, くるみ:/くるみ|クルミ/,
+    };
+    const contains = Object.entries(rules).filter(([, re]) => re.test(names)).map(([c]) => c);
+    const tasks = [];
+    if (/肉/.test(names) && /切|刻/.test(steps)) tasks.push("肉を切る");
+    if (/揚げ/.test(steps)) tasks.push("揚げる");
+    if (/長時間|[456789]0分|[1-9]時間/.test(steps)) tasks.push("長く煮込む");
+    return {minutes:null, equipment:list(equipment), contains, tasks, tastes:[], easy:null,
+      ingredientsVerified:false, conditionsConfirmed:false};
+  }
+  function reviewable(recipe, p, date) {
+    if (fit(recipe, p, date).reason === "避けたい食材を含みます") return false;
+    const meta = recipe.planning || {};
+    const inferred = suggestPlanning(recipe);
+    const known = [...(meta.contains || []), ...inferred.contains,
+      ...(recipe.ingredients || []).flatMap(i => [i.name, ...(i.allergens || []), ...(i.label_check || [])])];
+    if ([...p.restrictions, ...p.dislikes].some(x => known.some(n => matches(n,x)))) return false;
+    if (meta.equipment?.some(e => p.equipment[e] === "none") || meta.tasks?.some(t => p.avoidTasks.includes(t))) return false;
+    const minutes = [0,6].includes(new Date(date+"T12:00:00").getDay()) ? p.weekendMinutes : p.weekdayMinutes;
+    if (minutes && meta.minutes > minutes || p.skill === "easy" && meta.easy === false) return false;
+    return !meta.minutes || !meta.ingredientsVerified || !meta.conditionsConfirmed;
+  }
   function fit(recipe, p, date) {
     const meta = recipe.planning;
     const names = (recipe.ingredients || []).map((x) => x.name);
-    const searchable = [...names, ...(meta?.contains || [])];
+    const searchable = [...names, ...(meta?.contains || []),
+      ...(recipe.ingredients || []).flatMap(i => [...(i.allergens || []), ...(i.label_check || [])]),
+      ...names.flatMap(n => [
+        ...(/ケチャップ|中濃ソース/.test(n) ? ["トマト"] : []),
+        ...(/みそ|しめじ/.test(n) ? ["きのこ"] : []),
+      ])];
     const blocked = [...p.restrictions, ...p.dislikes].find((x) =>
       searchable.some((n) => matches(n, x)),
     );
@@ -172,17 +221,15 @@
       return { ok: false, reason: "避けたい調理作業を含みます" };
     const weekend = [0, 6].includes(new Date(date + "T12:00:00").getDay());
     const minutes = weekend ? p.weekendMinutes : p.weekdayMinutes;
-    if (minutes && meta?.minutes > minutes)
+    if (minutes && (!meta?.minutes || meta.minutes > minutes))
       return { ok: false, reason: "調理時間の条件を確認してください" };
-    // Saved recipes often lack these details. Keep them as lower-ranked candidates
-    // with a visible note; food restrictions above still require verification.
-    const unconfirmed = [];
-    if (minutes && !meta?.minutes) unconfirmed.push("調理時間は未確認");
-    if (p.skill === "easy" && !meta?.easy) unconfirmed.push("難しさは未確認");
-    if (p.avoidTasks.length && !meta?.tasks) unconfirmed.push("作業は未確認");
-    if (!names.length) unconfirmed.push("材料は未確認");
+    if (p.skill === "easy" && !meta?.easy)
+      return { ok: false, reason: "調理の難易度が未確認です" };
+    if (p.avoidTasks.length && !meta?.tasks)
+      return { ok: false, reason: "調理作業が未確認です" };
+    if (!meta?.ingredientsVerified || !meta.minutes || meta.easy == null || !meta.tasks || (!meta.noEquipment && !meta.equipment?.length) || meta.conditionsConfirmed === false) return {ok:false, needsReview:true, reason:"調理条件の確認が必要です"};
     const knownEquipment =
-      !!meta?.equipment?.length &&
+      meta?.noEquipment === true || !!meta?.equipment?.length &&
       meta.equipment.every((x) => p.equipment[x] === "have");
     const reasons = [];
     if (minutes && meta?.minutes) reasons.push(`${meta.minutes}分目安`);
@@ -201,12 +248,12 @@
     if (exactLike) reasons.push("食べたいと選んだ一皿");
     if (taste) reasons.push("好きな味");
     const priorities = Persona.planning(p.dinnerPriorities, meta, pantryCount);
-    reasons.push(...priorities.reasons, ...unconfirmed);
+    reasons.push(...priorities.reasons);
     return {
       ok: true,
       reasons,
-      score: priorities.score + (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2 - unconfirmed.length * 4,
-      needsReview: !knownEquipment || !meta?.ingredientsVerified || unconfirmed.length > 0,
+      score: priorities.score + (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
+      needsReview: !knownEquipment || !meta?.ingredientsVerified,
     };
   }
   const restrictionOptions = [
@@ -242,6 +289,11 @@
         )
         .map((x) => x.recipe?.id),
     );
+    const usage = new Map();
+    for (const slot of Object.values(slots)) {
+      if (slot.date >= start && slot.date < addDays(start, length) && slot.status !== "removed" && slot.recipe)
+        usage.set(slot.recipe.id, (usage.get(slot.recipe.id) || 0) + 1);
+    }
     const ingredients = new Set();
     let newCount = 0;
     return Array.from({ length }, (_, i) => {
@@ -263,7 +315,6 @@
         .filter(
           (r) =>
             r.mealType === "dinner" &&
-            !used.has(r.id) &&
             repeatScore(r) !== -Infinity,
         )
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
@@ -282,12 +333,20 @@
         .sort(
           (a, b) => b.score - a.score || a.recipe.id.localeCompare(b.recipe.id),
         );
-      const personal = candidates.filter((x) => !x.recipe.curated);
-      const pool = newCount >= 1 && personal.length ? personal : candidates;
+      const unused = candidates.filter(x => !used.has(x.recipe.id));
+      // Only reuse when every eligible recipe has already appeared in this plan.
+      const eligible = unused.length ? unused : candidates.sort((a, b) => (usage.get(a.recipe.id) || 0) - (usage.get(b.recipe.id) || 0));
+      const personal = eligible.filter((x) => !x.recipe.curated);
+      const pool = newCount >= 1 && personal.length ? personal : eligible;
       const selected =
         pool.find((x) => x.recipe.id === overrides[date]) || pool[0];
       if (selected) {
+        if (used.has(selected.recipe.id)) {
+          selected.repeated = true;
+          selected.reasons.push("候補が少ないため、もう一度登場");
+        }
         used.add(selected.recipe.id);
+        usage.set(selected.recipe.id, (usage.get(selected.recipe.id) || 0) + 1);
         if (selected.recipe.curated) newCount++;
         (selected.recipe.ingredients || []).forEach((x) =>
           ingredients.add(key(x.name)),
@@ -355,7 +414,7 @@
         s.recipe.ingredients.forEach((item) => {
           const k = key(item.name);
           if (!groups.has(k))
-            groups.set(k, { id: k, name: item.name, amounts: [], parts: [] });
+            groups.set(k, { id: k, name: item.name, category: item.category || "その他", amounts: [], parts: [] });
           const g = groups.get(k);
           const amount = scale(
             item.amount,
@@ -380,7 +439,7 @@
       const signature = g.parts.join("|");
       const mark = marks[g.id];
       const owned = Object.entries(pantry).some(
-        ([n, v]) => key(n) === g.id && v === "have",
+        ([n, v]) => (key(n) === g.id || (key(n) === "米" && /^ごはん(?:（炊飯済み）)?$/.test(g.name))) && v === "have",
       );
       const covered =
         !!mark?.signature &&
@@ -420,10 +479,11 @@
       videoUrl: "",
       caption: "",
       note: "",
-      ingredients: ingredients.map(([name, amount, category = "その他"]) => ({
+      ingredients: ingredients.map(([name, amount, category = "その他", allergens, label_check]) => ({
         name,
         amount,
         category,
+        ...(allergens ? { allergens, label_check: label_check || [] } : {}),
       })),
       steps,
       tags: tastes,
@@ -434,12 +494,13 @@
         tasks,
         tastes,
         ingredientsVerified: true,
-        contains: ingredients.flatMap(([n]) => {
+        contains: ingredients.flatMap(([n, , , allergens, label_check]) => {
+          if (allergens) return [...allergens, ...(label_check || [])];
           const map = {
             しょうゆ: ["小麦", "大豆"],
-            みそ: ["大豆"],
+            みそ: ["大豆", "魚"],
             豆腐: ["大豆"],
-            ツナ缶: ["魚"],
+            ツナ缶: ["魚", "大豆"],
             さば水煮缶: ["魚"],
             鮭: ["魚"],
             パスタ: ["小麦"],
@@ -451,7 +512,7 @@
             豚こま: ["肉"],
             鶏ひき肉: ["肉"],
             豚ひき肉: ["肉"],
-            ごま油: ["ごま"],
+            サラダ油: ["大豆"],
           };
           return map[n] || [];
         }),
@@ -680,8 +741,16 @@
       ["中華風"],
     ),
   ];
+  curated.push(...Starter.recipes.map(r => ({
+    ...recipe(r.id.replace("starter-", ""), r.title, r.minutes, r.equipment,
+      r.ingredients, r.steps, r.tastes, r.tasks),
+    curated: { version: 2, role: r.role },
+    note: "調理時間は目安です。炊飯・解凍は別途。市販品の原材料表示を確認してください。",
+  })));
   const api = {
     profile,
+    suggestPlanning,
+    reviewable,
     equipment,
     equipmentGroups,
     equipmentDefaults,

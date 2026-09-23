@@ -67,7 +67,7 @@ gcloud storage buckets add-iam-policy-binding gs://<bucket-name> \
 
 `POST /api/import/youtube` は動画IDで再利用し、応答に `catalog`（ID・版等）、`cacheHit`、`sourceServings`（不明はnull）を追加します。同一インスタンスの同時要求は結果を共有、別インスタンスが分析中なら409です。失敗は1分後に再試行可能です。
 
-`POST /api/import/youtube/playlist` は `{ "url": "https://www.youtube.com/playlist?list=..." }` を受け取り、公開・限定公開の再生リストの動画（ID・URL・タイトル・チャンネル名・説明文先頭3000字・サムネイル）を最大200本返します。AI解析とAI使用枠の消費はありません（YouTube Data APIのクォータは50本ごとに約2ユニット）。非公開・削除済み動画は `skipped` に件数だけ入ります。「後で見る」（WL）・「高評価」（LL）・自動ミックス（RD…）は422、見つからない・非公開の再生リストは404です。
+`POST /api/import/youtube/playlist` は `{ "url": "https://www.youtube.com/playlist?list=..." }` を受け取り、公開・限定公開の再生リストの動画（ID・URL・タイトル・チャンネル名・説明文先頭3000字・サムネイル）を先頭200件から重複を除き最大200本返します。AI解析とAI使用枠の消費はありません（YouTube Data APIのクォータはメタ情報を含め1回最大9ユニット）。非公開・削除済み動画は `skipped` に件数だけ入ります。「後で見る」（WL）・「高評価」（LL）・自動ミックス（RD…）は422、見つからない・非公開の再生リストは404です。
 
 - `GET /api/recipes/:id`: 比較用の現在の共通版。分析は実行しません。
 - `POST /api/recipes/corrections`: `{ catalogId, baseRevision, reason, recipe: { title, ingredients, steps, sourceServings } }` を送り、201で `{ proposalId, status: "pending" }` を返します。共通版は変更しません。
@@ -94,3 +94,5 @@ API全体にプロセス内IP毎分60回の補助制限を設けています。�
 - 同じ画像の再取得が必要でマーカーしか残っていない場合は、運営が停止済みであること・再課金を確認してから対象マーカーを世代一致条件でリセットする。無条件削除や稼働中の解除はしない。
 
 クライアントは画像をページのメモリだけに保持し、レシピ状態・JSONバックアップ・合言葉同期へ含めません。利用者が確認して保存した抽出テキストは通常のマイレシピになり、同期を使う場合はそのレシピテキストが同期されます。Google側の取り扱い・ログ基盤でのリクエスト本文非記録は本番構成で確認してください。
+
+再生リスト取得は全体45秒、1リクエスト15秒、最大4ページ。同一インスタンス内の同時取得をまとめ、最大100件・5分の短期キャッシュを使います。IPあたり毎分6回（既存の全API制限とは別）です。分散インスタンス全体のYouTubeクォータ上限ではありません。health応答の `capabilities.playlistImport` がtrueになるとフロントの入口が表示されます。
