@@ -129,7 +129,7 @@ const assert = require("node:assert/strict");
   await page.reload();
   await page.waitForSelector(".today-dish");
   await page.locator(".tab[data-view=plan]").click();
-  assert.ok(await page.locator(".daily-plan-row").count());
+  assert.ok(await page.locator(".plan-card").count());
   await context.setOffline(false);
   await page.locator(".tab[data-view=today]").click();
   await page.screenshot({ path: "/tmp/daily-today.png", fullPage: true });
