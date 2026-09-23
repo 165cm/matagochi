@@ -1842,7 +1842,8 @@ function bindEvents() {
   bindDailyEvents();
   document.querySelectorAll('.ingredient-name-input, #recipe-steps').forEach(input=>input.addEventListener('input',()=> {
     const checkbox=document.querySelector('#planning-verified'); if(checkbox)checkbox.checked=false;
-    if(state.draft.planning)state.draft.planning.ingredientsVerified=false;
+    const conditions=document.querySelector('#planning-confirmed'); if(conditions)conditions.checked=false;
+    if(state.draft.planning) { state.draft.planning.ingredientsVerified=false; state.draft.planning.conditionsConfirmed=false; }
   }));
 
   document.querySelectorAll("#recipe-url, #recipe-title, #recipe-source, #recipe-caption, #recipe-note, #recipe-steps, #source-servings, .ingredient-name-input, .ingredient-amount-select, .ingredient-category-input").forEach(input => {
@@ -1911,7 +1912,9 @@ function bindEvents() {
 }
 
 async function handleAction(event) {
-  const { action } = event.currentTarget.dataset;
+  let { action } = event.currentTarget.dataset;
+  const saveUnreviewed = action === "save-recipe-unreviewed";
+  if (saveUnreviewed) action = "save-recipe";
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
 
   if (["image-up", "image-down", "image-remove", "clear-images", "cancel-images"].includes(action)) {
@@ -1950,7 +1953,7 @@ async function handleAction(event) {
       captureDraft();
       if (state.draft.videoUrl !== originalUrl) return;
       state.draft = { ...state.draft, title: result.title || state.draft.title, catalog: null, sourceServings: result.sourceServings,
-        source: state.draft.videoUrl ? detectPlatform(state.draft.videoUrl).label : "画像から取り込み", requiresImageReview: true, imageReviewed: false, imageWarnings: result.warnings || [] };
+        planning: undefined, source: state.draft.videoUrl ? detectPlatform(state.draft.videoUrl).label : "画像から取り込み", requiresImageReview: true, imageReviewed: false, imageWarnings: result.warnings || [] };
       state.originalIngredients = clone(result.ingredients);
       state.extractedIngredients = clone(result.ingredients);
       state.extractedSteps = [...result.steps];
@@ -2265,6 +2268,16 @@ async function handleAction(event) {
       render();
       return;
     }
+    if (!state.draft.planning) state.draft.planning = Lifestyle.suggestPlanning({ingredients:state.extractedIngredients,steps:state.extractedSteps});
+    const planning = state.draft.planning;
+    if (state.draft.mealType === "dinner" && !saveUnreviewed &&
+        (!planning?.conditionsConfirmed || !planning.minutes || planning.easy == null ||
+         !(planning.equipment?.length || planning.noEquipment) || !planning.ingredientsVerified)) {
+      showToast("献立に使う時間・器具・食材区分を確認してください。未確認のまま保存することもできます。");
+      document.querySelector("#planning-panel")?.scrollIntoView({block:"start",behavior:"smooth"});
+      return;
+    }
+    if (saveUnreviewed && planning) { planning.conditionsConfirmed=false; planning.ingredientsVerified=false; }
     const ingredients = clone(state.extractedIngredients);
     const originalIngredients = state.originalIngredients.length ? clone(state.originalIngredients) : clone(ingredients);
     const steps = state.extractedSteps;
@@ -2294,7 +2307,8 @@ async function handleAction(event) {
       state.extractedIngredients = [];
       state.extractedSteps = [];
       state.fetchStatus = "";
-      state.view = "collection";
+      state.view = reviewReturnDate ? "plan" : "collection";
+      if (reviewReturnDate) { swapDate = reviewReturnDate; reviewReturnDate = ""; }
       imageSession?.clear();
       imageFeedback = null;
       saveState();
@@ -2368,6 +2382,7 @@ async function handleAction(event) {
   }
 
   if (action === "cancel-edit") {
+    reviewReturnDate = "";
     state.editingRecipeId = null;
     state.draft = clone(emptyDraft);
     state.draftThumbnailUrl = "";
@@ -3046,6 +3061,7 @@ function applyImportedRecipe(result) {
   const platform = detectPlatform(state.draft.videoUrl);
   state.draft = {
     ...state.draft,
+    planning: undefined,
     requiresImageReview: false,
     imageReviewed: false,
     imageWarnings: [],

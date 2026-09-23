@@ -390,3 +390,44 @@ test("new recipe metadata survives personal save, confirmation and reload", () =
   assert.ok(run('state.recipes.find(r=>r.starterId==="starter-23").planning.contains.includes("大豆")'));
   assert.equal(run('allDinnerRecipes().filter(r=>r.id==="starter-23").length'),0);
 });
+
+test("import planning suggestions never certify allergens or invent duration", () => {
+  const draft=L.suggestPlanning({ingredients:[{name:"鶏肉"},{name:"しょうゆ"}],steps:["フライパンで肉を焼く"]});
+  assert.equal(draft.minutes,null);assert.equal(draft.ingredientsVerified,false);
+  assert.ok(draft.equipment.includes("コンロ"));assert.ok(draft.contains.includes("大豆"));
+  const recipe={id:"saved",mealType:"dinner",ingredients:[{name:"トマト"}],steps:["切る"]};
+  const p=L.profile({...profile,weekdayMinutes:20,skill:"easy",restrictions:["卵"]});
+  assert.equal(L.fit(recipe,p,start).ok,false);
+  assert.equal(L.reviewable(recipe,p,start),true);
+  assert.equal(L.reviewable({...recipe,ingredients:[{name:"卵"}]},p,start),false);
+  assert.equal(L.reviewable({...recipe,planning:{minutes:30}},p,start),false);
+  const ready={...recipe,planning:{minutes:20,equipment:["包丁"],tasks:[],contains:[],easy:true,ingredientsVerified:true,conditionsConfirmed:true}};
+  assert.equal(L.fit(ready,p,start).ok,true);
+});
+test("cooked rice uses rice pantry ownership only when explicitly available", () => {
+  const args={slots:{[start]:{date:start,status:"confirmed",servings:1,recipe:{id:"rice",sourceServings:1,ingredients:[{name:"ごはん（炊飯済み）",amount:"150g",category:"主食"}]}}},start,end:start,scale:a=>a,combine:a=>a.join(" + ")};
+  assert.equal(L.shopping({...args,pantry:{米:"have"}})[0].status,"have");
+  assert.equal(L.shopping({...args,pantry:{米:"none"}})[0].status,"buy");
+  assert.equal(L.shopping(args)[0].category,"主食");
+});
+test("past three days are recordable once, future and older slots are not", () => {
+  const run=app();
+  run('const yesterday=addDays(today(),-1);confirmDaily({date:yesterday},Lifestyle.curated[0]);dailyRecord(state.mealSlots[yesterday]);dailyRecord(state.mealSlots[yesterday]);');
+  assert.equal(run('state.evaluations.length'),1);
+  assert.equal(run('state.evaluations[0].cookedAt===yesterday'),true);
+  assert.equal(run('renderPreferencePrompt().includes("月２回")'),true);
+  run('handleDailyAction("life-frequency",{id:state.evaluations[0].id,cycle:"monthly"})');
+  assert.equal(run('state.evaluations[0].familyRepeatCycles[state.family[0]]'),"monthly");
+  assert.equal(run('renderPreferencePrompt()'),"");
+  assert.equal(run('canRecordDate(addDays(today(),-3))'),true);
+  assert.equal(run('canRecordDate(addDays(today(),-4))'),false);
+  run('confirmDaily({date:addDays(today(),1)},Lifestyle.curated[0]);dailyRecord(state.mealSlots[addDays(today(),1)])');
+  assert.equal(run('state.evaluations.length'),1);
+});
+test("shopping renders one-tap checkboxes and aisle headings instead of status selects",()=>{
+  const run=app();run('confirmDaily({date:today()},Lifestyle.curated[2])');
+  const html=run('renderDailyShopping()');
+  assert.ok(html.includes('type="checkbox" data-shopping-id='));
+  assert.ok(html.includes('🥬 野菜'));assert.ok(html.includes('🥩 肉・魚'));
+  assert.ok(!html.includes('<select'));
+});

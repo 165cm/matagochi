@@ -4,6 +4,8 @@ let swapDate = "";
 let cookingDate = "";
 let editingEvaluationId = "";
 let shoppingNotice = "";
+let preferencePromptId = "";
+let reviewReturnDate = "";
 let equipmentGroupIndex = 0;
 const profileChapters = [
   "暮らし",
@@ -299,12 +301,12 @@ function renderSwapChoices() {
     .filter(
       (r) =>
         r.id !== id &&
-        !used.has(r.id) &&
-        Lifestyle.fit(r, p, swapDate).ok &&
+        (Lifestyle.fit(r, p, swapDate).ok || (!r.curated && Lifestyle.reviewable(r, p, swapDate))) &&
         !getRecipeRepeatSummary(r.id).excluded,
     )
-    .slice(0, 3);
-  return `<section class="panel swap-panel" tabindex="-1"><h3>${formatDate(swapDate)}の別の一品</h3>${options.map((r) => `<div class="daily-plan-row"><h4>${escapeHtml(r.title)}</h4>${dailyButton("life-choose", "この料理にする", `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`)}</div>`).join("") || "<p>別の候補がありません。条件を調整するかレシピを追加してください。</p>"}<div class="actions">${dailyButton("go-view", "レシピを見る", 'data-view="collection"')}${dailyButton("life-close-swap", "閉じる")}</div></section>`;
+    .sort((a,b)=>Number(!!a.curated)-Number(!!b.curated) || Number(used.has(a.id))-Number(used.has(b.id)))
+    .slice(0, 8);
+  return `<section class="panel swap-panel" tabindex="-1"><h3>${formatDate(swapDate)}の別の一品</h3>${options.map((r) => `<div class="daily-plan-row"><h4>${escapeHtml(r.title)}</h4>${Lifestyle.fit(r,p,swapDate).ok ? dailyButton("life-choose", "この料理にする", `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`) : `<p class="notice">確認が必要：調理条件・市販品の表示を確認してください</p>${dailyButton("life-review-saved","条件を確認する",`data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`)}`}</div>`).join("") || "<p>別の候補がありません。条件を調整するかレシピを追加してください。</p>"}<div class="actions">${dailyButton("go-view", "レシピを見る", 'data-view="collection"')}${dailyButton("life-close-swap", "閉じる")}</div></section>`;
 }
 function renderToday() {
   const day = dailyPlan()[0],
@@ -353,7 +355,7 @@ function renderToday() {
       daysBetween(e.cookedAt, today()) >= 0 &&
       daysBetween(e.cookedAt, today()) < 7,
   );
-  return `<section class="today-heading"><p class="eyebrow">${formatDate(today())}（${weekdayLabel(today())}） · ${slot?.servings || dailyProfile().servings}人分</p><h2>${off ? "今日は、ひと休み。" : slot?.status === "cooked" ? "今日も、ごちそうさま。" : "今夜も、おいしく。"}</h2></section>
+  return `${renderPreferencePrompt()}${renderRecentMeals()}<section class="today-heading"><p class="eyebrow">${formatDate(today())}（${weekdayLabel(today())}） · ${slot?.servings || dailyProfile().servings}人分</p><h2>${off ? "今日は、ひと休み。" : slot?.status === "cooked" ? "今日も、ごちそうさま。" : "今夜も、おいしく。"}</h2></section>
   ${!state.foodProfile?.completed ? `<section class="setup-invitation"><p>好みとキッチンを教えると、提案があなた向けに。</p>${dailyButton("life-profile", state.onboardingDraft ? "初回設定の続きをする" : "食生活を設定する")}</section>` : ""}
   <section class="hero-card today-dish">${off ? "" : dishVisual(recipe, true)}<div class="today-dish-body"><p class="eyebrow">${off ? "自炊お休み" : slot?.status === "cooked" ? "作った一品" : slot ? "今夜の一品" : "今夜の候補"}</p><h3>${off ? "また次の夜ごはんで。" : recipe ? escapeHtml(recipe.title) : "あなたに合う一品を探しましょう"}</h3>${!off && day?.candidate ? `<p class="muted">${escapeHtml(day.candidate.reasons.join(" · "))}</p>` : ""}${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}${cta}${slot?.status === "confirmed" ? dailyButton("life-cook", "すぐ作り方を見る", `data-date="${today()}"`) : ""}${slot?.status === "cooked" ? dailyButton("life-again", "また食べたい", `data-date="${today()}"`) : ""}${!off && slot?.status !== "cooked" ? `<button class="text-button" data-action="life-off" data-date="${today()}">今日は自炊お休み</button>` : ""}</div></section>
   <section class="panel"><div class="section-head"><h3>🛒 買うもの</h3><span class="badge">残り${remaining}品</span></div>${dailyButton("go-view", "買い物リストを開く", 'data-view="shopping"')}</section>
@@ -368,29 +370,26 @@ function renderToday() {
     )}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</section>
   <section class="panel"><h3>😋 今週のごちそう</h3><p>${recent.length}回の「作った」を記録しました。</p>${dailyButton("go-view", "ふりかえる", 'data-view="repeat"')}${!state.recipes.length ? dailyButton("go-view", "お気に入りのレシピを追加", 'data-view="register"') : ""}</section>`;
 }
+function canRecordDate(date) { return date >= addDays(today(), -3) && date <= today(); }
+function renderRecentMeals() {
+  const slots = Object.values(state.mealSlots || {}).filter(s => s.status === "confirmed" && s.date < today() && canRecordDate(s.date)).sort((a,b)=>b.date.localeCompare(a.date));
+  return slots.length ? `<section class="panel"><h3>🍳 作った？</h3>${slots.map(s=>`<div class="daily-plan-row"><p>${formatDate(s.date)} · ${escapeHtml(s.recipe.title)}</p>${dailyButton("life-record-past","作った",`data-date="${s.date}"`)}</div>`).join("")}</section>` : "";
+}
+function renderPreferencePrompt() {
+  const e = state.evaluations.find(e=>e.id===preferencePromptId && e.preferencePending);
+  if (!e) return "";
+  const emoji = ["😍","😋","😊","🙂","😌","🙅"];
+  return `<section class="panel" role="region" aria-label="また食べたい頻度"><h3>また食べたいのは、いつ？</h3><p>${escapeHtml(e.recipeTitle)}</p><div class="actions">${repeatOptions.map((o,i)=>dailyButton("life-frequency",`${emoji[i]} ${o.label}`,`data-id="${escapeAttr(e.id)}" data-cycle="${o.id}"`)).join("")}</div>${dailyButton("life-frequency-close","あとで")}</section>`;
+}
 function renderDailyShopping() {
   const items = dailyShopping();
-  const group = (status, title) =>
-    `<section class="panel"><h3>${title} <span class="badge">${items.filter((i) => i.status === status).length}</span></h3>${
-      items
-        .filter((i) => i.status === status)
-        .map(
-          (i) =>
-            `<div class="daily-shopping-row"><div><strong>${escapeHtml(i.name)}</strong><p>${escapeHtml(i.amount)}</p>${i.recheck ? '<small class="notice">献立の変更で必要量を再確認してください</small>' : ""}</div><select class="input" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}の買い物状態">${[
-              ["buy", "買う"],
-              ["have", "家にある"],
-              ["purchased", "購入済み"],
-            ]
-              .map(
-                ([v, l]) =>
-                  `<option value="${v}" ${v === status ? "selected" : ""}>${l}</option>`,
-              )
-              .join(
-                "",
-              )}</select>${i.id.startsWith("manual-") ? dailyButton("life-remove-item", "削除", `data-id="${escapeAttr(i.id)}"`) : ""}</div>`,
-        )
-        .join("") || '<p class="muted">ありません</p>'
-    }</section>`;
+  const aisle = i => /野菜/.test(i.category) ? "🥬 野菜" : /肉|魚/.test(i.category) ? "🥩 肉・魚" : /卵|乳|大豆|豆腐|チーズ|牛乳|バター/.test(i.category + i.name) ? "🥚 卵・乳製品・豆腐" : "🥫 主食・乾物・調味料";
+  const order = ["🥬 野菜", "🥩 肉・魚", "🥚 卵・乳製品・豆腐", "🥫 主食・乾物・調味料"];
+  const group = (status, title) => `<section class="panel"><h3>${title} <span class="badge">${items.filter(i=>i.status===status).length}</span></h3>${order.map(category => {
+    const rows = items.filter(i=>i.status===status && aisle(i)===category);
+    if (!rows.length) return "";
+    return `<h4>${category}</h4>${rows.map(i=>`<div class="daily-shopping-row"><label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">必要量を再確認</small>' : ""}</span></label><details><summary aria-label="${escapeAttr(i.name)}の操作">•••</summary>${dailyButton("life-shopping-status",status==="have" ? "買うものに戻す" : "家にある",`data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}"`)}${i.id.startsWith("manual-") ? dailyButton("life-remove-item","削除",`data-id="${escapeAttr(i.id)}"`) : ""}</details></div>`).join("")}`;
+  }).join("") || '<p class="muted">ありません</p>'}</section>`;
   return `<section class="hero-card"><p class="eyebrow">SHOP JUST ENOUGH</p><h2>🛒 必要なものだけ。</h2><p>確定した献立の材料です。買い物頻度の設定に合わせた期間でまとめます。</p>${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}<p class="muted small">調味料の「家にある」は数量を保証しません。残量も確認してください。</p>${dailyButton("life-profile", "常備品・買い物頻度を変更")}</section>${!items.length ? `<section class="panel"><p>献立を確定すると買い物リストができます。</p>${dailyButton("go-view", "献立を決める", 'data-view="plan"', true)}</section>` : ""}${group("buy", "買うもの")}${group("have", "家にある")}${group("purchased", "購入済み")}<section class="panel"><h3>買い足すもの</h3><label class="field">品名<input id="manual-name" class="input" maxlength="100"></label><label class="field">数量<input id="manual-amount" class="input" maxlength="80" placeholder="例：1袋"></label>${dailyButton("life-add-item", "追加する")}<div class="actions">${dailyButton("copy-shopping", "リストをコピー")}${dailyButton("share-shopping", "共有する")}</div></section>`;
 }
 function renderCooking() {
@@ -400,7 +399,7 @@ function renderCooking() {
   if (!recipe)
     return `<section class="panel"><h2>料理を選び直してください</h2>${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</section>`;
   const servings = slot?.servings || dailyProfile().servings;
-  return `<section class="hero-card">${dishVisual(recipe)}<h2>${escapeHtml(recipe.title)}</h2><p>${servings}人分 · ${slot?.recipe ? "確定時の内容" : "提案中"}</p>${recipe.planning ? `<p class="muted small">${recipe.planning.minutes}分目安（炊飯は別途） / 器具：${escapeHtml(recipe.planning.equipment.join("、"))}</p>` : "<p>調理時間・必要な器具は未確認です。</p>"}<p class="notice small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p><h3>材料</h3><ul class="cooking-ingredients">${recipe.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></li>`).join("")}</ul><h3>作り方</h3><ol class="cooking-steps">${recipe.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol><div class="actions">${slot?.status === "confirmed" && cookingDate === today() ? dailyButton("life-cooked", "作った", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : ""}${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</div></section>`;
+  return `<section class="hero-card">${dishVisual(recipe)}<h2>${escapeHtml(recipe.title)}</h2><p>${servings}人分 · ${slot?.recipe ? "確定時の内容" : "提案中"}</p>${recipe.planning ? `<p class="muted small">${recipe.planning.minutes}分目安（炊飯は別途） / 器具：${escapeHtml(recipe.planning.equipment.join("、"))}</p>` : "<p>調理時間・必要な器具は未確認です。</p>"}<p class="notice small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p><h3>材料</h3><ul class="cooking-ingredients">${recipe.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></li>`).join("")}</ul><h3>作り方</h3><ol class="cooking-steps">${recipe.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol><div class="actions">${slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : ""}${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</div></section>`;
 }
 function renderReflection() {
   return `<section class="hero-card"><p class="eyebrow">YOUR DELICIOUS DAYS</p><h2>😋 また食べたい記録。</h2><p>食べた記録は${state.evaluations.length}回。好きな一品が、次の献立につながります。</p>${dailyButton("life-record-details", "記録・写真・好みを編集")}</section><section class="panel">${
@@ -454,9 +453,11 @@ function changedShopping(before) {
   shoppingNotice = `買い物を更新しました：追加${added}品・不要${removed}品・数量等の変更${changed}品。`;
 }
 function dailyRecord(slot) {
+  if (!slot || slot.status !== "confirmed" || !canRecordDate(slot.date)) return;
   const own = saveOwnRecipe(slot.recipe);
   const id = `meal-${slot.date}`;
-  if (!state.evaluations.some((e) => e.id === id))
+  if (!state.evaluations.some((e) => e.id === id)) {
+    preferencePromptId = id;
     state.evaluations.unshift({
       id,
       recipeId: own.id,
@@ -469,6 +470,7 @@ function dailyRecord(slot) {
       photo: "",
       updatedAt: nowIso(),
     });
+  }
   state.mealSlots[slot.date] = {
     ...slot,
     status: "cooked",
@@ -476,12 +478,26 @@ function dailyRecord(slot) {
   };
 }
 function bindDailyEvents() {
+  const unconfirm = () => { const el=document.querySelector("#planning-confirmed"); if(el)el.checked=false; };
+  document.querySelectorAll("[data-planning-minute], [data-planning-easy]").forEach(el=>el.addEventListener("click",()=>{
+    const field=el.dataset.planningMinute !== undefined ? "minute" : "easy";
+    document.querySelector(field==="minute" ? "#planning-minutes" : "#planning-easy").value=el.dataset[field==="minute" ? "planningMinute":"planningEasy"];
+    document.querySelectorAll(`[data-planning-${field}]`).forEach(b=>b.setAttribute("aria-pressed",String(b===el)));
+    unconfirm();
+  }));
+  document.querySelectorAll("[data-planning-field], #planning-minutes, #planning-no-equipment").forEach(el=>el.addEventListener("change",()=>{
+    unconfirm();
+    if(el.dataset.planningField==="contains") { const c=document.querySelector("#planning-verified"); if(c)c.checked=false; }
+    if(el.dataset.planningField==="equipment" && el.checked) document.querySelector("#planning-no-equipment").checked=false;
+    if(el.id==="planning-no-equipment" && el.checked) document.querySelectorAll('[data-planning-field="equipment"]').forEach(e=>e.checked=false);
+  }));
+
   document.querySelectorAll("[data-shopping-id]").forEach((el) =>
     el.addEventListener("change", () => {
       const item = dailyShopping().find((i) => i.id === el.dataset.shoppingId);
       if (!item) return;
       state.shoppingMarks[item.id] = {
-        status: el.value,
+        status: el.checked ? "purchased" : "buy",
         signature: item.signature,
         updatedAt: nowIso(),
       };
@@ -496,6 +512,16 @@ function handleDailyAction(action, data) {
   const oldView = state.view;
   if (!action.startsWith("life-")) return false;
   const before = dailyShopping();
+  if (action === "life-review-saved") {
+    reviewReturnDate = data.date;
+    handleAction({currentTarget:{dataset:{action:"edit-recipe",recipe:data.recipe}}});
+    return true;
+  }
+  if (action === "life-planning-suggest") {
+    captureDraft();
+    const previous=state.draft.planning;
+    state.draft.planning={...Lifestyle.suggestPlanning({ingredients:state.extractedIngredients,steps:state.extractedSteps}),minutes:previous?.minutes || null};
+  }
   if (action === "life-quick") {profileDraft().quickSetupIndex=0;profileDraft().period=3;profileEditing=true;}
   if (action === "life-quick-next") profileDraft().quickSetupIndex=Math.min(2,profileDraft().quickSetupIndex+1);
   if (action === "life-quick-back") profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1);
@@ -628,9 +654,26 @@ function handleDailyAction(action, data) {
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
     const slot = state.mealSlots[cookingDate];
-    if (slot?.status === "confirmed" && cookingDate === today())
+    if (slot?.status === "confirmed" && canRecordDate(cookingDate))
       dailyRecord(slot);
     state.view = "today";
+  }
+  if (action === "life-record-past") {
+    dailyRecord(state.mealSlots[data.date]);
+    state.view = "today";
+  }
+  if (action === "life-frequency-close") preferencePromptId = "";
+  if (action === "life-frequency") {
+    const e = state.evaluations.find(e=>e.id===data.id);
+    if (e?.preferencePending && e.id === preferencePromptId && repeatOptions.some(o=>o.id===data.cycle)) {
+      e.familyRepeatCycles = {...e.familyRepeatCycles, [state.family[0]]:data.cycle};
+      e.personalPreference = true; e.preferencePending = false; e.updatedAt = nowIso();
+      preferencePromptId = "";
+    }
+  }
+  if (action === "life-shopping-status" && ["buy","have"].includes(data.status)) {
+    const item = dailyShopping().find(i=>i.id===data.id);
+    if (item) state.shoppingMarks[item.id] = {status:data.status, signature:item.signature, updatedAt:nowIso()};
   }
   if (action === "life-again") {
     const e = state.evaluations.find((e) => e.id === `meal-${data.date}`);
@@ -740,31 +783,32 @@ function handleDailyAction(action, data) {
 }
 
 function renderPlanningFields() {
-  const p = state.draft.planning || {};
-  const value = (key) =>
-    escapeAttr(Array.isArray(p[key]) ? p[key].join("、") : p[key] || "");
-  return `<details class="entry-extra"><summary>献立に使う調理条件（任意）</summary><p class="muted small">ここで確認した情報を、時間・器具・食材制限の絞り込みに使います。未入力の情報は推測しません。</p><label class="field">調理時間の目安（分）<input id="planning-minutes" class="input" type="number" min="1" max="300" value="${value("minutes")}"></label><label class="field">必要な器具（「、」区切り）<input id="planning-equipment" class="input" value="${value("equipment")}" placeholder="例：コンロ、フライパン、計量スプーン"></label><label class="field">作業（「、」区切り）<input id="planning-tasks" class="input" value="${value("tasks")}" placeholder="例：肉を切る、揚げる"></label><label class="field">味（和風・洋風・中華風）<input id="planning-tastes" class="input" value="${value("tastes")}"></label><label class="profile-choice"><input id="planning-easy" type="checkbox" ${p.easy ? "checked" : ""}><span>かんたんな料理</span></label><label class="field">含まれる食材区分（「、」区切り）<input id="planning-contains" class="input" value="${value("contains")}" placeholder="例：卵、小麦、大豆"></label><p class="muted small">対象：${Lifestyle.restrictionOptions.join("・")}。調味料の原材料も確認してください。</p><label class="profile-choice"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified ? "checked" : ""}><span>材料一覧と、含まれる食材区分を確認した</span></label></details>`;
+  if (!state.draft.planning) state.draft.planning = Lifestyle.suggestPlanning({ingredients:state.extractedIngredients, steps:state.extractedSteps});
+  const p = state.draft.planning;
+  const commonEquipment = [...new Set(["コンロ","電子レンジ","フライパン","鍋","包丁","まな板","耐熱ボウル","キッチンばさみ",...(p.equipment||[])])];
+  const chips = (values,field) => `<div class="planning-chips">${values.map(v=>`<label class="planning-chip"><input type="checkbox" data-planning-field="${field}" value="${escapeAttr(v)}" ${(p[field]||[]).includes(v)?"checked":""}><span>${escapeHtml(v)}</span></label>`).join("")}</div>`;
+  return `<section id="planning-panel" class="planning-panel"><h3>🍳 献立に使う前に確認</h3><p class="muted small">材料・手順からの自動候補です。市販品の表示と照らして直してください。</p>${dailyButton("life-planning-suggest","材料・手順から候補を作り直す")}
+  <label class="field">何分くらい？<input id="planning-minutes" class="input" type="number" min="1" max="300" value="${escapeAttr(p.minutes||"")}"></label><div class="actions">${[10,20,30].map(n=>`<button type="button" class="choice-button" data-planning-minute="${n}" aria-pressed="${p.minutes===n}">${n}分</button>`).join("")}</div>
+  <h4>使う器具</h4>${chips(commonEquipment,"equipment")}<details><summary>ほかの器具</summary>${chips(Lifestyle.equipment.filter(e=>!commonEquipment.includes(e)),"equipment")}</details><label class="profile-choice"><input id="planning-no-equipment" type="checkbox" ${p.noEquipment?"checked":""}>特別な器具は使わない</label>
+  <h4>作りやすさ</h4><input id="planning-easy" type="hidden" value="${p.easy===true?"true":p.easy===false?"false":""}"><div class="actions"><button type="button" class="choice-button" data-planning-easy="true" aria-pressed="${p.easy===true}">😊 かんたん</button><button type="button" class="choice-button" data-planning-easy="false" aria-pressed="${p.easy===false}">🍳 少し手間をかける</button></div>
+  <h4>含む・市販品によって含む食材</h4>${chips(Lifestyle.restrictionOptions,"contains")}<label class="profile-choice"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified?"checked":""}>材料・市販品の表示と食材区分を確認した</label>
+  <h4>必要な作業</h4>${chips(["肉を切る","揚げる","長く煮込む"],"tasks")}
+  <details><summary>味の分類</summary>${chips(["和風","洋風","中華風"],"tastes")}</details>
+  <label class="profile-choice"><input id="planning-confirmed" type="checkbox" ${p.conditionsConfirmed?"checked":""}>時間・器具・作りやすさ・作業を確認した</label>
+  <p class="muted small">わからない項目は推測せず、未確認で保存できます。自動提案には使わず、入れ替え時に確認します。</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button></section>`;
 }
 function capturePlanningFields() {
   const minutes = document.querySelector("#planning-minutes");
   if (!minutes) return;
-  const list = (id) =>
-    (document.querySelector(id)?.value || "")
-      .split(/[、,，\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const selected = field => [...document.querySelectorAll(`[data-planning-field="${field}"]:checked`)].map(el=>el.value);
+  const easy = document.querySelector("#planning-easy")?.value;
   state.draft.planning = {
-    minutes:
-      Number(minutes.value) > 0 && Number(minutes.value) <= 300
-        ? Number(minutes.value)
-        : null,
-    equipment: list("#planning-equipment"),
-    tasks: list("#planning-tasks"),
-    tastes: list("#planning-tastes"),
-    contains: list("#planning-contains"),
-    easy: !!document.querySelector("#planning-easy")?.checked,
-    ingredientsVerified:
-      !!document.querySelector("#planning-verified")?.checked,
+    minutes: Number(minutes.value)>0 && Number(minutes.value)<=300 ? Number(minutes.value):null,
+    equipment:selected("equipment"), noEquipment:!!document.querySelector("#planning-no-equipment")?.checked,
+    tasks:selected("tasks"), tastes:selected("tastes"), contains:selected("contains"),
+    easy:easy==="true" ? true : easy==="false" ? false : null,
+    ingredientsVerified:!!document.querySelector("#planning-verified")?.checked,
+    conditionsConfirmed:!!document.querySelector("#planning-confirmed")?.checked,
   };
 }
 function conditionWarning(recipe, date) {

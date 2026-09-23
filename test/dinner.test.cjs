@@ -70,7 +70,7 @@ test('image drafts cannot be saved without explicit review; accepted text has no
   await run(`handleAction({currentTarget:{dataset:{action:'save-recipe'}}})`);
   assert.equal(run('state.recipes.length'),0);
   run(`fields['#image-reviewed'].checked=true;`);
-  await run(`handleAction({currentTarget:{dataset:{action:'save-recipe'}}})`);
+  await run(`handleAction({currentTarget:{dataset:{action:'save-recipe-unreviewed'}}})`);
   assert.equal(run('state.recipes.length'),1);
   assert.equal(run('state.recipes[0].catalog'),null);
   assert.equal(run('state.recipes[0].ingredients[0].amount'),'不明');

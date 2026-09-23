@@ -1776,3 +1776,25 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 .persona-operation,.persona-conversation{padding:12px;border-radius:14px;background:#f8f1e6;text-align:left}.persona-conversation{border:1px dashed #87a18a}
 .persona-details{text-align:left;margin:12px 0;font-size:13px}.persona-details summary{padding:10px 0;min-height:44px;cursor:pointer}.persona-details p{font-size:12px!important}
 .persona-matrix{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;margin:12px 0}.persona-matrix caption{font-weight:700;margin:8px}.persona-matrix th,.persona-matrix td{border:1px solid #d9dfd3;text-align:center;padding:5px}.persona-matrix th:first-child{width:24%}.persona-matrix td img{width:100%;max-width:110px;border-radius:16px}.persona-matrix td span,.persona-matrix td strong{display:block}.persona-matrix td[aria-current]{background:#dce9d5;outline:2px solid #325c47;outline-offset:-2px}
+
+/* Fast recipe confirmation and shopping in one hand. */
+.planning-panel { margin-top: 1rem; padding: 1rem; border: 1px solid var(--border, #ddd); border-radius: 18px; }
+.planning-chips { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 14px; }
+.planning-chip { display:flex; align-items:center; gap:5px; padding:9px 10px; border:1px solid #d9dfd5; border-radius:12px; cursor:pointer; min-height:44px; }
+.planning-chip:has(input:checked) { background:#e7f0e1; border-color:#66805e; }
+.planning-chip input { accent-color:#527249; width:18px; height:18px; }
+.daily-shopping-check { display:flex; align-items:center; gap:12px; flex:1; min-height:52px; cursor:pointer; }
+.daily-shopping-check input { width:28px; height:28px; flex-shrink:0; accent-color:#527249; }
+.daily-shopping-check small { display:block; }
+.daily-shopping-check:has(input:checked) strong { text-decoration:line-through; opacity:.65; }
+.daily-shopping-row details { flex-shrink:0; }
+.daily-shopping-row summary { padding:12px; cursor:pointer; }
+
+.daily-shopping-row { grid-template-columns:minmax(0,1fr) auto; }
+.daily-shopping-check { width:auto; height:auto; min-width:0; }
+.daily-shopping-check > span { min-width:0; }
+.daily-shopping-row details { position:relative; }
+.daily-shopping-row details[open] > button { position:absolute; right:0; top:44px; min-width:148px; z-index:2; background:white; box-shadow:var(--shadow); }
+.daily-shopping-row details[open] > button + button { top:98px; }
+.planning-panel .actions:has([data-planning-minute]) { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.planning-panel [data-planning-minute] { min-width:0; padding:10px 6px; }
