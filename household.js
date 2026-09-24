@@ -133,14 +133,14 @@ function isViewer() {
 function isOwner() {
   return roleOf(me()) === "owner";
 }
-const VIEWER_BLOCKED = ["life-confirm", "life-confirm-one", "life-choose", "life-off", "life-reopen", "life-refresh", "life-add-item", "life-remove-item", "life-shopping-status", "life-quick", "life-review-saved", "edit-recipe", "delete-recipe"];
+const VIEWER_BLOCKED = ["life-profile", "life-confirm", "life-confirm-one", "life-choose", "life-off", "life-reopen", "life-refresh", "life-add-item", "life-remove-item", "life-shopping-status", "life-quick", "life-review-saved", "edit-recipe", "delete-recipe"];
 function viewerBlocked(action) {
   if (!isViewer() || !VIEWER_BLOCKED.includes(action)) return false;
   showToast("見るだけモードです。食べたいものは🙋で送ってね。");
   return true;
 }
 function viewerNote() {
-  return isViewer() ? '<p class="viewer-note">👀 見るだけモード｜食べたいものは🙋で送ってね</p>' : "";
+  return "";
 }
 function renderViewerPlanBanner(plan) {
   if (!isViewer()) return "";
@@ -221,8 +221,7 @@ function renderSharePanel() {
   const link = shareLink || inviteUrl();
   return `<section class="panel share-panel" id="share"><h3>👫 ふたりで使う</h3><p>${state.family.map((n) => `<span class="chip">${escapeHtml(n)}${n === me() ? "（あなた）" : ""}</span>`).join(" ")} でつながっています。</p>
     <p class="muted small">最終同期：${formatSyncTime(state.sync.lastSyncAt)}${syncRuntimeStatus ? `<br>${escapeHtml(syncRuntimeStatus)}` : ""}</p>
-    ${!Object.values(state.roles?.members || {}).includes("owner") ? `<button type="button" class="secondary-button full-button" data-action="life-become-owner">献立を決めるのは「${escapeHtml(me())}」にする<small class="muted">（相手は見るだけ＋🙋リクエスト）</small></button>` : ""}
-    ${isOwner() ? state.family.filter((n) => n !== me()).map((n) => `<button type="button" class="role-toggle" data-action="life-role-toggle" data-member="${escapeAttr(n)}" aria-pressed="${roleOf(n) !== "viewer"}"><span>${escapeHtml(n)}も献立を変えられる<small>${roleOf(n) === "viewer" ? "今は見るだけ＋🙋リクエスト" : "献立の決定・入れ替えができます"}</small></span><i aria-hidden="true"></i></button>`).join("") : isViewer() ? '<p class="muted small">今は見るだけモードです。献立を変えるには、相手に設定をお願いしてください。</p>' : ""}
+    ${isViewer() ? '<p class="muted small">あなたは閲覧者です。献立を変えるには、管理者に役割の変更をお願いしてください。</p>' : renderRoleSettings()}
     <div class="actions">${dailyButton("life-share-send", "招待リンクを送る", "", true)}${dailyButton("sync-now", "今すぐ同期")}</div>
     <details class="share-link"><summary>招待リンクを表示</summary><input class="input" readonly value="${escapeAttr(link)}" aria-label="招待リンク"></details>
     <button type="button" class="text-button" data-action="sync-disconnect">この端末の共有をやめる</button></section>`;
@@ -243,6 +242,7 @@ function renderJoin() {
 
 // ----- actions (called first from handleDailyAction) -----
 function handleHouseholdAction(action, data) {
+  if (handleViewerAction(action, data)) return true;
   if (action === "life-request") {
     const recipe = allDinnerRecipes().find((r) => r.id === data.recipe) || recipeById(data.recipe) || Lifestyle.curated.find((r) => r.id === data.recipe);
     if (!recipe) return true;
@@ -347,4 +347,122 @@ function handleHouseholdAction(action, data) {
     return true;
   }
   return false;
+}
+
+// ----- 閲覧者のための画面（食に興味がなくても、1タップで済むように） -----
+const ROLE_LABEL = { owner: "管理者", editor: "編集者", viewer: "閲覧者" };
+const ROLE_TABLE = [
+  ["献立・買い物リストを見る", "○", "○", "○"],
+  ["🙋 食べたい・別のがいいを送る", "○", "○", "○"],
+  ["次に食べたい頃を答える", "○", "○", "○"],
+  ["買い物のチェック", "○", "○", "○"],
+  ["献立を決める・入れ替える", "○", "○", "×"],
+  ["レシピの追加・編集", "○", "○", "×"],
+  ["時間・器具などの条件", "○", "○", "×"],
+  ["役割を変える", "○", "×", "×"],
+];
+function normalizeMemberPrefs(raw) {
+  return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([n, v]) => n && v && typeof v === "object").map(([n, v]) => [n.slice(0, 20), {
+    restrictions: (Array.isArray(v.restrictions) ? v.restrictions : []).filter((x) => Lifestyle.restrictionOptions.includes(x)),
+    likes: (Array.isArray(v.likes) ? v.likes : []).filter((x) => typeof x === "string").slice(0, 20),
+    done: !!v.done,
+    updatedAt: normalizeTimestamp(v.updatedAt),
+  }]));
+}
+function memberPrefs(name = me()) {
+  return state.memberPrefs?.[name] || { restrictions: [], likes: [], done: false, updatedAt: "" };
+}
+function setMemberPrefs(patch) {
+  state.memberPrefs = { ...(state.memberPrefs || {}), [me()]: { ...memberPrefs(), ...patch, updatedAt: nowIso() } };
+}
+// Everyone's "食べられないもの" applies to the household plan.
+function householdRestrictions() {
+  return [...new Set(Object.values(state.memberPrefs || {}).flatMap((p) => p.restrictions || []))];
+}
+// A dish someone tapped as "好き" counts as 毎週 for them until they rate it.
+function likedCycles(recipe) {
+  const out = {};
+  Object.entries(state.memberPrefs || {}).forEach(([name, p]) => {
+    if ((p.likes || []).some((id) => Lifestyle.sameDish({ id }, recipe))) out[name] = "weekly";
+  });
+  return out;
+}
+let viewerStep = 0;
+function needsViewerSetup() {
+  return isViewer() && !memberPrefs().done;
+}
+function renderViewerSetup() {
+  const prefs = memberPrefs();
+  const steps = [
+    () => `<p class="hand">ようこそ！ 質問は2つだけ。</p><h2>食べられないものは<br /><span class="marker nobr">ある？</span></h2><p class="muted small">アレルギーなど。えらんだものは献立に入りません。</p>
+      <div class="viewer-chips">${Lifestyle.restrictionOptions.map((x) => `<button type="button" class="chip-tab" data-action="life-viewer-restrict" data-name="${escapeAttr(x)}" aria-pressed="${prefs.restrictions.includes(x)}">${escapeHtml(x)}</button>`).join("")}</div>
+      ${dailyButton("life-viewer-next", prefs.restrictions.length ? "つぎへ" : "とくにない", "", true)}`,
+    () => {
+      const picks = Lifestyle.curated.filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok).slice(0, 12);
+      return `<h2>好きそうなのを<br /><span class="marker nobr">タップ！</span></h2><p class="muted small">いくつでもOK。あとで献立に出やすくなります。</p>
+      <div class="viewer-likes">${picks.map((r) => `<button type="button" class="viewer-like" data-action="life-viewer-like" data-recipe="${escapeAttr(r.id)}" aria-pressed="${prefs.likes.includes(r.id)}" aria-label="${escapeAttr(r.title)}">${dishTile(r)}<span>${escapeHtml(r.title)}</span></button>`).join("")}</div>
+      ${dailyButton("life-viewer-done", "できた！", "", true)}`;
+    },
+  ];
+  return `<section class="viewer-setup">${steps[Math.min(viewerStep, steps.length - 1)]()}</section>`;
+}
+function renderViewerToday() {
+  const day = dailyPlan()[0];
+  const slot = state.mealSlots?.[today()];
+  const recipe = slot?.recipe || day?.candidate?.recipe;
+  const off = day?.off || slot?.status === "off";
+  const tomorrow = dailyPlan()[1];
+  const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
+  const mine = openRequests().filter((q) => q.from === me());
+  return `${renderPreferencePrompt()}
+    <section class="viewer-today"><p class="hand">今夜のごはん</p>
+      ${off || !recipe ? '<h2 class="viewer-title">今夜はお休み 🌙</h2>' : `${dishTile(recipe, "viewer-photo")}<h2 class="viewer-title">${escapeHtml(recipe.title)}</h2>`}
+      ${tr ? `<p class="viewer-next">明日は <b>${escapeHtml(tr.title)}</b></p>` : ""}
+    </section>
+    <div class="viewer-actions">${dailyButton("go-view", "🙋 食べたいものを送る", 'data-view="collection"', true)}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</div>
+    ${mine.length ? `<p class="viewer-sent">送ったリクエスト：${mine.map((q) => escapeHtml(requestRecipe(q).title || q.recipeTitle)).join("、")}</p>` : ""}`;
+}
+function renderViewerPlan() {
+  const plan = dailyPlan();
+  const open = plan.some((d) => d.candidate && !d.slot);
+  const rows = plan.map((d) => {
+    const r = d.slot?.recipe || d.candidate?.recipe;
+    const label = d.date === today() ? "今夜" : `${formatDate(d.date)}（${weekdayLabel(d.date)}）`;
+    if (d.off || d.slot?.status === "off" || !r) return `<div class="viewer-day is-off"><b>${label}</b><span>お休み</span></div>`;
+    const sent = openRequests().find((q) => q.date === d.date && q.from === me());
+    return `<div class="viewer-day">${dishTile(r)}<div><b>${label}</b><strong>${escapeHtml(r.title)}</strong>${sent ? `<small>🙋 ${escapeHtml(requestRecipe(sent).title)}を送ったよ</small>` : ""}</div>${d.slot?.status === "cooked" ? "" : `<button type="button" class="tile-request" data-action="${swapDate === d.date ? "life-close-swap" : "life-swap"}" data-date="${d.date}">${swapDate === d.date ? "閉じる" : "🙋 変えたい"}</button>`}</div>${swapDate === d.date ? renderSwapChoices() : ""}`;
+  }).join("");
+  return `<section class="viewer-plan-top"><h2>${open ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section><section class="viewer-days">${rows}</section>`;
+}
+function renderRoleSettings() {
+  if (!syncEnabled()) return "";
+  const hasOwner = Object.values(state.roles?.members || {}).includes("owner");
+  const canEdit = isOwner() || !hasOwner;
+  const rows = state.family.map((n) => {
+    const role = n === me() && canEdit ? "owner" : roleOf(n);
+    const control = n === me() || !canEdit
+      ? `<span class="role-badge role-${role}">${ROLE_LABEL[role]}${n === me() ? "（あなた）" : ""}</span>`
+      : `<div class="segmented role-seg" role="group" aria-label="${escapeAttr(n)}の役割">${["viewer", "editor"].map((r) => `<button type="button" class="choice-button" data-action="life-set-role" data-member="${escapeAttr(n)}" data-role="${r}" aria-pressed="${role === r}">${ROLE_LABEL[r]}</button>`).join("")}</div>`;
+    return `<div class="role-row"><strong>${escapeHtml(n)}</strong>${control}</div>`;
+  }).join("");
+  return `<div class="role-settings"><h4>メンバーと役割</h4>${rows}
+    ${!hasOwner ? '<p class="muted small">役割をえらぶと、あなたが管理者になります。</p>' : ""}
+    <details class="role-help"><summary>役割でできること</summary><table><thead><tr><th></th><th>管理者</th><th>編集者</th><th>閲覧者</th></tr></thead><tbody>${ROLE_TABLE.map(([what, ...cells]) => `<tr><td>${what}</td>${cells.map((c) => `<td class="${c === "○" ? "ok" : "ng"}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table>
+    <p class="muted small">閲覧者は、画面がシンプルになります（今夜のごはん・献立・食べたいもの・買い物だけ）。</p></details></div>`;
+}
+function handleViewerAction(action, data) {
+  if (action === "life-viewer-restrict") {
+    const list = memberPrefs().restrictions;
+    setMemberPrefs({ restrictions: list.includes(data.name) ? list.filter((x) => x !== data.name) : [...list, data.name] });
+  } else if (action === "life-viewer-next") viewerStep = 1;
+  else if (action === "life-viewer-like") {
+    const list = memberPrefs().likes;
+    setMemberPrefs({ likes: list.includes(data.recipe) ? list.filter((x) => x !== data.recipe) : [...list, data.recipe] });
+  } else if (action === "life-viewer-done") { setMemberPrefs({ done: true }); viewerStep = 0; state.view = "today"; showToast("ありがとう！ 好きなものが献立に出やすくなります。"); }
+  else if (action === "life-viewer-redo") { setMemberPrefs({ done: false }); viewerStep = 0; state.view = "today"; }
+  else if (action === "life-set-role" && (isOwner() || !Object.values(state.roles?.members || {}).includes("owner")) && ["viewer", "editor"].includes(data.role)) {
+    state.roles = { members: { ...(state.roles?.members || {}), [me()]: "owner", [data.member]: data.role }, updatedAt: nowIso() };
+    showToast(`${data.member}を${ROLE_LABEL[data.role]}にしました。`);
+  } else return false;
+  saveState(); render(); return true;
 }

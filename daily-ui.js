@@ -252,6 +252,7 @@ function dailyProfile() {
   return Lifestyle.profile({
     ...state.foodProfile,
     ...state.householdProfile,
+    restrictions: [...new Set([...(state.foodProfile?.restrictions || []), ...householdRestrictions()])],
     servings: state.servingCount,
   });
 }
@@ -301,7 +302,7 @@ function dailyPlan() {
     length: state.planLength || p.period,
     addDays,
     overrides: state.planOverrides,
-    cyclesOf: recipeRatings,
+    cyclesOf: (r) => ({ ...likedCycles(r), ...recipeRatings(r) }),
     requestOf: openRequestFor,
   });
 }

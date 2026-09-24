@@ -61,6 +61,7 @@ const demoState = {
   me: "",
   requests: {},
   roles: { members: {}, updatedAt: "" },
+  memberPrefs: {},
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -290,6 +291,7 @@ function normalizeState(saved) {
     me: typeof saved.me === "string" ? saved.me.slice(0, 20) : "",
     requests: normalizeRequests(saved.requests),
     roles: normalizeRoles(saved.roles),
+    memberPrefs: normalizeMemberPrefs(saved.memberPrefs),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -510,7 +512,8 @@ function buildSyncPayload() {
     shoppingMarks: state.shoppingMarks,
     manualShopping: state.manualShopping,
     requests: state.requests || {},
-    roles: state.roles || { members: {}, updatedAt: "" }
+    roles: state.roles || { members: {}, updatedAt: "" },
+    memberPrefs: state.memberPrefs || {}
   };
 }
 
@@ -543,7 +546,8 @@ function mergeSyncPayloads(local, remote) {
     shoppingMarks: Lifestyle.mergeMap(local.shoppingMarks, remote.shoppingMarks),
     manualShopping: Lifestyle.mergeMap(local.manualShopping, remote.manualShopping),
     requests: Lifestyle.mergeMap(local.requests, remote.requests),
-    roles: (remote.roles?.updatedAt || "") > (local.roles?.updatedAt || "") ? remote.roles : local.roles
+    roles: (remote.roles?.updatedAt || "") > (local.roles?.updatedAt || "") ? remote.roles : local.roles,
+    memberPrefs: Lifestyle.mergeMap(local.memberPrefs, remote.memberPrefs)
   };
 }
 
@@ -589,6 +593,7 @@ function applySyncPayload(payload) {
   state.manualShopping = normalizeManualShopping(payload.manualShopping || state.manualShopping);
   state.requests = normalizeRequests(payload.requests || state.requests);
   state.roles = normalizeRoles(payload.roles || state.roles);
+  state.memberPrefs = normalizeMemberPrefs(payload.memberPrefs || state.memberPrefs);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
@@ -789,6 +794,14 @@ function render() {
     return;
   }
   document.body.classList.remove("is-onboarding");
+  document.body.classList.toggle("is-viewer", isViewer());
+  if (needsViewerSetup()) {
+    document.body.classList.add("is-onboarding");
+    document.querySelector("#app").innerHTML = renderViewerSetup();
+    bindEvents();
+    return;
+  }
+  if (isViewer() && state.view === "repeat") state.view = "today";
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.setAttribute("aria-current", tab.dataset.view === ({register:"collection",playlist:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view) ? "page" : "false");
@@ -807,7 +820,8 @@ function render() {
     repeat: renderReflection,
     settings: renderSettings
   };
-  document.querySelector("#app").innerHTML = (["today", "plan", "shopping", "collection", "repeat"].includes(state.view) ? viewerNote() : "") + views[state.view]();
+  if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
+  document.querySelector("#app").innerHTML = views[state.view]();
   bindEvents();
 }
 
@@ -1081,11 +1095,11 @@ function renderCollection() {
   const empty = query ? renderEmpty("一致するレシピはありません。") : recipeTab === "saved" ? '<p class="muted small">まだ保存したレシピはありません。おすすめの🔖で1タップ保存できます。</p>' : "";
   return `
     <section class="coll-top">
-      <h2>おいしい、を<br /><span class="marker nobr">集めよう。</span></h2>
+      <h2>${isViewer() ? '食べたいのを<br /><span class="marker nobr">🙋で送ろう</span>' : 'おいしい、を<br /><span class="marker nobr">集めよう。</span>'}</h2>
       ${isViewer() ? "" : `<button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>`}
     </section>
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
-    <div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("starter", "おすすめ")}</div>
+    ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("starter", "おすすめ")}</div>`}
     <section class="recipe-grid">${tiles || empty}</section>
     ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}
     ${playlistAvailable && !isViewer() ? `<section class="add-card">
@@ -1098,7 +1112,7 @@ function renderCollection() {
 
 let recipeTab = "all";
 function tileMinutes(recipe) {
-  return recipe.planning?.minutes ? `<span class="tile-time">⏱ ${recipe.planning.minutes}分</span>` : "";
+  return !isViewer() && recipe.planning?.minutes ? `<span class="tile-time">⏱ ${recipe.planning.minutes}分</span>` : "";
 }
 function renderRecipeTile(recipe) {
   const last = lastEatenLabel(recipe);
@@ -1121,10 +1135,10 @@ function renderStarterTile(recipe) {
   return `
     <article class="recipe-tile is-starter">
       <span class="tile-photo">${dishTile(recipe)}${tileMinutes(recipe)}</span>
-      <button type="button" class="tile-mark" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></button>
+      ${isViewer() ? "" : `<button type="button" class="tile-mark" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></button>`}
       <strong class="tile-title">${escapeHtml(recipe.title)}</strong>
       ${requestButton(recipe)}
-      <div class="tile-foot"><small class="muted">おすすめ${recipe.planning?.tastes?.length ? ` · ${escapeHtml(recipe.planning.tastes[0])}` : ""}</small></div>
+      ${isViewer() ? "" : `<div class="tile-foot"><small class="muted">おすすめ${recipe.planning?.tastes?.length ? ` · ${escapeHtml(recipe.planning.tastes[0])}` : ""}</small></div>`}
     </article>`;
 }
 
@@ -1778,8 +1792,8 @@ function renderSettings() {
   if (isViewer()) return `
     ${renderSharePanel()}
     <section class="panel settings-food"><h2>わたしの設定</h2>
-      <p class="muted small">食べられない食材や好みは、この端末だけに保存されます。</p>
-      <button class="secondary-button full-button" type="button" data-action="life-profile">食べられないもの・好みを変える</button>
+      <p class="muted small">食べられないもの：${escapeHtml(memberPrefs().restrictions.join("・") || "なし")}</p>
+      <button class="secondary-button full-button" type="button" data-action="life-viewer-redo">食べられないもの・好きなものを変える</button>
     </section>`;
   return `
     <section class="panel settings-food"><h2>食生活の設定</h2>
