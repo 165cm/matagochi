@@ -1982,3 +1982,75 @@ h2 { font-size: 24px; line-height: 1.35; }
 .badge { background: #ffece5; color: var(--sage-dark); border-radius: 999px; }
 .eyebrow { color: var(--tomato); }
 .notice { background: #fff6dc; border-color: #f3dfa6; }
+
+/* ----- Today (mockup: 最近のごはん / 今夜のおすすめ / 明日も、楽しみ) ----- */
+.dish-tile { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 16px; background: var(--surface-soft); }
+.dish-art-tile { display: grid; place-items: center; align-content: center; gap: 2px; color: var(--muted); }
+.dish-art-tile > span { font-size: 34px; line-height: 1; }
+.dish-art-tile small { font-size: 9px; }
+.art-japanese { background: linear-gradient(145deg, #fff1dc, #fde6cf); }
+.art-western { background: linear-gradient(145deg, #ffe6dc, #fff0d6); }
+.art-chinese { background: linear-gradient(145deg, #ffe0d6, #fbe9c9); }
+.today-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin: 4px 2px 14px; }
+.today-top h2 { font-size: 30px; line-height: 1.3; margin: 0; }
+.today-date { margin: 6px 0 0; color: var(--muted); font-weight: 700; font-size: 14px; }
+.today-note { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); text-align: right; transform: rotate(-4deg); white-space: nowrap; }
+.section-title { font-size: 20px; margin: 0 0 10px; }
+.recent-meals { margin: 0 0 16px; }
+.recent-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.recent-card { margin: 0; position: relative; }
+.recent-card .dish-tile { aspect-ratio: 4 / 3; }
+.recent-card figcaption { position: absolute; left: 8px; bottom: 8px; right: 8px; padding: 3px 8px; border-radius: 10px; background: rgba(255, 253, 248, 0.94); font-size: 12px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tonight-card { padding: 16px; background: #fff4ea; border: 1.5px solid #f6d3c5; }
+.tonight-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.tonight-label { margin: 0 0 10px; font-size: 24px; font-weight: 900; color: var(--tomato); }
+.tonight-aside { margin: 0; font-size: 12px; line-height: 1.4; color: var(--muted); transform: rotate(-6deg); }
+.tonight-photo { aspect-ratio: 16 / 11; border-radius: 18px; }
+.tonight-title { font-size: 26px; margin: 12px 0 4px; line-height: 1.3; }
+.tonight-reason { margin: 0 0 6px; font-size: 15px; }
+.tonight-meta { margin: 0 0 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.tonight-both { margin: 0 0 6px; font-weight: 800; }
+.tonight-both span { font-size: 22px; margin-right: 4px; }
+.tonight-off { margin: 8px 0 12px; font-weight: 700; }
+.tonight-actions { display: grid; gap: 8px; margin-top: 12px; }
+.tonight-actions .primary-button { min-height: 56px; font-size: 18px; }
+.swap-link { justify-self: center; font-size: 15px; }
+.next-meals { margin: 18px 0; }
+.next-card { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; margin-bottom: 10px; padding: 8px 14px 8px 8px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.next-card .dish-tile { aspect-ratio: 4 / 3; border-radius: 12px; }
+.next-card span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.next-card strong { font-size: 16px; overflow-wrap: anywhere; }
+.next-card small { color: var(--muted); font-size: 12px; }
+.next-card b { color: var(--muted); font-size: 20px; }
+.next-links { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+
+/* ----- Plan (mockup: N日分、いい感じ。) ----- */
+.plan-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; margin: 4px 2px 12px; }
+.plan-top h2 { font-size: 28px; line-height: 1.3; margin: 0; }
+.plan-tools { display: flex; align-items: center; gap: 8px; }
+.round-icon { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); display: grid; place-items: center; cursor: pointer; }
+.round-icon svg { width: 22px; height: 22px; fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; }
+.plan-trial { margin: 0 2px 10px; }
+.plan-list { display: grid; gap: 12px; padding: 0; background: none; border: 0; box-shadow: none; }
+.plan-list .plan-card { display: grid; grid-template-columns: 44% minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 8px 22px rgba(90, 60, 30, 0.07); }
+.plan-list .plan-card.is-swapping { border-color: var(--tomato); }
+.plan-photo { position: relative; display: block; padding: 0; border: 0; background: none; cursor: pointer; min-height: 100%; }
+.plan-photo .dish-tile { width: 100%; height: 100%; min-height: 150px; aspect-ratio: auto; border-radius: 0; }
+.today-badge { position: absolute; left: 10px; top: 10px; padding: 4px 12px; border-radius: 999px; background: var(--tomato); color: #fff; font-weight: 900; font-size: 13px; }
+.plan-body { display: grid; align-content: start; gap: 2px; padding: 12px 12px 10px; min-width: 0; }
+.plan-date { margin: 0; color: var(--muted); font-size: 12px; font-weight: 700; }
+.plan-title { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 18px; font-weight: 900; line-height: 1.3; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.plan-time { margin: 2px 0 0; font-weight: 800; font-size: 14px; }
+.plan-note { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.plan-controls { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 6px; }
+.plan-swap { display: grid; justify-items: center; gap: 0; min-width: 64px; min-height: 52px; padding: 4px 8px; border-radius: 14px; color: var(--tomato); }
+.plan-swap span:first-child { font-size: 18px; line-height: 1; }
+.plan-swap .plan-icon-label { font-size: 11px; color: var(--ink); }
+.plan-list .plan-card > .notice { grid-column: 1 / -1; margin: 0 12px 12px; }
+.plan-hint { text-align: center; color: var(--muted); margin: 6px 0 0; }
+.plan-list > .primary-button { width: 100%; min-height: 56px; font-size: 17px; }
+.plan-list .swap-panel { margin: -6px 0 4px 12px; }
+@media (max-width: 360px) { .plan-list .plan-card { grid-template-columns: 40% minmax(0, 1fr); } .plan-title { font-size: 16px; } .plan-top h2 { font-size: 24px; } }
+.nobr { white-space: nowrap; }
+.plan-top h2 { flex: 0 1 auto; min-width: 0; }
+.plan-tools { flex: 0 0 auto; }
