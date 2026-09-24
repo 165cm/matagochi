@@ -431,3 +431,19 @@ test("shopping renders one-tap checkboxes and aisle headings instead of status s
   assert.ok(html.includes('🥬 野菜'));assert.ok(html.includes('🥩 肉・魚'));
   assert.ok(!html.includes('<select'));
 });
+test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
+  const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
+  assert.ok(!eq("しょうゆで味を整える").includes("鍋"));
+  assert.ok(!eq("めんつゆで和える").includes("鍋"));
+  assert.ok(eq("パスタをゆでる").includes("鍋"));
+  assert.ok(eq("卵を茹でる").includes("鍋"));
+});
+test("shopping keeps concentration and product variants separate", () => {
+  const items = L.shopping({ slots: { x: { date: start, status: "confirmed", servings: 1, recipe: { id: "x", sourceServings: 1, ingredients: [
+    {name:"めんつゆ（3倍濃縮）",amount:"大さじ1"}, {name:"めんつゆ（ストレート）",amount:"大さじ2"}, {name:"ごはん（炊飯済み）",amount:"150g"}
+  ]}}}, start, end:start, scale: a=>a, combine:a=>a.join(" + "), pantry:{米:"have"} });
+  assert.equal(items.length,3);
+  assert.ok(items.some(i=>i.name==="めんつゆ(3倍濃縮)"));
+  assert.ok(items.some(i=>i.name==="めんつゆ(ストレート)"));
+  assert.equal(items.find(i=>i.name==="ごはん").status,"have");
+});

@@ -679,9 +679,10 @@ body.is-onboarding .icon-button {
 }
 
 .chip.is-active,
-.choice-button.is-active {
-  background: #edf3e8;
-  color: var(--sage-dark);
+.choice-button.is-active,
+.choice-button[aria-pressed="true"] {
+  background: var(--sage-dark);
+  color: #fff;
 }
 
 .meal-picker,
@@ -1812,3 +1813,141 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 .playlist-footer { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); margin-top: 12px; padding-top: 8px; background: linear-gradient(transparent, var(--bg) 30%); }
 .playlist-footer .primary-button { width: 100%; }
 .playlist-thumb-empty { width: 72px; height: 54px; border-radius: 8px; background: var(--surface-soft); display: grid !important; place-items: center; font-size: 22px; }
+
+.welcome-card { display: grid; gap: 14px; }
+.welcome-actions { display: grid; gap: 10px; }
+.welcome-actions button { width: 100%; min-height: 52px; font-size: 16px; }
+
+/* Shopping list: one-tap row actions, compact add form, folded secondary groups */
+.shopping-hero { display: grid; gap: 10px; }
+.shopping-hero h2, .shopping-hero p { margin: 0; }
+.daily-shopping-row { display: flex; align-items: center; gap: 8px; }
+.shopping-inline { flex-shrink: 0; min-height: 44px; min-width: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--sage-dark); font-size: 13px; font-weight: 700; cursor: pointer; }
+.shopping-add { display: grid; grid-template-columns: minmax(0, 1fr) 88px auto; gap: 8px; }
+.shopping-add .input { min-width: 0; }
+.shopping-add .primary-button { min-height: 44px; padding: 0 16px; }
+.shopping-fold > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
+.shopping-fold > summary::-webkit-details-marker { display: none; }
+.shopping-fold > summary h3 { margin: 0; }
+.shopping-fold > summary::after { content: "開く ▾"; font-size: 12px; color: var(--sage-dark); font-weight: 700; }
+.shopping-fold[open] > summary::after { content: "閉じる ▴"; }
+
+/* Plan: one tappable card per day, inline swap choices */
+.plan-hero { display: grid; gap: 10px; }
+.plan-hero-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.plan-hero-head h2 { margin: 0; }
+.plan-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.segmented { display: inline-flex; gap: 4px; padding: 3px; border-radius: 12px; background: #f4f0e8; }
+.segmented .choice-button { min-height: 40px; min-width: 72px; font-size: 14px; }
+.plan-list { display: grid; gap: 10px; }
+.plan-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.plan-card.is-swapping { border-color: var(--sage-dark); }
+.plan-card.is-off { opacity: 0.8; }
+.plan-card > .notice, .plan-card > .secondary-button { grid-column: 1 / -1; }
+.plan-main { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; align-items: center; min-height: 56px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.plan-main > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.plan-main strong { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.plan-main small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.plan-status { color: var(--sage-dark); }
+.plan-thumb { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; background: var(--surface-soft); display: grid; place-items: center; font-size: 26px; }
+.plan-icon { min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--sage-dark); font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.plan-more { position: relative; }
+.plan-more > summary { list-style: none; min-width: 36px; min-height: 44px; display: grid; place-items: center; cursor: pointer; font-weight: 800; color: var(--muted); }
+.plan-more > summary::-webkit-details-marker { display: none; }
+.plan-more[open] > div { position: absolute; right: 0; top: 44px; z-index: 3; display: grid; gap: 6px; min-width: 190px; padding: 10px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+.plan-list > .primary-button { width: 100%; min-height: 52px; }
+.swap-panel { display: grid; gap: 6px; margin: -4px 0 4px 16px; padding-left: 10px; border-left: 3px solid var(--sage); }
+.swap-option { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 56px; padding: 6px 10px 6px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.swap-option .plan-thumb { width: 44px; height: 44px; font-size: 20px; }
+.swap-option span { display: grid; gap: 2px; min-width: 0; }
+.swap-option strong { font-size: 15px; overflow-wrap: anywhere; }
+.swap-option small { color: var(--muted); font-size: 12px; }
+.swap-option b { color: var(--sage-dark); font-size: 13px; }
+.swap-option.needs-review b { color: var(--tomato); }
+.plan-main:focus-visible, .swap-option:focus-visible, .plan-icon:focus-visible { outline: 3px solid var(--sage); outline-offset: 2px; }
+@media (max-width: 360px) {
+  .plan-list { padding-left: 8px; padding-right: 8px; }
+  .plan-card { padding: 6px; gap: 2px; }
+  .plan-main { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; }
+  .plan-main .plan-thumb { width: 44px; height: 44px; font-size: 20px; }
+  .plan-icon { padding: 0 8px; min-width: 44px; }
+  .plan-icon-label { display: none; }
+  .plan-more > summary { min-width: 28px; }
+  .swap-panel { margin-left: 4px; padding-left: 6px; }
+}
+
+/* Recipe conditions: tap chips, auto-detected summary, edits folded */
+.planning-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; margin: 10px 0; }
+.planning-row > span { font-size: 13px; font-weight: 800; color: var(--muted); }
+.planning-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.planning-options .choice-button { min-height: 40px; min-width: 52px; font-size: 14px; }
+.planning-summary { display: grid; gap: 4px; margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-soft); }
+.planning-summary div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+.planning-summary dt { color: var(--muted); font-size: 13px; }
+.planning-summary dd { margin: 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.planning-edit { margin: 8px 0; }
+.planning-edit > summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--sage-dark); padding: 8px 0; }
+.planning-confirm { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+
+/* Today: compact dish card when there is no photo; one-tap rows for what's next */
+.today-dish-head { display: grid; gap: 6px; padding: 20px 20px 0; }
+.today-dish-head h3 { font-size: 22px; line-height: 1.4; margin: 0; }
+.today-dish-head p { margin: 0; }
+.today-dish-actions { display: grid; gap: 10px; padding: 14px 20px 20px; }
+.today-dish.is-compact { display: grid; grid-template-columns: 96px minmax(0, 1fr); }
+.today-dish.is-compact .dish-art { margin: 16px 0 0 16px; padding: 4px; height: 88px; border-radius: 14px; display: grid; align-content: center; }
+.today-dish.is-compact .dish-art svg { height: 54px; }
+.today-dish.is-compact .dish-art small { font-size: 10px; line-height: 1.2; }
+.today-dish.is-compact .today-dish-head { padding: 16px 16px 0 12px; }
+.today-dish.is-compact .today-dish-actions { grid-column: 1 / -1; padding: 12px 16px 16px; }
+.today-links { display: grid; gap: 8px; }
+.today-link { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 56px; padding: 6px 12px 6px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.today-link .plan-thumb { width: 44px; height: 44px; font-size: 20px; }
+.today-link span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.today-link small { color: var(--muted); font-size: 12px; }
+.today-link strong { font-size: 15px; overflow-wrap: anywhere; }
+.today-link b { color: var(--muted); font-size: 20px; }
+.starter-list { display: grid; gap: 8px; }
+.starter-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.starter-row .plan-thumb { width: 44px; height: 44px; font-size: 20px; }
+.starter-row span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.starter-row strong { font-size: 15px; overflow-wrap: anywhere; }
+.starter-row small { color: var(--muted); font-size: 12px; }
+
+/* Cooking: compact header, tap-to-tick ingredients and steps, pinned main action */
+.cooking-card { display: grid; gap: 12px; }
+.cooking-back { justify-self: start; padding: 4px 0; }
+.cooking-head { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; }
+.cooking-head .plan-thumb { width: 64px; height: 64px; }
+.cooking-head h2 { margin: 2px 0; font-size: 22px; line-height: 1.35; }
+.cooking-head p { margin: 0; }
+.cooking-safety { border-radius: 12px; background: #fff8ea; padding: 10px 12px; }
+.cooking-safety summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+.cooking-safety p { margin: 8px 0 0; }
+.cooking-card h3 small { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.cooking-check { list-style: none; padding: 0; margin: 0; }
+.cooking-check li { border-bottom: 1px solid var(--line); }
+.cooking-check label { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 48px; padding: 8px 0; cursor: pointer; }
+.cooking-check input { width: 22px; height: 22px; accent-color: var(--sage-dark); }
+.cooking-steps.cooking-check { counter-reset: step; }
+.cooking-steps.cooking-check label { grid-template-columns: 24px minmax(0, 1fr); font-size: 17px; line-height: 1.6; }
+.cooking-steps.cooking-check label span::before { counter-increment: step; content: counter(step) ". "; font-weight: 800; color: var(--sage-dark); }
+.cooking-check label:has(input:checked) span { text-decoration: line-through; opacity: 0.55; }
+.cooking-primary { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); padding-top: 10px; background: linear-gradient(transparent, var(--surface-soft) 35%); }
+.cooking-primary .primary-button { width: 100%; min-height: 54px; font-size: 17px; }
+.settings-food { display: grid; gap: 10px; }
+.settings-food h2 { margin: 0; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-row > span { font-weight: 800; color: var(--muted); font-size: 13px; }
+.settings-stepper { display: flex; align-items: center; gap: 10px; }
+.settings-stepper strong { min-width: 56px; text-align: center; font-size: 17px; }
+.settings-stepper .plan-icon { min-width: 44px; font-size: 18px; }
+.settings-fold > summary { list-style: none; cursor: pointer; display: grid; gap: 2px; }
+.settings-fold > summary::-webkit-details-marker { display: none; }
+.settings-fold > summary h3 { margin: 0; }
+.settings-fold > summary h3::after { content: " ▾"; color: var(--sage-dark); font-size: 13px; }
+.settings-fold[open] > summary { margin-bottom: 10px; }
+.cooking-check li { display: block; padding: 0; }
+.cooking-check label span:nth-of-type(2) { justify-self: end; text-align: right; color: var(--muted); }
+.badge { white-space: nowrap; }
+.planning-summary div { grid-template-columns: 88px minmax(0, 1fr); }

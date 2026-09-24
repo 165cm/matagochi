@@ -93,6 +93,7 @@
   }
   function profile(raw = {}) {
     return {
+      detailedSetup: raw.detailedSetup === true,
       quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 2 ? raw.quickSetupIndex : null,
       version: 1,
       completed: raw.completed === true,
@@ -160,7 +161,8 @@
     const equipment = [];
     if (/レンジ|[56]00[WＷ]/i.test(steps)) equipment.push("電子レンジ", "耐熱ボウル");
     if (/フライパン|炒め|炒める|揚げ/.test(steps)) equipment.push("コンロ", "フライパン");
-    if (/鍋|ゆで|茹で|煮る|煮込/.test(steps)) equipment.push("コンロ", "鍋");
+    // "しょうゆで" / "めんつゆで" are seasonings, not boiling.
+    if (/鍋|(?<![うつ])ゆで|茹で|煮る|煮込/.test(steps)) equipment.push("コンロ", "鍋");
     if (/切|刻/.test(steps)) equipment.push("包丁", "まな板");
     if (/はさみ|ハサミ/.test(steps)) equipment.push("キッチンばさみ");
     if (/ふた|蓋/.test(steps)) equipment.push("ふた");
@@ -394,6 +396,10 @@
     });
     return result;
   }
+  // Only normalize known equivalent names; concentration and product variants matter.
+  const shoppingName = (name) =>
+    String(name || "").normalize("NFKC").trim().replace(/^ごはん\(炊飯済み\)$/, "ごはん").replace(/^しょうゆ\(濃口\)$/, "しょうゆ");
+  const notPurchased = /^(?:水|お湯|湯|熱湯|冷水|氷水|ぬるま湯)$/;
   function shopping({
     slots,
     start,
@@ -412,9 +418,11 @@
       .sort((a, b) => a.date.localeCompare(b.date))
       .forEach((s) => {
         s.recipe.ingredients.forEach((item) => {
-          const k = key(item.name);
+          const name = shoppingName(item.name);
+          if (notPurchased.test(name)) return;
+          const k = key(name);
           if (!groups.has(k))
-            groups.set(k, { id: k, name: item.name, category: item.category || "その他", amounts: [], parts: [] });
+            groups.set(k, { id: k, name, category: item.category || "その他", amounts: [], parts: [] });
           const g = groups.get(k);
           const amount = scale(
             item.amount,
@@ -439,7 +447,7 @@
       const signature = g.parts.join("|");
       const mark = marks[g.id];
       const owned = Object.entries(pantry).some(
-        ([n, v]) => (key(n) === g.id || (key(n) === "米" && /^ごはん(?:（炊飯済み）)?$/.test(g.name))) && v === "have",
+        ([n, v]) => (key(n) === g.id || (key(n) === "米" && g.id === "ごはん")) && v === "have",
       );
       const covered =
         !!mark?.signature &&

@@ -9,9 +9,9 @@ const assert = require("node:assert/strict");
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(process.env.TEST_URL || "http://127.0.0.1:8124");
-  await page.waitForSelector(".profile-wizard");
+  await page.locator("[data-action=life-detailed]").click();
   await page.locator('[data-profile=servings][value="2"]').check();
-  await page.locator("[data-action=life-next]").first().click();
+  await page.waitForSelector('.profile-wizard[data-step="1"]');
   await page.reload();
   await page.waitForSelector(".profile-wizard");
   assert.match(await page.locator(".wizard-progress").innerText(), /2 \/ 16/);
@@ -21,9 +21,9 @@ const assert = require("node:assert/strict");
       await page.locator('[data-profile=weekendMinutes][value="30"]').check();
     }
     if (step === 7) {
-      for (const group of [0, 1]) {
+      for (const group of [0]) {
         await page.locator(`.equipment-group[data-group="${group}"]`).click();
-        for (const name of (group === 0 ? ["コンロ", "電子レンジ", "フライパン", "鍋", "ざる"] : ["耐熱ボウル"])) {
+        for (const name of ["コンロ", "電子レンジ", "フライパン", "鍋", "ざる", "耐熱ボウル"]) {
           const button = page.locator(`[data-action="life-equipment-toggle"][data-name="${name}"]`);
           if (await button.getAttribute('aria-pressed') !== 'true') await button.click();
         }
@@ -46,7 +46,7 @@ const assert = require("node:assert/strict");
   await page.waitForSelector("[data-action=life-confirm]");
   await page.locator("[data-action=life-confirm]").click();
   await page.waitForSelector("[data-shopping-id]");
-  await page.locator("[data-shopping-id]").first().selectOption("purchased");
+  await page.locator("[data-shopping-id]").first().click();
   await page.locator(".tab[data-view=today]").click();
   await page.waitForSelector(".today-dish");
   await page.screenshot({ path: "/tmp/daily-today.png", fullPage: true });
@@ -105,12 +105,10 @@ const assert = require("node:assert/strict");
   await page.locator("[data-action=entry-method][data-method=manual]").click();
   await page.locator("#recipe-title").fill("テストの丼");
   await page.locator("#recipe-steps").fill("材料を温める");
-  await page
-    .locator("summary")
-    .filter({ hasText: "献立に使う調理条件" })
-    .click();
-  await page.locator("#planning-minutes").fill("15");
-  await page.locator("#planning-equipment").fill("コンロ、フライパン");
+  await page.locator('[data-planning-minute="15"]').click();
+  await page.locator('[data-planning-easy="true"]').click();
+  await page.locator('[data-planning-field="equipment"][value="コンロ"]').check();
+  await page.locator("#planning-verified").check();
   await page.locator("[data-action=save-recipe]").click();
   await page.waitForSelector("#recipe-search");
   assert.match(await page.locator("#app").innerText(), /テストの丼/);
@@ -129,7 +127,7 @@ const assert = require("node:assert/strict");
   await page.reload();
   await page.waitForSelector(".today-dish");
   await page.locator(".tab[data-view=plan]").click();
-  assert.ok(await page.locator(".daily-plan-row").count());
+  assert.ok(await page.locator(".plan-card").count());
   await context.setOffline(false);
   await page.locator(".tab[data-view=today]").click();
   await page.screenshot({ path: "/tmp/daily-today.png", fullPage: true });
