@@ -62,6 +62,7 @@ const demoState = {
   requests: {},
   roles: { members: {}, updatedAt: "" },
   memberPrefs: {},
+  round: { deadline: "", status: "", lastDeadline: "", updatedAt: "" },
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -292,6 +293,7 @@ function normalizeState(saved) {
     requests: normalizeRequests(saved.requests),
     roles: normalizeRoles(saved.roles),
     memberPrefs: normalizeMemberPrefs(saved.memberPrefs),
+    round: normalizeRound(saved.round),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -513,7 +515,8 @@ function buildSyncPayload() {
     manualShopping: state.manualShopping,
     requests: state.requests || {},
     roles: state.roles || { members: {}, updatedAt: "" },
-    memberPrefs: state.memberPrefs || {}
+    memberPrefs: state.memberPrefs || {},
+    round: state.round || {}
   };
 }
 
@@ -547,7 +550,8 @@ function mergeSyncPayloads(local, remote) {
     manualShopping: Lifestyle.mergeMap(local.manualShopping, remote.manualShopping),
     requests: Lifestyle.mergeMap(local.requests, remote.requests),
     roles: (remote.roles?.updatedAt || "") > (local.roles?.updatedAt || "") ? remote.roles : local.roles,
-    memberPrefs: Lifestyle.mergeMap(local.memberPrefs, remote.memberPrefs)
+    memberPrefs: Lifestyle.mergeMap(local.memberPrefs, remote.memberPrefs),
+    round: (remote.round?.updatedAt || "") > (local.round?.updatedAt || "") ? remote.round : local.round
   };
 }
 
@@ -594,6 +598,7 @@ function applySyncPayload(payload) {
   state.requests = normalizeRequests(payload.requests || state.requests);
   state.roles = normalizeRoles(payload.roles || state.roles);
   state.memberPrefs = normalizeMemberPrefs(payload.memberPrefs || state.memberPrefs);
+  state.round = normalizeRound(payload.round || state.round);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);

@@ -2283,3 +2283,26 @@ span.tile-photo { cursor: default; }
 .cal-cell.is-picked { outline: 3px solid var(--marker); outline-offset: -3px; opacity: 1; }
 .cal-caption { margin: 8px 2px 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
 .cal-caption b { color: var(--ink); }
+
+/* ----- 買い物ラウンド ----- */
+.round-card { margin: 0 0 14px; padding: 14px 16px; border-radius: 20px; background: #fff1dc; border: 1px solid #f6dcb8; display: grid; gap: 8px; }
+.round-card h3, .round-card p { margin: 0; }
+.round-card.is-open { background: var(--surface); border: 2px solid var(--tomato); }
+.round-card.is-closed { background: #fdeee8; }
+.round-form { display: grid; gap: 8px; }
+.round-form label { display: grid; gap: 4px; font-weight: 700; font-size: 13px; }
+.round-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.round-actions .secondary-button, .round-actions .primary-button { min-height: 42px; padding: 0 16px; font-size: 14px; }
+.copy-mini { min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.round-done { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; padding: 12px 16px; border-radius: 18px; border: 1.5px dashed #e6d3bf; }
+.round-done p { margin: 0; font-weight: 800; }
+.round-done.is-ready { border: 2px solid var(--tomato); background: #fff1dc; }
+.round-done .secondary-button, .round-done .primary-button { min-height: 42px; padding: 0 16px; }
+.request-card.is-quiet { background: var(--surface); border-color: var(--line); padding: 10px 16px; }
+.request-log summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--muted); }
+.request-log ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 12px; }
+.request-log li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.request-log li span { color: var(--muted); }
+.request-log li em { margin-left: auto; font-style: normal; color: var(--tomato); font-weight: 700; }
+.round-done p { flex: 1; min-width: 0; }
+.round-done .secondary-button, .round-done .primary-button { flex: 0 0 auto; white-space: nowrap; }
