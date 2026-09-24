@@ -24,15 +24,9 @@ const assert = require("node:assert/strict");
     assert.equal(await page.evaluate(() => state.planLength), 3);
     assert.equal(await page.evaluate(() => dailyShopping().length), 0);
     assert.equal(await page.evaluate(() => state.foodProfile.completed), false);
-    // Capture real app screens in an isolated example account; never inject invented UI.
-    await page.evaluate(() => scrollTo(0, 0));
-    if (!process.env.TEST_URL)
-      await page.screenshot({ path: "lp/assets/app-plan.png" });
     await page.locator("[data-action=life-confirm]").click();
     assert.ok((await page.evaluate(() => dailyShopping().length)) > 0);
     await page.locator(".tab[data-view=today]").click();
-    if (!process.env.TEST_URL)
-      await page.screenshot({ path: "lp/assets/app-today.png" });
     // Existing data must survive campaign links.
     const snapshot = await page.evaluate(() => JSON.stringify(state.mealSlots));
     await page.goto(base + "?start=quick");
@@ -66,14 +60,15 @@ const assert = require("node:assert/strict");
         ),
       );
     }
-    assert.equal(await page.locator('a[href="../?start=quick"]').count(), 3);
+    // hero, steps, final and the mobile sticky bar
+    assert.equal(await page.locator('a[href="../?start=quick"]').count(), 4);
     assert.equal(await page.locator('a[href="../?quiz=1"]').count(), 1);
     assert.doesNotMatch(
       await page.locator("body").innerText(),
       /完全無料|課金も広告もありません|サーバーには送りません|6段階/,
     );
     await page
-      .locator('img[src="assets/dinner-for-two.webp"]')
+      .locator('img[src="assets/screen-recipes.webp"]')
       .scrollIntoViewIfNeeded();
     await page.waitForFunction(() =>
       [...document.images].every((img) => img.complete && img.naturalWidth > 0),

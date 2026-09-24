@@ -2,307 +2,250 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>リピごち | 3問から、今夜の一品と買い物へ</title>
-    <meta
-      name="description"
-      content="1人・2人暮らしの夜ごはん。3問で3日分を提案し、確定した献立から買い物リストへ。無料ではじめられ、保存・記録・バックアップの基本機能はずっと無料。"
-    />
-    <meta
-      property="og:title"
-      content="リピごち | 3問から、今夜の一品と買い物へ"
-    />
-    <meta
-      property="og:description"
-      content="夜ごはんを1日1品。提案を選び、必要なものだけ買って、おいしかった一皿を残そう。夜ごはんタイプ診断も。"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>リピごち | 今夜、これ食べたい。3問で夜ごはんが決まる</title>
+    <meta name="description" content="1人・2人暮らしの夜ごはんアプリ。3問に答えるだけで3日分の献立と買い物リストが決まる。登録不要・無料・ブラウザでそのまま使えます。" />
+    <meta property="og:title" content="リピごち | 今夜、これ食べたい。" />
+    <meta property="og:description" content="3問で、3日分の夜ごはんと買い物リストが決まる。1人・2人暮らしのための、登録不要の無料アプリ。" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://165cm.github.io/matagochi/lp/" />
-    <meta
-      property="og:image"
-      content="https://165cm.github.io/matagochi/lp/assets/dinner-for-two.webp"
-    />
+    <meta property="og:image" content="https://165cm.github.io/matagochi/lp/assets/ogp-2026.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#fff8ee" />
     <link rel="canonical" href="https://165cm.github.io/matagochi/lp/" />
     <link rel="icon" href="../icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=20260923-lp" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Klee+One:wght@600&display=swap" />
+    <link rel="preload" as="image" href="assets/screen-today.webp" />
+    <link rel="stylesheet" href="styles.css?v=20260924-tokimeki" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <a class="brand" href="#"
-          ><img
-            src="../icons/icon-192.png"
-            width="36"
-            height="36"
-            alt=""
-          /><span>リピごち</span></a
-        ><a class="button button-small" href="../">アプリを開く</a>
+        <a class="brand" href="#top" aria-label="リピごち トップへ">
+          <span class="logo">リピごち</span>
+          <span class="hand brand-note">また、これ食べたい。</span>
+        </a>
+        <a class="button button-small" href="../?start=preview">アプリを開く</a>
       </div>
     </header>
-    <main>
+
+    <main id="top">
+      <!-- ファーストビュー：結論・行動・画面を1画面に -->
       <section class="hero">
         <div class="container hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow">1人・2人暮らしの夜ごはんに</p>
-            <h1>3問から、<br />今夜の一品と<br />買い物が決まる。</h1>
-            <p class="lead">
-              人数・調理時間・食べられない食材を教えたら、まずは<strong>3日分の夜ごはん</strong>。食べたい提案を確定すると、必要な材料が買い物リストにまとまります。
-            </p>
-            <div class="cta-row">
-              <a class="button button-primary" href="../?start=quick"
-                >3問で無料ではじめる</a
-              ><a class="button button-ghost" href="../?start=preview"
-                >設定せずに見てみる</a
-              >
+            <p class="pill">1人・2人暮らしの夜ごはんアプリ</p>
+            <h1>今夜、<br /><span class="marker nobr">これ食べたい。</span></h1>
+            <p class="lead"><span class="nobr">3問に答えるだけ。</span><br /><span class="nobr">3日分の夜ごはんと、</span><span class="nobr">買い物リストが決まる。</span></p>
+            <div class="cta-block">
+              <a class="button button-primary button-large" href="../?start=quick" data-cta="hero">3問で今夜を決める<span aria-hidden="true">›</span></a>
+              <p class="cta-sub"><span>無料</span><span>登録なし</span><span>約30秒</span></p>
+              <a class="text-link" href="../?start=preview">設定しないで、中をのぞいてみる →</a>
             </div>
-            <p class="cta-note">
-              無料ではじめられる。保存・記録・バックアップの基本機能はずっと無料。条件に合う候補がない場合は設定を調整できます。
-            </p>
-            <p class="cta-note">
-              基本は端末内に保存。同期・AI取り込みを使ったときは、対象データをサーバーへ送信します。
-            </p>
           </div>
-          <div class="screen-pair">
-            <figure>
-              <img
-                src="assets/app-today.png"
-                alt="リピごちの実際の今日画面。今夜の一品と作り方への入口"
-                width="390"
-                height="844"
-              />
-              <figcaption>今夜の一品を、すぐ確認</figcaption>
+          <div class="hero-visual">
+            <p class="hand note note-a" aria-hidden="true">考えるの、<br />もうやめた。</p>
+            <figure class="phone phone-hero">
+              <img src="assets/screen-today.webp" width="640" height="1333" alt="リピごちの今日の画面。今夜の一品「照り焼きチキン丼 15分・1人分」と「これにする」ボタン" fetchpriority="high" />
             </figure>
-            <figure>
-              <img
-                src="assets/app-plan.png"
-                alt="実際の献立画面。3日分の提案を確認して確定"
-                width="390"
-                height="844"
-              />
-              <figcaption>3日分から。7日分にも変更OK</figcaption>
-            </figure>
+            <span class="sticker sticker-time" aria-hidden="true">⏱ 15分</span>
+            <span class="sticker sticker-list" aria-hidden="true">🛒 買い物リスト自動</span>
           </div>
         </div>
       </section>
+
+      <!-- 写真で選ぶ（食欲に訴える） -->
+      <section class="food-strip" aria-label="提案される料理の例">
+        <div class="marquee">
+          <div class="marquee-track">
+            <figure><img src="assets/dish-teriyaki.webp" width="384" height="264" alt="照り焼きチキン丼" loading="lazy" /><figcaption>照り焼きチキン丼</figcaption></figure>
+            <figure><img src="assets/dish-tomato-pasta.webp" width="384" height="264" alt="トマトツナパスタ" loading="lazy" /><figcaption>トマトツナパスタ</figcaption></figure>
+            <figure><img src="assets/dish-porkkimchi.webp" width="384" height="264" alt="豚キムチ丼" loading="lazy" /><figcaption>豚キムチ丼</figcaption></figure>
+            <figure><img src="assets/dish-kinoko-udon.webp" width="384" height="264" alt="きのこバターうどん" loading="lazy" /><figcaption>きのこバターうどん</figcaption></figure>
+            <figure><img src="assets/dish-tofu-egg.webp" width="384" height="264" alt="豆腐たまご丼" loading="lazy" /><figcaption>豆腐たまご丼</figcaption></figure>
+            <figure><img src="assets/dish-tomato-cheese.webp" width="384" height="264" alt="トマトチーズごはん" loading="lazy" /><figcaption>トマトチーズごはん</figcaption></figure>
+
+            <figure aria-hidden="true"><img src="assets/dish-teriyaki.webp" width="384" height="264" alt="" loading="lazy" /><figcaption>照り焼きチキン丼</figcaption></figure>
+            <figure aria-hidden="true"><img src="assets/dish-tomato-pasta.webp" width="384" height="264" alt="" loading="lazy" /><figcaption>トマトツナパスタ</figcaption></figure>
+            <figure aria-hidden="true"><img src="assets/dish-porkkimchi.webp" width="384" height="264" alt="" loading="lazy" /><figcaption>豚キムチ丼</figcaption></figure>
+            <figure aria-hidden="true"><img src="assets/dish-kinoko-udon.webp" width="384" height="264" alt="" loading="lazy" /><figcaption>きのこバターうどん</figcaption></figure>
+            <figure aria-hidden="true"><img src="assets/dish-tofu-egg.webp" width="384" height="264" alt="" loading="lazy" /><figcaption>豆腐たまご丼</figcaption></figure>
+            <figure aria-hidden="true"><img src="assets/dish-tomato-cheese.webp" width="384" height="264" alt="" loading="lazy" /><figcaption>トマトチーズごはん</figcaption></figure>
+          </div>
+        </div>
+        <p class="strip-note">10〜20分でつくれる一品を中心に。<span class="small">写真はイメージです</span></p>
+      </section>
+
+      <!-- 共感 -->
       <section class="pains">
+        <div class="container narrow">
+          <h2 class="center">こんな夜、<span class="marker">ありませんか？</span></h2>
+          <ul class="bubbles">
+            <li><span aria-hidden="true">🌀</span>帰り道、献立が決まらず<br />スーパーで立ち止まる</li>
+            <li><span aria-hidden="true">📱</span>保存したレシピ動画、<br />結局まだ作ってない</li>
+            <li><span aria-hidden="true">🥬</span>一人分だと、<br />食材がいつも余る</li>
+          </ul>
+          <p class="answer hand">→ ぜんぶ、「選ぶだけ」にしよう。</p>
+        </div>
+      </section>
+
+      <!-- 使い方：3ステップ -->
+      <section class="steps" id="how">
         <div class="container">
-          <h2>ひと皿でいい。<br />今日も、おいしく食べよう。</h2>
-          <div class="card-grid three">
-            <article class="pain-card">
-              <span class="pain-icon">🤔</span>
-              <h3>毎日、ゼロから考えない</h3>
-              <p>
-                まずは提案から選ぶだけ。主菜と副菜の組合せに悩まず、夜ごはんを1日1品で。
-              </p>
-            </article>
-            <article class="pain-card">
-              <span class="pain-icon">🛒</span>
-              <h3>作る分だけ、買い物へ</h3>
-              <p>
-                買い物リストに入るのは確定した献立の材料。家にあるものや購入済みのものを整理できます。
-              </p>
-            </article>
-            <article class="pain-card">
-              <span class="pain-icon">💛</span>
-              <h3>おいしかった一品を残す</h3>
-              <p>
-                食べたら「作った」。また食べたい一皿はボタンで記録し、写真やメモも残せます。
-              </p>
-            </article>
+          <p class="kicker center">つかいかた</p>
+          <h2 class="center">3ステップで、<span class="marker nobr">今夜が決まる。</span></h2>
+
+          <article class="step">
+            <figure class="phone"><img src="assets/screen-plan.webp" width="640" height="1309" alt="献立の画面。3日分の料理が写真付きで並び、それぞれ入れ替えられる" loading="lazy" /></figure>
+            <div class="step-copy">
+              <span class="step-no">1</span>
+              <h3>3問で、3日分。</h3>
+              <p>人数・平日の調理時間・食べられない食材だけ。気分じゃなければ、ワンタップで入れ替え。</p>
+              <p class="hand step-note">3日分でも7日分でも◎</p>
+            </div>
+          </article>
+
+          <article class="step reverse">
+            <figure class="phone"><img src="assets/screen-shopping.webp" width="640" height="1326" alt="買い物の画面。確定した献立の材料が売り場ごとに並び、タップで購入済みにできる" loading="lazy" /></figure>
+            <div class="step-copy">
+              <span class="step-no">2</span>
+              <h3>決めたら、買い物リスト。</h3>
+              <p>確定した献立の材料だけを、売り場ごとにまとめます。家にあるものはよけて、買ったらタップ。</p>
+              <p class="hand step-note">LINEで送って、おつかいも</p>
+            </div>
+          </article>
+
+          <article class="step">
+            <figure class="phone"><img src="assets/screen-records.webp" width="640" height="1309" alt="ふりかえりの画面のイメージ。作った料理の写真が並ぶ" loading="lazy" /><figcaption>画面はイメージです（一部開発中）</figcaption></figure>
+            <div class="step-copy">
+              <span class="step-no">3</span>
+              <h3>作って、食べて、残す。</h3>
+              <p>食べたら「作った」。写真やメモ、「また食べたい」を残すほど、次の提案があなた好みに。</p>
+              <p class="hand step-note">好きな一皿が、増えていく。</p>
+            </div>
+          </article>
+
+          <div class="center">
+            <a class="button button-primary button-large" href="../?start=quick" data-cta="steps">3問ではじめる<span aria-hidden="true">›</span></a>
           </div>
         </div>
       </section>
-      <section class="how" id="how">
-        <div class="container">
-          <p class="eyebrow center">実際の使い方</p>
-          <h2>3問から、食べるところまで。</h2>
-          <ol class="steps four-steps">
-            <li>
-              <span class="step-number">1</span>
-              <h3>3問に答える</h3>
-              <p>
-                人数・平日の調理時間・食べられない食材。好みや器具の詳細はあとから。
-              </p>
-            </li>
-            <li>
-              <span class="step-number">2</span>
-              <h3>提案を確定</h3>
-              <p>
-                3日分を見て、食べたい料理を確定。入れ替えや自炊のお休みも選べます。
-              </p>
-            </li>
-            <li>
-              <span class="step-number">3</span>
-              <h3>必要なものを買う</h3>
-              <p>
-                確定した献立からリストを作成。常備品は残量を確認して調整します。
-              </p>
-            </li>
-            <li>
-              <span class="step-number">4</span>
-              <h3>食べたら「作った」</h3>
-              <p>
-                今日の料理から記録。気に入ったら「また食べたい」を残しましょう。
-              </p>
-            </li>
-          </ol>
-          <div class="cta-row center">
-            <a class="button button-primary" href="../?start=quick"
-              >3問ではじめる</a
-            >
+
+      <!-- 保存したレシピも献立に -->
+      <section class="recipes">
+        <div class="container split">
+          <div class="split-copy">
+            <p class="kicker">レシピ</p>
+            <h2>保存しただけの<br /><span class="marker nobr">レシピ動画も、</span><span class="marker nobr">献立に。</span></h2>
+            <p>ピンときた一皿を選ぶだけ。YouTubeの再生リストはURLを貼ればまとめて追加。SNSで見つけたレシピは、リンク・スクショ・手入力で残せます。</p>
+            <ul class="checks">
+              <li>最初から、1人分のオリジナルレシピ入り</li>
+              <li>YouTubeの公開・限定公開の再生リストを一括追加<span class="small">（最大200本）</span></li>
+              <li>スクショからAIが下書き。確認してから保存</li>
+            </ul>
+          </div>
+          <figure class="phone"><img src="assets/screen-recipes.webp" width="640" height="1326" alt="レシピの画面のイメージ。料理の写真が2列で並び、調理時間が表示される" loading="lazy" /><figcaption>画面はイメージです（一部開発中）</figcaption></figure>
+        </div>
+      </section>
+
+      <!-- 診断（シェア導線） -->
+      <section class="quiz">
+        <div class="container quiz-card">
+          <div class="quiz-copy">
+            <p class="kicker">1分診断</p>
+            <h2>あなたの<br /><span class="marker">夜ごはんタイプ</span>は？</h2>
+            <p>料理写真をスワイプして、二択に答えるだけ。8種類のキャラクターから、あなたのタイプがわかります。結果は画像でシェアできます。</p>
+            <a class="button button-dark" href="../?quiz=1" data-cta="quiz">診断してみる<span aria-hidden="true">›</span></a>
+            <p class="small muted">好みを楽しむ診断です。性格や健康状態の判定ではありません。</p>
+          </div>
+          <div class="persona-row">
+            <img src="../assets/persona/LLL.webp" width="200" height="200" alt="満腹ハムスター" loading="lazy" />
+            <img src="../assets/persona/RLR.webp" width="200" height="200" alt="盛り付けキツネ" loading="lazy" />
+            <img src="../assets/persona/LRR.webp" width="200" height="200" alt="台所のクマ博士" loading="lazy" />
           </div>
         </div>
       </section>
-      <section class="features">
-        <div class="container">
-          <div class="feature">
-            <div class="feature-copy">
-              <p class="eyebrow">好みの違いも、ごちそうに。</p>
-              <h2>あなたの<br />夜ごはんタイプは？</h2>
-              <p>
-                料理写真8枚と、迷ったときの二択9問。「味か彩りか」「節約か栄養バランスか」「時短かひと手間か」の3軸から、あなたのキャラクターを見つけます。
-              </p>
-              <p>
-                結果は画像でシェア。「同じ丼が続いてもあり？」なんて、話すきっかけにも。
-              </p>
-              <a class="button button-primary" href="../?quiz=1"
-                >夜ごはんタイプを診断する</a
-              >
-              <p class="cta-note">
-                今の好みを楽しむ診断です。性格や健康状態の判定ではありません。
-              </p>
-            </div>
-            <div class="persona-gallery">
-              <img
-                src="../assets/persona/LLL.webp"
-                alt="満腹ハムスター"
-                loading="lazy"
-              /><img
-                src="../assets/persona/RLR.webp"
-                alt="盛り付けキツネ"
-                loading="lazy"
-              />
-            </div>
-          </div>
-          <div class="feature reverse">
-            <div class="feature-copy">
-              <h2>自分のためにも、<br />ふたりのためにも。</h2>
-              <p>
-                1人分・2人分で夜ごはんを計画。SNSで見つけたレシピも、URL・画像・手入力で自分のコレクションに追加できます。
-              </p>
-              <p>
-                AI取り込みは下書きを確認・修正して保存。材料の人数換算は、元レシピの人数が確認できる場合に行います。
-              </p>
-            </div>
-            <div class="feature-media">
-              <img
-                src="assets/dinner-for-two.webp"
-                alt="小さな食卓で一皿ずつの夜ごはんを楽しむ大人ふたりのイラスト"
-                loading="lazy"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
+
+      <!-- 安心 -->
       <section class="trust" id="pricing">
         <div class="container">
-          <h2>無料ではじめられる。<br />基本機能はずっと無料。</h2>
-          <div class="card-grid three">
-            <article class="trust-card">
-              <span class="trust-icon">📖</span>
-              <h3>無料で残す基本機能</h3>
-              <p>
-                レシピの保存・編集、食事の記録、JSONバックアップの書き出し・読み込み。
-              </p>
-            </article>
-            <article class="trust-card">
-              <span class="trust-icon">✨</span>
-              <h3>有料プランを準備中</h3>
-              <p>
-                より豊富な提案レシピ、AI取り込みの利用枠拡張、端末間同期などを有料候補として検討しています。
-              </p>
-            </article>
-            <article class="trust-card">
-              <span class="trust-icon">🔒</span>
-              <h3>基本は端末内に保存</h3>
-              <p>
-                同期・AI取り込みを使ったときは、対象データをサーバーへ送信します。端末内のデータはバックアップできます。
-              </p>
-            </article>
+          <h2 class="center">いまは、<span class="marker">ぜんぶ無料。</span></h2>
+          <div class="trust-grid">
+            <article><span aria-hidden="true">🆓</span><h3>無料ではじめられる</h3><p>保存・記録・バックアップの基本機能は、この先もずっと無料。</p></article>
+            <article><span aria-hidden="true">✉️</span><h3>登録なし</h3><p>メールもパスワードも不要。ブラウザで開けばすぐ使えます。</p></article>
+            <article><span aria-hidden="true">🔒</span><h3>データは基本、端末の中</h3><p>同期やAI取り込みを使ったときだけ、必要なデータをサーバーへ送ります。</p></article>
           </div>
-          <p class="center">
-            現在は無料で提供しています。有料プランの価格・内容・開始時期は未定です。導入前に案内し、同意なく課金することはありません。
-          </p>
+          <p class="center small muted">より多くの提案レシピやAI取り込み枠などの有料プランを準備中です。始める前に必ずお知らせし、同意なく課金することはありません。</p>
         </div>
       </section>
+
       <section class="faq">
-        <div class="container">
-          <h2>よくある質問</h2>
+        <div class="container narrow">
+          <h2 class="center">よくある質問</h2>
           <details>
-            <summary>これからも無料で使えますか？</summary>
-            <p>
-              レシピの保存・編集、食事の記録、JSONバックアップの基本機能は無料で継続します。現在は全機能を無料で提供していますが、将来の有料プランを予定しています。豊富な提案レシピ、AI取り込みの利用枠拡張、同期などが候補です。価格や対象機能は確定前に案内し、自動的に課金へ切り替えることはありません。
-            </p>
+            <summary>本当に無料ですか？</summary>
+            <p>いまは全機能を無料で提供しています。保存・記録・バックアップの基本機能はこの先も無料です。有料プランは価格や内容が決まる前にお知らせし、自動で課金に切り替えることはありません。</p>
           </details>
           <details>
-            <summary>最初に16画面の設定が必要ですか？</summary>
-            <p>
-              「3問ではじめる」なら人数・調理時間・食べられない食材の3画面だけです。「設定せずに見てみる」では、用意されたレシピの3日分の提案を確認できます。このプレビューには個人の食材制限や器具の条件が未設定なので、実際に作る前に確認してください。詳細設定や診断はあとから使えます。
-            </p>
-          </details>
-          <details>
-            <summary>3問だけで買い物リストができますか？</summary>
-            <p>
-              3問で献立を提案し、利用者が確定した料理の材料から買い物リストを作ります。提案しただけでは買い物に追加しません。条件に合うレシピがない場合は、条件の見直しやレシピの追加が必要です。
-            </p>
-          </details>
-          <details>
-            <summary>どんなデータをサーバーへ送りますか？</summary>
-            <p>
-              基本は端末内に保存します。同期を有効にすると、共有対象のレシピ・記録・器具・常備品・献立・買い物などをサーバーへ送信・保存します。AI取り込みでは入力したURLや解析対象画像などをサーバーへ送り、AIサービスで処理します。個人の診断回答や食材制限は家族同期に含めません。
-            </p>
-            <p>
-              URLのタイトル・サムネイル取得、外部画像や動画の表示にも通信が発生します。共通レシピの照会・修正提案では、そのURLや提案内容を送信します。「端末内保存」は通信が一切ないという意味ではありません。
-            </p>
+            <summary>最初にたくさん設定が必要？</summary>
+            <p>「3問ではじめる」なら、人数・平日の調理時間・食べられない食材の3つだけ。好みや調理器具はあとから設定できます。設定せずに中を見ることもできます（その場合、食材制限や器具は反映されないので、作る前に確認してください）。</p>
           </details>
           <details>
             <summary>iPhoneでも使えますか？</summary>
-            <p>
-              ブラウザで利用できます。「ホーム画面に追加」でアプリのように起動できます。iPhoneでSNSレシピを保存する場合は、URLのコピー＆貼り付けをご利用ください。
-            </p>
+            <p>使えます。SafariやChromeで開いて「ホーム画面に追加」すると、アプリのように起動できます。SNSのレシピはURLのコピー＆貼り付けで保存できます。</p>
           </details>
           <details>
-            <summary>機種変更やデータ消失に備えるには？</summary>
-            <p>
-              設定からJSONバックアップを書き出して保管してください。ブラウザのデータ削除などで端末内の保存内容が消える場合があります。バックアップには個人設定も含まれるため、保管先や共有先に注意してください。
-            </p>
+            <summary>アレルギーがあっても大丈夫？</summary>
+            <p>食べられない食材を設定すると、その食材を含む料理は提案しません。ただし安全を保証するものではありません。市販品の原材料表示は必ずご自身で確認してください。</p>
+          </details>
+          <details>
+            <summary>データはどこに保存されますか？</summary>
+            <p>基本はお使いの端末（ブラウザ）の中です。家族との同期やAI取り込みを使ったときは、対象のデータをサーバーへ送信します。機種変更に備えて、設定からバックアップを書き出せます。</p>
           </details>
         </div>
       </section>
+
       <section class="final-cta">
         <div class="container center">
-          <h2>今夜は、考えるより<br />おいしく食べよう。</h2>
-          <p class="lead">まずは3日分を見て、気に入ったらあなたの条件で。</p>
-          <div class="cta-row center">
-            <a class="button button-primary" href="../?start=quick"
-              >3問で無料ではじめる</a
-            ><a class="button button-ghost" href="../?start=preview"
-              >設定せずに見てみる</a
-            >
-          </div>
+          <p class="hand final-note">おいしいって、ひとりでも、ちゃんとしあわせ。</p>
+          <h2>今夜のごはん、<br /><span class="marker">30秒で決めよう。</span></h2>
+          <a class="button button-primary button-large" href="../?start=quick" data-cta="final">3問で今夜を決める<span aria-hidden="true">›</span></a>
+          <p class="cta-sub center"><span>無料</span><span>登録なし</span><span>ブラウザでそのまま</span></p>
         </div>
       </section>
     </main>
+
+    <!-- スマホ下部の追従CTA（ファーストビューのボタンが見えない間だけ表示） -->
+    <div class="sticky-cta" aria-hidden="true">
+      <a class="button button-primary" href="../?start=quick" data-cta="sticky" tabindex="-1">3問で今夜を決める（無料）</a>
+    </div>
+
     <footer class="site-footer">
       <div class="container footer-inner">
-        <span class="brand">リピごち</span>
-        <nav class="footer-links">
-          <a href="../">アプリ</a
-          ><a href="https://github.com/165cm/matagochi">GitHub</a>
-        </nav>
-        <p class="copyright">MIT License</p>
+        <span class="logo">リピごち</span>
+        <nav class="footer-links"><a href="../">アプリ</a><a href="https://github.com/165cm/matagochi">GitHub</a></nav>
+        <p class="small muted">画面は開発中のデザインイメージを含みます。料理写真はイメージです。</p>
+        <p class="small muted">MIT License</p>
       </div>
     </footer>
+
+    <script>
+      // Show the bottom CTA only while the hero button is off screen.
+      (function () {
+        var hero = document.querySelector('[data-cta="hero"]');
+        var bar = document.querySelector(".sticky-cta");
+        if (!hero || !bar || !("IntersectionObserver" in window)) return;
+        new IntersectionObserver(function (entries) {
+          var hidden = !entries[0].isIntersecting;
+          bar.classList.toggle("is-visible", hidden);
+          bar.setAttribute("aria-hidden", String(!hidden));
+          bar.querySelector("a").tabIndex = hidden ? 0 : -1;
+        }).observe(hero);
+      })();
+    </script>
   </body>
 </html>
