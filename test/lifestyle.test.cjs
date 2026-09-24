@@ -569,3 +569,12 @@ test("app: viewers see the plan but only send requests; the owner applies a date
   assert.equal(run("openRequests().length"), 0);
   assert.equal(run('roleOf("新しい人")'), "viewer");
 });
+
+test("app: a viewer's 食べられないもの apply to the household plan and 好き counts as 毎週", () => {
+  const run = app();
+  run('state.family=["パパ","むすめ"];state.me="むすめ";state.memberPrefs={"むすめ":{restrictions:["卵"],likes:["starter-20"],done:true,updatedAt:nowIso()}}');
+  assert.ok(run('dailyProfile().restrictions.includes("卵")'));
+  assert.ok(run('dailyPlan().every(d=>!d.candidate||Lifestyle.fit(d.candidate.recipe,Lifestyle.profile({restrictions:["卵"]}),d.date).ok)'));
+  assert.equal(run('likedCycles(Lifestyle.curated.find(r=>r.id==="starter-20"))["むすめ"]'), "weekly");
+  assert.equal(run('Object.keys(normalizeMemberPrefs(buildSyncPayload().memberPrefs)).length'), 1);
+});
