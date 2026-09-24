@@ -2205,3 +2205,20 @@ span.tile-photo { cursor: default; }
 .record-photo-actions { display: flex; align-items: center; gap: 10px; }
 .record-photo-actions .secondary-button { cursor: pointer; }
 .text-button.danger { color: #b3261e; }
+
+/* ----- 見るだけモード ----- */
+.viewer-note { margin: 0 0 10px; padding: 6px 12px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 12px; font-weight: 700; text-align: center; }
+.viewer-banner { margin: 0 0 14px; padding: 14px 16px; border-radius: 18px; background: var(--tomato); color: #fff; display: grid; gap: 4px; }
+.viewer-banner small { opacity: .9; }
+.viewer-banner.is-done { background: #fff1dc; color: var(--ink); border: 1px solid #f6dcb8; }
+.swap-request { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 12px 12px; padding: 10px 12px; border-radius: 14px; background: #fff1dc; font-size: 14px; }
+.swap-request span { flex: 1 1 100%; }
+.swap-request .primary-button { min-height: 40px; padding: 0 16px; font-size: 14px; }
+.ask-button { margin-bottom: 10px; }
+.role-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 12px 14px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); font: inherit; text-align: left; cursor: pointer; color: var(--ink); }
+.role-toggle span { display: grid; gap: 2px; font-weight: 800; }
+.role-toggle small { font-weight: 500; color: var(--muted); }
+.role-toggle i { flex: 0 0 auto; width: 46px; height: 28px; border-radius: 999px; background: #e6d3bf; position: relative; transition: background .2s; }
+.role-toggle i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: left .2s; }
+.role-toggle[aria-pressed="true"] i { background: var(--tomato); }
+.role-toggle[aria-pressed="true"] i::after { left: 21px; }
