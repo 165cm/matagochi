@@ -2322,3 +2322,53 @@ span.tile-photo { cursor: default; }
 .flow-hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin: 8px 2px 0; font-size: 13px; color: var(--ink); }
 .flow-hint b { color: var(--tomato); }
 .flow-go { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 800; color: var(--tomato); cursor: pointer; white-space: nowrap; }
+
+/* ----- 週のボード（献立のリズム） ----- */
+.week-board { margin: 0 0 16px; padding: 12px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
+.wk-top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.wk-top strong { font-size: 15px; min-width: 3.5em; text-align: center; }
+.wk-nav { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); font-size: 18px; font-weight: 800; color: var(--ink); cursor: pointer; }
+.wk-nav:disabled { opacity: .3; cursor: default; }
+.wk-loop { margin-left: auto; display: flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 800; color: var(--muted); }
+.wk-loop i { width: 7px; height: 7px; border-radius: 50%; background: #efe4d6; }
+.wk-loop i.on { background: var(--tomato); }
+.wk-head, .wk-grid, .wk-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.wk-head span { text-align: center; font-size: 11px; font-weight: 800; color: var(--muted); }
+.wk-head span:first-child { color: #d4533a; }
+.wk-cell { position: relative; aspect-ratio: 1 / 1; padding: 0; border: 0; border-radius: 10px; background: var(--surface-soft); overflow: hidden; font: inherit; cursor: pointer; display: grid; place-items: center; }
+.wk-cell:disabled { cursor: default; }
+.wk-cell .dish-tile { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+.wk-cell .dish-fallback small { display: none; }
+.wk-cell em { font-style: normal; font-size: 12px; font-weight: 800; color: #b9ab99; }
+.wk-num { position: absolute; left: 3px; top: 2px; z-index: 1; padding: 0 4px; border-radius: 6px; background: rgba(255, 253, 248, .88); font-size: 10px; font-weight: 800; line-height: 1.5; color: var(--ink); }
+.wk-shop { position: absolute; right: 1px; bottom: 0; z-index: 1; font-size: 14px; filter: drop-shadow(0 0 2px #fff); }
+.wk-check { position: absolute; right: 3px; top: 2px; z-index: 1; width: 16px; height: 16px; border-radius: 50%; background: var(--tomato); color: #fff; font-style: normal; font-size: 10px; display: grid; place-items: center; }
+.wk-cell.is-draft .dish-tile { opacity: .45; }
+.wk-cell.is-draft { outline: 1.5px dashed #d8c4ad; outline-offset: -1.5px; }
+.wk-cell.is-today { outline: 2.5px solid var(--tomato); outline-offset: -2.5px; }
+.wk-bars { margin-top: 5px; }
+.wk-bar { min-width: 0; padding: 3px 6px; border-radius: 999px; font-size: 10px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #efe4d6; color: var(--muted); }
+.wk-bar.is-open { background: var(--tomato); color: #fff; }
+.wk-bar.is-late { background: #fde3da; color: #b3261e; }
+.wk-bar.is-decided { background: #fff1dc; color: var(--ink); }
+.wk-bar.is-shopped { background: #f3ebe0; color: var(--muted); }
+.wk-pick { margin: 6px 2px 0; font-size: 13px; color: var(--muted); }
+.wk-pick b { color: var(--ink); }
+.wk-hint { margin: 8px 2px 0; font-size: 13px; line-height: 1.6; }
+.wk-hint b { color: var(--tomato); }
+.wk-hint .text-button { font-size: 13px; padding: 0; min-height: 0; }
+.wk-tools { display: flex; gap: 6px; margin-top: 6px; }
+.wk-tools .secondary-button { min-height: 34px; padding: 0 12px; font-size: 12px; }
+.block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 14px 4px 8px; font-size: 16px; }
+.block-head small { font-size: 12px; font-weight: 800; color: var(--muted); }
+.block-head.is-open small { color: var(--tomato); }
+.block-foot { margin: 4px 0 8px; }
+.block-foot .primary-button { width: 100%; }
+.rhythm-options { display: grid; gap: 8px; }
+.rhythm-option { display: grid; gap: 2px; padding: 12px 14px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); font: inherit; text-align: left; color: var(--ink); cursor: pointer; }
+.rhythm-option small { color: var(--muted); }
+.rhythm-option[aria-pressed="true"] { border-color: var(--tomato); background: #fff1dc; }
+.rhythm-time { display: grid; gap: 4px; margin-top: 10px; font-size: 13px; font-weight: 700; }
+.rhythm-invite { margin: 0 0 14px; padding: 14px 16px; border-radius: 20px; border: 2px dashed #e6d3bf; display: grid; gap: 8px; }
+.rhythm-invite p { margin: 0; }
+.rhythm-invite small { color: var(--muted); }
