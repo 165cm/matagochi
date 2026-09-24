@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v18";
-const APP_VERSION = "20260924-screens";
+const CACHE_NAME = "ripigochi-v19";
+const APP_VERSION = "20260924-dishes1";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -10,18 +10,19 @@ const CORE_ASSETS = [
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),
   ...["teriyaki","tomato-pasta","porkkimchi","kinoko-udon","tofu-egg","tomato-cheese"].map(n => `./assets/dishes/${n}.webp`),
+  ...["03","04","07","08","09","10"].map(n => `./assets/dishes/starter-${n}.webp`),
   `./starter-recipes.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
   `./playlist-import.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260924-screens",
-  "./icons/favicon-32.png?v=20260924-screens",
-  "./icons/icon-192.png?v=20260924-screens",
-  "./icons/icon-512.png?v=20260924-screens",
-  "./icons/icon-maskable-512.png?v=20260924-screens",
-  "./icons/apple-touch-icon.png?v=20260924-screens"
+  "./manifest.webmanifest?v=20260924-dishes1",
+  "./icons/favicon-32.png?v=20260924-dishes1",
+  "./icons/icon-192.png?v=20260924-dishes1",
+  "./icons/icon-512.png?v=20260924-dishes1",
+  "./icons/icon-maskable-512.png?v=20260924-dishes1",
+  "./icons/apple-touch-icon.png?v=20260924-dishes1"
 ];
 
 self.addEventListener("install", (event) => {
