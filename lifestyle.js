@@ -271,6 +271,56 @@
     "魚",
     "肉",
   ];
+  // --- Rotation: remember what was eaten recently so dinners don't repeat by type ---
+  const NOODLE = /パスタ|スパゲ|うどん|そば|ラーメン|焼きそば|そうめん|麺/;
+  function traits(recipe) {
+    const title = String(recipe?.title || "");
+    const names = (recipe?.ingredients || []).map((i) => i.name).join(" ");
+    const text = title + " " + names;
+    const staple = NOODLE.test(text) ? "noodle"
+      : /パン|トースト|サンド/.test(text) ? "bread"
+      : /ごはん|米|丼|チャーハン|リゾット|カレー|ライス|おにぎり|雑炊|ビリヤニ/.test(text) ? "rice" : "other";
+    const protein = /鶏|豚|牛|ひき肉|合いびき|ハム|ベーコン|ウインナー|ソーセージ|肉/.test(names || title) ? "meat"
+      : /鮭|さけ|さば|ツナ|魚|えび|いか|たら|しらす|まぐろ|かつお|ぶり/.test(names || title) ? "fish"
+      : /卵|たまご|豆腐|厚揚げ|納豆|豆乳/.test(names || title) ? "eggtofu" : "veg";
+    const tastes = recipe?.planning?.tastes || recipe?.tags || [];
+    const cuisine = tastes.includes("中華風") ? "chinese" : tastes.includes("洋風") ? "western" : tastes.includes("和風") ? "japanese"
+      : /豆板醤|オイスター|キムチ|麻婆|担々|ナンプラー/.test(text) ? "chinese"
+      : /パスタ|チーズ|トマト|ケチャップ|バター|リゾット/.test(text) ? "western" : "japanese";
+    return { staple, protein, cuisine };
+  }
+  const stapleLabel = { rice: "ごはんもの", noodle: "麺", bread: "パン", other: "おかず" };
+  function stapleName(recipe) {
+    const m = String(recipe?.title || "").match(/パスタ|うどん|そば|ラーメン|焼きそば|そうめん|カレー|チャーハン|丼/);
+    if (m) return m[0] === "丼" ? "丼もの" : m[0];
+    return stapleLabel[traits(recipe).staple];
+  }
+  const dayWord = (gap) => (gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `${gap}日前`);
+  // timeline: [{date, recipe}] of meals already eaten or already picked, any order.
+  function rotation(recipe, date, timeline, daysBetween) {
+    const t = traits(recipe);
+    let penalty = 0;
+    let lastEatenDays = null;
+    let reason = "";
+    const recent = timeline
+      .map((m) => ({ ...m, gap: daysBetween(m.date, date) }))
+      .filter((m) => m.gap > 0 && m.recipe)
+      .sort((a, b) => a.gap - b.gap);
+    for (const m of recent) {
+      const same = m.recipe.id === recipe.id || (m.recipe.starterId && m.recipe.starterId === recipe.id) || (recipe.starterId && recipe.starterId === m.recipe.id) || m.recipe.title === recipe.title;
+      if (same && lastEatenDays === null) lastEatenDays = m.gap;
+      if (same) penalty += m.gap <= 6 ? 40 : m.gap <= 13 ? 8 : 0;
+      if (m.gap > 3) continue;
+      const w = 4 - m.gap; // yesterday 3, day before 2, three days ago 1
+      const mt = traits(m.recipe);
+      if (mt.staple === t.staple && t.staple !== "other") penalty += 5 * w;
+      if (mt.protein === t.protein) penalty += 3 * w;
+      if (mt.cuisine === t.cuisine) penalty += 1 * w;
+    }
+    const prev = recent.find((m) => m.gap <= 2 && traits(m.recipe).staple !== t.staple && traits(m.recipe).staple !== "other");
+    if (prev && t.staple !== "other") reason = `${dayWord(prev.gap)}は${stapleName(prev.recipe)}だったので、${stapleLabel[t.staple]}に`;
+    return { penalty, reason, lastEatenDays, traits: t };
+  }
   function propose({
     recipes,
     profile: p,
@@ -280,7 +330,11 @@
     addDays,
     overrides = {},
     repeatScore = () => 0,
+    history = [],
   }) {
+    const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
+    // What was eaten before the plan starts, plus what the plan has picked so far.
+    const timeline = history.filter((m) => m?.date && m.recipe && m.date < start).map((m) => ({ date: m.date, recipe: m.recipe }));
     const used = new Set(
       Object.values(slots)
         .filter(
@@ -305,7 +359,8 @@
         (slot.recipe?.ingredients || []).forEach((x) =>
           ingredients.add(key(x.name)),
         );
-        return { date, slot };
+        if (slot.recipe) timeline.push({ date, recipe: slot.recipe });
+        return { date, slot, rotation: slot.recipe ? rotation(slot.recipe, date, timeline, between) : null };
       }
       if (
         slot?.status !== "removed" &&
@@ -321,11 +376,13 @@
         )
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
         .filter((x) => x.ok)
+        .map((x) => ({ ...x, rotation: rotation(x.recipe, date, timeline, between) }))
         .map((x) => ({
           ...x,
           score:
             x.score +
-            repeatScore(x.recipe) +
+            repeatScore(x.recipe) -
+            x.rotation.penalty +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
                   ingredients.has(key(n.name)),
@@ -343,6 +400,8 @@
       const selected =
         pool.find((x) => x.recipe.id === overrides[date]) || pool[0];
       if (selected) {
+        if (selected.rotation.reason) selected.reasons.unshift(selected.rotation.reason);
+        timeline.push({ date, recipe: selected.recipe });
         if (used.has(selected.recipe.id)) {
           selected.repeated = true;
           selected.reasons.push("候補が少ないため、もう一度登場");
@@ -773,6 +832,8 @@
     mergeMap,
     shopping,
     curated,
+    traits,
+    rotation,
     copy,
   };
   root.Lifestyle = api;

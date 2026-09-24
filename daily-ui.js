@@ -263,9 +263,37 @@ function allDinnerRecipes() {
     ...Lifestyle.curated.filter((r) => !originals.has(r.id)),
   ];
 }
+// Meals actually eaten (or confirmed and past) in the last two weeks, newest first.
+function mealHistory(days = 14) {
+  const from = addDays(today(), -days);
+  const seen = new Set();
+  const out = [];
+  const add = (date, recipe) => {
+    if (!recipe || !date || date < from || date > today()) return;
+    const k = date + "|" + (recipe.id || recipe.title);
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ date, recipe });
+  };
+  Object.values(state.mealSlots || {}).forEach((s) => {
+    if (s.status === "cooked" || (s.status === "confirmed" && s.date < today())) add(s.date, s.recipe);
+  });
+  (state.evaluations || []).forEach((e) => {
+    const r = recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId);
+    add(e.cookedAt, r || (e.recipeTitle ? { id: e.recipeId, title: e.recipeTitle, ingredients: [] } : null));
+  });
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+function lastEatenLabel(recipe) {
+  const hit = mealHistory(60).find((m) => m.recipe.id === recipe.id || m.recipe.starterId === recipe.id || recipe.starterId === m.recipe.id || m.recipe.title === recipe.title);
+  if (!hit) return "はじめて";
+  const gap = daysBetween(hit.date, today());
+  return gap === 0 ? "今日" : gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `前回は${gap}日前`;
+}
 function dailyPlan() {
   const p = dailyProfile();
   return Lifestyle.propose({
+    history: mealHistory(),
     recipes: allDinnerRecipes(),
     profile: p,
     slots: state.mealSlots || {},

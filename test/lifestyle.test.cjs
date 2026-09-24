@@ -447,3 +447,37 @@ test("shopping keeps concentration and product variants separate", () => {
   assert.ok(items.some(i=>i.name==="めんつゆ(ストレート)"));
   assert.equal(items.find(i=>i.name==="ごはん").status,"have");
 });
+
+test("rotation: pasta the day before yesterday leads to a rice dish with a friendly reason", () => {
+  const pasta = { id: "p1", title: "納豆パスタ", mealType: "dinner", ingredients: [{ name: "パスタ" }, { name: "納豆" }], steps: [] };
+  const history = [{ date: addDays(start, -2), recipe: pasta }];
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, history });
+  const first = plan[0].candidate;
+  assert.notEqual(L.traits(first.recipe).staple, "noodle");
+  assert.ok(first.reasons[0].startsWith("一昨日はパスタだったので、"), first.reasons[0]);
+});
+
+test("rotation: consecutive plan days avoid the same staple when alternatives exist", () => {
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays });
+  const staples = plan.map((d) => L.traits(d.candidate.recipe).staple);
+  assert.notEqual(staples[0], staples[1]);
+  assert.notEqual(staples[1], staples[2]);
+});
+
+test("rotation: a dish eaten within the last week is not suggested again, even if never rated", () => {
+  const eaten = L.curated[0];
+  const history = [{ date: addDays(start, -3), recipe: eaten }];
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, history });
+  assert.ok(plan.every((d) => d.candidate.recipe.id !== eaten.id));
+  const r = L.rotation(eaten, start, history, (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000));
+  assert.equal(r.lastEatenDays, 3);
+});
+
+test("app history counts cooked-but-unrated meals and labels the last time", () => {
+  const run = app();
+  run(`const r=Lifestyle.curated[1]; state.mealSlots[addDays(today(),-2)]={date:addDays(today(),-2),status:"cooked",servings:1,recipe:clone(r),updatedAt:nowIso()};`);
+  assert.equal(run("mealHistory().length"), 1);
+  assert.equal(run("lastEatenLabel(Lifestyle.curated[1])"), "一昨日");
+  assert.equal(run("lastEatenLabel(Lifestyle.curated[2])"), "はじめて");
+  assert.ok(run("dailyPlan().every(d => !d.candidate || d.candidate.recipe.id !== Lifestyle.curated[1].id)"));
+});
