@@ -70,6 +70,7 @@ const assert = require("node:assert/strict");
     await page
       .locator('img[src="assets/screen-recipes.webp"]')
       .scrollIntoViewIfNeeded();
+    await page.evaluate(() => { for (const image of document.images) image.loading = "eager"; });
     await page.waitForFunction(() =>
       [...document.images].every((img) => img.complete && img.naturalWidth > 0),
     );

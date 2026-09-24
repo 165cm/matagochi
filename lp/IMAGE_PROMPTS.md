@@ -29,3 +29,14 @@ no watermarks. Any text must be large, correct Japanese.
 3. `scene-student.webp`（1200×900）— 共感セクション用の生活シーン写真（任意）
 
 プロンプトはリポジトリ外の依頼メモ（チャット）で管理し、生成後はこの表に追記してください。
+
+## 2026-09-24 画像追加
+
+内蔵 imagegen で生成。使用したプロンプト全文は `assets/image-prompts.json`。
+指定サイズへの書き出しとJPG圧縮は macOS sips を使用しました。
+
+- `assets/ogp-20260924.jpg`：1200×630 JPG。文字入りOG画像。LPとアプリ両方で参照。旧暫定画像は参照解除。
+- `../icons/icon-1024.png`：1024×1024、透過なしの原本。192/512px、maskable 512px、Apple 180px、favicon 32pxへ展開。
+- `assets/scene-student.jpg`：1200×900 JPG。共感セクションの生成イメージ写真。
+
+画面モックアップの近傍注記を全画面に追加。公開APIのhealthにplaylistImportがないため、再生リストは準備中表記に変更しました。
