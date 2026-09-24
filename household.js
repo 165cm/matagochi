@@ -84,11 +84,17 @@ function renameRatings(from, to) {
 async function shareInvite() {
   const url = inviteUrl();
   const text = `${me()}から「リピごち」への招待です。ふたりの献立とレシピを共有できます。`;
+  await shareMessage(text, url);
+}
+
+// Some share targets (LINE, "コピー") drop the separate url field, so the link goes inside the text.
+async function shareMessage(text, url) {
+  const message = `${text}\n${url}`;
   if (navigator.share) {
-    try { await navigator.share({ title: "リピごち", text, url }); return; } catch (error) { if (error?.name === "AbortError") return; }
+    try { await navigator.share({ text: message }); return; } catch (error) { if (error?.name === "AbortError") return; }
   }
-  try { await navigator.clipboard.writeText(url); showToast("招待リンクをコピーしました。LINEなどで送ってください。"); }
-  catch { showToast("リンクを長押ししてコピーしてください。"); }
+  try { await navigator.clipboard.writeText(message); showToast("メッセージとリンクをコピーしました。LINEなどに貼り付けてください。"); }
+  catch { showToast("コピーできませんでした。設定の「招待リンクを表示」から長押しでコピーしてください。"); }
 }
 
 // ----- requests -----
@@ -157,11 +163,7 @@ function renderAskButton() {
 async function askPartner() {
   const url = `${location.origin}${location.pathname}#view=plan`;
   const text = `献立を決める前に、食べたいものある？「🙋 別のがいい」で送ってね`;
-  if (navigator.share) {
-    try { await navigator.share({ title: "リピごち", text, url }); return; } catch (error) { if (error?.name === "AbortError") return; }
-  }
-  try { await navigator.clipboard.writeText(`${text}\n${url}`); showToast("メッセージをコピーしました。LINEなどで送ってください。"); }
-  catch { showToast("コピーできませんでした。"); }
+  await shareMessage(text, url);
 }
 // Owner side: "9/25 は ○○ がいい" on the day card, applied with one tap.
 function renderSwapRequests(date) {
@@ -432,7 +434,7 @@ function renderViewerPlan() {
     const sent = openRequests().find((q) => q.date === d.date && q.from === me());
     return `<div class="viewer-day">${dishTile(r)}<div><b>${label}</b><strong>${escapeHtml(r.title)}</strong>${sent ? `<small>🙋 ${escapeHtml(requestRecipe(sent).title)}を送ったよ</small>` : ""}</div>${d.slot?.status === "cooked" ? "" : `<button type="button" class="tile-request" data-action="${swapDate === d.date ? "life-close-swap" : "life-swap"}" data-date="${d.date}">${swapDate === d.date ? "閉じる" : "🙋 変えたい"}</button>`}</div>${swapDate === d.date ? renderSwapChoices() : ""}`;
   }).join("");
-  return `<section class="viewer-plan-top"><h2>${open ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section><section class="viewer-days">${rows}</section>`;
+  return `<section class="viewer-plan-top"><h2>${open ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section><section class="viewer-days">${rows}</section>${renderMealCalendar()}`;
 }
 function renderRoleSettings() {
   if (!syncEnabled()) return "";

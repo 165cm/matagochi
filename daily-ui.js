@@ -306,6 +306,31 @@ function dailyPlan() {
     requestOf: openRequestFor,
   });
 }
+// ----- 最近のごはんカレンダー（日曜はじまり、今週を含む3週・今日まで写真、先は予定） -----
+let calPick = "";
+function renderMealCalendar() {
+  const eaten = new Map();
+  mealHistory(21).slice().reverse().forEach((m) => eaten.set(m.date, m.recipe));
+  const planned = new Map(dailyPlan().map((d) => [d.date, d.slot?.status === "off" || d.off ? null : d.slot?.recipe || d.candidate?.recipe]));
+  const t = today();
+  const dow = new Date(t + "T12:00:00").getDay();
+  const start = addDays(addDays(t, -dow), -14);
+  const cells = Array.from({ length: 21 }, (_, i) => {
+    const date = addDays(start, i);
+    const future = date > t;
+    const r = future ? planned.get(date) : eaten.get(date) || (date === t ? planned.get(date) : null);
+    const cls = ["cal-cell", date === t ? "is-today" : "", future ? "is-future" : "", calPick === date ? "is-picked" : ""].filter(Boolean).join(" ");
+    const day = Number(date.slice(8, 10));
+    return r
+      ? `<button type="button" class="${cls}" data-action="life-cal-pick" data-date="${date}" aria-label="${escapeAttr(`${formatDate(date)} ${r.title}`)}">${dishTile(r)}<span>${day}</span></button>`
+      : `<span class="${cls} is-empty"><span>${day}</span></span>`;
+  }).join("");
+  const pickRecipe = calPick ? (calPick > t ? planned.get(calPick) : eaten.get(calPick) || planned.get(calPick)) : null;
+  return `<section class="meal-cal" aria-label="最近のごはん"><h3 class="section-title"><span class="marker">最近のごはん</span><small>3週間</small></h3>
+    <div class="cal-head">${["日", "月", "火", "水", "木", "金", "土"].map((w) => `<span>${w}</span>`).join("")}</div>
+    <div class="cal-grid">${cells}</div>
+    <p class="cal-caption">${pickRecipe ? `${formatDate(calPick)}（${weekdayLabel(calPick)}）${calPick > t ? "の予定" : ""}：<b>${escapeHtml(pickRecipe.title)}</b>` : "写真をタップすると料理名が出ます。点線は予定です。"}</p></section>`;
+}
 // Why this dish on this day, most important first: request, variety, repeat timing.
 function planReason(day) {
   const c = day.candidate;
@@ -368,7 +393,7 @@ function renderDailyPlan() {
     })
     .join("");
   const ready = plan.filter((d) => d.candidate).length;
-  return `<section class="plan-top"><h2>${n}日分、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools"><div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderViewerPlanBanner(plan)}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${renderAskButton()}${dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>`;
+  return `<section class="plan-top"><h2>${n}日分、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools"><div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderViewerPlanBanner(plan)}${renderMealCalendar()}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${renderAskButton()}${dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>`;
 }
 let swapShowAll = false;
 function renderSwapChoices() {
@@ -943,6 +968,7 @@ function handleDailyAction(action, data) {
     const r = allDinnerRecipes().find((x) => x.id === data.recipe) || recipeById(data.recipe);
     if (r) openRecordEditor({ id: generateId("e"), isNew: true, recipeId: r.id, recipeTitle: r.title, cookedAt: today(), mealType: "dinner", preferencePending: true, familyRepeatCycles: {}, memo: "", photo: "" });
   }
+  if (action === "life-cal-pick") calPick = calPick === data.date ? "" : data.date;
   if (action === "life-record-back") { recordDraft = null; state.view = "repeat"; }
   if (action === "life-record-cycle" && recordDraft && CYCLE_CHOICES.some((c) => c.cycle === data.cycle)) {
     recordDraft.memo = document.querySelector("#record-memo")?.value ?? recordDraft.memo;
