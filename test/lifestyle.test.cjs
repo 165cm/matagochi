@@ -578,3 +578,23 @@ test("app: a viewer's 食べられないもの apply to the household plan and �
   assert.equal(run('likedCycles(Lifestyle.curated.find(r=>r.id==="starter-20"))["むすめ"]'), "weekly");
   assert.equal(run('Object.keys(normalizeMemberPrefs(buildSyncPayload().memberPrefs)).length'), 1);
 });
+
+test("app: shopping round — requests until the deadline, only 'feelings' after, locked when shopping is done", () => {
+  const run = app();
+  run('state.family=["パパ","むすめ"];state.me="むすめ";state.sync={code:"x",roomId:"a".repeat(64),lastSyncAt:""};state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()};syncEnabled=()=>true');
+  assert.equal(run("roundPhase()"), "none");
+  run('const f=new Date(Date.now()+3*3600000);state.round=normalizeRound({deadline:localStamp(f),status:"open",updatedAt:nowIso()})');
+  assert.equal(run("roundPhase()"), "open");
+  assert.match(run("roundMessage()"), /に買い物に行く予定。献立変更のリクエストがあればそれまでによろしく！$/);
+  run('handleDailyAction("life-request-swap",{date:addDays(today(),1),recipe:"starter-20"})');
+  assert.equal(run("openRequests().length"), 1);
+  run('state.round=normalizeRound({deadline:localStamp(new Date(Date.now()-60000)),status:"open",updatedAt:nowIso()})');
+  assert.equal(run("roundPhase()"), "closed");
+  run('handleDailyAction("life-request-swap",{date:addDays(today(),2),recipe:"starter-21"})');
+  assert.equal(run("openRequests().length"), 1, "swap is locked after the deadline");
+  run('handleDailyAction("life-request",{recipe:"starter-22"})');
+  assert.equal(run('openRequests().find(q=>q.recipeId==="starter-22").late'), true);
+  run('state.me="パパ";handleDailyAction("life-round-done",{})');
+  assert.equal(run("roundPhase()"), "done");
+  assert.equal(run("normalizeRound(JSON.parse(JSON.stringify(state.round))).status"), "done");
+});

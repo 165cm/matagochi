@@ -106,6 +106,7 @@ function normalizeRequests(raw) {
       recipeId: r.recipeId.slice(0, 80),
       recipeTitle: String(r.recipeTitle || "").slice(0, 100),
       from: String(r.from || "").slice(0, 20),
+      late: !!r.late,
       status: r.status,
       date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || "") ? r.date : "",
       createdAt: normalizeTimestamp(r.createdAt),
@@ -194,7 +195,10 @@ function requestButton(recipe) {
 }
 function renderRequests() {
   const list = openRequests().filter((q) => !q.date);
-  if (!list.length) return "";
+  if (!list.length) {
+    const log = isViewer() ? "" : renderRequestLog();
+    return log ? `<section class="request-card is-quiet">${log}</section>` : "";
+  }
   const plan = dailyPlan();
   const where = (q) => {
     const r = requestRecipe(q);
@@ -204,9 +208,9 @@ function renderRequests() {
   const rows = list.map((q) => {
     const r = requestRecipe(q);
     const mine = q.from === me();
-    return `<div class="request-row">${dishTile(r, "request-thumb")}<div><p class="request-from">${mine ? "あなたのリクエスト" : `${escapeHtml(q.from)}から`}</p><strong>${escapeHtml(r.title || q.recipeTitle)}</strong><small>${escapeHtml(where(q))}</small></div>${mine ? `<button type="button" class="text-button" data-action="life-request" data-recipe="${escapeAttr(q.recipeId)}">取り消す</button>` : `<button type="button" class="text-button" data-action="life-request-pass" data-id="${escapeAttr(q.id)}">今回はパス</button>`}</div>`;
+    return `<div class="request-row">${dishTile(r, "request-thumb")}<div><p class="request-from">${mine ? "あなたのリクエスト" : `${escapeHtml(q.from)}から`}${q.late ? "（食べたい気持ち）" : ""}</p><strong>${escapeHtml(r.title || q.recipeTitle)}</strong><small>${escapeHtml(where(q))}</small></div>${mine ? `<button type="button" class="text-button" data-action="life-request" data-recipe="${escapeAttr(q.recipeId)}">取り消す</button>` : `<button type="button" class="text-button" data-action="life-request-pass" data-id="${escapeAttr(q.id)}">今回はパス</button>`}</div>`;
   }).join("");
-  return `<section class="request-card" aria-label="リクエスト"><h3>💌 リクエスト</h3>${rows}</section>`;
+  return `<section class="request-card" aria-label="リクエスト"><h3>💌 リクエスト</h3>${rows}${isViewer() ? "" : renderRequestLog()}</section>`;
 }
 
 // ----- screens -----
@@ -224,7 +228,7 @@ function renderSharePanel() {
   return `<section class="panel share-panel" id="share"><h3>👫 ふたりで使う</h3><p>${state.family.map((n) => `<span class="chip">${escapeHtml(n)}${n === me() ? "（あなた）" : ""}</span>`).join(" ")} でつながっています。</p>
     <p class="muted small">最終同期：${formatSyncTime(state.sync.lastSyncAt)}${syncRuntimeStatus ? `<br>${escapeHtml(syncRuntimeStatus)}` : ""}</p>
     ${isViewer() ? '<p class="muted small">あなたは閲覧者です。献立を変えるには、管理者に役割の変更をお願いしてください。</p>' : renderRoleSettings()}
-    <div class="actions">${dailyButton("life-share-send", "招待リンクを送る", "", true)}${dailyButton("sync-now", "今すぐ同期")}</div>
+    <div class="actions">${dailyButton("life-share-send", "招待リンクを送る", "", true)}${copyButton("invite")}${dailyButton("sync-now", "今すぐ同期")}</div>
     <details class="share-link"><summary>招待リンクを表示</summary><input class="input" readonly value="${escapeAttr(link)}" aria-label="招待リンク"></details>
     <button type="button" class="text-button" data-action="sync-disconnect">この端末の共有をやめる</button></section>`;
 }
@@ -245,6 +249,7 @@ function renderJoin() {
 // ----- actions (called first from handleDailyAction) -----
 function handleHouseholdAction(action, data) {
   if (handleViewerAction(action, data)) return true;
+  if (handleRoundAction(action, data)) return true;
   if (action === "life-request") {
     const recipe = allDinnerRecipes().find((r) => r.id === data.recipe) || recipeById(data.recipe) || Lifestyle.curated.find((r) => r.id === data.recipe);
     if (!recipe) return true;
@@ -255,13 +260,16 @@ function handleHouseholdAction(action, data) {
       if (q) { setRequest(q.id, "cancelled"); showToast("リクエストを取り消しました。"); }
       else {
         const id = generateId("req-");
-        state.requests[id] = { id, recipeId: recipe.id, recipeTitle: recipe.title, from: me(), status: "open", createdAt: nowIso(), updatedAt: nowIso() };
-        showToast(syncEnabled() ? `「${recipe.title}」をリクエストしました。${partnerName()}の献立に入ります。` : `「${recipe.title}」をリクエストしました。献立に入ります。`);
+        const late = !canSwapRequest();
+        state.requests[id] = { id, recipeId: recipe.id, recipeTitle: recipe.title, from: me(), status: "open", late, createdAt: nowIso(), updatedAt: nowIso() };
+        if (late) showToast(`「${recipe.title}」食べたい気持ちを伝えました。`);
+        else showToast(syncEnabled() ? `「${recipe.title}」をリクエストしました。${partnerName()}の献立に入ります。` : `「${recipe.title}」をリクエストしました。献立に入ります。`);
       }
     }
     saveState(); render(); return true;
   }
   if (action === "life-request-swap") {
+    if (!canSwapRequest()) { showToast("今回の締切は過ぎました。食べたい気持ちはレシピの🙋で伝えられます。"); swapDate = ""; render(); return true; }
     const recipe = allDinnerRecipes().find((r) => r.id === data.recipe);
     if (recipe && data.date) {
       openRequests().filter((q) => q.date === data.date && q.from === me()).forEach((q) => setRequest(q.id, "cancelled"));
@@ -421,6 +429,7 @@ function renderViewerToday() {
       ${off || !recipe ? '<h2 class="viewer-title">今夜はお休み 🌙</h2>' : `${dishTile(recipe, "viewer-photo")}<h2 class="viewer-title">${escapeHtml(recipe.title)}</h2>`}
       ${tr ? `<p class="viewer-next">明日は <b>${escapeHtml(tr.title)}</b></p>` : ""}
     </section>
+    ${renderRoundBanner()}
     <div class="viewer-actions">${dailyButton("go-view", "🙋 食べたいものを送る", 'data-view="collection"', true)}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</div>
     ${mine.length ? `<p class="viewer-sent">送ったリクエスト：${mine.map((q) => escapeHtml(requestRecipe(q).title || q.recipeTitle)).join("、")}</p>` : ""}`;
 }
@@ -432,9 +441,9 @@ function renderViewerPlan() {
     const label = d.date === today() ? "今夜" : `${formatDate(d.date)}（${weekdayLabel(d.date)}）`;
     if (d.off || d.slot?.status === "off" || !r) return `<div class="viewer-day is-off"><b>${label}</b><span>お休み</span></div>`;
     const sent = openRequests().find((q) => q.date === d.date && q.from === me());
-    return `<div class="viewer-day">${dishTile(r)}<div><b>${label}</b><strong>${escapeHtml(r.title)}</strong>${sent ? `<small>🙋 ${escapeHtml(requestRecipe(sent).title)}を送ったよ</small>` : ""}</div>${d.slot?.status === "cooked" ? "" : `<button type="button" class="tile-request" data-action="${swapDate === d.date ? "life-close-swap" : "life-swap"}" data-date="${d.date}">${swapDate === d.date ? "閉じる" : "🙋 変えたい"}</button>`}</div>${swapDate === d.date ? renderSwapChoices() : ""}`;
+    return `<div class="viewer-day">${dishTile(r)}<div><b>${label}</b><strong>${escapeHtml(r.title)}</strong>${sent ? `<small>🙋 ${escapeHtml(requestRecipe(sent).title)}を送ったよ</small>` : ""}</div>${d.slot?.status === "cooked" || !canSwapRequest() ? "" : `<button type="button" class="tile-request" data-action="${swapDate === d.date ? "life-close-swap" : "life-swap"}" data-date="${d.date}">${swapDate === d.date ? "閉じる" : "🙋 変えたい"}</button>`}</div>${swapDate === d.date ? renderSwapChoices() : ""}`;
   }).join("");
-  return `<section class="viewer-plan-top"><h2>${open ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section><section class="viewer-days">${rows}</section>${renderMealCalendar()}`;
+  return `<section class="viewer-plan-top"><h2>${open && canSwapRequest() ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section>${renderRoundBanner()}<section class="viewer-days">${rows}</section>${renderMealCalendar()}`;
 }
 function renderRoleSettings() {
   if (!syncEnabled()) return "";
@@ -465,6 +474,115 @@ function handleViewerAction(action, data) {
   else if (action === "life-set-role" && (isOwner() || !Object.values(state.roles?.members || {}).includes("owner")) && ["viewer", "editor"].includes(data.role)) {
     state.roles = { members: { ...(state.roles?.members || {}), [me()]: "owner", [data.member]: data.role }, updatedAt: nowIso() };
     showToast(`${data.member}を${ROLE_LABEL[data.role]}にしました。`);
+  } else return false;
+  saveState(); render(); return true;
+}
+
+// ----- 買い物ラウンド：締切までにリクエスト → 買い物完了でロック -----
+function normalizeRound(raw) {
+  const ok = (v) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v || "");
+  if (!raw || !ok(raw.deadline)) return { deadline: "", status: "", updatedAt: normalizeTimestamp(raw?.updatedAt), lastDeadline: ok(raw?.lastDeadline) ? raw.lastDeadline : "" };
+  return { deadline: raw.deadline, status: raw.status === "done" ? "done" : "open", lastDeadline: ok(raw.lastDeadline) ? raw.lastDeadline : raw.deadline, updatedAt: normalizeTimestamp(raw.updatedAt) };
+}
+const localStamp = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+// none: 受付していない / open: 締切前 / closed: 締切後・買い物前 / done: 買い物完了
+function roundPhase() {
+  const r = state.round;
+  if (!r?.deadline) return "none";
+  if (r.status === "done") return "done";
+  return localStamp(new Date()) < r.deadline ? "open" : "closed";
+}
+function deadlineLabel(stamp = state.round?.deadline) {
+  if (!stamp) return "";
+  const d = new Date(stamp);
+  return `${d.getMonth() + 1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）${stamp.slice(11)}`;
+}
+function timeLeftLabel() {
+  const ms = new Date(state.round.deadline) - new Date();
+  const h = Math.floor(ms / 3600000);
+  return h >= 24 ? `あと${Math.floor(h / 24)}日` : h >= 1 ? `あと${h}時間` : `あと${Math.max(1, Math.ceil(ms / 60000))}分`;
+}
+// Default: same weekday and time as last time, next occurrence; otherwise tomorrow 10:00.
+function defaultDeadline() {
+  const now = new Date();
+  const last = state.round?.lastDeadline;
+  if (last) {
+    const prev = new Date(last);
+    const next = new Date(now);
+    next.setHours(prev.getHours(), prev.getMinutes(), 0, 0);
+    let add = (prev.getDay() - now.getDay() + 7) % 7;
+    if (add === 0 && next <= now) add = 7;
+    next.setDate(next.getDate() + add);
+    return localStamp(next);
+  }
+  const t = new Date(now); t.setDate(t.getDate() + 1); t.setHours(10, 0, 0, 0);
+  return localStamp(t);
+}
+function canSwapRequest() {
+  const phase = roundPhase();
+  return phase === "none" || phase === "open";
+}
+function roundMessage() {
+  return `${deadlineLabel()}に買い物に行く予定。献立変更のリクエストがあればそれまでによろしく！`;
+}
+const planUrl = () => `${location.origin}${location.pathname}#view=plan`;
+let roundEditing = false;
+function copyButton(kind) {
+  return `<button type="button" class="copy-mini" data-action="life-copy-msg" data-kind="${kind}" aria-label="メッセージをコピー">コピー</button>`;
+}
+async function copyMessage(kind) {
+  const text = kind === "invite" ? `${me()}から「リピごち」への招待です。ふたりの献立とレシピを共有できます。\n${inviteUrl()}` : `${roundMessage()}\n${planUrl()}`;
+  try { await navigator.clipboard.writeText(text); showToast("メッセージをコピーしました。"); }
+  catch { showToast("コピーできませんでした。"); }
+}
+function renderRoundCard() {
+  if (!syncEnabled() || isViewer() || !partnerName()) return "";
+  const phase = roundPhase();
+  const form = () => `<div class="round-form"><label>買い物に行く予定<input id="round-deadline" class="input" type="datetime-local" value="${escapeAttr(state.round?.deadline && phase !== "done" ? state.round.deadline : defaultDeadline())}"></label>
+    <div class="round-actions">${dailyButton("life-round-start", phase === "none" || phase === "done" ? "受付を始めて知らせる" : "締切を変えて知らせる", "", true)}${phase === "open" || phase === "closed" ? `<button type="button" class="text-button" data-action="life-round-cancel-edit">やめる</button>` : ""}</div></div>`;
+  if (phase === "none" || phase === "done" || roundEditing) {
+    return `<section class="round-card"><h3>🛒 リクエストを受け付ける</h3><p class="small">買い物の予定を決めると、${escapeHtml(partnerName())}がそれまでに「食べたい」「変えたい」を送れます。</p>${form()}</section>`;
+  }
+  const count = openRequests().filter((q) => !q.late).length;
+  return `<section class="round-card is-${phase}"><h3>${phase === "open" ? "🙋 リクエスト受付中" : "⏰ 締切を過ぎました"}</h3>
+    <p><b>${deadlineLabel()}</b> ${phase === "open" ? `まで（${timeLeftLabel()}）` : "の買い物"}・届いたリクエスト ${count}件</p>
+    <div class="round-actions">${phase === "open" ? dailyButton("life-round-remind", "もう一度知らせる") : ""}${copyButton("round")}<button type="button" class="text-button" data-action="life-round-edit">${phase === "open" ? "締切を変える" : "延長する"}</button></div></section>`;
+}
+function renderRoundBanner() {
+  const phase = roundPhase();
+  if (phase === "open") return `<section class="viewer-banner"><strong>${deadlineLabel()}に買い物！</strong><small>それまでに🙋で送ってね（${timeLeftLabel()}）</small></section>`;
+  if (phase === "closed" || phase === "done") return `<section class="viewer-banner is-done"><strong>${phase === "done" ? "今回の買い物は終わりました" : "今回の締切は過ぎました"}</strong><small>食べたい気持ちは、いつでも🙋で伝えられます。</small></section>`;
+  return "";
+}
+function renderShoppingDone(items) {
+  const phase = roundPhase();
+  if (isViewer() || !(phase === "open" || phase === "closed")) return "";
+  const all = items.length && items.every((i) => i.status !== "buy");
+  return `<section class="round-done ${all ? "is-ready" : ""}"><p>${all ? "全部そろった！" : `${deadlineLabel()}の買い物`}</p>${dailyButton("life-round-done", "買い物完了", "", all)}</section>`;
+}
+function renderRequestLog() {
+  const all = Object.values(state.requests || {}).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30);
+  if (!all.length) return "";
+  const label = { open: "受付中", done: "反映した", dismissed: "パス", cancelled: "取り消し" };
+  return `<details class="request-log"><summary>これまでのリクエスト（${all.length}件）</summary><ul>${all.map((q) => `<li><span>${formatDate(q.createdAt.slice(0, 10))}</span><b>${escapeHtml(q.from)}</b>${escapeHtml(requestRecipe(q).title || q.recipeTitle)}${q.date ? `（${formatDate(q.date)}を変えたい）` : ""}<em>${q.late ? "気持ち・" : ""}${label[q.status] || ""}</em></li>`).join("")}</ul></details>`;
+}
+function handleRoundAction(action, data) {
+  if (action === "life-copy-msg") { copyMessage(data.kind); return true; }
+  if (action.startsWith("life-round-") && isViewer()) return true;
+  if (action === "life-round-edit") roundEditing = true;
+  else if (action === "life-round-cancel-edit") roundEditing = false;
+  else if (action === "life-round-start") {
+    const v = document.querySelector("#round-deadline")?.value || "";
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v) || v <= localStamp(new Date())) { showToast("これから先の日時をえらんでください。"); return true; }
+    state.round = { deadline: v, status: "open", lastDeadline: v, updatedAt: nowIso() };
+    roundEditing = false;
+    saveState(); render();
+    shareMessage(roundMessage(), planUrl());
+    return true;
+  } else if (action === "life-round-remind") { shareMessage(roundMessage(), planUrl()); return true; }
+  else if (action === "life-round-done") {
+    state.round = { ...state.round, status: "done", updatedAt: nowIso() };
+    showToast("おつかれさま！ 今回のリクエストは締め切りました。");
   } else return false;
   saveState(); render(); return true;
 }
