@@ -222,6 +222,12 @@ function captureProfile(el) {
 }
 // Single-question screens move on as soon as an answer is tapped (including the preselected one).
 let autoAdvancing = false;
+let autoAdvanceTimer = null;
+function cancelAutoAdvance() {
+  if (autoAdvanceTimer !== null) clearTimeout(autoAdvanceTimer);
+  autoAdvanceTimer = null;
+  autoAdvancing = false;
+}
 function bindAutoAdvance() {
   const p = profileDraft();
   const single = p.quickSetupIndex !== null ? p.quickSetupIndex < 2 : p.step === 0;
@@ -231,8 +237,8 @@ function bindAutoAdvance() {
       if (autoAdvancing) return;
       autoAdvancing = true;
       captureProfile(el);
-      setTimeout(() => {
-        autoAdvancing = false;
+      autoAdvanceTimer = setTimeout(() => {
+        cancelAutoAdvance();
         if (p.quickSetupIndex !== null) p.quickSetupIndex++;
         else p.step++;
         saveState({ scheduleSync: false });
@@ -437,6 +443,14 @@ function renderDailyShopping() {
   const folded = (status, title, hint) => count(status) ? `<details class="panel shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${rows(status)}</details>` : "";
   return `<section class="hero-card shopping-hero"><h2>🛒 買い物リスト</h2>${items.length ? `<p>買うもの <strong>${count("buy")}品</strong> · 家にある ${count("have")}品 · 購入済み ${count("purchased")}品</p><div class="actions">${dailyButton("copy-shopping", "コピー")}${dailyButton("share-shopping", "共有")}</div>` : ""}${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}<button type="button" class="text-button" data-action="life-profile">常備品・買い物の頻度を変える</button></section>${!items.length ? `<section class="panel"><p>献立を確定すると、必要な材料だけのリストができます。</p>${dailyButton("go-view", "献立を決める", 'data-view="plan"', true)}</section>` : ""}${buyPanel}<section class="panel"><h3>買い足すもの</h3><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></section>${folded("have", "家にある", "調味料は残量も確認してください")}${folded("purchased", "購入済み", "チェックを外すと買うものに戻ります")}`;
 }
+// Device-local progress: never share cooking checkmarks with another household member.
+let cookingProgress = (() => {
+  try { const value = JSON.parse(localStorage.getItem("ripigochi-cooking-progress") || "{}"); return value && typeof value === "object" && !Array.isArray(value) ? value : {}; } catch { return {}; }
+})();
+function cookingCheck(kind, index, recipe, servings) {
+  const key = JSON.stringify([cookingDate, recipe.id, servings, kind, index, kind === "ingredient" ? recipe.ingredients[index] : recipe.steps[index]]);
+  return `<input type="checkbox" data-cooking-check="${escapeAttr(key)}" ${cookingProgress[key] ? "checked" : ""}>`;
+}
 function renderCooking() {
   const day = dailyPlan().find((d) => d.date === cookingDate);
   const slot = state.mealSlots?.[cookingDate];
@@ -449,8 +463,8 @@ function renderCooking() {
   return `<section class="hero-card cooking-card"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p></div></div>
   <details class="cooking-safety"><summary>⚠️ 市販品の原材料と、中までの火の通りを確認してください</summary><p class="small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p></details>
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
-  <h3>材料 <small class="muted">そろえたらタップ</small></h3><ul class="cooking-ingredients cooking-check">${recipe.ingredients.map((i) => `<li><label><input type="checkbox"><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></label></li>`).join("")}</ul>
-  <h3>作り方 <small class="muted">終わったらタップ</small></h3><ol class="cooking-steps cooking-check">${recipe.steps.map((st) => `<li><label><input type="checkbox"><span>${escapeHtml(st)}</span></label></li>`).join("")}</ol>
+  <h3>材料 <small class="muted">そろえたらタップ</small></h3><ul class="cooking-ingredients cooking-check">${recipe.ingredients.map((i, index) => `<li><label>${cookingCheck("ingredient", index, recipe, servings)}<span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></label></li>`).join("")}</ul>
+  <h3>作り方 <small class="muted">終わったらタップ</small></h3><ol class="cooking-steps cooking-check">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${escapeHtml(st)}</span></label></li>`).join("")}</ol>
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
 function renderReflection() {
@@ -530,6 +544,12 @@ function dailyRecord(slot) {
   };
 }
 function bindDailyEvents() {
+  document.querySelectorAll("[data-cooking-check]").forEach((el) => el.addEventListener("change", () => {
+    if (el.checked) cookingProgress[el.dataset.cookingCheck] = Date.now();
+    else delete cookingProgress[el.dataset.cookingCheck];
+    cookingProgress = Object.fromEntries(Object.entries(cookingProgress).filter(([, t]) => t > Date.now() - 7 * 86400000).sort((a,b) => b[1] - a[1]).slice(0, 500));
+    try { localStorage.setItem("ripigochi-cooking-progress", JSON.stringify(cookingProgress)); } catch { showToast("調理のチェックを端末に保存できませんでした。"); }
+  }));
   document.querySelectorAll("#manual-name, #manual-amount").forEach((el) =>
     el.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.isComposing) document.querySelector('[data-action="life-add-item"]')?.click();
@@ -984,8 +1004,9 @@ function renderStarterRecipes() {
   const query = (state.searchText || "").trim().toLowerCase();
   const list = Lifestyle.curated
     .filter((r) => !saved.has(r.id))
+    .filter((r) => { const fit = Lifestyle.fit(r, dailyProfile(), today()); return fit.ok && !fit.needsReview; })
     .filter((r) => !query || [r.title, ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
   if (!list.length) return "";
   const shown = starterShowAll || query ? list : list.slice(0, 6);
-  return `<section class="panel starter-panel"><div class="section-head"><div><h3>🍳 おすすめの一品</h3><p class="muted small">1人分・手持ちの器具で作れるリピごちのオリジナル。献立にも自動で入ります。</p></div><span class="badge">${list.length}品</span></div><div class="starter-list">${shown.map((r) => `<div class="starter-row">${planThumb(r)}<span><strong>${escapeHtml(r.title)}</strong><small>${escapeHtml([r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", ...(r.planning?.tastes || [])].filter(Boolean).join(" · "))}</small></span><button type="button" class="plan-icon" data-action="life-save-starter" data-recipe="${escapeAttr(r.id)}" aria-label="${escapeAttr(r.title)}を保存">＋ 保存</button></div>`).join("")}</div>${shown.length < list.length ? `<button type="button" class="text-button" data-action="life-starter-more">すべて見る（あと${list.length - shown.length}品）</button>` : ""}</section>`;
+  return `<section class="panel starter-panel"><div class="section-head"><div><h3>🍳 おすすめの一品</h3><p class="muted small">1人分のオリジナル。現在の食材・時間・器具の条件に合う料理です。</p></div><span class="badge">${list.length}品</span></div><div class="starter-list">${shown.map((r) => `<div class="starter-row">${planThumb(r)}<span><strong>${escapeHtml(r.title)}</strong><small>${escapeHtml([r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", ...(r.planning?.tastes || [])].filter(Boolean).join(" · "))}</small></span><button type="button" class="plan-icon" data-action="life-save-starter" data-recipe="${escapeAttr(r.id)}" aria-label="${escapeAttr(r.title)}を保存">＋ 保存</button></div>`).join("")}</div>${shown.length < list.length ? `<button type="button" class="text-button" data-action="life-starter-more">すべて見る（あと${list.length - shown.length}品）</button>` : ""}</section>`;
 }

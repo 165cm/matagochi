@@ -765,6 +765,7 @@ function setView(view) {
 }
 
 function render() {
+  cancelAutoAdvance();
   if (!state.onboarded || profileEditing) {
     renderOnboarding();
     return;
@@ -1883,6 +1884,7 @@ function bindEvents() {
 }
 
 async function handleAction(event) {
+  cancelAutoAdvance();
   let { action } = event.currentTarget.dataset;
   const saveUnreviewed = action === "save-recipe-unreviewed";
   if (saveUnreviewed) action = "save-recipe";

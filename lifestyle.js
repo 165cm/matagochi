@@ -396,9 +396,9 @@
     });
     return result;
   }
-  // Shopping lines ignore notes in brackets (e.g. しょうゆ（濃口）) and never list water.
+  // Only normalize known equivalent names; concentration and product variants matter.
   const shoppingName = (name) =>
-    String(name || "").normalize("NFKC").replace(/[（(][^）)]*[）)]/g, "").trim() || String(name || "").trim();
+    String(name || "").normalize("NFKC").trim().replace(/^ごはん\(炊飯済み\)$/, "ごはん").replace(/^しょうゆ\(濃口\)$/, "しょうゆ");
   const notPurchased = /^(?:水|お湯|湯|熱湯|冷水|氷水|ぬるま湯)$/;
   function shopping({
     slots,
