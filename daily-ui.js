@@ -895,6 +895,8 @@ function handleDailyAction(action, data) {
   if (action === "life-close-swap") swapDate = "";
   if (action === "life-swap-more") swapShowAll = true;
   if (action === "life-starter-more") starterShowAll = true;
+  if (action === "life-facet" && data.facet in recipeFacets) recipeFacets[data.facet] = recipeFacets[data.facet] === data.value ? "" : data.value;
+  if (action === "life-facet-clear") recipeFacets = { staple: "", main: "", style: "" };
   if (action === "life-month") reflMonth = Math.min(0, reflMonth + (Number(data.delta) || 0));
   if (action === "life-recipe-tab") recipeTab = ["saved", "starter"].includes(data.tab) ? data.tab : "all";
   if (action === "life-save-starter") {

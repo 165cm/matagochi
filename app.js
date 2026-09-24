@@ -1097,11 +1097,15 @@ function renderIngredientEditorRow(item, index, servingCount) {
 }
 
 function renderCollection() {
-  const saved = getFilteredRecipes({ allMeals: true });
+  const allSaved = getFilteredRecipes({ allMeals: true });
   // Photographed dishes first, so the grid opens with pictures.
-  const starters = recipeTab === "saved" ? [] : starterRecipeList().sort((a, b) => !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id]);
+  const allStarters = recipeTab === "saved" ? [] : starterRecipeList().sort((a, b) => !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id]);
+  const pool = [...(recipeTab === "starter" ? [] : allSaved), ...allStarters];
+  const saved = allSaved.filter((r) => facetMatch(r));
+  const starters = allStarters.filter((r) => facetMatch(r));
   const query = state.searchText.trim();
-  const shownStarters = recipeTab === "starter" || starterShowAll || query ? starters : starters.slice(0, 6);
+  const filtering = Object.values(recipeFacets).some(Boolean);
+  const shownStarters = recipeTab === "starter" || starterShowAll || query || filtering ? starters : starters.slice(0, 6);
   const tab = (id, label, count) => `<button class="chip-tab" type="button" aria-pressed="${recipeTab === id}" data-action="life-recipe-tab" data-tab="${id}">${label}${count != null ? ` <small>${count}</small>` : ""}</button>`;
   const tiles = [
     ...(recipeTab === "starter" ? [] : saved.map(renderRecipeTile)),
@@ -1115,7 +1119,8 @@ function renderCollection() {
     </section>
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("starter", "おすすめ")}</div>`}
-    <section class="recipe-grid">${tiles || empty}</section>
+    ${renderFacets(pool)}
+    <section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>
     ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}
     ${playlistAvailable && !isViewer() ? `<section class="add-card">
       <p class="hand">＼ 保存した動画を、まとめて ／</p>
@@ -1126,6 +1131,33 @@ function renderCollection() {
 }
 
 let recipeTab = "all";
+// 3 taps: 主食 → 素材 → 気分・作り方 (one choice per row; tap again to clear)
+let recipeFacets = { staple: "", main: "", style: "" };
+const tagCache = new Map();
+function recipeTags(recipe) {
+  const key = recipe.id + "|" + (recipe.updatedAt || "");
+  if (!tagCache.has(key)) tagCache.set(key, Lifestyle.tags(recipe));
+  return tagCache.get(key);
+}
+function facetMatch(recipe, skip = "") {
+  const t = recipeTags(recipe);
+  return Object.entries(recipeFacets).every(([facet, value]) => facet === skip || !value || t.includes(value));
+}
+function renderFacets(pool) {
+  const rows = Lifestyle.FACETS.map((f) => {
+    const base = pool.filter((r) => facetMatch(r, f.id));
+    const chips = f.options.map(([id, label]) => {
+      const n = base.filter((r) => recipeTags(r).includes(id)).length;
+      const on = recipeFacets[f.id] === id;
+      if (!n && !on) return "";
+      return `<button type="button" class="facet-chip" data-action="life-facet" data-facet="${f.id}" data-value="${id}" aria-pressed="${on}">${label}<small>${n}</small></button>`;
+    }).join("");
+    return `<div class="facet-row"><span class="facet-label">${f.label}</span><div class="facet-chips" role="group" aria-label="${f.label}">${chips}</div></div>`;
+  }).join("");
+  const count = pool.filter((r) => facetMatch(r)).length;
+  const any = Object.values(recipeFacets).some(Boolean);
+  return `<section class="facets" aria-label="レシピを絞り込む">${rows}${any ? `<p class="facet-result"><b>${count}品</b><button type="button" class="text-button" data-action="life-facet-clear">条件をクリア</button></p>` : ""}</section>`;
+}
 function tileMinutes(recipe) {
   return !isViewer() && recipe.planning?.minutes ? `<span class="tile-time">⏱ ${recipe.planning.minutes}分</span>` : "";
 }
