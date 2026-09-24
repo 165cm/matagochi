@@ -30,6 +30,7 @@ function playlistRecipe(item, playlist) {
     title: item.title || "YouTubeの料理",
     videoUrl: item.url,
     source: "YouTube",
+    author: String(item.channelTitle || "").slice(0, 60),
     mealType: "dinner",
     caption: item.description || "",
     ingredients,
