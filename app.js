@@ -1138,8 +1138,19 @@ function youtubeVideoId(url) {
   return match ? match[1] : "";
 }
 
+// Photos for starter recipes (image only; the text is the recipe's own).
+const STARTER_PHOTOS = {
+  "starter-13": "assets/dishes/teriyaki.webp",
+  "starter-02": "assets/dishes/tomato-pasta.webp",
+  "starter-28": "assets/dishes/porkkimchi.webp",
+  "starter-05": "assets/dishes/kinoko-udon.webp",
+  "starter-01": "assets/dishes/tofu-egg.webp",
+  "starter-06": "assets/dishes/tomato-cheese.webp",
+};
 function recipeThumbnail(recipe) {
   if (recipe.thumbnailUrl) return recipe.thumbnailUrl;
+  const starter = STARTER_PHOTOS[recipe.id] || STARTER_PHOTOS[recipe.starterId];
+  if (starter) return starter;
   const videoId = youtubeVideoId(recipe.videoUrl);
   if (videoId) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
   return getRecipeEvaluationHistory(recipe.id).find((evaluation) => evaluation.photo)?.photo || "";

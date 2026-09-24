@@ -9,6 +9,7 @@ const CORE_ASSETS = [
   `./taste.js?v=${APP_VERSION}`,
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),
+  ...["teriyaki","tomato-pasta","porkkimchi","kinoko-udon","tofu-egg","tomato-cheese"].map(n => `./assets/dishes/${n}.webp`),
   `./starter-recipes.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
