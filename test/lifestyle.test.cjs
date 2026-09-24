@@ -611,3 +611,26 @@ test("app: the shared timeline moves 献立 → リクエスト → 買い物 �
   assert.equal(run("flowState().step"), "完了");
   assert.ok(run("renderFlow()").includes("is-now"));
 });
+
+test("app: 3-day rhythm splits the week into 月火水／木金土 with Sunday off and shopping the day before", () => {
+  const run = app();
+  run('today=()=>"2026-09-24";state.onboarded=true;state.rhythm=normalizeRhythm({preset:"3day",shopTime:"17:00",updatedAt:nowIso()})');
+  const blocks = JSON.parse(run("JSON.stringify(currentBlocks())"));
+  assert.deepEqual(blocks.map((b) => [b.start, b.end, b.shopAt]), [["2026-09-24", "2026-09-26", "2026-09-23T17:00"], ["2026-09-28", "2026-09-30", "2026-09-27T17:00"]]);
+  assert.equal(run("rhythmPlanDays()"), 7);
+  const plan = JSON.parse(run("JSON.stringify(dailyPlan().map(d=>[d.date,!!d.off]))"));
+  assert.deepEqual(plan.find(([d]) => d === "2026-09-27"), ["2026-09-27", true], "Sunday is off");
+  run('handleDailyAction("life-confirm",{block:"2026-09-24"})');
+  assert.equal(run('blockStatus(currentBlocks()[0])'), "decided");
+  assert.ok(!run('state.mealSlots["2026-09-28"]'), "the next block stays a draft");
+  assert.equal(run("decidedUntil()"), "2026-09-26");
+  run('handleDailyAction("life-block-shopped",{key:"2026-09-24"})');
+  assert.equal(run('blockStatus(currentBlocks()[0])'), "shopped");
+  assert.ok(run("renderWeekBoard()").includes("wk-bar"));
+});
+
+test("traits: パン粉 and フライパン do not make a dish a bread meal", () => {
+  assert.notEqual(L.traits(L.curated.find((r) => /ハンバーグ/.test(r.title))).staple, "bread");
+  assert.equal(L.traits(L.curated.find((r) => /ビリヤニ/.test(r.title))).staple, "rice");
+  assert.equal(L.traits({ title: "たまごサンド", ingredients: [{ name: "食パン" }] }).staple, "bread");
+});

@@ -278,7 +278,7 @@
     const names = (recipe?.ingredients || []).map((i) => i.name).join(" ");
     const text = title + " " + names;
     const staple = NOODLE.test(text) ? "noodle"
-      : /パン|トースト|サンド/.test(text) ? "bread"
+      : /(?<!フライ)パン(?!粉)|トースト|サンド/.test(text) ? "bread"
       : /ごはん|米|丼|チャーハン|リゾット|カレー|ライス|おにぎり|雑炊|ビリヤニ/.test(text) ? "rice" : "other";
     const protein = /鶏|豚|牛|ひき肉|合いびき|ハム|ベーコン|ウインナー|ソーセージ|肉/.test(names || title) ? "meat"
       : /鮭|さけ|さば|ツナ|魚|えび|いか|たら|しらす|まぐろ|かつお|ぶり/.test(names || title) ? "fish"

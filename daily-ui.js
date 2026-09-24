@@ -253,6 +253,7 @@ function dailyProfile() {
     ...state.foodProfile,
     ...state.householdProfile,
     restrictions: [...new Set([...(state.foodProfile?.restrictions || []), ...householdRestrictions()])],
+    ...(rhythmOn() ? { days: rhythmDays() } : {}),
     servings: state.servingCount,
   });
 }
@@ -299,7 +300,7 @@ function dailyPlan() {
     profile: p,
     slots: state.mealSlots || {},
     start: today(),
-    length: state.planLength || p.period,
+    length: rhythmOn() ? rhythmPlanDays() : state.planLength || p.period,
     addDays,
     overrides: state.planOverrides,
     cyclesOf: (r) => ({ ...likedCycles(r), ...recipeRatings(r) }),
@@ -339,7 +340,7 @@ function planReason(day) {
 }
 function dailyShopping() {
   const p = dailyProfile();
-  const length =
+  const length = rhythmOn() ? rhythmPlanDays() :
     p.shoppingFrequency === "daily"
       ? 1
       : p.shoppingFrequency === "weekly"
@@ -375,7 +376,7 @@ function planMeta(recipe, reasons = []) {
 function renderDailyPlan() {
   const plan = dailyPlan();
   const n = state.planLength || 3;
-  const cards = plan
+  const cardList = plan
     .map((day) => {
       const recipe = day.slot?.recipe || day.candidate?.recipe;
       const dateLabel = `${formatDate(day.date)}（${weekdayLabel(day.date)}）`;
@@ -391,9 +392,23 @@ function renderDailyPlan() {
       const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">入れ替え</span>'}</button>`;
       return `<article class="plan-card ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${escapeHtml(recipe.title)}</button>${minutes ? `<p class="plan-time"><span class="marker">${minutes}</span></p>` : ""}<p class="hand plan-note">${escapeHtml(note)}</p><div class="plan-controls">${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}`;
     })
-    .join("");
+    ;
+  const cards = cardList.map((html, i) => {
+    if (!rhythmOn()) return html;
+    const date = plan[i].date;
+    const b = currentBlocks().find((x) => x.dates.includes(date));
+    if (!b) return html;
+    const first = date === b.dates.find((d) => d >= today());
+    const last = date === b.end;
+    const st = blockStatus(b);
+    const label = { open: `受付中・${deadlineLabel(b.shopAt)}に買い物`, late: "買い物の予定を過ぎました", decided: "決定 ✓", shopped: "買い物済み ✓" }[st];
+    const head = first ? `<h3 class="block-head is-${st}"><span>${blockRange(b)}</span><small>${label}</small></h3>` : "";
+    const needs = plan.some((d) => b.dates.includes(d.date) && d.candidate);
+    const foot = last && needs && !isViewer() ? `<div class="block-foot">${dailyButton("life-confirm", `${blockRange(b)}をこれで決定`, `data-block="${b.key}"`, true)}</div>` : "";
+    return head + html + foot;
+  }).join("");
   const ready = plan.filter((d) => d.candidate).length;
-  return `<section class="plan-top"><h2>${n}日分、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools"><div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderRoundCard()}${renderMealCalendar()}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>`;
+  return `<section class="plan-top"><h2>${rhythmOn() ? "献立" : `${n}日分`}、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderRoundCard()}${renderWeekBoard()}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${rhythmOn() ? "" : dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>`;
 }
 let swapShowAll = false;
 function renderSwapChoices() {
@@ -448,7 +463,7 @@ function renderToday() {
   const history = mealHistory(4).filter((m) => m.date < today()).slice(0, 3);
   const recent = state.evaluations.filter((e) => daysBetween(e.cookedAt, today()) >= 0 && daysBetween(e.cookedAt, today()) < 7);
   const next = dailyPlan().slice(1, 3);
-  return `${renderPreferencePrompt()}${renderRecentMeals()}
+  return `${renderPreferencePrompt()}${renderRhythmInvite()}${renderWeekBoard()}${renderRecentMeals()}
   <section class="today-top"><div><h2>今夜、<br /><span class="marker">これ食べたい。</span></h2><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div><p class="hand today-note" aria-hidden="true">きょうも<br />おいしい、<br />いい日になる。</p></section>
   ${renderRequests()}
   ${history.length ? `<section class="recent-meals" aria-label="最近のごはん"><h3 class="section-title"><span class="marker">最近のごはん</span></h3><div class="recent-row">${history.map((m) => `<figure class="recent-card">${dishTile(m.recipe)}<figcaption>${dayWordFor(m.date)} ${escapeHtml(m.recipe.title)}</figcaption></figure>`).join("")}</div></section>` : ""}
@@ -833,11 +848,12 @@ function handleDailyAction(action, data) {
   if (action === "life-length")
     state.planLength = Number(data.length) === 7 ? 7 : 3;
   if (action === "life-confirm") {
+    const only = data.block ? currentBlocks().find((b) => b.key === data.block)?.dates || [] : null;
     trackDaily("plan_confirmed", {
       days: dailyPlan().filter((d) => d.candidate).length,
     });
     dailyPlan()
-      .filter((d) => d.candidate)
+      .filter((d) => d.candidate && (!only || only.includes(d.date)))
       .forEach((d) => confirmDaily(d));
     changedShopping(before);
     state.view = "shopping";

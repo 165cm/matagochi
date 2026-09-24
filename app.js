@@ -63,6 +63,8 @@ const demoState = {
   roles: { members: {}, updatedAt: "" },
   memberPrefs: {},
   round: { deadline: "", status: "", lastDeadline: "", updatedAt: "" },
+  rhythm: { preset: "", shopTime: "17:00", dismissed: false, updatedAt: "" },
+  shopDone: {},
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -294,6 +296,8 @@ function normalizeState(saved) {
     roles: normalizeRoles(saved.roles),
     memberPrefs: normalizeMemberPrefs(saved.memberPrefs),
     round: normalizeRound(saved.round),
+    rhythm: normalizeRhythm(saved.rhythm),
+    shopDone: normalizeShopDone(saved.shopDone),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -516,7 +520,9 @@ function buildSyncPayload() {
     requests: state.requests || {},
     roles: state.roles || { members: {}, updatedAt: "" },
     memberPrefs: state.memberPrefs || {},
-    round: state.round || {}
+    round: state.round || {},
+    rhythm: state.rhythm || {},
+    shopDone: state.shopDone || {}
   };
 }
 
@@ -551,7 +557,9 @@ function mergeSyncPayloads(local, remote) {
     requests: Lifestyle.mergeMap(local.requests, remote.requests),
     roles: (remote.roles?.updatedAt || "") > (local.roles?.updatedAt || "") ? remote.roles : local.roles,
     memberPrefs: Lifestyle.mergeMap(local.memberPrefs, remote.memberPrefs),
-    round: (remote.round?.updatedAt || "") > (local.round?.updatedAt || "") ? remote.round : local.round
+    round: (remote.round?.updatedAt || "") > (local.round?.updatedAt || "") ? remote.round : local.round,
+    rhythm: (remote.rhythm?.updatedAt || "") > (local.rhythm?.updatedAt || "") ? remote.rhythm : local.rhythm,
+    shopDone: { ...(remote.shopDone || {}), ...(local.shopDone || {}) }
   };
 }
 
@@ -599,6 +607,8 @@ function applySyncPayload(payload) {
   state.roles = normalizeRoles(payload.roles || state.roles);
   state.memberPrefs = normalizeMemberPrefs(payload.memberPrefs || state.memberPrefs);
   state.round = normalizeRound(payload.round || state.round);
+  state.rhythm = normalizeRhythm(payload.rhythm || state.rhythm);
+  state.shopDone = normalizeShopDone(payload.shopDone || state.shopDone);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
@@ -826,7 +836,7 @@ function render() {
     settings: renderSettings
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = (["today", "plan", "shopping"].includes(state.view) ? renderFlow() : "") + views[state.view]();
+  document.querySelector("#app").innerHTML = views[state.view]();
   bindEvents();
 }
 
@@ -1819,6 +1829,7 @@ function renderSettings() {
       <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>
     </details>
 
+    ${renderRhythmSettings()}
     ${renderSharePanel()}
     ${syncEnabled() ? "" : renderSyncPanel()}
 
