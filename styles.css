@@ -2264,3 +2264,22 @@ span.tile-photo { cursor: default; }
 .role-help td:first-child { text-align: left; }
 .role-help td.ok { color: var(--tomato); font-weight: 800; }
 .role-help td.ng { color: #b9ab99; }
+
+/* ----- 最近のごはんカレンダー ----- */
+.meal-cal { margin: 0 0 16px; padding: 12px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
+.meal-cal .section-title { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 16px; }
+.meal-cal .section-title small { color: var(--muted); font-size: 12px; font-weight: 700; }
+.cal-head, .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-head span { text-align: center; font-size: 11px; font-weight: 800; color: var(--muted); }
+.cal-head span:first-child { color: #d4533a; }
+.cal-cell { position: relative; aspect-ratio: 1 / 1; padding: 0; border: 0; border-radius: 10px; background: var(--surface-soft); overflow: hidden; cursor: pointer; font: inherit; }
+.cal-cell .dish-tile { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+.cal-cell .dish-fallback small { display: none; }
+.cal-cell > span { position: absolute; left: 3px; top: 2px; padding: 0 4px; border-radius: 6px; background: rgba(255, 253, 248, .88); font-size: 10px; font-weight: 800; color: var(--ink); line-height: 1.5; }
+.cal-cell.is-empty { cursor: default; }
+.cal-cell.is-empty > span { background: none; color: #b9ab99; }
+.cal-cell.is-today { outline: 2.5px solid var(--tomato); outline-offset: -2.5px; }
+.cal-cell.is-future { opacity: .55; outline: 1.5px dashed #d8c4ad; outline-offset: -1.5px; }
+.cal-cell.is-picked { outline: 3px solid var(--marker); outline-offset: -3px; opacity: 1; }
+.cal-caption { margin: 8px 2px 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
+.cal-caption b { color: var(--ink); }
