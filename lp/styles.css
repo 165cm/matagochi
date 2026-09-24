@@ -285,3 +285,76 @@ p { margin: 0 0 14px; }
 @media (max-width: 380px) { .brand-note { display: none; } }
 
 .brand { align-items: center; }
+
+/* ---- 2026-09-24: waitlist, story and "ちょうどいいまた" sections ---- */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.wl-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.waitlist-form { display: grid; gap: 10px; width: min(100%, 440px); }
+.wl-email {
+  width: 100%;
+  min-height: 54px;
+  padding: 0 18px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* prevents iOS zoom */
+}
+.wl-email:focus { outline: none; border-color: var(--tomato); box-shadow: 0 0 0 4px rgba(238, 106, 76, 0.18); }
+.wl-email[aria-invalid="true"] { border-color: var(--tomato-dark); }
+.waitlist-form .button { width: 100%; min-height: 56px; font-size: 17px; }
+.wl-status { margin: 0; min-height: 1em; font-size: 14px; font-weight: 700; }
+.wl-status.is-error { color: var(--tomato-dark); }
+.wl-note { margin: 0; line-height: 1.6; }
+.wl-note a { color: inherit; }
+.wl-registered { margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--yellow-soft); font-weight: 700; }
+.beta-link { margin-top: 14px; }
+.field-label { font-weight: 900; font-size: 14px; }
+.wl-household { border: 0; padding: 0; margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.wl-household legend { width: 100%; margin-bottom: 6px; }
+.wl-household label { cursor: pointer; }
+.wl-household input { position: absolute; opacity: 0; }
+.wl-household span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border: 2px solid var(--line); border-radius: 999px; background: var(--paper); font-weight: 700; }
+.wl-household input:checked + span { border-color: var(--tomato); background: #fff1ec; color: var(--tomato-dark); }
+.wl-household input:focus-visible + span { outline: 3px solid var(--yellow); outline-offset: 2px; }
+
+.story { padding: 56px 0; background: var(--paper); }
+.story-card { position: relative; margin-top: 24px; padding: 26px 22px; border-radius: 24px; background: var(--cream); border: 1px dashed #e4cfb6; font-size: 16px; }
+.story-card p { line-height: 1.95; }
+.story-sign { text-align: right; color: var(--muted); margin: 8px 0 0; }
+
+.promise { padding: 56px 0; }
+.promise-grid { display: grid; gap: 14px; margin: 28px 0 18px; }
+.promise-grid article { padding: 22px; border-radius: 24px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 10px 24px rgba(90, 60, 30, 0.06); }
+.promise-icon { display: inline-block; font-size: 30px; letter-spacing: 0.08em; margin-bottom: 4px; }
+.promise-grid h3 { font-size: 20px; margin-bottom: 8px; }
+.promise-grid p { margin: 0 0 8px; }
+.promise-note { color: var(--tomato); font-size: 16px; margin: 0; }
+
+.waitlist { padding: 56px 0; background: var(--paper); scroll-margin-top: 64px; }
+.waitlist-card { padding: 30px 22px; border-radius: 28px; background: var(--cream); border: 2px solid var(--tomato); box-shadow: var(--shadow); }
+.waitlist-card .waitlist-form { margin: 20px auto 0; }
+.wl-done { text-align: center; margin-top: 18px; }
+.wl-done-title { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
+.share-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 16px 0; }
+.button-line { background: #06c755; color: #fff; }
+
+.hero .waitlist-form { margin-top: 6px; }
+@media (min-width: 860px) {
+  .promise-grid { grid-template-columns: repeat(3, 1fr); }
+  .waitlist-card { padding: 44px; }
+}
+@media (max-width: 380px) { .wide-only { display: none; } .brand-icon { width: 34px; height: 34px; flex-basis: 34px; } }
+[hidden] { display: none !important; }
+button.button { border: 0; cursor: pointer; font-family: inherit; }
+.button-small span { font-size: inherit; }
+.wl-household span { display: inline; min-height: 0; padding: 0; border: 0; background: none; }
+.wl-household label span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border: 2px solid var(--line); border-radius: 999px; background: var(--paper); font-weight: 700; }
+.wl-household input:checked + span { border-color: var(--tomato); background: #fff1ec; color: var(--tomato-dark); }
+body.is-registered .sticky-cta { display: none; }
+.story-turn { margin-top: 18px; padding-top: 16px; border-top: 1px dashed #e4cfb6; }
+.story-photo, .promise-photo { margin: 24px auto 0; max-width: 680px; }
+.story-photo img, .promise-photo img { width: 100%; height: auto; border-radius: 24px; box-shadow: var(--shadow); }
+.story-photo figcaption, .promise-photo figcaption { text-align: center; margin-top: 10px; color: var(--tomato); font-size: 17px; }
+.button-small { gap: 0; }

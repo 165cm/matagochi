@@ -60,9 +60,18 @@ const assert = require("node:assert/strict");
         ),
       );
     }
-    // hero, steps, final and the mobile sticky bar
-    assert.equal(await page.locator('a[href="../?start=quick"]').count(), 4);
+    // beta links: hero, waitlist thank-you, final (the waitlist is the main CTA)
+    assert.equal(await page.locator('a[href="../?start=quick"]').count(), 3);
     assert.equal(await page.locator('a[href="../?quiz=1"]').count(), 1);
+    // Waitlist: validates, and never reaches Google in tests (stubbed when configured).
+    await page.route(/docs\.google\.com/, (route) => route.fulfill({ status: 200, body: "" }));
+    await page.fill("#wl-email-hero", "bad");
+    await page.locator('[data-cta="hero"]').click();
+    assert.match(await page.locator('.waitlist-form[data-source="hero"] .wl-status').innerText(), /形式/);
+    await page.fill("#wl-email-hero", "test@example.com");
+    await page.locator('[data-cta="hero"]').click();
+    if (await page.evaluate(() => !!WAITLIST.action)) await page.waitForSelector(".wl-done:not([hidden])");
+    else assert.match(await page.locator('.waitlist-form[data-source="hero"] .wl-status').innerText(), /準備中/);
     assert.doesNotMatch(
       await page.locator("body").innerText(),
       /完全無料|課金も広告もありません|サーバーには送りません|6段階/,
