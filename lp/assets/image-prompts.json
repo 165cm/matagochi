@@ -1,0 +1,14 @@
+[
+  [
+    "og",
+    "Create a 1200x630 px Open Graph image for a Japanese dinner-planning app \"リピごち\". Layout: left 55% = a large, appetizing photo of 照り焼きチキン丼 with a soft-boiled egg in a speckled ceramic bowl on a wooden table; right 45% = cream background (#FFF8EE) with the headline in bold rounded Japanese (Zen Maru Gothic style), two lines: 「今夜、」「これ食べたい。」, with a soft yellow marker highlight (#F6CF5B) under 「これ食べたい。」. Below it, smaller text: 「3問で、3日分の夜ごはんと買い物リスト」. Bottom-right: the logo text 「リピごち」 in tomato orange (#EE6A4C). A small handwritten-style note near the bowl: 「がんばった今日に、ごほうびごはん。」. Style: bright, warm natural light, clean and friendly for Japanese university students and people in their 20s. All Japanese text must be large, correct and legible. No other text, no watermark. Export as JPG. Keep all copy within margins, exact 1200:630 aspect ratio."
+  ],
+  [
+    "icon",
+    "Create a square app icon, 1024x1024 px, for a Japanese dinner app named 「リピごち」. Design: a simple, cute rice bowl (donburi) seen from a slight angle with steam lines, on a solid tomato-orange background (#EE6A4C), with a small yellow sparkle accent (#F6CF5B) at the top right. Flat, rounded, friendly style that stays readable at 48x48 px. Keep all important shapes inside the central 80% so it works as a maskable (Android) icon. Specifically all bowl, steam and sparkle shapes must fit inside a centered circle of diameter 80% of image width. Solid orange must extend to all four square corners. No text, no letters, no watermark. PNG with no transparency."
+  ],
+  [
+    "scene",
+    "Create a 1200x900 px lifestyle photo: a Japanese university student in their early 20s in a small, cozy one-room apartment kitchen in the evening, smiling while looking at a smartphone and holding a bowl of pork-kimchi rice bowl. Warm lamp light, cream and wood tones with a small tomato-orange accent. Natural, candid, not overly staged. The phone screen should show only abstract rounded shapes, no readable text. No text, no logos, no watermark. Export as WebP or JPG. Exactly 4:3 landscape composition. Anatomically natural hands, one hand holding the smartphone and the other holding the ceramic rice bowl."
+  ]
+]
