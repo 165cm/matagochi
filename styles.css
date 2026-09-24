@@ -2372,3 +2372,17 @@ span.tile-photo { cursor: default; }
 .rhythm-invite { margin: 0 0 14px; padding: 14px 16px; border-radius: 20px; border: 2px dashed #e6d3bf; display: grid; gap: 8px; }
 .rhythm-invite p { margin: 0; }
 .rhythm-invite small { color: var(--muted); }
+
+/* ----- タグで絞り込み（3タップ） ----- */
+.facets { display: grid; gap: 6px; margin: 10px 0 14px; }
+.facet-row { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); align-items: center; gap: 6px; }
+.facet-label { font-size: 11px; font-weight: 800; color: var(--muted); line-height: 1.3; }
+.facet-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: none; }
+.facet-chips::-webkit-scrollbar { display: none; }
+.facet-chip { flex: 0 0 auto; display: inline-flex; align-items: center; line-height: 1; gap: 4px; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.facet-chip small { font-size: 10px; color: var(--muted); }
+.facet-chip[aria-pressed="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+.facet-chip[aria-pressed="true"] small { color: #fff; }
+.facet-result { display: flex; align-items: center; justify-content: space-between; margin: 2px 2px 0; font-size: 13px; }
+.facet-result b { color: var(--tomato); }
+.facet-result .text-button { font-size: 13px; min-height: 0; padding: 0; }

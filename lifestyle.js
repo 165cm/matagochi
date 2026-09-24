@@ -289,6 +289,35 @@
       : /パスタ|チーズ|トマト|ケチャップ|バター|リゾット/.test(text) ? "western" : "japanese";
     return { staple, protein, cuisine };
   }
+  // ----- Tags for browsing (3 taps: 主食 → 素材 → 気分・作り方) -----
+  const FACETS = [
+    { id: "staple", label: "主食", options: [["rice", "ごはん"], ["noodle", "麺"], ["bread", "パン"], ["other", "おかず"]] },
+    { id: "main", label: "素材", options: [["chicken", "鶏"], ["pork", "豚"], ["beef", "牛"], ["mince", "ひき肉"], ["fish", "魚"], ["egg", "卵"], ["tofu", "豆腐・大豆"], ["veg", "野菜が主役"]] },
+    { id: "style", label: "気分・作り方", options: [["quick", "10分以内"], ["micro", "レンジ"], ["pan", "フライパン"], ["pot", "鍋"], ["spicy", "ピリ辛"], ["light", "さっぱり"], ["rich", "こってり"], ["soup", "汁もの"], ["japanese", "和風"], ["western", "洋風"], ["chinese", "中華"], ["ethnic", "エスニック"]] },
+  ];
+  const TAG_RULES = {
+    chicken: /鶏|ささみ|手羽|チキン/, pork: /豚|ベーコン|ハム|ウインナー|ソーセージ/, beef: /牛(?!乳)/,
+    mince: /ひき肉|合いびき|そぼろ|つくね|ハンバーグ|小籠包/, fish: /鮭|さけ|さば|サバ|ツナ|魚|えび|いか|たら|しらす|ぶり|まぐろ|かつお/,
+    egg: /卵|たまご|玉子/, tofu: /豆腐|厚揚げ|油揚げ|納豆|豆乳|大豆/,
+    spicy: /辛|キムチ|豆板醤|コチュジャン|ラー油|担々|麻辣|一味|七味|ガパオ|カレー|ヤンニョム/,
+    light: /ポン酢|酢|冷や|梅|レモン|しそ|大葉|おろし|蒸し/,
+    rich: /バター|チーズ|マヨ|クリーム|カルボナーラ|揚げ|甘辛|照り焼き|ハンバーグ/,
+    soup: /スープ|汁|麻辣湯/, ethnic: /ナンプラー|ガパオ|タコライス|ビリヤニ|ヤンニョム|コチュジャン|エスニック/,
+    micro: /レンジ/, pan: /フライパン|炒め|焼き/, pot: /鍋|ゆで|茹で|煮/,
+  };
+  function tags(recipe = {}) {
+    const names = (recipe.ingredients || []).map((x) => x.name).join(" ");
+    const text = [recipe.title, names, ...(recipe.steps || []), ...(recipe.planning?.equipment || [])].join(" ");
+    const t = traits(recipe);
+    const out = new Set([t.staple, t.cuisine]);
+    for (const [tag, re] of Object.entries(TAG_RULES)) {
+      const where = ["chicken", "pork", "beef", "mince", "fish", "egg", "tofu"].includes(tag) ? `${recipe.title} ${names}` : text;
+      if (re.test(where)) out.add(tag);
+    }
+    if (!["chicken", "pork", "beef", "mince", "fish"].some((x) => out.has(x))) out.add("veg");
+    if (recipe.planning?.minutes && recipe.planning.minutes <= 10) out.add("quick");
+    return [...out];
+  }
   const stapleLabel = { rice: "ごはんもの", noodle: "麺", bread: "パン", other: "おかず" };
   function stapleName(recipe) {
     const m = String(recipe?.title || "").match(/パスタ|うどん|そば|ラーメン|焼きそば|そうめん|カレー|チャーハン|丼/);
@@ -871,6 +900,8 @@
     shopping,
     curated,
     traits,
+    tags,
+    FACETS,
     rotation,
     repeatFit,
     sameDish,

@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", mealType: "dinner", caption: "", note: "" };
+const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
   { id: "tomorrow", label: "明日でも", days: 1, tone: "hot" },
@@ -339,7 +339,8 @@ function normalizeRecipes(recipes) {
       sourceServings: recipe.sourceServings === undefined ? 1 : normalizeSourceServings(recipe.sourceServings),
       ingredients,
       originalIngredients: originalIngredients.length ? originalIngredients : clone(ingredients),
-      steps: Array.isArray(recipe.steps) ? recipe.steps.map((step) => String(step || "").trim()).filter(Boolean) : []
+      steps: Array.isArray(recipe.steps) ? recipe.steps.map((step) => String(step || "").trim()).filter(Boolean) : [],
+      author: String(recipe.author || "").trim().slice(0, 60)
     };
   });
 }
@@ -911,6 +912,10 @@ function renderRecipeEntry() {
             <input id="recipe-source" class="input" value="${escapeAttr(state.draft.source)}">
           </div>
           <div class="field">
+            <label for="recipe-author">投稿者・チャンネル</label>
+            <input id="recipe-author" class="input" maxlength="60" placeholder="例：〇〇ごはん" value="${escapeAttr(state.draft.author || "")}">
+          </div>
+          <div class="field">
             <label>タグ</label>
             ${renderMealTypePicker(state.draft.mealType)}
           </div>
@@ -1097,11 +1102,15 @@ function renderIngredientEditorRow(item, index, servingCount) {
 }
 
 function renderCollection() {
-  const saved = getFilteredRecipes({ allMeals: true });
+  const allSaved = getFilteredRecipes({ allMeals: true });
   // Photographed dishes first, so the grid opens with pictures.
-  const starters = recipeTab === "saved" ? [] : starterRecipeList().sort((a, b) => !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id]);
+  const allStarters = recipeTab === "saved" ? [] : starterRecipeList().sort((a, b) => !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id]);
+  const pool = [...(recipeTab === "starter" ? [] : allSaved), ...allStarters];
+  const saved = allSaved.filter((r) => facetMatch(r));
+  const starters = allStarters.filter((r) => facetMatch(r));
   const query = state.searchText.trim();
-  const shownStarters = recipeTab === "starter" || starterShowAll || query ? starters : starters.slice(0, 6);
+  const filtering = Object.values(recipeFacets).some(Boolean);
+  const shownStarters = recipeTab === "starter" || starterShowAll || query || filtering ? starters : starters.slice(0, 6);
   const tab = (id, label, count) => `<button class="chip-tab" type="button" aria-pressed="${recipeTab === id}" data-action="life-recipe-tab" data-tab="${id}">${label}${count != null ? ` <small>${count}</small>` : ""}</button>`;
   const tiles = [
     ...(recipeTab === "starter" ? [] : saved.map(renderRecipeTile)),
@@ -1115,7 +1124,8 @@ function renderCollection() {
     </section>
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("starter", "おすすめ")}</div>`}
-    <section class="recipe-grid">${tiles || empty}</section>
+    ${renderFacets(pool)}
+    <section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>
     ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}
     ${playlistAvailable && !isViewer() ? `<section class="add-card">
       <p class="hand">＼ 保存した動画を、まとめて ／</p>
@@ -1126,6 +1136,48 @@ function renderCollection() {
 }
 
 let recipeTab = "all";
+// 3 taps: 主食 → 素材 → 気分・作り方 (one choice per row; tap again to clear)
+let recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
+// わが家：repeat-aware shortcuts. 投稿者：names saved from YouTube / TikTok (or typed in).
+const HOME_FACET = { id: "home", label: "わが家", options: [
+  ["loved", "❤ 好き", (r) => Object.values({ ...likedCycles(r), ...recipeRatings(r) }).some((c) => c === "weekly" || c === "tomorrow")],
+  ["long", "久しぶり", (r) => /^前回は(\d+)日前$/.test(lastEatenLabel(r)) && Number(lastEatenLabel(r).match(/\d+/)[0]) >= 14],
+  ["new", "まだ作ってない", (r) => lastEatenLabel(r) === "はじめて"],
+  ["request", "🙋 リクエスト", (r) => !!openRequestFor(r)],
+] };
+const authorOf = (r) => (r.author || "").trim();
+const tagCache = new Map();
+function recipeTags(recipe) {
+  const key = recipe.id + "|" + (recipe.updatedAt || "");
+  if (!tagCache.has(key)) tagCache.set(key, Lifestyle.tags(recipe));
+  return tagCache.get(key);
+}
+function facetMatch(recipe, skip = "") {
+  const t = recipeTags(recipe);
+  return Object.entries(recipeFacets).every(([facet, value]) => {
+    if (facet === skip || !value) return true;
+    if (facet === "home") return HOME_FACET.options.find((o) => o[0] === value)?.[2](recipe);
+    if (facet === "author") return authorOf(recipe) === value;
+    return t.includes(value);
+  });
+}
+function renderFacets(pool) {
+  const authors = [...new Set(pool.map(authorOf).filter(Boolean))].sort((a, b) => pool.filter((r) => authorOf(r) === b).length - pool.filter((r) => authorOf(r) === a).length);
+  const facets = [HOME_FACET, ...Lifestyle.FACETS, ...(authors.length ? [{ id: "author", label: "投稿者", options: authors.map((a) => [a, a, (r) => authorOf(r) === a]) }] : [])];
+  const rows = facets.map((f) => {
+    const base = pool.filter((r) => facetMatch(r, f.id));
+    const chips = f.options.map(([id, label, test]) => {
+      const n = base.filter((r) => (test ? test(r) : recipeTags(r).includes(id))).length;
+      const on = recipeFacets[f.id] === id;
+      if (!n && !on) return "";
+      return `<button type="button" class="facet-chip" data-action="life-facet" data-facet="${f.id}" data-value="${id}" aria-pressed="${on}">${label}<small>${n}</small></button>`;
+    }).join("");
+    return `<div class="facet-row"><span class="facet-label">${f.label}</span><div class="facet-chips" role="group" aria-label="${f.label}">${chips}</div></div>`;
+  }).join("");
+  const count = pool.filter((r) => facetMatch(r)).length;
+  const any = Object.values(recipeFacets).some(Boolean);
+  return `<section class="facets" aria-label="レシピを絞り込む">${rows}${any ? `<p class="facet-result"><b>${count}品</b><button type="button" class="text-button" data-action="life-facet-clear">条件をクリア</button></p>` : ""}</section>`;
+}
 function tileMinutes(recipe) {
   return !isViewer() && recipe.planning?.minutes ? `<span class="tile-time">⏱ ${recipe.planning.minutes}分</span>` : "";
 }
@@ -1137,7 +1189,7 @@ function renderRecipeTile(recipe) {
       <span class="tile-mark is-saved" aria-label="保存済み"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></span>
       <strong class="tile-title">${escapeHtml(recipe.title)}</strong>
       ${requestButton(recipe)}
-      <div class="tile-foot"><small class="muted">${escapeHtml(last === "はじめて" ? "まだ作っていない" : last)}</small>
+      <div class="tile-foot"><small class="muted">${recipe.author ? `@${escapeHtml(recipe.author)} · ` : ""}${escapeHtml(last === "はじめて" ? "まだ作っていない" : last)}</small>
         ${isViewer() ? "" : `<details class="plan-more tile-more"><summary aria-label="${escapeAttr(recipe.title)}のメニュー">⋯</summary><div class="plan-more-menu">
           ${recipe.videoUrl ? `<a class="text-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>` : ""}
           <button class="text-button" type="button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">編集</button>
@@ -2083,6 +2135,7 @@ async function handleAction(event) {
         const preview = await fetchTikTokPreview(state.draft.videoUrl);
         state.draft.title = state.draft.title || preview.title;
         state.draft.source = "TikTok";
+        state.draft.author = state.draft.author || preview.author.slice(0, 60);
         state.draftThumbnailUrl = preview.thumbnailUrl || "";
         state.fetchStatus = "TikTokからタイトルとサムネイルを取得しました。キャプションを貼り付けると材料メモを作れます。";
         showToast("動画情報を取得しました。");
@@ -2345,6 +2398,7 @@ async function handleAction(event) {
       existing.originalIngredients = originalIngredients;
       existing.steps = steps;
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
+      existing.author = state.draft.author || "";
       existing.note = state.draft.note;
       existing.planning = state.draft.planning || undefined;
       existing.thumbnailUrl = state.draftThumbnailUrl || existing.thumbnailUrl || "";
@@ -2373,6 +2427,7 @@ async function handleAction(event) {
         title: state.draft.title,
         videoUrl: state.draft.videoUrl,
         source: state.draft.source,
+        author: state.draft.author || "",
         mealType: state.draft.mealType,
         caption: state.draft.caption,
         ingredients,
@@ -2414,6 +2469,7 @@ async function handleAction(event) {
         title: recipe.title,
         videoUrl: recipe.videoUrl,
         source: recipe.source,
+        author: recipe.author || "",
         mealType: recipe.mealType,
         caption: recipe.caption,
         note: recipe.note,
@@ -2647,6 +2703,7 @@ function captureDraft() {
     title: document.querySelector("#recipe-title")?.value.trim() || "",
     videoUrl: currentUrl,
     source: document.querySelector("#recipe-source")?.value.trim() || platform.label,
+    author: (document.querySelector("#recipe-author")?.value ?? state.draft.author ?? "").trim().slice(0, 60),
     mealType: state.draft.mealType || "dinner",
     caption: document.querySelector("#recipe-caption")?.value.trim() || "",
     note: document.querySelector("#recipe-note")?.value.trim() || ""
@@ -2981,6 +3038,7 @@ function getFilteredRecipes({ allMeals = false } = {}) {
       recipe.caption,
       recipe.note,
       recipe.source,
+      recipe.author,
       mealLabel(recipe.mealType),
       ...recipe.ingredients.map((item) => item.name)
     ].join(" ").toLowerCase();
@@ -3121,6 +3179,7 @@ function applyImportedRecipe(result) {
     title: state.draft.title || result.title || "",
     videoUrl: result.videoUrl || state.draft.videoUrl,
     source: result.source || platform.label,
+    author: state.draft.author || String(result.channelTitle || result.author || "").trim().slice(0, 60),
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
   };

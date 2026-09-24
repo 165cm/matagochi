@@ -634,3 +634,33 @@ test("traits: パン粉 and フライパン do not make a dish a bread meal", ()
   assert.equal(L.traits(L.curated.find((r) => /ビリヤニ/.test(r.title))).staple, "rice");
   assert.equal(L.traits({ title: "たまごサンド", ingredients: [{ name: "食パン" }] }).staple, "bread");
 });
+
+test("tags: every starter gets a staple, a cuisine and a main ingredient; facets narrow in three taps", () => {
+  for (const r of L.curated) {
+    const t = L.tags(r);
+    assert.ok(["rice", "noodle", "bread", "other"].some((x) => t.includes(x)), r.title);
+    assert.ok(["japanese", "western", "chinese"].some((x) => t.includes(x)), r.title);
+    assert.ok(["chicken", "pork", "beef", "mince", "fish", "egg", "tofu", "veg"].some((x) => t.includes(x)), r.title);
+  }
+  assert.ok(L.tags(L.curated.find((r) => /担々/.test(r.title))).includes("spicy"));
+  const run = app();
+  run('state.onboarded=true;recipeFacets={staple:"noodle",main:"",style:""}');
+  const noodles = run("starterRecipeList().filter(r=>facetMatch(r)).length");
+  run('recipeFacets.style="spicy"');
+  const spicy = run("starterRecipeList().filter(r=>facetMatch(r)).length");
+  assert.ok(noodles > spicy && spicy >= 1, `${noodles} > ${spicy}`);
+});
+
+test("app: saved SNS recipes keep the poster and can be filtered by 投稿者 and わが家", () => {
+  const run = app();
+  run('state.onboarded=true;state.recipes=normalizeRecipes([{...clone(Lifestyle.curated[3]),id:"r1",curated:undefined,author:"山田ごはん",mealType:"dinner"},{...clone(Lifestyle.curated[4]),id:"r2",curated:undefined,author:"",mealType:"dinner"}])');
+  assert.equal(run('state.recipes[0].author'), "山田ごはん");
+  run('recipeFacets={home:"",staple:"",main:"",style:"",author:"山田ごはん"}');
+  assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'), 1);
+  assert.ok(run('renderFacets(state.recipes).includes("投稿者")'));
+  run('recipeFacets={home:"new",staple:"",main:"",style:"",author:""}');
+  assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'), 2);
+  assert.ok(run('getFilteredRecipes({allMeals:true}).length===2'));
+  run('state.searchText="山田"');
+  assert.equal(run('getFilteredRecipes({allMeals:true}).length'), 1);
+});
