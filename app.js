@@ -58,6 +58,8 @@ const demoState = {
   backupRemindSnoozedAt: "",
   settingsUpdatedAt: "",
   tombstones: { recipes: {}, evaluations: {} },
+  me: "",
+  requests: {},
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -284,6 +286,8 @@ function normalizeState(saved) {
     settingsUpdatedAt: normalizeTimestamp(saved.settingsUpdatedAt),
     tombstones: normalizeTombstones(saved.tombstones),
     sync: normalizeSyncSettings(saved.sync),
+    me: typeof saved.me === "string" ? saved.me.slice(0, 20) : "",
+    requests: normalizeRequests(saved.requests),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -502,7 +506,8 @@ function buildSyncPayload() {
     householdProfile: state.householdProfile,
     mealSlots: state.mealSlots,
     shoppingMarks: state.shoppingMarks,
-    manualShopping: state.manualShopping
+    manualShopping: state.manualShopping,
+    requests: state.requests || {}
   };
 }
 
@@ -533,7 +538,8 @@ function mergeSyncPayloads(local, remote) {
     householdProfile: Object.values(Lifestyle.mergeMap({household:local.householdProfile || {updatedAt:''}}, {household:remote.householdProfile || {updatedAt:''}}))[0],
     mealSlots: Lifestyle.mergeMap(local.mealSlots, remote.mealSlots),
     shoppingMarks: Lifestyle.mergeMap(local.shoppingMarks, remote.shoppingMarks),
-    manualShopping: Lifestyle.mergeMap(local.manualShopping, remote.manualShopping)
+    manualShopping: Lifestyle.mergeMap(local.manualShopping, remote.manualShopping),
+    requests: Lifestyle.mergeMap(local.requests, remote.requests)
   };
 }
 
@@ -577,6 +583,7 @@ function applySyncPayload(payload) {
   state.mealSlots = Lifestyle.normalizeSlots(payload.mealSlots || state.mealSlots);
   state.shoppingMarks = normalizeShoppingMarks(payload.shoppingMarks || state.shoppingMarks);
   state.manualShopping = normalizeManualShopping(payload.manualShopping || state.manualShopping);
+  state.requests = normalizeRequests(payload.requests || state.requests);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
@@ -766,6 +773,12 @@ function setView(view) {
 
 function render() {
   cancelAutoAdvance();
+  if (joinInvite) {
+    document.body.classList.add("is-onboarding");
+    document.querySelector("#app").innerHTML = renderJoin();
+    bindEvents();
+    return;
+  }
   if (!state.onboarded || profileEditing) {
     renderOnboarding();
     return;
@@ -781,7 +794,7 @@ function render() {
     today: renderToday,
     shopping: renderDailyShopping,
     cooking: renderCooking,
-    recordDetails: renderRepeatCycles,
+    recordDetails: renderRecordEditor,
     register: renderRecipeEntry,
     playlist: renderPlaylistImport,
     collection: renderCollection,
@@ -1089,11 +1102,12 @@ function renderRecipeTile(recipe) {
       <button type="button" class="tile-photo" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を開く">${dishTile(recipe)}${tileMinutes(recipe)}</button>
       <span class="tile-mark is-saved" aria-label="保存済み"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></span>
       <strong class="tile-title">${escapeHtml(recipe.title)}</strong>
+      ${requestButton(recipe)}
       <div class="tile-foot"><small class="muted">${escapeHtml(last === "はじめて" ? "まだ作っていない" : last)}</small>
         <details class="plan-more tile-more"><summary aria-label="${escapeAttr(recipe.title)}のメニュー">⋯</summary><div class="plan-more-menu">
           ${recipe.videoUrl ? `<a class="text-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>` : ""}
           <button class="text-button" type="button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">編集</button>
-          <button class="text-button" type="button" data-action="record-repeat" data-recipe="${escapeAttr(recipe.id)}">作った記録をつける</button>
+          <button class="text-button" type="button" data-action="life-new-record" data-recipe="${escapeAttr(recipe.id)}">作った記録をつける</button>
           <button class="text-button danger" type="button" data-action="delete-recipe" data-recipe="${escapeAttr(recipe.id)}">削除</button>
         </div></details></div>
     </article>`;
@@ -1104,6 +1118,7 @@ function renderStarterTile(recipe) {
       <span class="tile-photo">${dishTile(recipe)}${tileMinutes(recipe)}</span>
       <button type="button" class="tile-mark" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></button>
       <strong class="tile-title">${escapeHtml(recipe.title)}</strong>
+      ${requestButton(recipe)}
       <div class="tile-foot"><small class="muted">おすすめ${recipe.planning?.tastes?.length ? ` · ${escapeHtml(recipe.planning.tastes[0])}` : ""}</small></div>
     </article>`;
 }
@@ -1206,7 +1221,7 @@ function renderRecipeCard(recipe) {
       </div>
       <div class="actions">
         ${recipe.videoUrl ? `<a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>` : ""}
-        <button class="secondary-button" type="button" data-action="record-repeat" data-recipe="${escapeAttr(recipe.id)}">リピ記録</button>
+        <button class="secondary-button" type="button" data-action="record-repeat" data-recipe="${escapeAttr(recipe.id)}">食事の記録</button>
       </div>
       <div class="actions">
         <button class="secondary-button" type="button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">編集</button>
@@ -1411,7 +1426,7 @@ function renderCandidateCard(candidate) {
       </div>
       <p class="muted small">${escapeHtml(recipe.note)}</p>
       <div class="actions">
-        <button class="secondary-button" type="button" data-action="${hasHistory ? "quick-record" : "record-repeat"}" data-recipe="${escapeAttr(recipe.id)}">${hasHistory ? "作った！" : "リピ記録"}</button>
+        <button class="secondary-button" type="button" data-action="${hasHistory ? "quick-record" : "record-repeat"}" data-recipe="${escapeAttr(recipe.id)}">${hasHistory ? "作った！" : "食事の記録"}</button>
         ${recipe.videoUrl ? `<a class="primary-button link-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>` : ""}
       </div>
     </article>
@@ -1496,7 +1511,7 @@ function renderRepeatCycles() {
         </div>
         <input id="repeat-photo" type="file" accept="image/*" hidden>
         ${state.repeatDraft.photo ? `<button class="secondary-button danger full-button compact-remove" type="button" data-action="remove-photo">写真を外す</button>` : ""}
-        <button class="primary-button full-button" type="button" data-action="save-repeat">リピ記録を保存</button>
+        <button class="primary-button full-button" type="button" data-action="save-repeat">食事の記録を保存</button>
       </section>
 
       <section class="panel">
@@ -1510,7 +1525,7 @@ function renderRepeatCycles() {
         <details class="repeat-picker">
           <summary>直近5回の履歴</summary>
           <div class="recipe-list compact-history">
-            ${history.slice(0, 5).map(renderEvaluationCard).join("") || renderEmpty("まだリピ記録がありません。")}
+            ${history.slice(0, 5).map(renderEvaluationCard).join("") || renderEmpty("まだ食事の記録がありません。")}
           </div>
         </details>
       </section>
@@ -1529,7 +1544,7 @@ function renderRepeatInput(name) {
         <strong>${escapeHtml(name)}</strong>
         <span>${escapeHtml(repeatLabel(cycle))}</span>
       </div>
-      <div class="repeat-choice-wrap" role="group" aria-label="${name}のリピ周期">
+      <div class="repeat-choice-wrap" role="group" aria-label="${name}の次に食べたい頃">
         <div class="mood-meter" aria-label="${name}の食べたい気持ちメーター">
           ${timeOptions.map((option, index) => `
             <button class="mood-button mood-${option.id} ${option.id === cycle ? "is-active" : ""}" type="button" data-action="set-cycle" data-person="${escapeAttr(name)}" data-cycle="${option.id}" aria-label="${name} ${option.label}">
@@ -1774,7 +1789,8 @@ function renderSettings() {
       <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>
     </details>
 
-    ${renderSyncPanel()}
+    ${renderSharePanel()}
+    ${syncEnabled() ? "" : renderSyncPanel()}
 
     <section class="panel">
       <div class="section-head">
@@ -1796,50 +1812,28 @@ function renderSettings() {
       <div class="section-head">
         <div>
           <h3>全件削除</h3>
-          <p>保存したレシピとリピ記録を空にします。家族メンバー設定は残ります。</p>
+          <p>保存したレシピと食事の記録を空にします。家族メンバー設定は残ります。</p>
         </div>
       </div>
-      <button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピとリピ記録を全件削除</button>
+      <button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピと食事の記録を全件削除</button>
       <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>
     </section>
   `;
 }
 
+// 以前からの「合言葉」でつなぐ方法。招待リンクと同じ同期ルームを使う。
 function renderSyncPanel() {
   if (!API_BASE_URL) return "";
-  if (!state.sync.roomId) {
-    return `
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h3>家族と同期・共有</h3>
-          <p>合言葉を決めるだけで、スマホとPC、家族の端末で同じデータを使えます。アカウント登録は不要です。</p>
-        </div>
-      </div>
+  return `
+    <details class="panel legacy-sync">
+      <summary>合言葉でつなぐ（以前の方法）</summary>
       <div class="field">
         <label for="sync-code">家族の合言葉（${SYNC_MIN_CODE_LENGTH}文字以上）</label>
         <input id="sync-code" class="input" type="text" placeholder="例: たなかけ・ごはん・2026" autocomplete="off">
       </div>
-      <button class="primary-button full-button" type="button" data-action="sync-connect">この合言葉でつなぐ</button>
-      <p class="muted small">最初の端末でつなぐと今のデータが共有され、家族の端末で同じ合言葉を入れると同じデータにつながります。変更はしばらくすると自動で同期されます。</p>
-      <p class="notice">合言葉を知っている人はだれでもこのデータを見たり変えたりできます。ほかの家庭とかぶらない、推測されにくい合言葉にしてください。</p>
-    </section>`;
-  }
-  return `
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h3>家族と同期・共有</h3>
-          <p>合言葉「${escapeHtml(state.sync.code)}」でつながっています。</p>
-        </div>
-      </div>
-      <p class="notice">家族の端末でも設定画面から同じ合言葉を入れると、レシピとリピ記録がそろいます。</p>
-      <p class="muted small">最終同期: ${formatSyncTime(state.sync.lastSyncAt)}${syncRuntimeStatus ? `<br>${escapeHtml(syncRuntimeStatus)}` : ""}</p>
-      <div class="actions">
-        <button class="primary-button" type="button" data-action="sync-now">今すぐ同期</button>
-        <button class="secondary-button" type="button" data-action="sync-disconnect">共有をやめる</button>
-      </div>
-    </section>`;
+      <button class="secondary-button full-button" type="button" data-action="sync-connect">この合言葉でつなぐ</button>
+      <p class="notice">合言葉を知っている人はだれでもこのデータを見たり変えたりできます。推測されにくい合言葉にしてください。</p>
+    </details>`;
 }
 
 function bindEvents() {
@@ -2413,7 +2407,7 @@ async function handleAction(event) {
   if (action === "delete-recipe") {
     const id = event.currentTarget.dataset.recipe;
     const recipe = recipeById(id);
-    if (recipe && window.confirm(`「${recipe.title}」を削除します。関連するリピ記録も消えます。${syncEnabled() ? "共有中の家族の端末からも消えます。" : ""}よろしいですか？`)) {
+    if (recipe && window.confirm(`「${recipe.title}」を削除します。関連する食事の記録も消えます。${syncEnabled() ? "共有中の家族の端末からも消えます。" : ""}よろしいですか？`)) {
       const deletedAt = nowIso();
       state.tombstones.recipes[id] = deletedAt;
       state.evaluations.filter((item) => item.recipeId === id).forEach((item) => {
@@ -2435,13 +2429,13 @@ async function handleAction(event) {
 
   if (action === "delete-evaluation") {
     const id = event.currentTarget.dataset.eval;
-    if (window.confirm("このリピ記録を削除します。よろしいですか？")) {
+    if (window.confirm("この食事の記録を削除します。よろしいですか？")) {
       state.tombstones.evaluations[id] = nowIso();
       const date = id.startsWith('meal-') ? id.slice(5) : '';
       if (state.mealSlots[date]?.status === 'cooked') state.mealSlots[date] = {...state.mealSlots[date],status:'confirmed',updatedAt:nowIso()};
       state.evaluations = state.evaluations.filter((item) => item.id !== id);
       saveState();
-      showToast("リピ記録を削除しました。");
+      showToast("食事の記録を削除しました。");
       render();
     }
     return;
@@ -2582,7 +2576,7 @@ async function handleAction(event) {
     state.repeatDraft.cookedAt = today();
     state.repeatDraft.mealType = recipeById(state.selectedRecipeId)?.mealType || "dinner";
     saveState();
-    showToast("リピ記録を保存しました。");
+    showToast("食事の記録を保存しました。");
     render();
   }
 
@@ -2667,7 +2661,7 @@ function migrateMemberKey(previous, next) {
   state.evaluations.forEach((evaluation) => {
     if (evaluation.familyRepeatCycles && Object.prototype.hasOwnProperty.call(evaluation.familyRepeatCycles, previous)) {
       move(evaluation.familyRepeatCycles);
-      // 改名を他端末のリピ記録にも同期で反映させる
+      // 改名を他端末の食事の記録にも同期で反映させる
       evaluation.updatedAt = nowIso();
     }
   });
@@ -2768,7 +2762,7 @@ function swapPlanDay(date) {
 }
 
 function resetEverything() {
-  const message = `この端末に保存したレシピ、リピ記録、家族メンバー設定をすべて削除して、最初の状態に戻します。${syncEnabled() ? "共有はこの端末だけ解除され、家族の端末のデータは残ります。" : ""}よろしいですか？`;
+  const message = `この端末に保存したレシピ、食事の記録、家族メンバー設定をすべて削除して、最初の状態に戻します。${syncEnabled() ? "共有はこの端末だけ解除され、家族の端末のデータは残ります。" : ""}よろしいですか？`;
   if (!window.confirm(message)) return;
   clearTimeout(syncTimer);
   lastSyncedFingerprint = "";
@@ -2785,7 +2779,7 @@ function resetEverything() {
 }
 
 function resetAllUserData() {
-  const message = `保存したレシピ、材料メモ、リピ記録、料理写真をすべて削除します。家族メンバー設定は残ります。${syncEnabled() ? "共有中の家族の端末からも消えます。" : ""}よろしいですか？`;
+  const message = `保存したレシピ、材料メモ、食事の記録、料理写真をすべて削除します。家族メンバー設定は残ります。${syncEnabled() ? "共有中の家族の端末からも消えます。" : ""}よろしいですか？`;
   if (!window.confirm(message)) return;
   const deletedAt = nowIso();
   state.recipes.forEach((recipe) => {
@@ -2817,7 +2811,7 @@ function resetAllUserData() {
   state.view = "collection";
   state.onboarded = true;
   saveState();
-  showToast("レシピとリピ記録を全件削除しました。");
+  showToast("レシピと食事の記録を全件削除しました。");
   render();
 }
 
@@ -3195,7 +3189,7 @@ function getRecipeRepeatSummary(recipeId) {
       count: 0,
       averageDays: null,
       shortLabel: "未設定",
-      badgeLabel: "未リピ記録",
+      badgeLabel: "評価まだ",
       badgeClass: "warn",
       description: "まだ周期未設定",
       nextDate: today(),
@@ -3439,6 +3433,7 @@ document.addEventListener("visibilitychange", () => {
   registerServiceWorker();
   state = await loadStateAsync();
   state.view = "today";
+  readInviteFromLocation();
   const hasSharedUrl = applySharedUrlFromLocation();
   if (!hasSharedUrl && new URLSearchParams(location.search).get("quiz") === "1") {
     const draft = profileDraft();
