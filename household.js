@@ -429,7 +429,6 @@ function renderViewerToday() {
       ${off || !recipe ? '<h2 class="viewer-title">今夜はお休み 🌙</h2>' : `${dishTile(recipe, "viewer-photo")}<h2 class="viewer-title">${escapeHtml(recipe.title)}</h2>`}
       ${tr ? `<p class="viewer-next">明日は <b>${escapeHtml(tr.title)}</b></p>` : ""}
     </section>
-    ${renderRoundBanner()}
     <div class="viewer-actions">${dailyButton("go-view", "🙋 食べたいものを送る", 'data-view="collection"', true)}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</div>
     ${mine.length ? `<p class="viewer-sent">送ったリクエスト：${mine.map((q) => escapeHtml(requestRecipe(q).title || q.recipeTitle)).join("、")}</p>` : ""}`;
 }
@@ -443,7 +442,7 @@ function renderViewerPlan() {
     const sent = openRequests().find((q) => q.date === d.date && q.from === me());
     return `<div class="viewer-day">${dishTile(r)}<div><b>${label}</b><strong>${escapeHtml(r.title)}</strong>${sent ? `<small>🙋 ${escapeHtml(requestRecipe(sent).title)}を送ったよ</small>` : ""}</div>${d.slot?.status === "cooked" || !canSwapRequest() ? "" : `<button type="button" class="tile-request" data-action="${swapDate === d.date ? "life-close-swap" : "life-swap"}" data-date="${d.date}">${swapDate === d.date ? "閉じる" : "🙋 変えたい"}</button>`}</div>${swapDate === d.date ? renderSwapChoices() : ""}`;
   }).join("");
-  return `<section class="viewer-plan-top"><h2>${open && canSwapRequest() ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section>${renderRoundBanner()}<section class="viewer-days">${rows}</section>${renderMealCalendar()}`;
+  return `<section class="viewer-plan-top"><h2>${open && canSwapRequest() ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section><section class="viewer-days">${rows}</section>${renderMealCalendar()}`;
 }
 function renderRoleSettings() {
   if (!syncEnabled()) return "";
@@ -585,4 +584,41 @@ function handleRoundAction(action, data) {
     showToast("おつかれさま！ 今回のリクエストは締め切りました。");
   } else return false;
   saveState(); render(); return true;
+}
+
+// ----- 共通タイムライン：献立 → リクエスト → 買い物 → 完了 -----
+function flowState() {
+  const plan = dailyPlan();
+  const unconfirmed = plan.some((d) => d.candidate && !d.slot);
+  const toBuy = dailyShopping().filter((i) => i.status === "buy").length;
+  const phase = roundPhase();
+  const shared = syncEnabled() && !!partnerName();
+  const steps = shared ? ["献立", "リクエスト", "買い物", "完了"] : ["献立", "買い物", "完了"];
+  let step;
+  if (unconfirmed && (phase === "open" || phase === "closed")) step = "リクエスト";
+  else if (unconfirmed) step = "献立";
+  else if (toBuy && phase !== "done") step = "買い物";
+  else step = "完了";
+  return { steps, step, phase, toBuy, shared };
+}
+function flowHint(f) {
+  const v = isViewer();
+  const partner = escapeHtml(partnerName());
+  const who = v ? "" : partner;
+  switch (f.step) {
+    case "献立": return v ? "献立を準備中。食べたいものは🙋でいつでも" : f.shared ? `献立を見て、${who}にリクエストを聞こう` : "献立を見て「これで決定」";
+    case "リクエスト": return f.phase === "open"
+      ? (v ? `<b>${deadlineLabel()}</b>までに🙋で送ってね（${timeLeftLabel()}）` : `<b>${deadlineLabel()}</b>まで受付中（${timeLeftLabel()}）`)
+      : (v ? "締切を過ぎました。献立の決定を待っています" : "締切を過ぎました。献立を決めて買い物へ");
+    case "買い物": return v ? `買い物の準備中（あと${f.toBuy}品）` : `あと${f.toBuy}品。買ったらチェック、終わったら「買い物完了」`;
+    default: return "おつかれさま！ あとは作って、食べて、「次はいつ食べたい？」";
+  }
+}
+function renderFlow() {
+  if (!state.onboarded) return "";
+  const f = flowState();
+  const at = f.steps.indexOf(f.step);
+  const target = { 献立: "plan", リクエスト: "plan", 買い物: "shopping", 完了: "today" }[f.step];
+  const go = target !== state.view && f.step !== "完了" ? `<button type="button" class="flow-go" data-action="go-view" data-view="${target}">${f.step === "買い物" ? "買い物リストへ" : "献立へ"} ›</button>` : "";
+  return `<section class="flow" aria-label="今の段階：${f.step}"><ol class="flow-steps">${f.steps.map((s, i) => `<li class="${i < at ? "is-done" : i === at ? "is-now" : ""}"><i aria-hidden="true">${i < at ? "✓" : i + 1}</i><span>${s}</span></li>`).join("")}</ol><p class="flow-hint"><span>${flowHint(f)}</span>${go}</p></section>`;
 }
