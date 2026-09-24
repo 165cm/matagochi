@@ -415,8 +415,8 @@ test("past three days are recordable once, future and older slots are not", () =
   run('const yesterday=addDays(today(),-1);confirmDaily({date:yesterday},Lifestyle.curated[0]);dailyRecord(state.mealSlots[yesterday]);dailyRecord(state.mealSlots[yesterday]);');
   assert.equal(run('state.evaluations.length'),1);
   assert.equal(run('state.evaluations[0].cookedAt===yesterday'),true);
-  assert.equal(run('renderPreferencePrompt().includes("月２回")'),true);
-  run('handleDailyAction("life-frequency",{id:state.evaluations[0].id,cycle:"monthly"})');
+  assert.equal(run('renderPreferencePrompt().includes("また食べたい")'),true);
+  run('handleDailyAction("life-rate",{id:state.evaluations[0].id,member:state.family[0],cycle:"monthly"})');
   assert.equal(run('state.evaluations[0].familyRepeatCycles[state.family[0]]'),"monthly");
   assert.equal(run('renderPreferencePrompt()'),"");
   assert.equal(run('canRecordDate(addDays(today(),-3))'),true);
@@ -480,4 +480,18 @@ test("app history counts cooked-but-unrated meals and labels the last time", () 
   assert.equal(run("lastEatenLabel(Lifestyle.curated[1])"), "一昨日");
   assert.equal(run("lastEatenLabel(Lifestyle.curated[2])"), "はじめて");
   assert.ok(run("dailyPlan().every(d => !d.candidate || d.candidate.recipe.id !== Lifestyle.curated[1].id)"));
+});
+
+test("two people rate separately; both loving a dish shows ふたりとも好き", () => {
+  const run = app();
+  run('state.servingCount=2;const y=addDays(today(),-1);confirmDaily({date:y},Lifestyle.curated[0]);dailyRecord(state.mealSlots[y]);');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(raterNames())')), ["自分", "いっしょに食べた人"]);
+  const id = run('state.evaluations[0].id');
+  run(`handleDailyAction("life-rate",{id:"${id}",member:"自分",cycle:"weekly"})`);
+  assert.equal(run('state.evaluations[0].preferencePending'), true);
+  run(`handleDailyAction("life-rate",{id:"${id}",member:"いっしょに食べた人",cycle:"weekly"})`);
+  assert.equal(run('state.evaluations[0].preferencePending'), false);
+  assert.equal(run('state.family.length'), 2);
+  assert.equal(run('bothLike(Lifestyle.curated[0])'), true);
+  assert.equal(run('renderPreferencePrompt()'), "");
 });

@@ -451,11 +451,34 @@ function renderRecentMeals() {
   const slots = Object.values(state.mealSlots || {}).filter(s => s.status === "confirmed" && s.date < today() && canRecordDate(s.date)).sort((a,b)=>b.date.localeCompare(a.date));
   return slots.length ? `<section class="panel"><h3>🍳 作った？</h3>${slots.map(s=>`<div class="daily-plan-row"><p>${formatDate(s.date)} · ${escapeHtml(s.recipe.title)}</p>${dailyButton("life-record-past","作った",`data-date="${s.date}"`)}</div>`).join("")}</section>` : "";
 }
+// Each person rates with one tap. Kind words only: nobody "dislikes", they "pass this time".
+const RATINGS = [
+  { cycle: "weekly", face: "😍", label: "また食べたい" },
+  { cycle: "monthly", face: "🙂", label: "たまになら" },
+  { cycle: "pause", face: "🙅", label: "今回はパス" },
+];
+function raterNames() {
+  const names = [...state.family];
+  if (dailyProfile().servings >= 2 && names.length < 2) names.push("いっしょに食べた人");
+  return names;
+}
 function renderPreferencePrompt() {
   const e = state.evaluations.find(e=>e.id===preferencePromptId && e.preferencePending);
   if (!e) return "";
-  const emoji = ["😍","😋","😊","🙂","😌","🙅"];
-  return `<section class="panel" role="region" aria-label="また食べたい頻度"><h3>また食べたいのは、いつ？</h3><p>${escapeHtml(e.recipeTitle)}</p><div class="actions">${repeatOptions.map((o,i)=>dailyButton("life-frequency",`${emoji[i]} ${o.label}`,`data-id="${escapeAttr(e.id)}" data-cycle="${o.id}"`)).join("")}</div>${dailyButton("life-frequency-close","あとで")}</section>`;
+  const names = raterNames();
+  const rows = names.map((name) => `<div class="rate-row"><span class="rate-name">${escapeHtml(name)}</span><div class="rate-faces" role="group" aria-label="${escapeAttr(name)}の気持ち">${RATINGS.map((r) => `<button type="button" class="rate-face" data-action="life-rate" data-id="${escapeAttr(e.id)}" data-member="${escapeAttr(name)}" data-cycle="${r.cycle}" aria-pressed="${e.familyRepeatCycles?.[name] === r.cycle}" aria-label="${escapeAttr(name)}：${r.label}"><span aria-hidden="true">${r.face}</span><small>${r.label}</small></button>`).join("")}</div></div>`).join("");
+  return `<section class="panel rate-card" role="region" aria-label="また食べたい"><p class="hand rate-note">おつかれさま！</p><h3>${escapeHtml(e.recipeTitle)}、どうだった？</h3><p class="muted small">${names.length > 1 ? "ひとりずつタップ。ふたりとも好きな一皿が、また上位にきます。" : "タップすると、ちょうどいい頃にまた提案します。"}</p>${rows}${dailyButton("life-frequency-close","あとで")}</section>`;
+}
+// Latest rating per person for a recipe (own copy or starter).
+function recipeRatings(recipe) {
+  const ids = new Set([recipe.id, recipe.starterId].filter(Boolean));
+  state.recipes.forEach((r) => { if (r.starterId === recipe.id) ids.add(r.id); });
+  const e = state.evaluations.filter((x) => ids.has(x.recipeId) && !x.preferencePending).sort((a, b) => b.cookedAt.localeCompare(a.cookedAt))[0];
+  return e?.familyRepeatCycles || {};
+}
+function bothLike(recipe) {
+  const values = Object.values(recipeRatings(recipe));
+  return values.length >= 2 && values.every((c) => c === "weekly" || c === "tomorrow");
 }
 function renderDailyShopping() {
   const items = dailyShopping();
@@ -786,6 +809,19 @@ function handleDailyAction(action, data) {
     state.view = "today";
   }
   if (action === "life-frequency-close") preferencePromptId = "";
+  if (action === "life-rate") {
+    const e = state.evaluations.find(e=>e.id===data.id);
+    if (e?.preferencePending && RATINGS.some(r=>r.cycle===data.cycle) && raterNames().includes(data.member)) {
+      if (!state.family.includes(data.member)) state.family.push(data.member);
+      e.familyRepeatCycles = {...e.familyRepeatCycles, [data.member]:data.cycle};
+      e.updatedAt = nowIso();
+      if (raterNames().every(n => e.familyRepeatCycles[n])) {
+        e.personalPreference = true; e.preferencePending = false;
+        preferencePromptId = "";
+        showToast(bothLike({id:e.recipeId}) ? "ふたりとも好き！ちょうどいい頃に、また提案します。" : "記録しました。次の献立に活かします。");
+      }
+    }
+  }
   if (action === "life-frequency") {
     const e = state.evaluations.find(e=>e.id===data.id);
     if (e?.preferencePending && e.id === preferencePromptId && repeatOptions.some(o=>o.id===data.cycle)) {
