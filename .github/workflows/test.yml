@@ -26,4 +26,5 @@ jobs:
       - run: node --check app.js
       - run: node --check image-import.js
       - run: node --check playlist-import.js
+      - run: node --check lp/waitlist.js
       - run: git diff --check
