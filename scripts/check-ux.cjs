@@ -30,9 +30,10 @@ const assert=require('node:assert/strict');
  await page.screenshot({path:'/tmp/ux-shopping.png',fullPage:true});
  await page.evaluate(()=>{confirmDaily({date:addDays(today(),-1)},Lifestyle.curated[0]);state.view='today';render();});
  await page.locator('[data-action="life-record-past"]').click();
- await page.locator('[data-action="life-frequency"][data-cycle="twice_month"]').click();
- assert.equal(await page.evaluate(()=>state.evaluations[0].familyRepeatCycles[state.family[0]]),'twice_month');
- assert.equal(await page.locator('[data-action="life-frequency"]').count(),0);
+ // One tap per person; the card closes once everyone has answered.
+ for (const button of await page.locator('[data-action="life-rate"][data-cycle="monthly"]').all()) await button.click();
+ assert.equal(await page.evaluate(()=>state.evaluations[0].familyRepeatCycles[state.family[0]]),'monthly');
+ assert.equal(await page.locator('[data-action="life-rate"]').count(),0);
  assert.equal(await page.evaluate(()=>state.evaluations[0].cookedAt),await page.evaluate(()=>addDays(today(),-1)));
  // Unknown saved dish is visible in swaps but must be reviewed before selection.
  await page.evaluate(()=>{state.recipes.unshift({...clone(Lifestyle.curated[0]),planning:undefined,curated:undefined,id:'unreviewed-test',title:'未確認トマトごはん',mealType:'dinner',ingredients:[ingredient('トマト','1個','野菜')],steps:['切る']});state.view='plan';swapDate=addDays(today(),1);render();});

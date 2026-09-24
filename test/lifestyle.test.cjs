@@ -415,8 +415,8 @@ test("past three days are recordable once, future and older slots are not", () =
   run('const yesterday=addDays(today(),-1);confirmDaily({date:yesterday},Lifestyle.curated[0]);dailyRecord(state.mealSlots[yesterday]);dailyRecord(state.mealSlots[yesterday]);');
   assert.equal(run('state.evaluations.length'),1);
   assert.equal(run('state.evaluations[0].cookedAt===yesterday'),true);
-  assert.equal(run('renderPreferencePrompt().includes("月２回")'),true);
-  run('handleDailyAction("life-frequency",{id:state.evaluations[0].id,cycle:"monthly"})');
+  assert.equal(run('renderPreferencePrompt().includes("また食べたい")'),true);
+  run('handleDailyAction("life-rate",{id:state.evaluations[0].id,member:state.family[0],cycle:"monthly"})');
   assert.equal(run('state.evaluations[0].familyRepeatCycles[state.family[0]]'),"monthly");
   assert.equal(run('renderPreferencePrompt()'),"");
   assert.equal(run('canRecordDate(addDays(today(),-3))'),true);
@@ -446,4 +446,52 @@ test("shopping keeps concentration and product variants separate", () => {
   assert.ok(items.some(i=>i.name==="めんつゆ(3倍濃縮)"));
   assert.ok(items.some(i=>i.name==="めんつゆ(ストレート)"));
   assert.equal(items.find(i=>i.name==="ごはん").status,"have");
+});
+
+test("rotation: pasta the day before yesterday leads to a rice dish with a friendly reason", () => {
+  const pasta = { id: "p1", title: "納豆パスタ", mealType: "dinner", ingredients: [{ name: "パスタ" }, { name: "納豆" }], steps: [] };
+  const history = [{ date: addDays(start, -2), recipe: pasta }];
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, history });
+  const first = plan[0].candidate;
+  assert.notEqual(L.traits(first.recipe).staple, "noodle");
+  assert.ok(first.reasons[0].startsWith("一昨日はパスタだったので、"), first.reasons[0]);
+});
+
+test("rotation: consecutive plan days avoid the same staple when alternatives exist", () => {
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays });
+  const staples = plan.map((d) => L.traits(d.candidate.recipe).staple);
+  assert.notEqual(staples[0], staples[1]);
+  assert.notEqual(staples[1], staples[2]);
+});
+
+test("rotation: a dish eaten within the last week is not suggested again, even if never rated", () => {
+  const eaten = L.curated[0];
+  const history = [{ date: addDays(start, -3), recipe: eaten }];
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, history });
+  assert.ok(plan.every((d) => d.candidate.recipe.id !== eaten.id));
+  const r = L.rotation(eaten, start, history, (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000));
+  assert.equal(r.lastEatenDays, 3);
+});
+
+test("app history counts cooked-but-unrated meals and labels the last time", () => {
+  const run = app();
+  run(`const r=Lifestyle.curated[1]; state.mealSlots[addDays(today(),-2)]={date:addDays(today(),-2),status:"cooked",servings:1,recipe:clone(r),updatedAt:nowIso()};`);
+  assert.equal(run("mealHistory().length"), 1);
+  assert.equal(run("lastEatenLabel(Lifestyle.curated[1])"), "一昨日");
+  assert.equal(run("lastEatenLabel(Lifestyle.curated[2])"), "はじめて");
+  assert.ok(run("dailyPlan().every(d => !d.candidate || d.candidate.recipe.id !== Lifestyle.curated[1].id)"));
+});
+
+test("two people rate separately; both loving a dish shows ふたりとも好き", () => {
+  const run = app();
+  run('state.servingCount=2;const y=addDays(today(),-1);confirmDaily({date:y},Lifestyle.curated[0]);dailyRecord(state.mealSlots[y]);');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(raterNames())')), ["自分", "いっしょに食べた人"]);
+  const id = run('state.evaluations[0].id');
+  run(`handleDailyAction("life-rate",{id:"${id}",member:"自分",cycle:"weekly"})`);
+  assert.equal(run('state.evaluations[0].preferencePending'), true);
+  run(`handleDailyAction("life-rate",{id:"${id}",member:"いっしょに食べた人",cycle:"weekly"})`);
+  assert.equal(run('state.evaluations[0].preferencePending'), false);
+  assert.equal(run('state.family.length'), 2);
+  assert.equal(run('bothLike(Lifestyle.curated[0])'), true);
+  assert.equal(run('renderPreferencePrompt()'), "");
 });
