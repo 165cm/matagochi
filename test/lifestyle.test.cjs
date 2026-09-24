@@ -553,3 +553,19 @@ test("app: invite members fill the placeholders and carry earlier ratings", () =
   assert.equal(run('state.evaluations[0].familyRepeatCycles["パパ"]'), "weekly");
   assert.equal(run("me()"), "パパ");
 });
+
+test("app: viewers see the plan but only send requests; the owner applies a dated request", () => {
+  const run = app();
+  run('state.family=["パパ","むすめ"];state.me="むすめ";state.sync={code:"x",roomId:"a".repeat(64),lastSyncAt:""};state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()};syncEnabled=()=>true');
+  assert.equal(run("isViewer()"), true);
+  assert.ok(!run("renderDailyPlan()").includes('data-action="life-confirm"'));
+  run('handleDailyAction("life-confirm",{})');
+  assert.equal(run("Object.keys(state.mealSlots).length"), 0);
+  run('handleDailyAction("life-request-swap",{date:addDays(today(),1),recipe:"starter-20"})');
+  assert.equal(run("openRequests()[0].date===addDays(today(),1)"), true);
+  assert.equal(run("openRequestFor(Lifestyle.curated.find(r=>r.id==='starter-20'))"), null);
+  run('state.me="パパ";handleDailyAction("life-apply-swap",{id:openRequests()[0].id})');
+  assert.equal(run("state.planOverrides[addDays(today(),1)]"), "starter-20");
+  assert.equal(run("openRequests().length"), 0);
+  assert.equal(run('roleOf("新しい人")'), "viewer");
+});

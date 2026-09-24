@@ -361,13 +361,13 @@ function renderDailyPlan() {
       const status = day.slot?.status === "cooked" ? "作った" : day.slot ? "確定" : "";
       const note = planReason(day) || (bothLike(recipe) ? "ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe));
       const minutes = recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
-      const more = day.slot?.status === "cooked" ? "" : `<details class="plan-more"><summary aria-label="${dateLabel}のその他の操作">⋯</summary><div>${day.slot?.status === "confirmed" && slotHasUpdates(day.slot) ? dailyButton("life-refresh", "今のレシピ・人数を反映", `data-date="${day.date}"`) : ""}<button class="text-button" data-action="life-off" data-date="${day.date}">この日は自炊お休み</button></div></details>`;
-      const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">入れ替え</span>'}</button>`;
-      return `<article class="plan-card ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${escapeHtml(recipe.title)}</button>${minutes ? `<p class="plan-time"><span class="marker">${minutes}</span></p>` : ""}<p class="hand plan-note">${escapeHtml(note)}</p><div class="plan-controls">${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}</article>${swapDate === day.date ? renderSwapChoices() : ""}`;
+      const more = day.slot?.status === "cooked" || isViewer() ? "" : `<details class="plan-more"><summary aria-label="${dateLabel}のその他の操作">⋯</summary><div>${day.slot?.status === "confirmed" && slotHasUpdates(day.slot) ? dailyButton("life-refresh", "今のレシピ・人数を反映", `data-date="${day.date}"`) : ""}<button class="text-button" data-action="life-off" data-date="${day.date}">この日は自炊お休み</button></div></details>`;
+      const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">入れ替え</span>'}</button>`;
+      return `<article class="plan-card ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${escapeHtml(recipe.title)}</button>${minutes ? `<p class="plan-time"><span class="marker">${minutes}</span></p>` : ""}<p class="hand plan-note">${escapeHtml(note)}</p><div class="plan-controls">${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}`;
     })
     .join("");
   const ready = plan.filter((d) => d.candidate).length;
-  return `<section class="plan-top"><h2>${n}日分、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools"><div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div><button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button></div></section>${!state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>`;
+  return `<section class="plan-top"><h2>${n}日分、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools"><div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderViewerPlanBanner(plan)}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${renderAskButton()}${dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>`;
 }
 let swapShowAll = false;
 function renderSwapChoices() {
@@ -386,7 +386,9 @@ function renderSwapChoices() {
     .sort((a, b) => Number(!!a.r.curated) - Number(!!b.r.curated) || Number(used.has(a.r.id)) - Number(used.has(b.r.id)) || Number(!a.fit.ok) - Number(!b.fit.ok) || (b.fit.score || 0) - (a.fit.score || 0))
     .slice(0, 12);
   const shown = swapShowAll ? options : options.slice(0, 4);
-  const option = ({ r, fit }) => fit.ok
+  const option = ({ r, fit }) => isViewer()
+    ? (fit.ok ? `<button type="button" class="swap-option" data-action="life-request-swap" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${escapeHtml(r.title)}</strong><small>${escapeHtml(lastEatenLabel(r))}</small></span><b aria-hidden="true">送る</b></button>` : "")
+    : fit.ok
     ? `<button type="button" class="swap-option" data-action="life-choose" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${escapeHtml(r.title)}</strong><small>${escapeHtml(planMeta(r, fit.reasons) || "保存したレシピ")}${used.has(r.id) ? " · ほかの日と同じ" : ""}</small></span><b aria-hidden="true">選ぶ</b></button>`
     : `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${escapeHtml(r.title)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`;
   return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の別の一品">${shown.map(option).join("") || "<p>別の候補がありません。条件をゆるめるかレシピを追加してください。</p>"}${options.length > shown.length ? `<button type="button" class="text-button" data-action="life-swap-more">ほかの候補を見る（あと${options.length - shown.length}品）</button>` : ""}</section>`;
@@ -410,7 +412,8 @@ function renderToday() {
   const servings = slot?.servings || dailyProfile().servings;
   const reason = (day && planReason(day)) || "";
   let actions = "";
-  if (off) actions = dailyButton("life-reopen", "今夜は料理する", `data-date="${today()}"`, true);
+  if (isViewer()) actions = recipe && !off ? `${dailyButton("life-cook", "作り方を見る", `data-date="${today()}"`, true)}${!slot ? `<button type="button" class="text-button swap-link" data-action="go-view" data-view="plan">🙋 別のがいいときは献立から</button>` : ""}` : "";
+  else if (off) actions = dailyButton("life-reopen", "今夜は料理する", `data-date="${today()}"`, true);
   else if (!slot || slot.status === "removed")
     actions = `${recipe ? dailyButton("life-confirm-one", "これにする", `data-date="${today()}"`, true) : dailyButton("life-profile", "条件をゆるめる", "", true)}${recipe ? `<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}">⇄ ほかの一皿</button>` : ""}`;
   else if (slot.status === "cooked") actions = dailyButton("go-view", "明日のごはんを見る", 'data-view="plan"', true);
@@ -426,7 +429,7 @@ function renderToday() {
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p>${!off && recipe && !slot ? '<p class="hand tonight-aside" aria-hidden="true">きっと<br />よろこぶよ</p>' : ""}</div>
     ${off ? '<p class="tonight-off">また次の夜ごはんで。🌙</p>' : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${escapeHtml(recipe.title)}</h3>${reason ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", `${servings}人分`, lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>${bothLike(recipe) ? '<p class="tonight-both"><span aria-hidden="true">😋😋</span> ふたりとも好き</p>' : ""}` : '<p class="tonight-off">条件に合う一品が見つかりません。条件をゆるめるか、レシピを追加してください。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
-    <div class="tonight-actions">${actions}${!off && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-off" data-date="${today()}">今日は自炊お休み</button>` : ""}</div></section>
+    <div class="tonight-actions">${actions}${!off && !isViewer() && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-off" data-date="${today()}">今日は自炊お休み</button>` : ""}</div></section>
   ${next.length ? `<section class="next-meals"><h3 class="section-title"><span class="marker">明日も、楽しみ。</span></h3>${next.map((d) => {
     const r = d.slot?.recipe || d.candidate?.recipe;
     const isOff = d.off || d.slot?.status === "off";
@@ -484,7 +487,7 @@ function renderDailyShopping() {
   const aisle = i => /野菜/.test(i.category) ? "🥬 野菜" : /肉|魚/.test(i.category) ? "🥩 肉・魚" : /卵|乳|大豆|豆腐|チーズ|牛乳|バター/.test(i.category + i.name) ? "🥚 卵・乳製品・豆腐" : "🥫 主食・乾物・調味料";
   const order = ["🥬 野菜", "🥩 肉・魚", "🥚 卵・乳製品・豆腐", "🥫 主食・乾物・調味料"];
   const count = (status) => items.filter((i) => i.status === status).length;
-  const row = (i, status) => `<div class="daily-shopping-row"><label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">必要量を再確認</small>' : ""}</span></label>${status === "purchased" ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "家にある"}</button>`}${i.id.startsWith("manual-") ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
+  const row = (i, status) => `<div class="daily-shopping-row"><label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">必要量を再確認</small>' : ""}</span></label>${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "家にある"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
   const rows = (status) => order.map((category) => {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
     return list.length ? `<h4>${category}</h4>${list.map((i) => row(i, status)).join("")}` : "";
@@ -498,11 +501,11 @@ function renderDailyShopping() {
   const folded = (status, title, hint) => count(status) ? `<details class="shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${rows(status)}</details>` : "";
   return `<section class="shop-top"><div><h2>買ったら、<br /><span class="marker nobr">ポン。</span></h2>${items.length ? `<p class="hand">買えたら、丸をタップ。</p>` : ""}</div>${items.length ? `<div class="shop-tools">${dailyButton("copy-shopping", "コピー")}${dailyButton("share-shopping", "共有")}</div>` : ""}</section>
   ${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}
-  ${!items.length ? `<section class="panel shop-empty"><p>献立を決めると、必要な材料だけのリストができます。</p>${dailyButton("go-view", "献立を決める", 'data-view="plan"', true)}</section>` : ""}
+  ${!items.length ? `<section class="panel shop-empty"><p>献立が決まると、必要な材料だけのリストができます。</p>${dailyButton("go-view", isViewer() ? "献立を見る" : "献立を決める", 'data-view="plan"', true)}</section>` : ""}
   ${progress}${cards}
-  <section class="shop-add"><h3>＋ 買い足す</h3><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></section>
+  ${isViewer() ? "" : `<section class="shop-add"><h3>＋ 買い足す</h3><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></section>`}
   ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "調味料は残量も確認してください")}
-  <button type="button" class="text-button full-button" data-action="life-profile">常備品・買い物の頻度を変える</button>`;
+  ${isViewer() ? "" : '<button type="button" class="text-button full-button" data-action="life-profile">常備品・買い物の頻度を変える</button>'}`;
 }
 // Device-local progress: never share cooking checkmarks with another household member.
 let cookingProgress = (() => {
@@ -720,6 +723,7 @@ function handleDailyAction(action, data) {
   const oldView = state.view;
   if (!action.startsWith("life-")) return false;
   if (handleHouseholdAction(action, data)) return true;
+  if (viewerBlocked(action)) return true;
   const before = dailyShopping();
   if (action === "life-review-saved") {
     reviewReturnDate = data.date;
