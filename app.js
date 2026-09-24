@@ -826,7 +826,7 @@ function render() {
     settings: renderSettings
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = views[state.view]();
+  document.querySelector("#app").innerHTML = (["today", "plan", "shopping"].includes(state.view) ? renderFlow() : "") + views[state.view]();
   bindEvents();
 }
 

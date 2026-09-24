@@ -2306,3 +2306,19 @@ span.tile-photo { cursor: default; }
 .request-log li em { margin-left: auto; font-style: normal; color: var(--tomato); font-weight: 700; }
 .round-done p { flex: 1; min-width: 0; }
 .round-done .secondary-button, .round-done .primary-button { flex: 0 0 auto; white-space: nowrap; }
+
+/* ----- 共通タイムライン ----- */
+.flow { margin: 0 0 14px; padding: 10px 12px 10px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.flow-steps { list-style: none; margin: 0; padding: 0; display: flex; }
+.flow-steps li { flex: 1; position: relative; display: grid; justify-items: center; gap: 3px; font-size: 11px; font-weight: 800; color: #b9ab99; }
+.flow-steps li::before { content: ""; position: absolute; top: 11px; left: -50%; width: 100%; height: 3px; background: #efe4d6; z-index: 0; }
+.flow-steps li:first-child::before { display: none; }
+.flow-steps li.is-done::before, .flow-steps li.is-now::before { background: var(--tomato); }
+.flow-steps i { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 12px; background: #efe4d6; color: #fff; }
+.flow-steps li.is-done { color: var(--muted); }
+.flow-steps li.is-done i { background: var(--tomato); }
+.flow-steps li.is-now { color: var(--tomato); }
+.flow-steps li.is-now i { background: var(--tomato); box-shadow: 0 0 0 4px #fde3da; }
+.flow-hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin: 8px 2px 0; font-size: 13px; color: var(--ink); }
+.flow-hint b { color: var(--tomato); }
+.flow-go { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 800; color: var(--tomato); cursor: pointer; white-space: nowrap; }

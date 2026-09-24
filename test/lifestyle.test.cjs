@@ -598,3 +598,16 @@ test("app: shopping round — requests until the deadline, only 'feelings' after
   assert.equal(run("roundPhase()"), "done");
   assert.equal(run("normalizeRound(JSON.parse(JSON.stringify(state.round))).status"), "done");
 });
+
+test("app: the shared timeline moves 献立 → リクエスト → 買い物 → 完了", () => {
+  const run = app();
+  run('state.onboarded=true;state.family=["パパ","むすめ"];state.me="パパ";state.sync={code:"x",roomId:"a".repeat(64),lastSyncAt:""};syncEnabled=()=>true;state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()}');
+  assert.equal(run("flowState().step"), "献立");
+  run('state.round=normalizeRound({deadline:localStamp(new Date(Date.now()+3600000)),status:"open",updatedAt:nowIso()})');
+  assert.equal(run("flowState().step"), "リクエスト");
+  run('dailyPlan().forEach(d=>d.candidate&&confirmDaily(d,d.candidate.recipe))');
+  assert.equal(run("flowState().step"), "買い物");
+  run('handleDailyAction("life-round-done",{})');
+  assert.equal(run("flowState().step"), "完了");
+  assert.ok(run("renderFlow()").includes("is-now"));
+});
