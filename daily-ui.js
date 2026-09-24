@@ -414,7 +414,7 @@ function renderToday() {
     actions = `${recipe ? dailyButton("life-confirm-one", "これにする", `data-date="${today()}"`, true) : dailyButton("life-profile", "条件をゆるめる", "", true)}${recipe ? `<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}">⇄ ほかの一皿</button>` : ""}`;
   else if (slot.status === "cooked") actions = dailyButton("go-view", "明日のごはんを見る", 'data-view="plan"', true);
   else actions = `${dailyButton("life-cook", "作り方を見る", `data-date="${today()}"`, true)}${remaining ? dailyButton("go-view", `買うものを見る（あと${remaining}品）`, 'data-view="shopping"') : ""}`;
-  const label = off ? "今日はお休み" : slot?.status === "cooked" ? "今日の一品" : slot ? "今夜の一品" : "今夜のおすすめ";
+  const label = off ? "今日はお休み" : slot?.status === "cooked" ? "ごちそうさま！ 今日の一品" : slot ? "今夜の一品" : "今夜のおすすめ";
   const history = mealHistory(4).filter((m) => m.date < today()).slice(0, 3);
   const recent = state.evaluations.filter((e) => daysBetween(e.cookedAt, today()) >= 0 && daysBetween(e.cookedAt, today()) < 7);
   const next = dailyPlan().slice(1, 3);
@@ -479,9 +479,20 @@ function renderDailyShopping() {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
     return list.length ? `<h4>${category}</h4>${list.map((i) => row(i, status)).join("")}` : "";
   }).join("");
-  const buyPanel = items.length ? `<section class="panel"><h3>買うもの <span class="badge">${count("buy")}</span></h3>${count("buy") ? rows("buy") : '<p>🎉 全部そろいました。</p>'}</section>` : "";
-  const folded = (status, title, hint) => count(status) ? `<details class="panel shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${rows(status)}</details>` : "";
-  return `<section class="hero-card shopping-hero"><h2>🛒 買い物リスト</h2>${items.length ? `<p>買うもの <strong>${count("buy")}品</strong> · 家にある ${count("have")}品 · 購入済み ${count("purchased")}品</p><div class="actions">${dailyButton("copy-shopping", "コピー")}${dailyButton("share-shopping", "共有")}</div>` : ""}${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}<button type="button" class="text-button" data-action="life-profile">常備品・買い物の頻度を変える</button></section>${!items.length ? `<section class="panel"><p>献立を確定すると、必要な材料だけのリストができます。</p>${dailyButton("go-view", "献立を決める", 'data-view="plan"', true)}</section>` : ""}${buyPanel}<section class="panel"><h3>買い足すもの</h3><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></section>${folded("have", "家にある", "調味料は残量も確認してください")}${folded("purchased", "購入済み", "チェックを外すと買うものに戻ります")}`;
+  const cards = order.map((category) => {
+    const list = items.filter((i) => i.status === "buy" && aisle(i) === category);
+    return list.length ? `<section class="aisle-card"><h4>${category} <small>${list.length}</small></h4>${list.map((i) => row(i, "buy")).join("")}</section>` : "";
+  }).join("");
+  const buy = count("buy"), purchased = count("purchased"), total = buy + purchased;
+  const progress = total ? `<div class="shop-progress" role="status"><p><span>${buy ? `あと <strong class="marker">${buy}つ</strong>` : "🎉 全部そろいました！"}</span><small>${purchased}/${total}</small></p><span class="shop-bar"><i style="width:${Math.round((purchased / total) * 100)}%"></i></span></div>` : "";
+  const folded = (status, title, hint) => count(status) ? `<details class="shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${rows(status)}</details>` : "";
+  return `<section class="shop-top"><div><h2>買ったら、<br /><span class="marker nobr">ポン。</span></h2>${items.length ? `<p class="hand">買えたら、丸をタップ。</p>` : ""}</div>${items.length ? `<div class="shop-tools">${dailyButton("copy-shopping", "コピー")}${dailyButton("share-shopping", "共有")}</div>` : ""}</section>
+  ${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}
+  ${!items.length ? `<section class="panel shop-empty"><p>献立を決めると、必要な材料だけのリストができます。</p>${dailyButton("go-view", "献立を決める", 'data-view="plan"', true)}</section>` : ""}
+  ${progress}${cards}
+  <section class="shop-add"><h3>＋ 買い足す</h3><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></section>
+  ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "調味料は残量も確認してください")}
+  <button type="button" class="text-button full-button" data-action="life-profile">常備品・買い物の頻度を変える</button>`;
 }
 // Device-local progress: never share cooking checkmarks with another household member.
 let cookingProgress = (() => {
@@ -507,17 +518,39 @@ function renderCooking() {
   <h3>作り方 <small class="muted">終わったらタップ</small></h3><ol class="cooking-steps cooking-check">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${escapeHtml(st)}</span></label></li>`).join("")}</ol>
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
+let reflMonth = 0; // 0 = this month, -1 = last month, ...
+function reflectionMonth() {
+  const [y, m] = today().split("-").map(Number);
+  const d = new Date(y, m - 1 + reflMonth, 1);
+  return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: `${d.getFullYear()}年${d.getMonth() + 1}月` };
+}
 function renderReflection() {
-  return `<section class="hero-card"><h2>😋 また食べたい記録。</h2>${state.evaluations.length ? `<p>食べた記録は${state.evaluations.length}回。好きな一品が、次の献立につながります。</p>${dailyButton("life-record-details", "記録・写真・好みを編集")}` : "<p>「作った」を押すと、ここに記録がたまり、次の献立に活かされます。</p>"}</section><section class="panel">${
-    [...state.evaluations]
-      .sort((a, b) => b.cookedAt.localeCompare(a.cookedAt))
-      .slice(0, 20)
-      .map(
-        (e) =>
-          `<article class="daily-plan-row"><p>${formatDate(e.cookedAt)}</p>${e.photo ? `<img class="daily-photo" src="${escapeAttr(e.photo)}" alt="食卓の記録" loading="lazy">` : ""}<h3>${escapeHtml(e.recipeTitle || recipeById(e.recipeId)?.title || "保存済みの料理")}</h3>${e.memo ? `<p>${escapeHtml(e.memo)}</p>` : ""}${dailyButton("life-edit-record", "写真・メモ・好みを編集", `data-id="${escapeAttr(e.id)}"`)}</article>`,
-      )
-      .join("") || "<p>今夜の「作った」から、思い出が増えていきます。</p>"
-  }</section>`;
+  const month = reflectionMonth();
+  const recipeOf = (e) => recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || { id: e.recipeId, title: e.recipeTitle || "保存済みの料理", ingredients: [] };
+  const list = state.evaluations.filter((e) => (e.cookedAt || "").startsWith(month.key)).sort((a, b) => b.cookedAt.localeCompare(a.cookedAt));
+  const loved = (e) => Object.values(e.familyRepeatCycles || {}).filter((c) => c === "weekly" || c === "tomorrow").length;
+  const tally = new Map();
+  list.forEach((e) => {
+    const t = tally.get(e.recipeId) || { e, times: 0, love: 0 };
+    t.times += 1;
+    t.love += loved(e);
+    tally.set(e.recipeId, t);
+  });
+  const fav = [...tally.values()].sort((a, b) => b.love - a.love || b.times - a.times)[0];
+  const favRecipe = fav && recipeOf(fav.e);
+  const favNote = fav ? (fav.love && bothLike(favRecipe) ? "ふたりとも「また食べたい」" : fav.times > 1 ? `${fav.times}回つくりました` : fav.love ? "「また食べたい」の一皿" : "今月の一皿") : "";
+  const lovedCount = [...tally.values()].filter((t) => t.love).length;
+  const nav = `<div class="month-nav"><button type="button" class="round-icon" data-action="life-month" data-delta="-1" aria-label="前の月">‹</button><strong>${month.label}</strong><button type="button" class="round-icon" data-action="life-month" data-delta="1" aria-label="次の月" ${reflMonth >= 0 ? "disabled" : ""}>›</button></div>`;
+  const tiles = list.slice(0, 31).map((e) => {
+    const r = recipeOf(e);
+    const photo = e.photo ? `<img class="dish-tile" src="${escapeAttr(e.photo)}" alt="" loading="lazy">` : dishTile(r);
+    return `<button type="button" class="table-tile" data-action="life-edit-record" data-id="${escapeAttr(e.id)}" aria-label="${escapeAttr(`${formatDate(e.cookedAt)} ${r.title}の記録を開く`)}">${photo}<span class="day-num">${Number(e.cookedAt.slice(8, 10))}</span>${loved(e) ? '<span class="tile-love" aria-hidden="true">😍</span>' : ""}<small>${escapeHtml(r.title)}</small></button>`;
+  }).join("");
+  return `<section class="refl-top"><h2>${reflMonth === 0 ? "今月も、" : "この月も、"}<br /><span class="marker nobr">おいしかった。</span></h2>${nav}</section>
+  ${list.length ? `<div class="refl-stats"><p><strong>${list.length}</strong><small>回つくった</small></p><p><strong>${tally.size}</strong><small>種類の料理</small></p><p><strong>${lovedCount}</strong><small>また食べたい</small></p></div>` : ""}
+  ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
+  <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3>${state.evaluations.length ? dailyButton("life-record-details", "記録を編集") : ""}</div>
+  ${tiles ? `<div class="table-grid">${tiles}</div>` : `<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。好きな一品が、次の献立につながります。" : "この月の記録はありません。"}</p>`}</section>`;
 }
 function saveOwnRecipe(recipe) {
   const existing = state.recipes.find(
@@ -766,6 +799,8 @@ function handleDailyAction(action, data) {
   if (action === "life-close-swap") swapDate = "";
   if (action === "life-swap-more") swapShowAll = true;
   if (action === "life-starter-more") starterShowAll = true;
+  if (action === "life-month") reflMonth = Math.min(0, reflMonth + (Number(data.delta) || 0));
+  if (action === "life-recipe-tab") recipeTab = ["saved", "starter"].includes(data.tab) ? data.tab : "all";
   if (action === "life-save-starter") {
     const r = Lifestyle.curated.find((x) => x.id === data.recipe);
     if (r) { saveOwnRecipe(r); showToast(`「${r.title}」をレシピに保存しました。`); }
@@ -1052,14 +1087,12 @@ async function analyzeCookingRecipe(date) {
 
 let starterShowAll = false;
 // Starter recipes are browsable and searchable from the Recipes tab, one tap to save.
-function renderStarterRecipes() {
+function starterRecipeList() {
   const saved = new Set(state.recipes.map((r) => r.starterId).filter(Boolean));
   const query = (state.searchText || "").trim().toLowerCase();
-  const list = Lifestyle.curated
+  return Lifestyle.curated
     .filter((r) => !saved.has(r.id))
-    .filter((r) => { const fit = Lifestyle.fit(r, dailyProfile(), today()); return fit.ok && !fit.needsReview; })
+    // Browsing only needs the safety filter; tools are checked again before a dish is planned.
+    .filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok)
     .filter((r) => !query || [r.title, ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
-  if (!list.length) return "";
-  const shown = starterShowAll || query ? list : list.slice(0, 6);
-  return `<section class="panel starter-panel"><div class="section-head"><div><h3>🍳 おすすめの一品</h3><p class="muted small">1人分のオリジナル。現在の食材・時間・器具の条件に合う料理です。</p></div><span class="badge">${list.length}品</span></div><div class="starter-list">${shown.map((r) => `<div class="starter-row">${planThumb(r)}<span><strong>${escapeHtml(r.title)}</strong><small>${escapeHtml([r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", ...(r.planning?.tastes || [])].filter(Boolean).join(" · "))}</small></span><button type="button" class="plan-icon" data-action="life-save-starter" data-recipe="${escapeAttr(r.id)}" aria-label="${escapeAttr(r.title)}を保存">＋ 保存</button></div>`).join("")}</div>${shown.length < list.length ? `<button type="button" class="text-button" data-action="life-starter-more">すべて見る（あと${list.length - shown.length}品）</button>` : ""}</section>`;
 }

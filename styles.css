@@ -2054,3 +2054,94 @@ h2 { font-size: 24px; line-height: 1.35; }
 .nobr { white-space: nowrap; }
 .plan-top h2 { flex: 0 1 auto; min-width: 0; }
 .plan-tools { flex: 0 0 auto; }
+
+/* ----- Recipes (mockup: おいしい、を集めよう。) ----- */
+.coll-top, .shop-top, .refl-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; margin: 4px 2px 14px; }
+.coll-top h2, .shop-top h2, .refl-top h2 { font-size: 28px; line-height: 1.3; margin: 0; min-width: 0; }
+.round-add { flex: 0 0 auto; background: var(--tomato); border-color: var(--tomato); }
+.round-add svg { stroke: #fff; stroke-width: 2.4; }
+.search-pill { display: flex; align-items: center; gap: 8px; padding: 0 16px; min-height: 50px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); }
+.search-pill svg { width: 20px; height: 20px; flex: 0 0 auto; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.search-pill input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); }
+.search-pill:focus-within { border-color: var(--tomato); }
+.chip-tabs { display: flex; gap: 8px; margin: 12px 0 14px; overflow-x: auto; }
+.chip-tab { flex: 0 0 auto; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+.chip-tab small { color: var(--muted); font-weight: 700; }
+.chip-tab[aria-pressed="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+.chip-tab[aria-pressed="true"] small { color: #fff; }
+.recipe-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
+.recipe-grid > p { grid-column: 1 / -1; }
+.recipe-tile { position: relative; display: grid; gap: 6px; align-content: start; min-width: 0; padding: 0; margin: 0; border: 0; background: none; box-shadow: none; }
+.tile-photo { position: relative; display: block; padding: 0; border: 0; background: none; border-radius: 16px; overflow: hidden; cursor: pointer; }
+span.tile-photo { cursor: default; }
+.tile-photo .dish-tile { aspect-ratio: 1 / 1; border-radius: 16px; }
+.tile-time { position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: 999px; background: rgba(255, 253, 248, .92); font-size: 12px; font-weight: 800; color: var(--ink); }
+.tile-mark { position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; border: 0; background: rgba(255, 253, 248, .92); cursor: pointer; }
+.tile-mark svg { width: 20px; height: 20px; fill: none; stroke: var(--tomato); stroke-width: 2; stroke-linejoin: round; }
+.tile-mark.is-saved { cursor: default; }
+.tile-mark.is-saved svg { fill: var(--tomato); }
+.tile-title { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.tile-foot { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: 28px; }
+.tile-foot small { font-size: 12px; }
+.tile-more > summary { min-height: 32px; }
+.tile-more[open] > div { top: 32px; min-width: 170px; }
+.add-card { margin-top: 22px; padding: 16px; border: 2px dashed var(--line); border-radius: 20px; text-align: center; display: grid; gap: 8px; }
+.add-card .hand { margin: 0; color: var(--muted); }
+
+/* ----- Shopping (mockup: 買ったら、ポン。) ----- */
+.shop-top .hand { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.shop-tools { display: flex; gap: 6px; flex: 0 0 auto; }
+.shop-tools .secondary-button { min-height: 40px; padding: 0 12px; font-size: 13px; }
+.shop-progress { margin: 0 0 14px; }
+.shop-progress p { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 8px; font-weight: 800; font-size: 18px; }
+.shop-progress p small { color: var(--muted); font-size: 13px; }
+.shop-bar { display: block; height: 12px; border-radius: 999px; background: var(--surface-soft, #f6ecdf); overflow: hidden; }
+.shop-bar i { display: block; height: 100%; border-radius: inherit; background: var(--tomato); transition: width .3s ease; }
+.aisle-card { margin-bottom: 12px; padding: 6px 16px 4px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
+.aisle-card h4 { margin: 10px 0 2px; font-size: 15px; }
+.aisle-card h4 small { color: var(--muted); }
+.aisle-card .daily-shopping-row:last-child { border-bottom: 0; }
+.daily-shopping-check input { appearance: none; -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #e6d3bf; background: var(--surface); display: grid; place-items: center; margin: 0; cursor: pointer; }
+.daily-shopping-check input:checked { background: var(--tomato); border-color: var(--tomato); }
+.daily-shopping-check input:checked::after { content: ""; width: 12px; height: 7px; border: solid #fff; border-width: 0 0 3px 3px; transform: translateY(-2px) rotate(-45deg); }
+.daily-shopping-check input:focus-visible { outline: 3px solid var(--marker); outline-offset: 2px; }
+.shopping-inline { min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.shop-add { margin: 14px 0; padding: 14px 16px; border: 2px dashed #e6d3bf; border-radius: 20px; }
+.shop-add h3 { margin: 0 0 10px; font-size: 16px; color: var(--tomato); }
+.shopping-fold { margin-bottom: 12px; padding: 4px 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
+.shopping-fold > summary { cursor: pointer; padding: 10px 0; }
+.shopping-fold > summary h3 { display: inline; margin: 0; font-size: 16px; }
+.shopping-fold > summary small { display: block; }
+
+/* ----- Reflection (mockup: 今月も、おいしかった。) ----- */
+.refl-top { flex-wrap: wrap; }
+.month-nav { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.month-nav .round-icon { width: 40px; height: 40px; font-size: 20px; font-weight: 800; color: var(--ink); }
+.month-nav .round-icon:disabled { opacity: .35; cursor: default; }
+.month-nav strong { font-size: 15px; white-space: nowrap; }
+.refl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.refl-stats p { margin: 0; padding: 12px 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
+.refl-stats strong { display: block; font-size: 24px; color: var(--tomato); }
+.refl-stats small { color: var(--muted); font-size: 12px; font-weight: 700; }
+.fav-card { margin-bottom: 18px; padding: 16px; border-radius: 22px; background: #fff1dc; border: 1px solid #f6dcb8; }
+.fav-card .eyebrow { margin: 0 0 10px; font-weight: 800; color: var(--tomato); }
+.fav-body { display: grid; grid-template-columns: 42% minmax(0, 1fr); gap: 14px; align-items: center; }
+.fav-photo { aspect-ratio: 1 / 1; }
+.fav-body h3 { margin: 0 0 6px; font-size: 18px; line-height: 1.4; }
+.fav-body .hand { margin: 0; }
+.table-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.table-head h3 { margin: 0; font-size: 18px; }
+.table-head .secondary-button { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.table-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
+.table-tile { position: relative; display: grid; gap: 4px; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; min-width: 0; }
+.table-tile .dish-tile { aspect-ratio: 1 / 1; border-radius: 14px; }
+.table-tile .dish-art-tile small { display: none; }
+.table-tile > small { font-size: 11px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.day-num { position: absolute; top: 6px; left: 6px; min-width: 26px; height: 26px; padding: 0 6px; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 253, 248, .94); font-size: 13px; font-weight: 800; }
+.tile-love { position: absolute; top: 4px; right: 6px; font-size: 16px; }
+@media (max-width: 360px) { .coll-top h2, .shop-top h2, .refl-top h2 { font-size: 24px; } .recipe-grid { gap: 14px 10px; } }
+.shop-top { align-items: flex-start; }
+.shop-top > div { min-width: 0; }
+.add-card + .backup-card, .add-card + section { margin-top: 16px; }
+.tonight-label { color: var(--ink); }
+.shop-bar { background: #f1e2cf; }
