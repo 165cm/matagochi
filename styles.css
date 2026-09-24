@@ -2148,3 +2148,60 @@ span.tile-photo { cursor: default; }
 .dish-fallback { position: relative; background-size: cover; background-position: center; }
 .dish-fallback small { position: absolute; right: 6px; bottom: 6px; padding: 1px 6px; border-radius: 999px; background: rgba(255, 253, 248, .9); color: var(--muted); font-size: 10px; font-weight: 700; }
 .tile-photo .dish-fallback small { bottom: auto; top: 8px; right: auto; left: 8px; }
+
+/* ----- 次に食べたい頃（周期の選択） ----- */
+.rate-card { display: grid; gap: 10px; }
+.rate-card h3 { margin: 0; font-size: 18px; line-height: 1.45; }
+.rate-note { margin: 0; color: var(--tomato); font-size: 18px; }
+.cycle-row { display: grid; gap: 6px; margin: 4px 0 6px; }
+.rate-name { font-weight: 800; font-size: 15px; display: flex; align-items: baseline; gap: 8px; }
+.rate-name small { color: var(--tomato); font-size: 13px; }
+.cycle-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.cycle-chip { min-height: 52px; padding: 6px 4px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; display: grid; place-content: center; gap: 1px; text-align: center; }
+.cycle-chip strong { font-size: 14px; line-height: 1.25; }
+.cycle-chip small { font-size: 11px; color: var(--muted); }
+.cycle-chip[aria-pressed="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+.cycle-chip[aria-pressed="true"] small { color: #fff; }
+.cycle-chip.cycle-never { grid-column: 1 / -1; min-height: 40px; background: transparent; border-style: dashed; }
+.cycle-chip.cycle-never[aria-pressed="true"] { background: #8b7d6b; border-color: #8b7d6b; }
+
+/* ----- リクエスト ----- */
+.request-card { margin: 0 0 16px; padding: 14px 16px; border-radius: 20px; background: #fff1dc; border: 1px solid #f6dcb8; display: grid; gap: 10px; }
+.request-card h3 { margin: 0; font-size: 16px; }
+.request-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.request-thumb { aspect-ratio: 1 / 1; border-radius: 12px; }
+.request-row strong { display: block; font-size: 15px; line-height: 1.35; }
+.request-row small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.request-from { margin: 0; font-size: 12px; font-weight: 800; color: var(--tomato); }
+.request-row .text-button { font-size: 13px; white-space: nowrap; }
+.tile-request { justify-self: start; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--tomato); background: var(--surface); color: var(--tomato); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.tile-request[aria-pressed="true"] { background: var(--tomato); color: #fff; }
+
+/* ----- ふたりで使う ----- */
+.share-panel { display: grid; gap: 10px; }
+.share-panel h3, .share-panel p { margin: 0; }
+.share-names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.share-names label { display: grid; gap: 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.share-link summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.share-link input { margin-top: 6px; font-size: 12px; }
+.share-invite { margin-top: 18px; padding: 16px; border: 2px dashed #e6d3bf; border-radius: 20px; text-align: center; display: grid; gap: 6px; }
+.share-invite p { margin: 0; }
+.share-invite .hand { color: var(--muted); }
+.legacy-sync summary { cursor: pointer; font-weight: 700; color: var(--muted); }
+.join-card { display: grid; gap: 12px; margin-top: 12px; }
+.join-card h2 { margin: 0; font-size: 26px; line-height: 1.4; }
+.join-card p { margin: 0; }
+.join-card .field { display: grid; gap: 6px; font-weight: 700; }
+
+/* ----- 記録の編集 ----- */
+.record-editor { display: grid; gap: 12px; }
+.record-head { display: grid; grid-template-columns: 38% minmax(0, 1fr); gap: 14px; align-items: center; }
+.record-photo { aspect-ratio: 1 / 1; }
+.record-head h2 { margin: 2px 0; font-size: 20px; line-height: 1.4; }
+.record-head .eyebrow { margin: 0; font-weight: 800; color: var(--tomato); font-size: 13px; }
+.record-field { display: grid; gap: 6px; font-weight: 700; }
+.record-h { margin: 6px 0 0; font-size: 17px; }
+.record-editor > .muted { margin: -6px 0 0; }
+.record-photo-actions { display: flex; align-items: center; gap: 10px; }
+.record-photo-actions .secondary-button { cursor: pointer; }
+.text-button.danger { color: #b3261e; }

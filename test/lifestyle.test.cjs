@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -415,7 +415,7 @@ test("past three days are recordable once, future and older slots are not", () =
   run('const yesterday=addDays(today(),-1);confirmDaily({date:yesterday},Lifestyle.curated[0]);dailyRecord(state.mealSlots[yesterday]);dailyRecord(state.mealSlots[yesterday]);');
   assert.equal(run('state.evaluations.length'),1);
   assert.equal(run('state.evaluations[0].cookedAt===yesterday'),true);
-  assert.equal(run('renderPreferencePrompt().includes("また食べたい")'),true);
+  assert.equal(run('renderPreferencePrompt().includes("次はいつ食べたい")'),true);
   run('handleDailyAction("life-rate",{id:state.evaluations[0].id,member:state.family[0],cycle:"monthly"})');
   assert.equal(run('state.evaluations[0].familyRepeatCycles[state.family[0]]'),"monthly");
   assert.equal(run('renderPreferencePrompt()'),"");
@@ -494,4 +494,62 @@ test("two people rate separately; both loving a dish shows ふたりとも好き
   assert.equal(run('state.family.length'), 2);
   assert.equal(run('bothLike(Lifestyle.curated[0])'), true);
   assert.equal(run('renderPreferencePrompt()'), "");
+});
+
+// ----- 周期（次に食べたい頃）とリクエスト -----
+const gap = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+test("repeat cycle: the household waits for the longest cycle; before that the dish is held back", () => {
+  const dish = L.curated[4];
+  const ate = (days) => [{ date: addDays(start, -days), recipe: dish }];
+  const cycles = { パパ: "weekly", むすめ: "twice_month" };
+  const early = L.repeatFit(dish, start, ate(8), gap, cycles);
+  assert.equal(early.interval, 14);
+  assert.equal(early.due, false);
+  assert.ok(early.score < 0);
+  const due = L.repeatFit(dish, start, ate(15), gap, cycles);
+  assert.equal(due.due, true);
+  assert.match(due.reason, /^ちょうどいい頃（15日ぶり）/);
+  assert.match(L.repeatFit(dish, start, ate(30), gap, cycles).reason, /^久しぶり/);
+  assert.equal(L.repeatFit(dish, start, ate(30), gap, { パパ: "weekly", むすめ: "never" }).exclude, true);
+  assert.match(L.repeatFit(dish, start, ate(8), gap, { パパ: "weekly", むすめ: "weekly" }).reason, /^ふたりとも好き/);
+});
+
+test("repeat cycle: a due favourite comes back; a dish nobody wants again never does", () => {
+  const fav = L.curated[4], stop = L.curated[5];
+  const history = [{ date: addDays(start, -10), recipe: fav }, { date: addDays(start, -40), recipe: stop }];
+  const cyclesOf = (r) => (r.id === fav.id ? { パパ: "weekly", むすめ: "weekly" } : r.id === stop.id ? { パパ: "never" } : {});
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 7, addDays, history, cyclesOf });
+  const ids = plan.map((d) => d.candidate?.recipe.id);
+  assert.ok(ids.includes(fav.id), "favourite is back");
+  assert.ok(!ids.includes(stop.id), "never is excluded");
+  const day = plan.find((d) => d.candidate?.recipe.id === fav.id);
+  assert.ok(day.candidate.reasons.some((r) => /ふたりとも好き/.test(r)));
+});
+
+test("requests go into the plan first with the requester's name", () => {
+  const wanted = L.curated[20];
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, requestOf: (r) => (r.id === wanted.id ? { from: "むすめ" } : null) });
+  const day = plan.find((d) => d.candidate?.recipe.id === wanted.id);
+  assert.ok(day, "requested dish is planned");
+  assert.equal(day.candidate.reasons[0], "むすめのリクエスト");
+});
+
+test("app: a request syncs as data, boosts the plan and is fulfilled by cooking", () => {
+  const run = app();
+  run('state.family=["パパ","むすめ"];state.me="むすめ";handleDailyAction("life-request",{recipe:"starter-20"})');
+  assert.equal(run("openRequests().length"), 1);
+  assert.ok(run("buildSyncPayload().requests") && run("Object.keys(buildSyncPayload().requests).length") === 1);
+  assert.ok(run('dailyPlan().some(d=>d.candidate&&d.candidate.recipe.id==="starter-20")'));
+  run('const d=dailyPlan().find(d=>d.candidate&&d.candidate.recipe.id==="starter-20");confirmDaily({date:today()},d.candidate.recipe);dailyRecord(state.mealSlots[today()])');
+  assert.equal(run("openRequests().length"), 0);
+  run('state=normalizeState(JSON.parse(JSON.stringify(state)))');
+  assert.equal(run("Object.values(state.requests)[0].status"), "done");
+});
+
+test("app: invite members fill the placeholders and carry earlier ratings", () => {
+  const run = app();
+  run('state.family=["自分"];state.evaluations=[{id:"e1",recipeId:"starter-01",recipeTitle:"x",cookedAt:today(),mealType:"dinner",preferencePending:false,familyRepeatCycles:{"自分":"weekly"},memo:"",photo:"",updatedAt:nowIso()}];setMembers("パパ","むすめ")');
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.family)")), ["パパ", "むすめ"]);
+  assert.equal(run('state.evaluations[0].familyRepeatCycles["パパ"]'), "weekly");
+  assert.equal(run("me()"), "パパ");
 });

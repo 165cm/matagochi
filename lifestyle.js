@@ -296,7 +296,10 @@
     return stapleLabel[traits(recipe).staple];
   }
   const dayWord = (gap) => (gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `${gap}日前`);
+  const sameDish = (a, b) => !!a && !!b && (a.id === b.id || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id) || (!!a.starterId && a.starterId === b.starterId) || (!!a.title && a.title === b.title));
   // timeline: [{date, recipe}] of meals already eaten or already picked, any order.
+  // Penalises the same staple / protein / cuisine within three days. Repeating the same
+  // dish is handled by the repeat cycle (repeatFit), not here.
   function rotation(recipe, date, timeline, daysBetween) {
     const t = traits(recipe);
     let penalty = 0;
@@ -307,9 +310,7 @@
       .filter((m) => m.gap > 0 && m.recipe)
       .sort((a, b) => a.gap - b.gap);
     for (const m of recent) {
-      const same = m.recipe.id === recipe.id || (m.recipe.starterId && m.recipe.starterId === recipe.id) || (recipe.starterId && recipe.starterId === m.recipe.id) || m.recipe.title === recipe.title;
-      if (same && lastEatenDays === null) lastEatenDays = m.gap;
-      if (same) penalty += m.gap <= 6 ? 40 : m.gap <= 13 ? 8 : 0;
+      if (sameDish(m.recipe, recipe) && lastEatenDays === null) lastEatenDays = m.gap;
       if (m.gap > 3) continue;
       const w = 4 - m.gap; // yesterday 3, day before 2, three days ago 1
       const mt = traits(m.recipe);
@@ -321,6 +322,34 @@
     if (prev && t.staple !== "other") reason = `${dayWord(prev.gap)}は${stapleName(prev.recipe)}だったので、${stapleLabel[t.staple]}に`;
     return { penalty, reason, lastEatenDays, traits: t };
   }
+  // Repeat cycles: how often each person wants a dish again (days).
+  const CYCLE_DAYS = { tomorrow: 1, weekly: 7, twice_month: 14, monthly: 30, pause: 90 };
+  const UNRATED_INTERVAL = 14; // eaten but nobody has said how often yet
+  const LOVED = ["tomorrow", "weekly"];
+  // cycles: {person: cycleId}. The household waits until everyone wants it again (longest cycle).
+  function repeatFit(recipe, date, timeline, daysBetween, cycles = {}) {
+    const values = Object.values(cycles || {}).filter(Boolean);
+    if (values.includes("never")) return { exclude: true, known: true, score: 0, reason: "" };
+    const days = values.map((c) => CYCLE_DAYS[c]).filter(Boolean);
+    const interval = days.length ? Math.max(...days) : UNRATED_INTERVAL;
+    const loves = values.filter((c) => LOVED.includes(c)).length;
+    const gaps = timeline.filter((m) => m.recipe && sameDish(m.recipe, recipe)).map((m) => daysBetween(m.date, date)).filter((g) => g > 0);
+    const last = gaps.length ? Math.min(...gaps) : null;
+    let score = loves * 6;
+    const bothLove = values.length >= 2 && loves === values.length;
+    if (last === null) return { exclude: false, known: false, due: false, interval, last, loves, bothLove, score, reason: bothLove ? "ふたりとも好き" : "" };
+    const ratio = last / interval;
+    let reason = "";
+    if (ratio < 1) score -= 60 * (1 - ratio); // まだ早い
+    else {
+      score += 20 + Math.min(15, (ratio - 1) * 15);
+      reason = ratio >= 2 ? `久しぶり（${last}日ぶり）` : `ちょうどいい頃（${last}日ぶり）`;
+      if (bothLove) reason = `ふたりとも好き・${reason}`;
+    }
+    return { exclude: false, known: true, due: ratio >= 1, interval, last, ratio, loves, bothLove, score, reason };
+  }
+  const SCORE = { request: 80, saved: 5 };
+  const MAX_NEW_PER_PLAN = 1;
   function propose({
     recipes,
     profile: p,
@@ -331,6 +360,8 @@
     overrides = {},
     repeatScore = () => 0,
     history = [],
+    cyclesOf = () => ({}),
+    requestOf = () => null,
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -369,19 +400,24 @@
       )
         return { date, off: true };
       const candidates = recipes
-        .filter(
-          (r) =>
-            r.mealType === "dinner" &&
-            repeatScore(r) !== -Infinity,
-        )
+        .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity)
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
         .filter((x) => x.ok)
-        .map((x) => ({ ...x, rotation: rotation(x.recipe, date, timeline, between) }))
+        .map((x) => ({
+          ...x,
+          rotation: rotation(x.recipe, date, timeline, between),
+          repeat: repeatFit(x.recipe, date, timeline, between, cyclesOf(x.recipe)),
+          request: requestOf(x.recipe),
+        }))
+        .filter((x) => !x.repeat.exclude)
         .map((x) => ({
           ...x,
           score:
             x.score +
-            repeatScore(x.recipe) -
+            repeatScore(x.recipe) +
+            x.repeat.score +
+            (x.request ? SCORE.request : 0) +
+            (x.recipe.curated ? 0 : SCORE.saved) -
             x.rotation.penalty +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
@@ -395,12 +431,14 @@
       const unused = candidates.filter(x => !used.has(x.recipe.id));
       // Only reuse when every eligible recipe has already appeared in this plan.
       const eligible = unused.length ? unused : candidates.sort((a, b) => (usage.get(a.recipe.id) || 0) - (usage.get(b.recipe.id) || 0));
-      const personal = eligible.filter((x) => !x.recipe.curated);
-      const pool = newCount >= 1 && personal.length ? personal : eligible;
+      // At most one first-time dish per plan while known dishes are due (or requested).
+      const favourites = eligible.filter((x) => x.request || (x.repeat.known && x.repeat.due));
+      const pool = newCount >= MAX_NEW_PER_PLAN && favourites.length ? favourites : eligible;
       const selected =
         pool.find((x) => x.recipe.id === overrides[date]) || pool[0];
       if (selected) {
-        if (selected.rotation.reason) selected.reasons.unshift(selected.rotation.reason);
+        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.rotation.reason, selected.repeat.reason]
+          .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
         timeline.push({ date, recipe: selected.recipe });
         if (used.has(selected.recipe.id)) {
           selected.repeated = true;
@@ -408,7 +446,7 @@
         }
         used.add(selected.recipe.id);
         usage.set(selected.recipe.id, (usage.get(selected.recipe.id) || 0) + 1);
-        if (selected.recipe.curated) newCount++;
+        if (!selected.repeat.known) newCount++;
         (selected.recipe.ingredients || []).forEach((x) =>
           ingredients.add(key(x.name)),
         );
@@ -834,6 +872,9 @@
     curated,
     traits,
     rotation,
+    repeatFit,
+    sameDish,
+    CYCLE_DAYS,
     copy,
   };
   root.Lifestyle = api;
