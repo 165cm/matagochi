@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v19";
-const APP_VERSION = "20260924-dishes1";
+const CACHE_NAME = "ripigochi-v20";
+const APP_VERSION = "20260924-dishes";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -10,19 +10,20 @@ const CORE_ASSETS = [
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),
   ...["teriyaki","tomato-pasta","porkkimchi","kinoko-udon","tofu-egg","tomato-cheese"].map(n => `./assets/dishes/${n}.webp`),
-  ...["03","04","07","08","09","10"].map(n => `./assets/dishes/starter-${n}.webp`),
+  ...["03","04","07","08","09","10","11","12","14","15","16","17","18","19","20","21","22","23","24","25","26","27","29","30","31","32","33","34","35","36","37","38"].map(n => `./assets/dishes/starter-${n}.webp`),
+  ...["rice","noodle","bread","okazu"].map(n => `./assets/dishes/fallback-${n}.webp`),
   `./starter-recipes.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
   `./playlist-import.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260924-dishes1",
-  "./icons/favicon-32.png?v=20260924-dishes1",
-  "./icons/icon-192.png?v=20260924-dishes1",
-  "./icons/icon-512.png?v=20260924-dishes1",
-  "./icons/icon-maskable-512.png?v=20260924-dishes1",
-  "./icons/apple-touch-icon.png?v=20260924-dishes1"
+  "./manifest.webmanifest?v=20260924-dishes",
+  "./icons/favicon-32.png?v=20260924-dishes",
+  "./icons/icon-192.png?v=20260924-dishes",
+  "./icons/icon-512.png?v=20260924-dishes",
+  "./icons/icon-maskable-512.png?v=20260924-dishes",
+  "./icons/apple-touch-icon.png?v=20260924-dishes"
 ];
 
 self.addEventListener("install", (event) => {

@@ -2145,3 +2145,6 @@ span.tile-photo { cursor: default; }
 .add-card + .backup-card, .add-card + section { margin-top: 16px; }
 .tonight-label { color: var(--ink); }
 .shop-bar { background: #f1e2cf; }
+.dish-fallback { position: relative; background-size: cover; background-position: center; }
+.dish-fallback small { position: absolute; right: 6px; bottom: 6px; padding: 1px 6px; border-radius: 999px; background: rgba(255, 253, 248, .9); color: var(--muted); font-size: 10px; font-weight: 700; }
+.tile-photo .dish-fallback small { bottom: auto; top: 8px; right: auto; left: 8px; }

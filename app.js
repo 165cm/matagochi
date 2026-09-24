@@ -1167,7 +1167,7 @@ const STARTER_PHOTOS = {
   "starter-06": "assets/dishes/tomato-cheese.webp",
 };
 // Split from AI-generated 3x2 sheets (scripts/split-dish-sheet.py); keep in sync with sw.js.
-const STARTER_SHEET_PHOTOS = ["03", "04", "07", "08", "09", "10"];
+const STARTER_SHEET_PHOTOS = ["03", "04", "07", "08", "09", "10", "11", "12", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38"];
 STARTER_SHEET_PHOTOS.forEach((n) => { STARTER_PHOTOS[`starter-${n}`] = `assets/dishes/starter-${n}.webp`; });
 function recipeThumbnail(recipe) {
   if (recipe.thumbnailUrl) return recipe.thumbnailUrl;

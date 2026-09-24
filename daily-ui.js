@@ -395,9 +395,10 @@ function renderSwapChoices() {
 function dishTile(recipe, cls = "") {
   const photo = recipe ? recipeThumbnail(recipe) : "";
   if (photo) return `<img class="dish-tile ${cls}" src="${escapeAttr(photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
+  // No photo of its own: a generic dish photo by staple, marked as an image only.
   const t = Lifestyle.traits(recipe || {});
-  const emoji = { rice: "🍚", noodle: "🍜", bread: "🥪", other: "🍳" }[t.staple];
-  return `<span class="dish-tile dish-art-tile art-${t.cuisine} ${cls}" role="img" aria-label="料理のイメージ"><span aria-hidden="true">${emoji}</span><small>料理のイメージ</small></span>`;
+  const fallback = { rice: "rice", noodle: "noodle", bread: "bread", other: "okazu" }[t.staple] || "okazu";
+  return `<span class="dish-tile dish-fallback ${cls}" role="img" aria-label="料理のイメージ写真" style="background-image:url('assets/dishes/fallback-${fallback}.webp')"><small aria-hidden="true">イメージ</small></span>`;
 }
 const dayWordFor = (date) => { const g = daysBetween(date, today()); return g === 0 ? "今日" : g === 1 ? "昨日" : g === 2 ? "一昨日" : `${g}日前`; };
 function renderToday() {
