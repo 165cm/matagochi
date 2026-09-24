@@ -4,9 +4,9 @@
    "準備中" mode and nothing is sent. */
 const WAITLIST = {
   // 例: "https://docs.google.com/forms/d/e/1FAIpQLS.../formResponse"
-  action: "",
+  action: "https://docs.google.com/forms/d/e/1FAIpQLSeAodcHygYfzG797YuavmocVRxHb4poXc9Mqzj3PBWaKTvXxw/formResponse",
   // 各質問の entry ID（例: "entry.123456789"）
-  fields: { email: "", household: "", source: "" },
+  fields: { email: "entry.1112083016", household: "entry.355337516", source: "entry.1616449628" },
 };
 
 (function () {

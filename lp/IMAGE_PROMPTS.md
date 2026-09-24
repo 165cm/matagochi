@@ -45,3 +45,6 @@ no watermarks. Any text must be large, correct Japanese.
 
 - 主な対象を「ふたりの食卓（親子・カップル・夫婦）＋ひとり暮らし」に変更したため、`assets/scene-student.jpg` はLPから外しました（ファイルは残しています）。
 - 次に欲しい画像：父と10代の娘が夜ごはんを囲むシーン（はじまりの話）、ふたりが同じ献立画面を見て笑うシーン、「最近食べたもの」を示すアプリ画面のモック。
+
+- 追加（Codex生成）：`assets/scene-parent-child.webp`（よくある夜のおはなし）、`assets/scene-couple.webp`（ちょうどいい「また」）、`assets/screen-recent.webp`（ファーストビューの「最近のごはん」画面。ステータスバーを除去）。
+- ファーストビューを `screen-recent.webp` に変更したため、`assets/screen-today.webp` は現在LPで未使用です。
