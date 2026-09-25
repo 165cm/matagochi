@@ -2,6 +2,7 @@
 (function (root) {
   const Taste = typeof module !== "undefined" && module.exports ? require("./taste.js") : root.FoodTaste;
   const Persona = typeof module !== "undefined" && module.exports ? require("./dinner-persona.js") : root.DinnerPersona;
+  const SkillDB = () => (typeof module !== "undefined" && module.exports ? require("./skills.js") : root.Skills);
   const Starter = typeof module !== "undefined" && module.exports ? require("./starter-recipes.js") : root.StarterRecipes;
   const copy = (value) => JSON.parse(JSON.stringify(value));
   const list = (value) =>
@@ -293,7 +294,7 @@
   const FACETS = [
     { id: "staple", label: "主食", options: [["rice", "ごはん"], ["noodle", "麺"], ["bread", "パン"], ["other", "おかず"]] },
     { id: "main", label: "素材", options: [["chicken", "鶏"], ["pork", "豚"], ["beef", "牛"], ["mince", "ひき肉"], ["fish", "魚"], ["egg", "卵"], ["tofu", "豆腐・大豆"], ["veg", "野菜が主役"]] },
-    { id: "style", label: "気分・作り方", options: [["quick", "10分以内"], ["micro", "レンジ"], ["pan", "フライパン"], ["pot", "鍋"], ["spicy", "ピリ辛"], ["light", "さっぱり"], ["rich", "こってり"], ["soup", "汁もの"], ["japanese", "和風"], ["western", "洋風"], ["chinese", "中華"], ["ethnic", "エスニック"]] },
+    { id: "style", label: "気分・作り方", options: [["easy", "かんたん★1〜2"], ["quick", "10分以内"], ["micro", "レンジ"], ["pan", "フライパン"], ["pot", "鍋"], ["spicy", "ピリ辛"], ["light", "さっぱり"], ["rich", "こってり"], ["soup", "汁もの"], ["japanese", "和風"], ["western", "洋風"], ["chinese", "中華"], ["ethnic", "エスニック"]] },
   ];
   const TAG_RULES = {
     chicken: /鶏|ささみ|手羽|チキン/, pork: /豚|ベーコン|ハム|ウインナー|ソーセージ/, beef: /牛(?!乳)/,
@@ -316,6 +317,7 @@
     }
     if (!["chicken", "pork", "beef", "mince", "fish"].some((x) => out.has(x))) out.add("veg");
     if (recipe.planning?.minutes && recipe.planning.minutes <= 10) out.add("quick");
+    if (SkillDB()?.rate(recipe).level <= 2) out.add("easy");
     return [...out];
   }
   const stapleLabel = { rice: "ごはんもの", noodle: "麺", bread: "パン", other: "おかず" };

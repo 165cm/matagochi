@@ -2441,3 +2441,6 @@ button.tile-title { padding: 0; border: 0; background: none; font: inherit; font
 .tomorrow-line span { font-size: 13px; color: var(--muted); font-weight: 700; }
 .tomorrow-line b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tomorrow-line i { font-style: normal; color: var(--tomato); font-weight: 800; }
+.detail-skill { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; margin: 0; padding: 8px 12px; border-radius: 14px; background: #fff1dc; font-size: 14px; }
+.skill-stars { color: var(--tomato); letter-spacing: 1px; font-size: 15px; }
+.detail-skill small { flex-basis: 100%; color: var(--muted); font-size: 12px; }

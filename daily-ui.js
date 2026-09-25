@@ -1300,6 +1300,7 @@ function renderRecipeDetail() {
     <h2 class="detail-title">${escapeHtml(r.title)}</h2>
     <p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>
     <div class="detail-tags">${tagLabels(r).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
+    ${renderSkillLine(r)}
     <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
     <div class="detail-actions">${requestButton(r)}${edit ? (saved ? dailyButton("edit-recipe", "✏️ 編集する", `data-recipe="${escapeAttr(r.id)}"`) : dailyButton("life-save-starter", "🔖 自分のレシピに保存", `data-recipe="${escapeAttr(r.id)}"`)) : ""}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>
     <h3 class="detail-h">材料 <small>${servings}人分</small></h3>
@@ -1332,4 +1333,11 @@ function renderStarterSettings() {
   return `<section class="panel starter-settings"><h3>🍳 おすすめレシピ</h3>
     <button type="button" class="role-toggle" data-action="life-starters" data-show="${!showStarters()}" aria-pressed="${showStarters()}"><span>最初から入っている料理を使う<small>${showStarters() ? "レシピ一覧と献立に、おすすめも出します" : "自分のレシピだけで献立を作ります"}</small></span><i aria-hidden="true"></i></button>
     ${!showStarters() && n < 6 ? `<p class="notice">自分の夜ごはんのレシピが${n}品です。少ないと、献立が組めない日があります。</p>` : ""}</section>`;
+}
+
+// 必要なスキル（★1〜5）と技法。skills.js の内部DBから。
+function renderSkillLine(recipe) {
+  const x = Skills.rate(recipe);
+  const shown = x.skills.filter((id) => (Skills.SKILLS.find((s) => s.id === id)?.level || 1) >= 2).slice(0, 4);
+  return `<div class="detail-skill"><span class="skill-stars" aria-label="必要なスキル ${x.level}（5段階）">${Skills.stars(x.level)}</span><b>${x.label}</b>${shown.length ? `<small>${shown.map((id) => escapeHtml(Skills.skillLabel(id))).join("・")}</small>` : ""}</div>`;
 }

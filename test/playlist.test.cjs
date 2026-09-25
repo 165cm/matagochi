@@ -7,7 +7,7 @@ const L = require("../lifestyle.js");
 
 function app(apiUrl="") {
   const ctx = vm.createContext({ console, URL, Date, MATAGOCHI_API_BASE_URL:apiUrl, window:{scrollTo(){}}, document: { querySelector: () => null, querySelectorAll: () => [] } });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js") s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
     vm.runInContext(s, ctx);
