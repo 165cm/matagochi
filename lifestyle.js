@@ -548,7 +548,7 @@
           if (notPurchased.test(name)) return;
           const k = key(name);
           if (!groups.has(k))
-            groups.set(k, { id: k, name, category: item.category || "その他", amounts: [], parts: [] });
+            groups.set(k, { id: k, name, category: item.category || "その他", amounts: [], parts: [], uses: [] });
           const g = groups.get(k);
           const amount = scale(
             item.amount,
@@ -557,6 +557,7 @@
           );
           g.amounts.push(amount);
           g.parts.push(`${s.date}:${s.recipe.id}:${amount}`);
+          if (!g.uses.includes(s.recipe.title)) g.uses.push(s.recipe.title);
         });
       });
     Object.entries(manual)

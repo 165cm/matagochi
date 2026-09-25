@@ -338,6 +338,27 @@ function planReason(day) {
   if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.rotation?.reason].find(Boolean) || "";
   return c ? [c.request && `${c.request.from}のリクエスト`, c.rotation?.reason, c.repeat?.reason].find(Boolean) || "" : "";
 }
+// The last time someone pressed 買い物完了. Meals confirmed before it were bought on that trip.
+function lastShoppedAt() {
+  const done = Object.values(state.shopDone || {});
+  if (state.round?.status === "done" && state.round.updatedAt) done.push(state.round.updatedAt);
+  return done.sort().pop() || "";
+}
+function tripSlots() {
+  const since = lastShoppedAt();
+  return Object.fromEntries(Object.entries(state.mealSlots || {}).filter(([, s]) => !since || (s.updatedAt || "") > since));
+}
+// Meals this shopping trip is for (confirmed, not cooked, not bought on an earlier trip).
+function tripMeals() {
+  return Object.values(tripSlots()).filter((s) => s.status === "confirmed" && s.date >= today() && s.recipe).sort((a, b) => a.date.localeCompare(b.date));
+}
+function renderTripMeals() {
+  const meals = tripMeals();
+  if (!meals.length) return "";
+  const first = meals[0].date, last = meals[meals.length - 1].date;
+  const range = first === last ? `${formatDate(first)}（${weekdayLabel(first)}）` : `${formatDate(first)}（${weekdayLabel(first)}）〜${formatDate(last)}（${weekdayLabel(last)}）`;
+  return `<section class="trip-meals" aria-label="この買い物で作るごはん"><p class="trip-range"><b>${range}</b>の${meals.length}食分</p><div class="trip-row">${meals.map((m) => `<button type="button" class="trip-meal" data-action="life-cook" data-date="${m.date}" aria-label="${escapeAttr(`${formatDate(m.date)} ${m.recipe.title}`)}">${dishTile(m.recipe)}<small>${WD[new Date(m.date + "T12:00:00").getDay()]}</small><span>${escapeHtml(m.recipe.title)}</span></button>`).join("")}</div></section>`;
+}
 function dailyShopping() {
   const p = dailyProfile();
   const length = rhythmOn() ? rhythmPlanDays() :
@@ -347,7 +368,7 @@ function dailyShopping() {
         ? 7
         : state.planLength || 3;
   return Lifestyle.shopping({
-    slots: state.mealSlots || {},
+    slots: tripSlots(),
     start: today(),
     end: addDays(today(), length - 1),
     scale: scaleAmountForServings,
@@ -530,7 +551,7 @@ function renderDailyShopping() {
   const order = Aisles.AISLES.map(([, label]) => label);
   const count = (status) => items.filter((i) => i.status === status).length;
   const fix = (i) => aisleEdit ? `<select class="aisle-select" data-aisle-name="${escapeAttr(i.name)}" aria-label="${escapeAttr(i.name)}の売り場">${Aisles.AISLES.map(([id, label]) => `<option value="${id}" ${Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}) === id ? "selected" : ""}>${label}</option>`).join("")}</select>` : "";
-  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">必要量を再確認</small>' : ""}</span></label>${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "家にある"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
+  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}${i.uses?.length ? `<em class="shop-uses"> · ${escapeHtml(i.uses.join("・"))}</em>` : ""}</small>${i.recheck ? '<small class="notice">必要量を再確認</small>' : ""}</span></label>${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "家にある"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
   const rows = (status) => order.map((category) => {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
     return list.length ? `<h4>${category}</h4>${list.map((i) => row(i, status)).join("")}` : "";
@@ -543,6 +564,7 @@ function renderDailyShopping() {
   const progress = total ? `<div class="shop-progress" role="status"><p><span>${buy ? `あと <strong class="marker">${buy}つ</strong>` : "🎉 全部そろいました！"}</span><small>${purchased}/${total}</small></p><span class="shop-bar"><i style="width:${Math.round((purchased / total) * 100)}%"></i></span></div>` : "";
   const folded = (status, title, hint) => count(status) ? `<details class="shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${rows(status)}</details>` : "";
   return `<section class="shop-top"><div><h2>買ったら、<br /><span class="marker nobr">ポン。</span></h2>${items.length ? `<p class="hand">買えたら、丸をタップ。</p>` : ""}</div>${items.length ? `<div class="shop-tools">${dailyButton("copy-shopping", "コピー")}${dailyButton("share-shopping", "共有")}</div>` : ""}</section>
+  ${renderTripMeals()}
   ${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}
   ${!items.length ? `<section class="panel shop-empty"><p>献立が決まると、必要な材料だけのリストができます。</p>${dailyButton("go-view", isViewer() ? "献立を見る" : "献立を決める", 'data-view="plan"', true)}</section>` : ""}
   ${renderShoppingDone(items)}${progress}${cards}
