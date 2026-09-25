@@ -70,6 +70,9 @@ const assert = require("node:assert/strict");
     }
   }
   await page.locator("#profile-button").click();
+  // Settings are a list of rows; only the one you tap opens.
+  assert.equal(await page.locator("details.setting-row[open]").count(), 0);
+  await page.locator("#setting-food > summary").click();
   await page.locator("[data-action=life-profile]").click();
   await page.waitForSelector(".profile-wizard");
   assert.match(await page.locator(".wizard-progress").innerText(), /16 \/ 16/);

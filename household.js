@@ -257,7 +257,7 @@ function handleHouseholdAction(action, data) {
     if (!requestsEnabled()) { state.view = "settings"; showToast("ふたりでつながると、リクエストを送れます。"); }
     else {
       state.requests = state.requests || {};
-      const q = openRequests().find((x) => Lifestyle.sameDish(requestRecipe(x), recipe) && x.from === me());
+      const q = openRequests().find((x) => !x.date && Lifestyle.sameDish(requestRecipe(x), recipe) && x.from === me());
       if (q) { setRequest(q.id, "cancelled"); showToast("リクエストを取り消しました。"); }
       else {
         const id = generateId("req-");
@@ -311,7 +311,7 @@ function handleHouseholdAction(action, data) {
   if (action === "life-share-open") {
     state.view = "settings";
     saveState(); render();
-    document.querySelector("#share")?.scrollIntoView({ block: "start" });
+    openSetting("share");
     return true;
   }
   if (action === "life-share-send") { shareInvite(); return true; }
@@ -649,6 +649,8 @@ function normalizeRhythm(raw) {
     preset: RHYTHMS[raw?.preset] ? raw.preset : "",
     shopTime: SHOP_TIMES.includes(raw?.shopTime) ? raw.shopTime : "17:00",
     dismissed: !!raw?.dismissed,
+    // First block of the rhythm: starting mid-block would skip the first full "decide → shop" round.
+    startFrom: /^\d{4}-\d{2}-\d{2}$/.test(raw?.startFrom || "") ? raw.startFrom : "",
     updatedAt: normalizeTimestamp(raw?.updatedAt),
   };
 }
@@ -678,7 +680,16 @@ function blocksFrom(from, horizon = 21) {
   return out;
 }
 function currentBlocks() {
-  return blocksFrom(today()).slice(0, 2);
+  const from = state.rhythm?.startFrom || "";
+  return blocksFrom(today(), 28).filter((b) => !from || b.start >= from).slice(0, 2);
+}
+// The first block whose shopping time is still ahead, so the first round is a whole one.
+function firstFullBlock() {
+  const now = localStamp(new Date());
+  return blocksFrom(today(), 28).find((b) => b.start >= today() && b.shopAt > now);
+}
+function prestartUntil() {
+  return rhythmOn() && state.rhythm.startFrom > today() ? state.rhythm.startFrom : "";
 }
 function rhythmPlanDays() {
   const [cur, next] = currentBlocks();
@@ -738,7 +749,7 @@ function renderWeekBoard() {
     const recipe = past ? eaten.get(date) || slot?.recipe : slot?.recipe || day?.candidate?.recipe;
     const off = slot?.status === "off" || day?.off || (rhythmOn() && !rhythmDays().includes(String(dow(date))));
     const kind = slot?.status === "cooked" || (past && recipe) ? "is-cooked" : slot && slot.status !== "removed" ? "is-decided" : recipe ? "is-draft" : "";
-    const inner = off && !recipe ? '<em>休</em>' : recipe ? dishTile(recipe) : "<em>・</em>";
+    const inner = day?.prestart && !recipe ? "<em>–</em>" : off && !recipe ? "<em>休</em>" : recipe ? dishTile(recipe) : "<em>・</em>";
     const shop = shopDays.has(date) ? `<b class="wk-shop" title="買い物 ${shopDays.get(date)}">🛒</b>` : "";
     return `<button type="button" class="wk-cell ${kind} ${date === t ? "is-today" : ""}" ${recipe ? `data-action="life-cal-pick" data-date="${date}"` : "disabled"} aria-label="${escapeAttr(`${formatDate(date)}${recipe ? " " + recipe.title : off ? " お休み" : " 未定"}`)}"><span class="wk-num">${Number(date.slice(8))}</span>${inner}${shop}${kind === "is-cooked" ? '<i class="wk-check">✓</i>' : ""}</button>`;
   }).join("");
@@ -801,9 +812,12 @@ function renderRhythmInvite() {
 }
 function handleRhythmAction(action, data) {
   if (action === "life-week") { boardWeek = Math.max(-2, Math.min(1, boardWeek + (Number(data.delta) || 0))); calPick = ""; }
-  else if (action === "life-rhythm-open") { state.view = "settings"; saveState(); render(); document.querySelector("#rhythm")?.scrollIntoView({ block: "start" }); return true; }
+  else if (action === "life-rhythm-open") { state.view = "settings"; saveState(); openSetting("rhythm"); return true; }
   else if (action === "life-rhythm" && RHYTHMS[data.preset] && !isViewer()) {
     state.rhythm = { preset: data.preset, shopTime: document.querySelector("#rhythm-time")?.value || state.rhythm?.shopTime || "17:00", updatedAt: nowIso() };
+    // With nothing decided from today on, begin at the next whole block.
+    const decidedAhead = Object.values(state.mealSlots || {}).some((x) => x.date >= today() && ["confirmed", "cooked"].includes(x.status));
+    state.rhythm.startFrom = decidedAhead ? "" : firstFullBlock()?.start || "";
     // During the first-run questions, picking a rhythm moves on to the next question.
     if ((profileEditing || !state.onboarded) && state.onboardingDraft?.quickSetupIndex === 1) state.onboardingDraft.quickSetupIndex = 2;
     state.planOverrides = {};

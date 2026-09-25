@@ -1880,6 +1880,17 @@ function renderEvaluationCard(evaluation) {
   `;
 }
 
+// 設定：1行ずつ「項目｜今の設定」を並べ、タップしたものだけ開く（開くのは1つずつ）。
+let settingsOpen = "";
+function settingRow(id, icon, label, summary, body) {
+  return `<details class="setting-row" id="setting-${id}" name="settings" ${settingsOpen === id ? "open" : ""}><summary><span class="setting-icon" aria-hidden="true">${icon}</span><span class="setting-text"><b>${label}</b><small>${escapeHtml(summary)}</small></span><i aria-hidden="true">›</i></summary><div class="setting-body">${body}</div></details>`;
+}
+function openSetting(id) {
+  settingsOpen = id;
+  render();
+  document.querySelector(`#setting-${id}`)?.scrollIntoView({ block: "start" });
+}
+
 function renderSettings() {
   if (isViewer()) return `
     ${renderSharePanel()}
@@ -1887,15 +1898,19 @@ function renderSettings() {
       <p class="muted small">食べられないもの：${escapeHtml(memberPrefs().restrictions.join("・") || "なし")}</p>
       <button class="secondary-button full-button" type="button" data-action="life-viewer-redo">食べられないもの・好きなものを変える</button>
     </section>`;
+  const p = dailyProfile();
+  const sp = skillProfile();
+  const leave = [...p.restrictions, ...p.dislikes];
   return `
-    <section class="panel settings-food"><h2>食生活の設定</h2>
-      <div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 2 ? "disabled" : ""}>＋</button></div></div>
+    <section class="settings-list" aria-label="設定">
+    ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 2 ? "disabled" : ""}>＋</button></div></div>
       ${(() => { const p = dailyProfile(); return `<dl class="planning-summary"><div><dt>平日の時間</dt><dd>${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"}</dd></div><div><dt>食べられない</dt><dd>${escapeHtml(p.restrictions.join("・") || "未指定")}</dd></div><div><dt>苦手</dt><dd>${escapeHtml(p.dislikes.join("・") || "未指定")}</dd></div></dl>`; })()}
-      <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p></section>
-
-    <details class="panel settings-fold">
-      <summary><h3>家族メンバー（${state.family.length}人）</h3><small class="muted">また食べたい頻度を記録する人</small></summary>
-      <div class="member-list">
+      <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p>`)}
+    ${settingRow("rhythm", "🗓", "献立のリズム", rhythmOn() ? `${RHYTHMS[state.rhythm.preset].label}・買い物${state.rhythm.shopTime}` : "未設定", renderRhythmSettings())}
+    ${isViewer() ? "" : settingRow("skill", "🔪", "料理スキル", sp ? `${Skills.stars(sp.level)} ${SKILL_TYPES[sp.level].name}・${sp.growth === "grow" ? "レベルアップ" : "ルーティン"}` : "未診断", renderSkillSettings())}
+    ${isViewer() ? "" : settingRow("starters", "🍳", "おすすめレシピ", showStarters() ? "使う" : "使わない（自分のレシピだけ）", renderStarterSettings())}
+    ${settingRow("share", "👫", "ふたりで使う", syncEnabled() ? `${state.family.join("・")}でつながっています` : "まだつながっていません", renderSharePanel() + (syncEnabled() ? "" : renderSyncPanel()))}
+    ${settingRow("family", "👪", "家族メンバー", `${state.family.join("・")}（${state.family.length}人）`, `<div class="member-list">
         ${state.family.map((name, index) => `
           <div class="member-row">
             <input class="input member-name" data-index="${index}" value="${escapeAttr(name)}" aria-label="メンバー名">
@@ -1903,40 +1918,16 @@ function renderSettings() {
           </div>
         `).join("")}
       </div>
-      <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>
-    </details>
-
-    ${renderRhythmSettings()}
-    ${renderSkillSettings()}
-    ${renderStarterSettings()}
-    ${renderSharePanel()}
-    ${syncEnabled() ? "" : renderSyncPanel()}
-
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h3>データのバックアップ</h3>
-          <p>端末を変えるときや、消えてしまう前の保険に。</p>
-        </div>
-      </div>
-      <p class="notice">この端末のブラウザにだけ保存されています。書き出したファイルを保管しておくと、別の端末や再インストール後に読み込んで復元できます。</p>
+      <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>`)}
+    ${settingRow("backup", "💾", "バックアップ", `前回の書き出し：${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}`, `<p class="notice">この端末のブラウザにだけ保存されています。書き出したファイルを保管しておくと、別の端末や再インストール後に読み込んで復元できます。</p>
       <p class="muted small">前回の書き出し: ${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}</p>
       <div class="actions">
         <button class="primary-button" type="button" data-action="export-data">書き出す</button>
         <button class="secondary-button" type="button" data-action="import-data">読み込む</button>
       </div>
-      <input id="import-file" type="file" accept="application/json,.json" hidden>
-    </section>
-
-    <section class="panel danger-zone">
-      <div class="section-head">
-        <div>
-          <h3>全件削除</h3>
-          <p>保存したレシピと食事の記録を空にします。家族メンバー設定は残ります。</p>
-        </div>
-      </div>
-      <button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピと食事の記録を全件削除</button>
-      <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>
+      <input id="import-file" type="file" accept="application/json,.json" hidden>`)}
+    ${settingRow("reset", "⚠️", "全件削除", "レシピ・記録を消す／使い直す", `<button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピと食事の記録を全件削除</button>
+      <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>`)}
     </section>
   `;
 }
@@ -1957,6 +1948,13 @@ function renderSyncPanel() {
 }
 
 function bindEvents() {
+  document.querySelectorAll("details.setting-row").forEach((el) => el.addEventListener("toggle", () => {
+    const id = el.id.replace("setting-", "");
+    if (el.open) {
+      settingsOpen = id;
+      document.querySelectorAll("details.setting-row[open]").forEach((other) => { if (other !== el) other.open = false; });
+    } else if (settingsOpen === id) settingsOpen = "";
+  }));
   bindDailyEvents();
   bindPlaylistEvents();
   document.querySelectorAll('.ingredient-name-input, #recipe-steps').forEach(input=>input.addEventListener('input',()=> {

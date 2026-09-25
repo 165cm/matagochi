@@ -29,7 +29,7 @@
     unknown: {
       title: "まだまだ探索中",
       emoji: "🔎",
-      description: "今の気分に合う一皿を、これから一緒に探しましょう。",
+      description: "好きな一皿を、これから一緒に探しましょう。",
     },
   };
   const cards = [

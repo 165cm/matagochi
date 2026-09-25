@@ -742,3 +742,25 @@ test("skill quiz: answers give a level; the plan stays at that level, or adds on
   run('state.onboarded=true;startSkillQuiz();for(let i=0;i<9;i++)handleDailyAction("life-quiz-answer",{value:i<5?"2":"0"});handleDailyAction("life-quiz-growth",{value:"steady"});handleDailyAction("life-quiz-save",{})');
   assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.growth,dailyProfile().skillLevel])")), [3, "steady", 3]);
 });
+
+test("rhythm: starting mid-block begins at the next whole block; days before it are 'いつもどおり'", () => {
+  const run = app();
+  run('state.onboarded=true;handleDailyAction("life-rhythm",{preset:"3day"})');
+  const from = run("state.rhythm.startFrom");
+  assert.ok(from >= run("today()"), "starts today or later");
+  assert.ok(run(`currentBlocks()[0].start === "${from}"`));
+  assert.ok(run(`currentBlocks()[0].shopAt > localStamp(new Date())`), "its shopping time is still ahead");
+  const pre = JSON.parse(run("JSON.stringify(dailyPlan().filter(d=>d.date<state.rhythm.startFrom).map(d=>!!d.prestart))"));
+  assert.ok(pre.every(Boolean));
+  run('confirmDaily({date:today()},Lifestyle.curated[0]);handleDailyAction("life-rhythm",{preset:"week"})');
+  assert.equal(run("state.rhythm.startFrom"), "", "already-decided meals keep the rhythm starting now");
+});
+
+test("persona: plain-language features, one per answered axis", () => {
+  const P = require("../dinner-persona.js");
+  const answers = P.questions.map((q) => ({ id: q.id, choice: q.leftScore < 0 ? "left" : "right" }));
+  const r = P.result(answers);
+  assert.equal(r.features.length, 3);
+  assert.ok(r.features.every(([icon, text]) => icon && text.length <= 20));
+  assert.ok(!/今夜|今日の気分/.test(JSON.stringify(P.characters)));
+});

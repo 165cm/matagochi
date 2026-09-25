@@ -31,7 +31,7 @@ const profileTitles = [
   "自炊する曜日は？",
   "食べられないもの",
   "苦手な食材",
-  "今夜のときめき診断",
+  "ごはんの好み診断",
   "料理に使える時間",
   "どんな作り方がいい？",
   "キッチンの持ちもの",
@@ -305,6 +305,7 @@ function dailyPlan() {
     addDays,
     overrides: state.planOverrides,
     cyclesOf: (r) => ({ ...likedCycles(r), ...recipeRatings(r) }),
+    offUntil: prestartUntil(),
     requestOf: openRequestFor,
   });
 }
@@ -403,6 +404,7 @@ function renderDailyPlan() {
       const recipe = day.slot?.recipe || day.candidate?.recipe;
       const dateLabel = `${formatDate(day.date)}（${weekdayLabel(day.date)}）`;
       const badge = day.date === today() ? '<span class="today-badge">今夜</span>' : "";
+      if (day.prestart) return `<article class="plan-card is-off"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>🛒</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">いつもどおりで</strong><p class="plan-time">献立は${formatDate(prestartUntil())}から</p></div></article>`;
       if (day.slot?.status === "off" || day.off)
         return `<article class="plan-card is-off"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>🌙</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">自炊はお休み</strong><div class="plan-controls"><button type="button" class="plan-icon" data-action="life-reopen" data-date="${day.date}">料理する</button></div></div></article>`;
       if (!recipe)
@@ -430,7 +432,7 @@ function renderDailyPlan() {
     return head + html + foot;
   }).join("");
   const ready = plan.filter((d) => d.candidate).length;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><h2>${rhythmOn() ? "献立" : `${n}日分`}、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderRhythmInvite()}${renderRoundCard()}${renderWeekBoard()}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${rhythmOn() ? "" : dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>${renderShareInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><h2>${rhythmOn() ? "献立" : `${n}日分`}、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderRhythmInvite()}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${rhythmOn() ? "" : dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>${renderShareInvite()}`;
 }
 let swapShowAll = false;
 function renderSwapChoices() {
@@ -482,18 +484,21 @@ function renderToday() {
     actions = `${recipe ? dailyButton("life-confirm-one", "これにする", `data-date="${today()}"`, true) : dailyButton("life-profile", "条件をゆるめる", "", true)}${recipe ? `<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}">⇄ ほかの一皿</button>` : ""}`;
   else if (slot.status === "cooked") actions = "";
   else actions = `${dailyButton("life-cook", "作り方を見る", `data-date="${today()}"`, true)}${tonightNeeds ? dailyButton("go-view", `🛒 この料理の買うもの あと${tonightNeeds}品`, 'data-view="shopping"') : ""}`;
-  const label = off ? "今日はお休み" : slot?.status === "cooked" ? "ごちそうさま！" : slot ? "今夜の一品" : "今夜のおすすめ";
+  const pre = !slot && day?.prestart ? prestartUntil() : "";
+  const firstBlock = pre ? currentBlocks()[0] : null;
+  if (pre) actions = dailyButton("go-view", "最初の献立を見る", 'data-view="plan"', true);
+  const label = pre ? `献立は${formatDate(pre)}（${weekdayLabel(pre)}）から` : off ? "今日はお休み" : slot?.status === "cooked" ? "ごちそうさま！" : slot ? "今夜の一品" : "今夜のおすすめ";
   const tomorrow = plan[1];
   const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
   return `<p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p>
   ${renderPreferencePrompt()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p></div>
-    ${off ? '<p class="tonight-off">また次の夜ごはんで。🌙</p>' : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${escapeHtml(recipe.title)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", `${servings}人分`, bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
+    ${pre ? `<p class="tonight-off">最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b>。<br>それまでは、いつもどおりで大丈夫！ 🍳</p>` : off ? '<p class="tonight-off">また次の夜ごはんで。🌙</p>' : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${escapeHtml(recipe.title)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", `${servings}人分`, bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
-    ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-off" data-date="${today()}">今日は自炊お休み</button>` : ""}</div>` : ""}</section>
+    ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-off" data-date="${today()}">今日は自炊お休み</button>` : ""}</div>` : ""}</section>
   ${renderTodayTodos()}
-  ${tomorrow ? `<button type="button" class="tomorrow-line" data-action="go-view" data-view="plan"><span>明日は</span><b>${tomorrowOff ? "お休み 🌙" : tr ? escapeHtml(tr.title) : "未定"}</b><i aria-hidden="true">›</i></button>` : ""}`;
+  ${tomorrow ? `<button type="button" class="tomorrow-line" data-action="go-view" data-view="plan"><span>明日は</span><b>${tomorrow.prestart ? "いつもどおり（献立の前）" : tomorrowOff ? "お休み 🌙" : tr ? escapeHtml(tr.title) : "未定"}</b><i aria-hidden="true">›</i></button>` : ""}`;
 }
 // Only things that need doing today; each row is one tap to the place where it gets done.
 function renderTodayTodos() {
@@ -829,7 +834,10 @@ function handleDailyAction(action, data) {
   if (action === "life-quick") {profileDraft().quickSetupIndex=0;profileDraft().period=3;profileEditing=true;}
   if (action === "life-quick-next") {
     // The rhythm step starts on the recommended 3-day rhythm if nothing was picked.
-    if (profileDraft().quickSetupIndex === 1 && !rhythmOn()) state.rhythm = { preset: "3day", shopTime: document.querySelector("#rhythm-time")?.value || "17:00", updatedAt: nowIso() };
+    if (profileDraft().quickSetupIndex === 1 && !rhythmOn()) {
+      state.rhythm = { preset: "3day", shopTime: document.querySelector("#rhythm-time")?.value || "17:00", updatedAt: nowIso() };
+      state.rhythm.startFrom = firstFullBlock()?.start || "";
+    }
     profileDraft().quickSetupIndex = Math.min(QUICK_STEPS - 1, profileDraft().quickSetupIndex + 1);
   }
   if (action === "life-quick-skill") {

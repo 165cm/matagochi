@@ -406,6 +406,7 @@
     history = [],
     cyclesOf = () => ({}),
     requestOf = () => null,
+    offUntil = "",
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -439,6 +440,7 @@
         if (slot.recipe) timeline.push({ date, recipe: slot.recipe });
         return { date, slot, rotation: slot.recipe ? rotation(slot.recipe, date, timeline, between) : null };
       }
+      if (!slot && offUntil && date < offUntil) return { date, off: true, prestart: true };
       if (
         slot?.status !== "removed" &&
         p.days.length &&
