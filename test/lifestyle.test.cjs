@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -711,4 +711,17 @@ test("app: tapping a recipe opens a read-only detail; starters can be hidden fro
   assert.equal(run("normalizeStarterPref(buildSyncPayload().starterPref).show"), false);
   run('handleDailyAction("life-starters",{show:"true"})');
   assert.ok(run("starterRecipeList().length") > 0);
+});
+
+test("skills: every starter gets a 1–5 skill level from its steps; titles and draining do not count", () => {
+  const S = require("../skills.js");
+  const byId = (n) => L.curated.find((r) => r.id === `starter-${n}`);
+  for (const r of L.curated) { const x = S.rate(r); assert.ok(x.level >= 1 && x.level <= 5, r.title); }
+  assert.equal(S.rate(byId("04")).level, 1, "レンジで混ぜるだけ");
+  assert.equal(S.rate(byId("29")).level, 1, "汁を切る is not knife work");
+  assert.equal(S.rate(byId("08")).level, 2, "焼きうどん in the title is not searing");
+  assert.ok(S.rate(byId("13")).level >= 4, "照り焼き: open, sear and glaze");
+  assert.ok(S.rate(byId("26")).skills.includes("shallowfry"));
+  assert.ok(L.tags(byId("04")).includes("easy"));
+  assert.ok(!L.tags(byId("13")).includes("easy"));
 });
