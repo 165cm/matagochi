@@ -254,6 +254,7 @@ function dailyProfile() {
     ...state.householdProfile,
     restrictions: [...new Set([...(state.foodProfile?.restrictions || []), ...householdRestrictions()])],
     ...(rhythmOn() ? { days: rhythmDays() } : {}),
+    ...(skillProfile() && !isViewer() ? { skillLevel: state.skillProfile.level, skillGrowth: state.skillProfile.growth } : {}),
     servings: state.servingCount,
   });
 }
@@ -336,7 +337,7 @@ function renderMealCalendar() {
 function planReason(day) {
   const c = day.candidate;
   if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.rotation?.reason].find(Boolean) || "";
-  return c ? [c.request && `${c.request.from}のリクエスト`, c.rotation?.reason, c.repeat?.reason].find(Boolean) || "" : "";
+  return c ? [c.request && `${c.request.from}のリクエスト`, c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.rotation?.reason, c.repeat?.reason].find(Boolean) || "" : "";
 }
 // The last time someone pressed 買い物完了. Meals confirmed before it were bought on that trip.
 function lastShoppedAt() {
@@ -512,6 +513,7 @@ function renderTodayTodos() {
   const toBuy = dailyShopping().filter((i) => i.status === "buy").length;
   const shopToday = rhythmOn() && shoppingBlock() && shoppingBlock().shopAt.slice(0, 10) <= today();
   if (toBuy && (shopToday || !rhythmOn())) rows.push(`<div class="todo-row"><span>🛒</span><p>買うもの <b>あと${toBuy}品</b></p>${dailyButton("go-view", "リストへ", 'data-view="shopping"')}</div>`);
+  if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>料理スキル診断</b>（1分）で、作れる料理だけの献立に</p>${dailyButton("life-quiz-start", "診断する")}</div>`);
   if (!state.foodProfile?.completed) rows.push(`<div class="todo-row"><span>✍️</span><p>好みとキッチンを教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`);
   return rows.length ? `<section class="today-todos" aria-label="今日やること"><h3 class="section-title"><span class="marker">今日やること</span></h3>${rows.join("")}</section>` : "";
 }
@@ -810,6 +812,7 @@ function handleDailyAction(action, data) {
   const oldView = state.view;
   if (!action.startsWith("life-")) return false;
   if (handleHouseholdAction(action, data)) return true;
+  if (handleSkillQuizAction(action, data)) return true;
   if (viewerBlocked(action)) return true;
   const before = dailyShopping();
   if (action === "life-review-saved") {
@@ -1044,6 +1047,7 @@ function handleDailyAction(action, data) {
     showToast(data.show === "true" ? "おすすめレシピを表示します。" : "おすすめを隠しました。自分のレシピだけで献立を作ります。");
   }
   if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
+  if (action === "life-skill-growth" && state.skillProfile) { state.skillProfile = { ...state.skillProfile, growth: data.value === "grow" ? "grow" : "steady", updatedAt: nowIso() }; state.planOverrides = {}; }
   if (action === "life-cal-pick") calPick = calPick === data.date ? "" : data.date;
   if (action === "life-record-back") { recordDraft = null; state.view = "repeat"; }
   if (action === "life-record-cycle" && recordDraft && CYCLE_CHOICES.some((c) => c.cycle === data.cycle)) {

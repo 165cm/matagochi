@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -724,4 +724,21 @@ test("skills: every starter gets a 1–5 skill level from its steps; titles and 
   assert.ok(S.rate(byId("26")).skills.includes("shallowfry"));
   assert.ok(L.tags(byId("04")).includes("easy"));
   assert.ok(!L.tags(byId("13")).includes("easy"));
+});
+
+test("skill quiz: answers give a level; the plan stays at that level, or adds one challenge when growing", () => {
+  const run = app();
+  assert.equal(run("skillQuizLevel({0:2,1:2,2:2,3:2,4:1,5:0,6:0,7:0,8:0})"), 3);
+  assert.equal(run("skillQuizLevel({0:0})"), 1);
+  assert.equal(run("skillQuizLevel({0:2,1:2,2:1,3:0})"), 2, "作れる+たぶん at ★2 averages 1.5, which passes");
+  const S = require("../skills.js");
+  const steady = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
+  assert.ok(steady.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 2), "routine keeps to ★2");
+  const grow = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2, skillGrowth: "grow" }), start, length: 7, addDays });
+  const hard = grow.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2);
+  assert.ok(hard.length <= 1, "at most one challenge per plan");
+  assert.ok(grow.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 3));
+  if (hard.length) assert.match(hard[0].candidate.reasons[0], /^ちょっと挑戦/);
+  run('state.onboarded=true;startSkillQuiz();for(let i=0;i<9;i++)handleDailyAction("life-quiz-answer",{value:i<5?"2":"0"});handleDailyAction("life-quiz-growth",{value:"steady"});handleDailyAction("life-quiz-save",{})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.growth,dailyProfile().skillLevel])")), [3, "steady", 3]);
 });

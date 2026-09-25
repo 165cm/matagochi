@@ -67,6 +67,7 @@ const demoState = {
   shopDone: {},
   aisleOverrides: {},
   starterPref: { show: true, asked: false, updatedAt: "" },
+  skillProfile: null,
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -302,6 +303,7 @@ function normalizeState(saved) {
     shopDone: normalizeShopDone(saved.shopDone),
     aisleOverrides: normalizeAisleOverrides(saved.aisleOverrides),
     starterPref: normalizeStarterPref(saved.starterPref),
+    skillProfile: normalizeSkillProfile(saved.skillProfile),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -814,6 +816,12 @@ function setView(view) {
 
 function render() {
   cancelAutoAdvance();
+  if (skillQuiz) {
+    document.body.classList.add("is-onboarding");
+    document.querySelector("#app").innerHTML = renderSkillQuiz();
+    bindEvents();
+    return;
+  }
   if (joinInvite) {
     document.body.classList.add("is-onboarding");
     document.querySelector("#app").innerHTML = renderJoin();
@@ -1899,6 +1907,7 @@ function renderSettings() {
     </details>
 
     ${renderRhythmSettings()}
+    ${renderSkillSettings()}
     ${renderStarterSettings()}
     ${renderSharePanel()}
     ${syncEnabled() ? "" : renderSyncPanel()}
@@ -3554,6 +3563,11 @@ document.addEventListener("visibilitychange", () => {
   state = await loadStateAsync();
   state.view = "today";
   readInviteFromLocation();
+  const skillParams = new URLSearchParams(location.search);
+  if (skillParams.get("skill") === "1") {
+    history.replaceState(null, "", location.pathname);
+    startSkillQuiz(skillParams.get("from") === "lp");
+  }
   const hasSharedUrl = applySharedUrlFromLocation();
   if (!hasSharedUrl && new URLSearchParams(location.search).get("quiz") === "1") {
     const draft = profileDraft();

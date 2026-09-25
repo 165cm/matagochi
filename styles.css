@@ -2444,3 +2444,23 @@ button.tile-title { padding: 0; border: 0; background: none; font: inherit; font
 .detail-skill { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; margin: 0; padding: 8px 12px; border-radius: 14px; background: #fff1dc; font-size: 14px; }
 .skill-stars { color: var(--tomato); letter-spacing: 1px; font-size: 15px; }
 .detail-skill small { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+
+/* ----- 料理スキル診断 ----- */
+.skill-quiz { display: grid; gap: 12px; padding-top: 6px; text-align: center; }
+.skill-quiz h2 { margin: 0; font-size: 26px; line-height: 1.4; }
+.quiz-progress { margin: 0; font-size: 13px; font-weight: 800; color: var(--muted); }
+.quiz-progress b { color: var(--tomato); }
+.quiz-bar { height: 6px; border-radius: 999px; background: #efe4d6; overflow: hidden; }
+.quiz-bar i { display: block; height: 100%; background: var(--tomato); }
+.quiz-photo { aspect-ratio: 4 / 3; border-radius: 24px; }
+.quiz-how { margin: -4px 0 0; color: var(--muted); }
+.quiz-answers { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+.quiz-answers button { min-height: 52px; padding: 0 8px; }
+.quiz-growth { display: grid; gap: 10px; text-align: left; }
+.quiz-stars { margin: 4px 0 0; font-size: 34px; color: var(--tomato); letter-spacing: 4px; }
+.skill-quiz.is-result h2 { font-size: 30px; }
+.skill-quiz.is-result p { margin: 0; }
+.quiz-style { padding: 12px 14px; border-radius: 16px; background: #fff1dc; text-align: left; font-size: 14px; }
+.quiz-actions { display: grid; gap: 8px; }
+.skill-settings { display: grid; gap: 10px; }
+.skill-settings h3, .skill-settings p { margin: 0; }
