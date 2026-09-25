@@ -430,7 +430,6 @@ function renderViewerToday() {
       ${off || !recipe ? '<h2 class="viewer-title">今夜はお休み 🌙</h2>' : `${dishTile(recipe, "viewer-photo")}<h2 class="viewer-title">${escapeHtml(recipe.title)}</h2>`}
       ${tr ? `<p class="viewer-next">明日は <b>${escapeHtml(tr.title)}</b></p>` : ""}
     </section>
-    ${renderWeekBoard()}
     <div class="viewer-actions">${dailyButton("go-view", "🙋 食べたいものを送る", 'data-view="collection"', true)}${dailyButton("go-view", "献立を見る", 'data-view="plan"')}</div>
     ${mine.length ? `<p class="viewer-sent">送ったリクエスト：${mine.map((q) => escapeHtml(requestRecipe(q).title || q.recipeTitle)).join("、")}</p>` : ""}`;
 }

@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v31";
-const APP_VERSION = "20260925-detail";
+const CACHE_NAME = "ripigochi-v32";
+const APP_VERSION = "20260925-today";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -20,12 +20,12 @@ const CORE_ASSETS = [
   `./household.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260925-detail",
-  "./icons/favicon-32.png?v=20260925-detail",
-  "./icons/icon-192.png?v=20260925-detail",
-  "./icons/icon-512.png?v=20260925-detail",
-  "./icons/icon-maskable-512.png?v=20260925-detail",
-  "./icons/apple-touch-icon.png?v=20260925-detail"
+  "./manifest.webmanifest?v=20260925-today",
+  "./icons/favicon-32.png?v=20260925-today",
+  "./icons/icon-192.png?v=20260925-today",
+  "./icons/icon-512.png?v=20260925-today",
+  "./icons/icon-maskable-512.png?v=20260925-today",
+  "./icons/apple-touch-icon.png?v=20260925-today"
 ];
 
 self.addEventListener("install", (event) => {
