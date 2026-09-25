@@ -804,6 +804,8 @@ function handleRhythmAction(action, data) {
   else if (action === "life-rhythm-open") { state.view = "settings"; saveState(); render(); document.querySelector("#rhythm")?.scrollIntoView({ block: "start" }); return true; }
   else if (action === "life-rhythm" && RHYTHMS[data.preset] && !isViewer()) {
     state.rhythm = { preset: data.preset, shopTime: document.querySelector("#rhythm-time")?.value || state.rhythm?.shopTime || "17:00", updatedAt: nowIso() };
+    // During the first-run questions, picking a rhythm moves on to the next question.
+    if ((profileEditing || !state.onboarded) && state.onboardingDraft?.quickSetupIndex === 1) state.onboardingDraft.quickSetupIndex = 2;
     state.planOverrides = {};
     showToast(`献立のリズムを「${RHYTHMS[data.preset].label}」にしました。`);
   } else if (action === "life-rhythm-off" && !isViewer()) state.rhythm = { preset: "", shopTime: state.rhythm.shopTime, updatedAt: nowIso(), dismissed: true };
