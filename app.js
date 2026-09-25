@@ -66,6 +66,7 @@ const demoState = {
   rhythm: { preset: "", shopTime: "17:00", dismissed: false, updatedAt: "" },
   shopDone: {},
   aisleOverrides: {},
+  starterPref: { show: true, asked: false, updatedAt: "" },
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -266,7 +267,7 @@ function normalizeState(saved) {
   const base = clone(demoState);
   const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
   const savedView = saved.view === "ratings" ? "repeat" : saved.view;
-  const view = ["today", "register", "playlist", "collection", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings"].includes(savedView) ? savedView : base.view;
+  const view = ["today", "register", "playlist", "collection", "recipe", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings"].includes(savedView) ? savedView : base.view;
   return {
     ...base,
     ...saved,
@@ -300,6 +301,7 @@ function normalizeState(saved) {
     rhythm: normalizeRhythm(saved.rhythm),
     shopDone: normalizeShopDone(saved.shopDone),
     aisleOverrides: normalizeAisleOverrides(saved.aisleOverrides),
+    starterPref: normalizeStarterPref(saved.starterPref),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -531,7 +533,8 @@ function buildSyncPayload() {
     round: state.round || {},
     rhythm: state.rhythm || {},
     shopDone: state.shopDone || {},
-    aisleOverrides: state.aisleOverrides || {}
+    aisleOverrides: state.aisleOverrides || {},
+    starterPref: state.starterPref || {}
   };
 }
 
@@ -569,7 +572,8 @@ function mergeSyncPayloads(local, remote) {
     round: (remote.round?.updatedAt || "") > (local.round?.updatedAt || "") ? remote.round : local.round,
     rhythm: (remote.rhythm?.updatedAt || "") > (local.rhythm?.updatedAt || "") ? remote.rhythm : local.rhythm,
     shopDone: { ...(remote.shopDone || {}), ...(local.shopDone || {}) },
-    aisleOverrides: Lifestyle.mergeMap(local.aisleOverrides, remote.aisleOverrides)
+    aisleOverrides: Lifestyle.mergeMap(local.aisleOverrides, remote.aisleOverrides),
+    starterPref: (remote.starterPref?.updatedAt || "") > (local.starterPref?.updatedAt || "") ? remote.starterPref : local.starterPref
   };
 }
 
@@ -620,6 +624,7 @@ function applySyncPayload(payload) {
   state.rhythm = normalizeRhythm(payload.rhythm || state.rhythm);
   state.shopDone = normalizeShopDone(payload.shopDone || state.shopDone);
   state.aisleOverrides = normalizeAisleOverrides(payload.aisleOverrides || state.aisleOverrides);
+  state.starterPref = normalizeStarterPref(payload.starterPref || state.starterPref);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
@@ -830,8 +835,8 @@ function render() {
   if (isViewer() && state.view === "repeat") state.view = "today";
 
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.setAttribute("aria-current", tab.dataset.view === ({register:"collection",playlist:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view) ? "page" : "false");
-    tab.classList.toggle("is-active", tab.dataset.view === ({register:"collection",playlist:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view));
+    tab.setAttribute("aria-current", tab.dataset.view === ({register:"collection",playlist:"collection",recipe:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view) ? "page" : "false");
+    tab.classList.toggle("is-active", tab.dataset.view === ({register:"collection",playlist:"collection",recipe:"collection",cooking:"plan",recordDetails:"repeat"}[state.view] || state.view));
   });
 
   const views = {
@@ -842,6 +847,7 @@ function render() {
     register: renderRecipeEntry,
     playlist: renderPlaylistImport,
     collection: renderCollection,
+    recipe: renderRecipeDetail,
     plan: renderDailyPlan,
     repeat: renderReflection,
     settings: renderSettings
@@ -1133,7 +1139,8 @@ function renderCollection() {
       ${isViewer() ? "" : `<button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>`}
     </section>
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
-    ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("starter", "おすすめ")}</div>`}
+    ${renderStarterHint()}
+    ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${showStarters() ? tab("starter", "おすすめ") : ""}</div>`}
     ${renderFacets(pool)}
     <section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>
     ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}
@@ -1195,9 +1202,9 @@ function renderRecipeTile(recipe) {
   const last = lastEatenLabel(recipe);
   return `
     <article class="recipe-tile recipe-card">
-      <button type="button" class="tile-photo" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を開く">${dishTile(recipe)}${tileMinutes(recipe)}</button>
+      <button type="button" class="tile-photo" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}のレシピを見る">${dishTile(recipe)}${tileMinutes(recipe)}</button>
       <span class="tile-mark is-saved" aria-label="保存済み"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></span>
-      <strong class="tile-title">${escapeHtml(recipe.title)}</strong>
+      <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
       ${requestButton(recipe)}
       <div class="tile-foot"><small class="muted">${recipe.author ? `@${escapeHtml(recipe.author)} · ` : ""}${escapeHtml(last === "はじめて" ? "まだ作っていない" : last)}</small>
         ${isViewer() ? "" : `<details class="plan-more tile-more"><summary aria-label="${escapeAttr(recipe.title)}のメニュー">⋯</summary><div class="plan-more-menu">
@@ -1211,9 +1218,9 @@ function renderRecipeTile(recipe) {
 function renderStarterTile(recipe) {
   return `
     <article class="recipe-tile is-starter">
-      <span class="tile-photo">${dishTile(recipe)}${tileMinutes(recipe)}</span>
+      <button type="button" class="tile-photo" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}のレシピを見る">${dishTile(recipe)}${tileMinutes(recipe)}</button>
       ${isViewer() ? "" : `<button type="button" class="tile-mark" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></button>`}
-      <strong class="tile-title">${escapeHtml(recipe.title)}</strong>
+      <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
       ${requestButton(recipe)}
       ${isViewer() ? "" : `<div class="tile-foot"><small class="muted">おすすめ${recipe.planning?.tastes?.length ? ` · ${escapeHtml(recipe.planning.tastes[0])}` : ""}</small></div>`}
     </article>`;
@@ -1892,6 +1899,7 @@ function renderSettings() {
     </details>
 
     ${renderRhythmSettings()}
+    ${renderStarterSettings()}
     ${renderSharePanel()}
     ${syncEnabled() ? "" : renderSyncPanel()}
 
@@ -2422,7 +2430,7 @@ async function handleAction(event) {
       state.extractedIngredients = [];
       state.extractedSteps = [];
       state.fetchStatus = "";
-      state.view = reviewReturnDate ? "plan" : "collection";
+      state.view = reviewReturnDate ? "plan" : recipeDetailId === existing.id ? "recipe" : "collection";
       if (reviewReturnDate) { swapDate = reviewReturnDate; reviewReturnDate = ""; }
       imageSession?.clear();
       imageFeedback = null;
@@ -2527,6 +2535,7 @@ async function handleAction(event) {
         if (state.planOverrides[date] === id) delete state.planOverrides[date];
       });
       if (state.editingRecipeId === id) state.editingRecipeId = null;
+      if (state.view === "recipe") state.view = "collection";
       if (state.selectedRecipeId === id) state.selectedRecipeId = state.recipes[0]?.id || null;
       saveState();
       showToast("レシピを削除しました。");

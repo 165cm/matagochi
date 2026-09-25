@@ -2403,3 +2403,27 @@ span.tile-photo { cursor: default; }
 .trip-meal > small { position: absolute; top: 4px; left: 4px; padding: 0 5px; border-radius: 6px; background: rgba(255, 253, 248, .9); font-size: 10px; font-weight: 800; }
 .trip-meal > span { font-size: 10px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .shop-uses { font-style: normal; color: var(--muted); font-size: 11px; }
+
+/* ----- レシピの詳細 ----- */
+.recipe-detail { display: grid; gap: 10px; }
+.detail-photo { aspect-ratio: 4 / 3; border-radius: 24px; }
+.detail-title { margin: 4px 0 0; font-size: 24px; line-height: 1.4; }
+.detail-meta, .detail-history { margin: 0; font-size: 13px; color: var(--muted); }
+.detail-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.detail-actions .secondary-button, .detail-actions .link-button { min-height: 40px; padding: 0 14px; font-size: 14px; }
+.detail-h { margin: 12px 0 0; font-size: 17px; display: flex; align-items: baseline; gap: 8px; }
+.detail-h small { font-size: 12px; color: var(--muted); }
+.detail-ingredients { list-style: none; margin: 0; padding: 4px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.detail-ingredients li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--line); font-size: 15px; }
+.detail-ingredients li:last-child { border-bottom: 0; }
+.detail-ingredients li span:last-child { color: var(--muted); white-space: nowrap; }
+.detail-steps { margin: 0; padding-left: 1.4em; display: grid; gap: 10px; font-size: 15px; line-height: 1.7; }
+.detail-note { margin: 4px 0 0; padding: 10px 14px; border-radius: 14px; background: #fff1dc; font-size: 14px; }
+.detail-foot { display: grid; gap: 8px; margin-top: 12px; }
+button.tile-title { padding: 0; border: 0; background: none; font: inherit; font-weight: 800; color: var(--ink); text-align: left; cursor: pointer; }
+.starter-hint { margin: 0 0 12px; padding: 14px 16px; border-radius: 18px; border: 2px dashed #e6d3bf; display: grid; gap: 8px; }
+.starter-hint p { margin: 0; }
+.starter-hint small { color: var(--muted); }
+.starter-settings { display: grid; gap: 10px; }
+.starter-settings h3 { margin: 0; }
