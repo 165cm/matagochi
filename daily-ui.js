@@ -262,7 +262,7 @@ function allDinnerRecipes() {
   const originals = new Set(personal.map((r) => r.starterId));
   return [
     ...personal,
-    ...Lifestyle.curated.filter((r) => !originals.has(r.id)),
+    ...(showStarters() ? Lifestyle.curated.filter((r) => !originals.has(r.id)) : []),
   ];
 }
 // Meals actually eaten (or confirmed and past) in the last two weeks, newest first.
@@ -932,7 +932,11 @@ function handleDailyAction(action, data) {
   if (action === "life-recipe-tab") recipeTab = ["saved", "starter"].includes(data.tab) ? data.tab : "all";
   if (action === "life-save-starter") {
     const r = Lifestyle.curated.find((x) => x.id === data.recipe);
-    if (r) { saveOwnRecipe(r); showToast(`「${r.title}」をレシピに保存しました。`); }
+    if (r) {
+      const own = saveOwnRecipe(r);
+      if (state.view === "recipe") recipeDetailId = own.id;
+      showToast(`「${r.title}」をレシピに保存しました。`);
+    }
   }
   if (action === "life-choose") {
     trackDaily("plan_swapped");
@@ -1018,6 +1022,13 @@ function handleDailyAction(action, data) {
     if (r) openRecordEditor({ id: generateId("e"), isNew: true, recipeId: r.id, recipeTitle: r.title, cookedAt: today(), mealType: "dinner", preferencePending: true, familyRepeatCycles: {}, memo: "", photo: "" });
   }
   if (action === "life-aisle-edit") aisleEdit = !aisleEdit;
+  if (action === "life-recipe-open") { recipeDetailId = data.recipe; state.view = "recipe"; }
+  if (action === "life-recipe-back") state.view = "collection";
+  if (action === "life-starters" && !isViewer()) {
+    state.starterPref = { show: data.show === "true", asked: true, updatedAt: nowIso() };
+    showToast(data.show === "true" ? "おすすめレシピを表示します。" : "おすすめを隠しました。自分のレシピだけで献立を作ります。");
+  }
+  if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
   if (action === "life-cal-pick") calPick = calPick === data.date ? "" : data.date;
   if (action === "life-record-back") { recordDraft = null; state.view = "repeat"; }
   if (action === "life-record-cycle" && recordDraft && CYCLE_CHOICES.some((c) => c.cycle === data.cycle)) {
@@ -1239,6 +1250,7 @@ async function analyzeCookingRecipe(date) {
 let starterShowAll = false;
 // Starter recipes are browsable and searchable from the Recipes tab, one tap to save.
 function starterRecipeList() {
+  if (!showStarters()) return [];
   const saved = new Set(state.recipes.map((r) => r.starterId).filter(Boolean));
   const query = (state.searchText || "").trim().toLowerCase();
   return Lifestyle.curated
@@ -1246,4 +1258,63 @@ function starterRecipeList() {
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok)
     .filter((r) => !query || [r.title, ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
+}
+
+// ----- レシピの詳細（閲覧が基本。編集は「編集する」から） -----
+let recipeDetailId = "";
+function detailRecipe() {
+  return recipeById(recipeDetailId) || Lifestyle.curated.find((r) => r.id === recipeDetailId) || null;
+}
+function tagLabels(recipe) {
+  const labels = new Map(Lifestyle.FACETS.flatMap((f) => f.options));
+  return Lifestyle.tags(recipe).map((t) => labels.get(t)).filter(Boolean);
+}
+function renderRecipeDetail() {
+  const r = detailRecipe();
+  if (!r) return `<section class="panel"><p>レシピが見つかりません。</p>${dailyButton("go-view", "レシピ一覧へ", 'data-view="collection"')}</section>`;
+  const saved = !r.curated;
+  const servings = dailyProfile().servings;
+  const ratings = recipeRatings(r);
+  const cycleLabel = (c) => CYCLE_CHOICES.find((x) => x.cycle === c)?.label || "";
+  const meta = [r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", r.planning?.equipment?.length ? r.planning.equipment.join("・") : "", r.author ? `@${r.author}` : "", saved ? r.source : "おすすめ"].filter(Boolean);
+  const last = lastEatenLabel(r);
+  const edit = !isViewer();
+  return `<section class="recipe-detail">
+    <button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button>
+    ${dishTile(r, "detail-photo")}
+    <h2 class="detail-title">${escapeHtml(r.title)}</h2>
+    <p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>
+    <div class="detail-tags">${tagLabels(r).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
+    <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
+    <div class="detail-actions">${requestButton(r)}${edit ? (saved ? dailyButton("edit-recipe", "✏️ 編集する", `data-recipe="${escapeAttr(r.id)}"`) : dailyButton("life-save-starter", "🔖 自分のレシピに保存", `data-recipe="${escapeAttr(r.id)}"`)) : ""}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>
+    <h3 class="detail-h">材料 <small>${servings}人分</small></h3>
+    ${r.ingredients?.length ? `<ul class="detail-ingredients">${r.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</span></li>`).join("")}</ul>` : '<p class="muted small">材料が登録されていません。</p>'}
+    <h3 class="detail-h">作り方</h3>
+    ${r.steps?.length ? `<ol class="detail-steps">${r.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>` : '<p class="muted small">作り方が登録されていません。</p>'}
+    ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
+    ${edit && saved ? `<div class="detail-foot">${dailyButton("life-new-record", "作った記録をつける", `data-recipe="${escapeAttr(r.id)}"`)}<button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button></div>` : ""}
+  </section>`;
+}
+
+// ----- 最初から入っているおすすめレシピの表示 ON/OFF（家庭で共有） -----
+const STARTER_HIDE_HINT = 15;
+function showStarters() {
+  return state.starterPref?.show !== false;
+}
+function normalizeStarterPref(raw) {
+  return { show: raw?.show !== false, asked: !!raw?.asked, updatedAt: normalizeTimestamp(raw?.updatedAt) };
+}
+function ownDinnerCount() {
+  return state.recipes.filter((r) => r.mealType === "dinner").length;
+}
+function renderStarterHint() {
+  if (isViewer() || !showStarters() || state.starterPref?.asked || ownDinnerCount() < STARTER_HIDE_HINT) return "";
+  return `<section class="starter-hint"><p><b>自分のレシピが${ownDinnerCount()}品になりました！</b><br><small>おすすめ（最初から入っている料理）を隠して、自分のレシピだけで献立を作りますか？ 設定からいつでも戻せます。</small></p><div class="actions">${dailyButton("life-starters", "おすすめを隠す", 'data-show="false"', true)}${dailyButton("life-starters-keep", "このまま")}</div></section>`;
+}
+function renderStarterSettings() {
+  if (isViewer()) return "";
+  const n = ownDinnerCount();
+  return `<section class="panel starter-settings"><h3>🍳 おすすめレシピ</h3>
+    <button type="button" class="role-toggle" data-action="life-starters" data-show="${!showStarters()}" aria-pressed="${showStarters()}"><span>最初から入っている料理を使う<small>${showStarters() ? "レシピ一覧と献立に、おすすめも出します" : "自分のレシピだけで献立を作ります"}</small></span><i aria-hidden="true"></i></button>
+    ${!showStarters() && n < 6 ? `<p class="notice">自分の夜ごはんのレシピが${n}品です。少ないと、献立が組めない日があります。</p>` : ""}</section>`;
 }

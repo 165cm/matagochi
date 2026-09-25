@@ -694,3 +694,21 @@ test("app: after 買い物完了 the next plan gets a fresh list — old purchas
   assert.ok(pork.uses.includes("豚こまキャベツ丼"));
   assert.ok(run("renderTripMeals()").includes("1食分"));
 });
+
+test("app: tapping a recipe opens a read-only detail; starters can be hidden from the list and the plan", () => {
+  const run = app();
+  run('state.onboarded=true;handleDailyAction("life-recipe-open",{recipe:"starter-03"})');
+  assert.equal(run("state.view"), "recipe");
+  const html = run("renderRecipeDetail()");
+  assert.ok(html.includes("材料") && html.includes("作り方") && html.includes("豚こま"));
+  assert.ok(html.includes("自分のレシピに保存"));
+  run('handleDailyAction("life-save-starter",{recipe:"starter-03"})');
+  assert.ok(run("!detailRecipe().curated"), "detail follows the saved copy");
+  assert.ok(run('renderRecipeDetail().includes("編集する")'));
+  run('handleDailyAction("life-starters",{show:"false"})');
+  assert.equal(run("starterRecipeList().length"), 0);
+  assert.ok(run("allDinnerRecipes().every(r=>!r.curated)"));
+  assert.equal(run("normalizeStarterPref(buildSyncPayload().starterPref).show"), false);
+  run('handleDailyAction("life-starters",{show:"true"})');
+  assert.ok(run("starterRecipeList().length") > 0);
+});
