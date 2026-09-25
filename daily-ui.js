@@ -133,7 +133,7 @@ function profileSummary(p) {
 }
 function renderWelcome() {
   document.body.classList.add("is-onboarding");
-  document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard welcome-card"><h2 tabindex="-1">🍽️ 今夜の一品を、すぐ決めよう</h2><p>人数・平日の調理時間・食べられないものの3つに答えると、3日分の夜ごはんを提案します。</p><div class="welcome-actions">${dailyButton("life-quick", "3問ではじめる（約30秒）", "", true)}${dailyButton("life-preview", "設定せずに見てみる")}</div><button type="button" class="text-button" data-action="life-detailed">好み・器具・常備品まで詳しく設定する</button></section>`;
+  document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard welcome-card"><h2 tabindex="-1">🍽️ 今夜の一品を、すぐ決めよう</h2><p>人数・献立のリズム・料理スキル・平日の時間・食べられないものの5つに答えると、最初の献立ができます。</p><div class="welcome-actions">${dailyButton("life-quick", "5問ではじめる（約1分）", "", true)}${dailyButton("life-preview", "設定せずに見てみる")}</div><button type="button" class="text-button" data-action="life-detailed">好み・器具・常備品まで詳しく設定する</button></section>`;
   document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
 }
 function renderProfileWizard() {
@@ -230,7 +230,7 @@ function cancelAutoAdvance() {
 }
 function bindAutoAdvance() {
   const p = profileDraft();
-  const single = p.quickSetupIndex !== null ? p.quickSetupIndex < 2 : p.step === 0;
+  const single = p.quickSetupIndex !== null ? [0, 3].includes(p.quickSetupIndex) : p.step === 0;
   if (!single) return;
   document.querySelectorAll('.profile-wizard input[type="radio"][data-profile]').forEach((el) =>
     el.addEventListener("click", () => {
@@ -430,7 +430,7 @@ function renderDailyPlan() {
     return head + html + foot;
   }).join("");
   const ready = plan.filter((d) => d.candidate).length;
-  return `<section class="plan-top"><h2>${rhythmOn() ? "献立" : `${n}日分`}、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderRhythmInvite()}${renderRoundCard()}${renderWeekBoard()}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${rhythmOn() ? "" : dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>${renderShareInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><h2>${rhythmOn() ? "献立" : `${n}日分`}、<br /><span class="marker nobr">いい感じ。</span></h2><div class="plan-tools">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderRhythmInvite()}${renderRoundCard()}${renderWeekBoard()}${!isViewer() && !state.foodProfile?.completedAt ? '<p class="muted small plan-trial">お試しの提案です。食材制限・調理時間・器具は、作る前に確認してください。</p>' : ""}<section class="plan-list">${cards}${ready && !isViewer() ? `<p class="hand plan-hint">＼ 気分に合わせて、入れ替えOK ／</p>${rhythmOn() ? "" : dailyButton("life-confirm", "これで決定・買い物へ", "", true)}` : ""}<p class="muted small">食材制限がある場合は、作り方と市販品の表示も確認してください。</p></section>${renderShareInvite()}`;
 }
 let swapShowAll = false;
 function renderSwapChoices() {
@@ -827,7 +827,15 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-detailed") profileDraft().detailedSetup = true;
   if (action === "life-quick") {profileDraft().quickSetupIndex=0;profileDraft().period=3;profileEditing=true;}
-  if (action === "life-quick-next") profileDraft().quickSetupIndex=Math.min(2,profileDraft().quickSetupIndex+1);
+  if (action === "life-quick-next") {
+    // The rhythm step starts on the recommended 3-day rhythm if nothing was picked.
+    if (profileDraft().quickSetupIndex === 1 && !rhythmOn()) state.rhythm = { preset: "3day", shopTime: document.querySelector("#rhythm-time")?.value || "17:00", updatedAt: nowIso() };
+    profileDraft().quickSetupIndex = Math.min(QUICK_STEPS - 1, profileDraft().quickSetupIndex + 1);
+  }
+  if (action === "life-quick-skill") {
+    state.skillProfile = { level: Number(data.level), growth: state.skillProfile?.growth || "steady", updatedAt: nowIso() };
+    profileDraft().quickSetupIndex = 3;
+  }
   if (action === "life-quick-back") profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1);
   if (action === "life-preview" && !state.onboarded) {
     state.onboarded=true;state.planLength=3;state.view="plan";profileEditing=false;
@@ -892,6 +900,7 @@ function handleDailyAction(action, data) {
     state.onboarded = true;
     profileEditing = false;
     state.view = "plan";
+    firstPlanReveal = true;
     touchSettings();
   }
   if (action === "life-length")
@@ -1048,6 +1057,9 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
   if (action === "life-skill-growth" && state.skillProfile) { state.skillProfile = { ...state.skillProfile, growth: data.value === "grow" ? "grow" : "steady", updatedAt: nowIso() }; state.planOverrides = {}; }
+  // The first-plan welcome stays until the next real action on the plan.
+  if (!["life-finish", "life-cal-pick", "life-week", "life-rhythm"].includes(action)) firstPlanReveal = false;
+  if (action === "life-reveal-close") firstPlanReveal = false;
   if (action === "life-cal-pick") calPick = calPick === data.date ? "" : data.date;
   if (action === "life-record-back") { recordDraft = null; state.view = "repeat"; }
   if (action === "life-record-cycle" && recordDraft && CYCLE_CHOICES.some((c) => c.cycle === data.cycle)) {
@@ -1217,19 +1229,30 @@ function slotHasUpdates(slot) {
   );
 }
 
+// 初回のかんたん設定（5問・約1分）：人数 → 献立のリズム → 料理スキル → 平日の時間 → 食べられないもの・苦手
+const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", "しいたけ", "トマト", "納豆", "レバー", "さば", "ゴーヤ"];
+const QUICK_STEPS = 5;
 function renderQuickSetup() {
- const p=profileDraft(),i=p.quickSetupIndex;
- const content=[
- `<div class="profile-options">${optionInput('servings',1,'1人分')}${optionInput('servings',2,'2人分')}</div>`,
- `<div class="profile-options">${[10,20,30,60].map(n=>optionInput('weekdayMinutes',n,`${n}分以内`)).join('')}${optionInput('weekdayMinutes','null','未指定')}</div><p class="muted small">休日の時間はあとで設定できます。炊飯時間は別です。</p>`,
- `<p>食べられない食材を選んでください。未選択は制限未指定として提案します。</p><div class="profile-options">${Lifestyle.restrictionOptions.map(n=>optionInput('restrictions',n,n,true)).join('')}</div>${textInput('restrictions','一覧にない食材','例：卵、乳')}<p class="muted small">市販品の原材料と、調理器具を確認してから作ってください。</p>`
- ][i];
- document.body.classList.toggle('is-onboarding',!state.onboarded);
- document.querySelector('#app').innerHTML=`<section class="hero-card profile-wizard"><div class="wizard-progress"><span>まずは3問</span><span>${i+1} / 3</span></div><h2>${['🍽️ 何人分つくる？','⏱️ 平日は何分くらい？','🔎 食べられないものは？'][i]}</h2>${content}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i===0?'disabled':''}>戻る</button><button class="primary-button" data-action="${i===2?'life-finish':'life-quick-next'}">${i===2?'3日分の提案を見る':'次へ'}</button></div><p class="muted small">好み・器具・常備品はあとで調整できます。</p></section>`;
- document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('input',()=>captureProfile(el)));
- bindAutoAdvance();
- document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',handleAction));
+  const p = profileDraft(), i = p.quickSetupIndex;
+  const rhythmNow = state.rhythm?.preset || "3day";
+  const skillNow = state.skillProfile?.level || 0;
+  const content = [
+    `<div class="profile-options">${optionInput("servings", 1, "ひとり分")}${optionInput("servings", 2, "ふたり分")}</div>`,
+    `<p>決める日と買い物の日が、曜日で決まります。</p><div class="rhythm-options">${Object.entries(RHYTHMS).map(([id, r]) => `<button type="button" class="rhythm-option" data-action="life-rhythm" data-preset="${id}" aria-pressed="${rhythmNow === id}"><strong>${r.label}${id === "3day" ? "（おすすめ）" : ""}</strong><small>${r.note}</small></button>`).join("")}</div><label class="rhythm-time">買い物の時間（まとまりの前日）<select id="rhythm-time" class="input">${SHOP_TIMES.map((t) => `<option ${(state.rhythm?.shopTime || "17:00") === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>`,
+    `<p>作れる料理だけで献立を組みます。近いものをタップ。</p><div class="skill-picks">${[1, 2, 3, 4, 5].map((l) => `<button type="button" class="rhythm-option" data-action="life-quick-skill" data-level="${l}" aria-pressed="${skillNow === l}"><strong><span class="skill-stars">${Skills.stars(l)}</span> ${SKILL_TYPES[l].name}</strong><small>${SKILL_PICK_HINT[l]}</small></button>`).join("")}</div><button type="button" class="text-button" data-action="life-quiz-start">わからない → 1分で診断する</button>`,
+    `<div class="profile-options">${[10, 20, 30, 60].map((n) => optionInput("weekdayMinutes", n, `${n}分以内`)).join("")}${optionInput("weekdayMinutes", "null", "未指定")}</div><p class="muted small">休日の時間はあとで設定できます。炊飯時間は別です。</p>`,
+    `<h3 class="quick-sub">アレルギー・食べられないもの</h3><div class="profile-options">${Lifestyle.restrictionOptions.map((n) => optionInput("restrictions", n, n, true)).join("")}</div>${textInput("restrictions", "一覧にない食材", "例：キウイ、山いも")}
+     <h3 class="quick-sub">苦手なもの</h3><div class="profile-options">${COMMON_DISLIKES.map((n) => optionInput("dislikes", n, n, true)).join("")}</div>${textInput("dislikes", "ほかの苦手", "例：セロリ、らっきょう")}
+     <p class="muted small">選んだものは献立に入りません。市販品の原材料と、調理器具を確認してから作ってください。</p>`,
+  ][i];
+  const titles = ["🍽️ 何人分つくる？", "🗓 献立は、どのリズムで決める？", "🔪 料理は、どのくらいする？", "⏱️ 平日は何分くらい？", "🔎 食べられないもの・苦手なものは？"];
+  document.body.classList.toggle("is-onboarding", !state.onboarded);
+  document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard"><div class="wizard-progress"><span>はじめの5問</span><span>${i + 1} / ${QUICK_STEPS}</span></div><progress max="${QUICK_STEPS}" value="${i + 1}" aria-label="初回設定の進捗"></progress><h2>${titles[i]}</h2>${content}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i === 0 ? "disabled" : ""}>戻る</button><button class="primary-button" data-action="${i === QUICK_STEPS - 1 ? "life-finish" : "life-quick-next"}">${i === QUICK_STEPS - 1 ? "最初の献立を見る" : "次へ"}</button></div><p class="muted small">好み・器具・常備品はあとで調整できます。</p></section>`;
+  document.querySelectorAll("[data-profile]").forEach((el) => el.addEventListener("input", () => captureProfile(el)));
+  bindAutoAdvance();
+  document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
 }
+const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒める・煮るならOK", 3: "照り焼きやガパオも作れる", 4: "ハンバーグや揚げ焼きも", 5: "揚げ物も魚をおろすのも" };
 
 function canAnalyzeRecipe(recipe) {
   return !!API_BASE_URL && !!youtubeVideoId(recipe?.videoUrl) && recipe.bulkImport?.privacyStatus !== "unlisted" && !recipe.catalog && !recipe.planning?.ingredientsVerified;
@@ -1344,4 +1367,17 @@ function renderSkillLine(recipe) {
   const x = Skills.rate(recipe);
   const shown = x.skills.filter((id) => (Skills.SKILLS.find((s) => s.id === id)?.level || 1) >= 2).slice(0, 4);
   return `<div class="detail-skill"><span class="skill-stars" aria-label="必要なスキル ${x.level}（5段階）">${Skills.stars(x.level)}</span><b>${x.label}</b>${shown.length ? `<small>${shown.map((id) => escapeHtml(Skills.skillLabel(id))).join("・")}</small>` : ""}</div>`;
+}
+
+// 初回設定のあとに一度だけ：「最初の献立ができました」
+let firstPlanReveal = false;
+function renderFirstPlanReveal() {
+  if (!firstPlanReveal || isViewer()) return "";
+  const sp = skillProfile();
+  const b = rhythmOn() ? currentBlocks()[0] : null;
+  const why = [sp ? `★${sp.level}までの料理` : "", dailyProfile().weekdayMinutes ? `${dailyProfile().weekdayMinutes}分以内` : "", "かぶらない組み合わせ"].filter(Boolean).join("・");
+  const invite = dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled();
+  return `<section class="first-reveal"><p class="first-reveal-emoji" aria-hidden="true">🎉</p><h2>最初の献立が<br><span class="marker nobr">できました！</span></h2>
+    <p>${b ? `${blockRange(b)}の分を、` : ""}${escapeHtml(why)}で選びました。気になる日は「入れ替え」でどうぞ。</p>
+    ${invite ? `<div class="first-invite"><p><b>ふたりで使う？</b><br><small>相手が「これ食べたい」を送れるようになります。</small></p><div class="actions">${dailyButton("life-share-open", "相手を招待する")}<button type="button" class="text-button" data-action="life-reveal-close">あとで</button></div></div>` : `<button type="button" class="text-button" data-action="life-reveal-close">閉じる</button>`}</section>`;
 }
