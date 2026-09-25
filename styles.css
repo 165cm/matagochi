@@ -2390,3 +2390,16 @@ span.tile-photo { cursor: default; }
 /* 売り場の直し */
 .daily-shopping-row.is-fixing { flex-wrap: wrap; }
 .aisle-select { order: 3; flex: 1 1 100%; min-height: 38px; margin: 0 0 4px 40px; padding: 0 10px; border-radius: 10px; border: 1.5px solid var(--tomato); background: var(--surface); font: inherit; font-size: 13px; color: var(--ink); }
+
+/* この買い物で作るごはん */
+.trip-meals { margin: 0 0 12px; padding: 10px 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.trip-range { margin: 0 0 8px; font-size: 13px; }
+.trip-range b { color: var(--tomato); }
+.trip-row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.trip-row::-webkit-scrollbar { display: none; }
+.trip-meal { position: relative; flex: 0 0 72px; display: grid; gap: 3px; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.trip-meal .dish-tile { width: 72px; height: 72px; aspect-ratio: 1 / 1; border-radius: 12px; }
+.trip-meal .dish-fallback small { display: none; }
+.trip-meal > small { position: absolute; top: 4px; left: 4px; padding: 0 5px; border-radius: 6px; background: rgba(255, 253, 248, .9); font-size: 10px; font-weight: 800; }
+.trip-meal > span { font-size: 10px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.shop-uses { font-style: normal; color: var(--muted); font-size: 11px; }

@@ -809,8 +809,11 @@ function handleRhythmAction(action, data) {
     showToast(`献立のリズムを「${RHYTHMS[data.preset].label}」にしました。`);
   } else if (action === "life-rhythm-off" && !isViewer()) state.rhythm = { preset: "", shopTime: state.rhythm.shopTime, updatedAt: nowIso(), dismissed: true };
   else if (action === "life-block-shopped" && !isViewer()) {
-    state.shopDone = { ...(state.shopDone || {}), [data.key]: nowIso() };
-    showToast("おつかれさま！ この献立へのリクエストは締め切りました。");
+    // One trip covers every block that is decided by now.
+    const stamp = nowIso();
+    const keys = [data.key, ...currentBlocks().filter((x) => blockStatus(x) === "decided").map((x) => x.key)];
+    state.shopDone = { ...(state.shopDone || {}), ...Object.fromEntries(keys.map((k) => [k, stamp])) };
+    showToast("おつかれさま！ 次に献立を決めると、新しい買い物リストになります。");
   } else return false;
   saveState(); render(); return true;
 }

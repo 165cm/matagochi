@@ -676,3 +676,21 @@ test("aisles: names decide the aisle, not the recipe's category; household fixes
   run('state.aisleOverrides={"ツナ缶":{aisle:"fish",updatedAt:nowIso()},"x":{aisle:"bad"}}');
   assert.deepEqual(Object.keys(JSON.parse(run("JSON.stringify(normalizeAisleOverrides(buildSyncPayload().aisleOverrides))"))), ["ツナ缶"]);
 });
+
+test("app: after 買い物完了 the next plan gets a fresh list — old purchases and their amounts drop out", () => {
+  const run = app();
+  run('state.onboarded=true');
+  const r = 'Lifestyle.curated.find(r=>r.id==="starter-03")';
+  run(`confirmDaily({date:today()},${r});dailyShopping().forEach(i=>state.shoppingMarks[i.id]={status:"purchased",signature:i.signature,updatedAt:nowIso()})`);
+  assert.ok(run('dailyShopping().every(i=>i.status==="purchased")'));
+  run('state.shopDone={x:new Date(Date.now()+1000).toISOString()}');
+  assert.equal(run("dailyShopping().length"), 0, "last trip is no longer on the list");
+  run(`const later=new Date(Date.now()+2000).toISOString();confirmDaily({date:addDays(today(),1)},${r});state.mealSlots[addDays(today(),1)].updatedAt=later`);
+  const items = JSON.parse(run("JSON.stringify(dailyShopping())"));
+  assert.ok(items.length > 0);
+  assert.ok(items.every((i) => i.status !== "purchased"), "nothing is pre-ticked from the last trip");
+  const pork = items.find((i) => i.name === "豚こま");
+  assert.equal(pork.amount, JSON.parse(run(`JSON.stringify(${r}.ingredients.find(i=>i.name==="豚こま").amount)`)), "amount is only for the new meal");
+  assert.ok(pork.uses.includes("豚こまキャベツ丼"));
+  assert.ok(run("renderTripMeals()").includes("1食分"));
+});
