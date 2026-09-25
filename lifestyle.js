@@ -117,6 +117,9 @@
         ? Number(raw.weekendMinutes)
         : null,
       skill: ["easy", "any"].includes(raw.skill) ? raw.skill : "unknown",
+      // 料理スキル診断の結果（0＝未診断）と、レベルアップするかどうか
+      skillLevel: [1, 2, 3, 4, 5].includes(Number(raw.skillLevel)) ? Number(raw.skillLevel) : 0,
+      skillGrowth: raw.skillGrowth === "grow" ? "grow" : "steady",
       avoidTasks: list(raw.avoidTasks),
       equipment: ownership(raw.equipment),
       pantry: ownership(raw.pantry),
@@ -231,6 +234,14 @@
     if (p.avoidTasks.length && !meta?.tasks)
       return { ok: false, reason: "調理作業が未確認です" };
     if (!meta?.ingredientsVerified || !meta.minutes || meta.easy == null || !meta.tasks || (!meta.noEquipment && !meta.equipment?.length) || meta.conditionsConfirmed === false) return {ok:false, needsReview:true, reason:"調理条件の確認が必要です"};
+    // Cooking skill: never above the cook's level; one step above only as a "challenge" when they want to grow.
+    const need = SkillDB()?.rate(recipe).level || 1;
+    let challenge = false;
+    if (p.skillLevel) {
+      if (need > p.skillLevel + 1 || (need === p.skillLevel + 1 && p.skillGrowth !== "grow"))
+        return { ok: false, reason: "料理スキルの設定より難しい料理です" };
+      challenge = need === p.skillLevel + 1;
+    }
     const knownEquipment =
       meta?.noEquipment === true || !!meta?.equipment?.length &&
       meta.equipment.every((x) => p.equipment[x] === "have");
@@ -257,6 +268,8 @@
       reasons,
       score: priorities.score + (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
       needsReview: !knownEquipment || !meta?.ingredientsVerified,
+      challenge,
+      skillNeed: need,
     };
   }
   const restrictionOptions = [
@@ -414,6 +427,8 @@
     }
     const ingredients = new Set();
     let newCount = 0;
+    const need = (r) => SkillDB()?.rate(r).level || 1;
+    let challenges = p.skillLevel ? timeline.filter((m) => between(m.date, start) <= 6 && need(m.recipe) > p.skillLevel).length : 0;
     return Array.from({ length }, (_, i) => {
       const date = addDays(start, i);
       const slot = slots[date];
@@ -433,7 +448,7 @@
       const candidates = recipes
         .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity)
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
-        .filter((x) => x.ok)
+        .filter((x) => x.ok && (!x.challenge || challenges < 1))
         .map((x) => ({
           ...x,
           rotation: rotation(x.recipe, date, timeline, between),
@@ -478,6 +493,10 @@
         used.add(selected.recipe.id);
         usage.set(selected.recipe.id, (usage.get(selected.recipe.id) || 0) + 1);
         if (!selected.repeat.known) newCount++;
+        if (selected.challenge) {
+          challenges++;
+          selected.reasons.unshift(`ちょっと挑戦 ${"★".repeat(selected.skillNeed)}`);
+        }
         (selected.recipe.ingredients || []).forEach((x) =>
           ingredients.add(key(x.name)),
         );
