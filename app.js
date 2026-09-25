@@ -3563,9 +3563,10 @@ document.addEventListener("visibilitychange", () => {
   state = await loadStateAsync();
   state.view = "today";
   readInviteFromLocation();
-  if (new URLSearchParams(location.search).get("skill") === "1") {
+  const skillParams = new URLSearchParams(location.search);
+  if (skillParams.get("skill") === "1") {
     history.replaceState(null, "", location.pathname);
-    startSkillQuiz();
+    startSkillQuiz(skillParams.get("from") === "lp");
   }
   const hasSharedUrl = applySharedUrlFromLocation();
   if (!hasSharedUrl && new URLSearchParams(location.search).get("quiz") === "1") {

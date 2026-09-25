@@ -31,8 +31,8 @@ function skillQuizLevel(answers) {
 function skillProfile() {
   return state.skillProfile?.level ? state.skillProfile : null;
 }
-function startSkillQuiz() {
-  skillQuiz = { step: 0, answers: {}, growth: state.skillProfile?.growth || "" };
+function startSkillQuiz(fromLp = false) {
+  skillQuiz = { step: 0, answers: {}, growth: state.skillProfile?.growth || "", fromLp };
 }
 function renderSkillQuiz() {
   const q = skillQuiz;
@@ -65,7 +65,7 @@ function renderSkillQuiz() {
     <p>${type.text}</p>
     <p class="muted small">作れる料理の例：${can.map(escapeHtml).join("・")}</p>
     <p class="quiz-style">${q.growth === "grow" ? "🌱 少しずつレベルアップ：1週間に1回くらい、★がひとつ上の料理を入れます。" : "🔁 今のレパートリーで：★" + level + "までの料理で献立を作ります。"}</p>
-    <div class="quiz-actions">${dailyButton("life-quiz-save", state.onboarded ? "献立に反映する" : "この結果ではじめる", "", true)}${dailyButton("life-quiz-share", "結果をシェア")}<button type="button" class="text-button" data-action="life-quiz-restart">もう一度</button></div></section>`;
+    <div class="quiz-actions">${q.fromLp && !state.onboarded ? `<a class="primary-button link-button" href="lp/#waitlist">公開のお知らせを受け取る</a>${dailyButton("life-quiz-save", "この結果でアプリを試す")}` : dailyButton("life-quiz-save", state.onboarded ? "献立に反映する" : "この結果ではじめる", "", true)}${dailyButton("life-quiz-share", "結果をシェア")}<button type="button" class="text-button" data-action="life-quiz-restart">もう一度</button></div></section>`;
 }
 function handleSkillQuizAction(action, data) {
   if (!action.startsWith("life-quiz")) return false;
@@ -73,7 +73,11 @@ function handleSkillQuizAction(action, data) {
   if (!skillQuiz) return true;
   if (action === "life-quiz-answer") { skillQuiz.answers[skillQuiz.step] = Number(data.value); skillQuiz.step += 1; }
   else if (action === "life-quiz-back") skillQuiz.step = Math.max(0, skillQuiz.step - 1);
-  else if (action === "life-quiz-growth") skillQuiz.growth = data.value === "grow" ? "grow" : "steady";
+  else if (action === "life-quiz-growth") {
+    skillQuiz.growth = data.value === "grow" ? "grow" : "steady";
+    // Visitors from the LP may leave for the waitlist; keep their result on this device.
+    if (skillQuiz.fromLp) { state.skillProfile = { level: skillQuizLevel(skillQuiz.answers), growth: skillQuiz.growth, updatedAt: nowIso() }; saveState(); }
+  }
   else if (action === "life-quiz-restart") startSkillQuiz();
   else if (action === "life-quiz-close") skillQuiz = null;
   else if (action === "life-quiz-share") {
