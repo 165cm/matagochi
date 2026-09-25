@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -428,7 +428,7 @@ test("shopping renders one-tap checkboxes and aisle headings instead of status s
   const run=app();run('confirmDaily({date:today()},Lifestyle.curated[2])');
   const html=run('renderDailyShopping()');
   assert.ok(html.includes('type="checkbox" data-shopping-id='));
-  assert.ok(html.includes('🥬 野菜'));assert.ok(html.includes('🥩 肉・魚'));
+  assert.ok(html.includes('🥬 野菜・果物'));assert.ok(html.includes('🥩 肉'));
   assert.ok(!html.includes('<select'));
 });
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
@@ -663,4 +663,16 @@ test("app: saved SNS recipes keep the poster and can be filtered by 投稿者 an
   assert.ok(run('getFilteredRecipes({allMeals:true}).length===2'));
   run('state.searchText="山田"');
   assert.equal(run('getFilteredRecipes({allMeals:true}).length'), 1);
+});
+
+test("aisles: names decide the aisle, not the recipe's category; household fixes win and sync", () => {
+  const A = require("../aisles.js");
+  const cases = { "豚バラ薄切り肉": "meat", "鶏ガラスープの素": "seasoning", "にんにく（チューブ）": "seasoning", "しょうが": "veg", "ほうれんそう": "veg", "えのきだけ": "mushroom", "ツナ缶": "dry", "油揚げ": "chilled", "ごま油": "seasoning", "塩鮭": "fish", "冷凍うどん": "frozen", "中華麺": "staple", "パン粉": "dry", "豆腐": "chilled" };
+  for (const [name, aisle] of Object.entries(cases)) assert.equal(A.aisleOf(name, "その他"), aisle, name);
+  assert.equal(A.aisleOf("謎の食材", "野菜"), "veg", "falls back to the recipe category");
+  assert.equal(A.aisleOf("謎の食材"), "other");
+  assert.equal(A.aisleOf("ツナ缶", "", { "ツナ缶": { aisle: "fish" } }), "fish");
+  const run = app();
+  run('state.aisleOverrides={"ツナ缶":{aisle:"fish",updatedAt:nowIso()},"x":{aisle:"bad"}}');
+  assert.deepEqual(Object.keys(JSON.parse(run("JSON.stringify(normalizeAisleOverrides(buildSyncPayload().aisleOverrides))"))), ["ツナ缶"]);
 });
