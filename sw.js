@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v28";
-const APP_VERSION = "20260925-tags";
+const CACHE_NAME = "ripigochi-v29";
+const APP_VERSION = "20260925-aisles";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -13,18 +13,19 @@ const CORE_ASSETS = [
   ...["03","04","07","08","09","10","11","12","14","15","16","17","18","19","20","21","22","23","24","25","26","27","29","30","31","32","33","34","35","36","37","38"].map(n => `./assets/dishes/starter-${n}.webp`),
   ...["rice","noodle","bread","okazu"].map(n => `./assets/dishes/fallback-${n}.webp`),
   `./starter-recipes.js?v=${APP_VERSION}`,
+  `./aisles.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
   `./playlist-import.js?v=${APP_VERSION}`,
   `./household.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260925-tags",
-  "./icons/favicon-32.png?v=20260925-tags",
-  "./icons/icon-192.png?v=20260925-tags",
-  "./icons/icon-512.png?v=20260925-tags",
-  "./icons/icon-maskable-512.png?v=20260925-tags",
-  "./icons/apple-touch-icon.png?v=20260925-tags"
+  "./manifest.webmanifest?v=20260925-aisles",
+  "./icons/favicon-32.png?v=20260925-aisles",
+  "./icons/icon-192.png?v=20260925-aisles",
+  "./icons/icon-512.png?v=20260925-aisles",
+  "./icons/icon-maskable-512.png?v=20260925-aisles",
+  "./icons/apple-touch-icon.png?v=20260925-aisles"
 ];
 
 self.addEventListener("install", (event) => {

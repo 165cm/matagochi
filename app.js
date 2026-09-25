@@ -65,6 +65,7 @@ const demoState = {
   round: { deadline: "", status: "", lastDeadline: "", updatedAt: "" },
   rhythm: { preset: "", shopTime: "17:00", dismissed: false, updatedAt: "" },
   shopDone: {},
+  aisleOverrides: {},
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -298,6 +299,7 @@ function normalizeState(saved) {
     round: normalizeRound(saved.round),
     rhythm: normalizeRhythm(saved.rhythm),
     shopDone: normalizeShopDone(saved.shopDone),
+    aisleOverrides: normalizeAisleOverrides(saved.aisleOverrides),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -412,6 +414,11 @@ function normalizeTombstones(tombstones) {
   return { recipes: pick(tombstones?.recipes), evaluations: pick(tombstones?.evaluations) };
 }
 
+function normalizeAisleOverrides(raw) {
+  const ids = Aisles.AISLES.map(([id]) => id);
+  return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([k, v]) => k && ids.includes(v?.aisle)).map(([k, v]) => [k.slice(0, 60), { aisle: v.aisle, updatedAt: normalizeTimestamp(v.updatedAt) }]));
+}
+
 function normalizeSyncSettings(sync) {
   const roomId = typeof sync?.roomId === "string" && SYNC_ROOM_ID_PATTERN.test(sync.roomId) ? sync.roomId : "";
   return {
@@ -523,7 +530,8 @@ function buildSyncPayload() {
     memberPrefs: state.memberPrefs || {},
     round: state.round || {},
     rhythm: state.rhythm || {},
-    shopDone: state.shopDone || {}
+    shopDone: state.shopDone || {},
+    aisleOverrides: state.aisleOverrides || {}
   };
 }
 
@@ -560,7 +568,8 @@ function mergeSyncPayloads(local, remote) {
     memberPrefs: Lifestyle.mergeMap(local.memberPrefs, remote.memberPrefs),
     round: (remote.round?.updatedAt || "") > (local.round?.updatedAt || "") ? remote.round : local.round,
     rhythm: (remote.rhythm?.updatedAt || "") > (local.rhythm?.updatedAt || "") ? remote.rhythm : local.rhythm,
-    shopDone: { ...(remote.shopDone || {}), ...(local.shopDone || {}) }
+    shopDone: { ...(remote.shopDone || {}), ...(local.shopDone || {}) },
+    aisleOverrides: Lifestyle.mergeMap(local.aisleOverrides, remote.aisleOverrides)
   };
 }
 
@@ -610,6 +619,7 @@ function applySyncPayload(payload) {
   state.round = normalizeRound(payload.round || state.round);
   state.rhythm = normalizeRhythm(payload.rhythm || state.rhythm);
   state.shopDone = normalizeShopDone(payload.shopDone || state.shopDone);
+  state.aisleOverrides = normalizeAisleOverrides(payload.aisleOverrides || state.aisleOverrides);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
