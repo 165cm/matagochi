@@ -2742,3 +2742,4 @@ body.has-page-title .page-title { display: block; }
 .planning-options .choice-button { flex: 0 0 auto; }
 .ingredient-editor-list .ingredient-editor-row { align-items: center; } .ingredient-editor-list .ingredient-editor-row .input { height: 32px; }
 .entry-detail-panel .ingredient-head { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 4px; } .entry-detail-panel .ingredient-head > span { display: flex; flex: 0 0 auto; }
+.app-version { margin: 12px 0 0; text-align: center; font-size: 11px; color: var(--muted); }

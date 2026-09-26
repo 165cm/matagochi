@@ -45,3 +45,11 @@ test("maps upstream failure to ApiError", async () => {
     (error) => error.status === 502 && error.code === "tiktok_oembed_failed"
   );
 });
+
+test("TikTok short links from the share sheet are resolved before oEmbed", async () => {
+  const seen = [];
+  const fakeFetch = async (u) => { seen.push(u); if (u.startsWith("https://vt.tiktok.com/")) return { ok: true, url: "https://www.tiktok.com/@cook/video/7300000000000000000?_r=1" }; return { ok: true, json: async () => ({ title: "豚こま丼 材料（2人分）", author_name: "cook", thumbnail_url: "" }) }; };
+  const result = await fetchTikTokOEmbed("https://vt.tiktok.com/ZSabc123/", { fetch: fakeFetch });
+  assert.match(seen[1], /url=https%3A%2F%2Fwww\.tiktok\.com%2F%40cook%2Fvideo%2F7300000000000000000$/);
+  assert.equal(result.videoUrl, "https://www.tiktok.com/@cook/video/7300000000000000000");
+});

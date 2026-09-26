@@ -86,3 +86,17 @@ test('playlist requests are coalesced and separately rate limited; health advert
  assert.notEqual((await fetch(base+'/api/recipes/invalid')).status,429);
  assert.equal((await fetch(base+'/health').then(r=>r.json())).capabilities.playlistImport,true);
 });
+
+test('youtube import still returns the title and description when AI analysis fails', async (t) => {
+  const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null,
+    importRecipe: async () => { const e = new Error('AIの応答を確認できませんでした。'); e.code = 'analysis_uncertain'; throw e; },
+    fetchYouTubeSnippet: async (id) => ({ title: '豚こま丼', description: '材料（2人分）\n豚こま 200g', channelTitle: 'テストごはん' }) });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/import/youtube`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://youtube.com/shorts/abcdefghijk?si=x' }) });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.title, '豚こま丼'); assert.match(body.caption, /豚こま 200g/); assert.equal(body.channelTitle, 'テストごはん');
+  assert.deepEqual(body.ingredients, []); assert.equal(body.analysis.ok, false); assert.equal(body.analysis.code, 'analysis_uncertain');
+  const bad = await fetch(`http://127.0.0.1:${server.address().port}/api/import/youtube`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/x' }) });
+  assert.equal(bad.status, 400);
+});

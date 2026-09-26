@@ -8,6 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
+const APP_VERSION = "20260926-fetchfix";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -774,7 +775,7 @@ function applySharedUrlFromLocation() {
   if (!sharedText) return false;
   history.replaceState(null, "", location.pathname);
   if (!startRecipeFromText(sharedText)) return false;
-  state.fetchStatus = "共有からURLを受け取りました。「URLから取得」で材料メモを作れます。";
+  state.fetchStatus = "共有からURLを受け取りました。読み取っています…";
   saveState();
   return true;
 }
@@ -814,8 +815,18 @@ const isInstalledApp = () => !!globalThis.matchMedia?.("(display-mode: standalon
 let pasteNotice = "";
 // iPhoneは共有メニューにWebアプリを出せないため、「リンクをコピー → ここで貼る」で保存する。
 async function pasteRecipeUrl() {
-  let text = "";
-  try { text = await navigator.clipboard.readText(); } catch { text = ""; }
+  let text = "", denied = false;
+  try { text = await navigator.clipboard.readText(); } catch { denied = true; }
+  if (denied || !globalThis.navigator?.clipboard?.readText) {
+    // 貼り付けが許可されない端末：URL欄を開いて、長押しで貼ってもらう。
+    state.view = "register"; state.editingRecipeId = null; entryMethod = "url";
+    state.draft = { ...clone(emptyDraft) }; state.extractedIngredients = []; state.extractedSteps = []; state.draftExpanded = false;
+    state.fetchStatus = "この端末ではボタンから貼り付けできませんでした。URL欄を長押しして「ペースト」を選び、「読み取る」を押してください。";
+    pasteNotice = "";
+    saveState(); render();
+    setTimeout(() => document.querySelector("#recipe-url")?.focus(), 60);
+    return;
+  }
   if (!startRecipeFromText(text)) {
     pasteNotice = "コピーしたURLが見つかりませんでした。SNSで「共有 → リンクをコピー」してから、もう一度押してください。";
     render();
@@ -1953,6 +1964,7 @@ function renderSettings() {
     ${settingRow("reset", "⚠️", "全件削除", "レシピ・記録を消す／使い直す", `<button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピと食事の記録を全件削除</button>
       <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>`)}
     </section>
+    <p class="app-version">リピごち 版 ${APP_VERSION}</p>
   `;
 }
 
@@ -2188,11 +2200,14 @@ async function handleAction(event) {
       render();
       try {
         const preview = await fetchTikTokPreview(state.draft.videoUrl);
-        state.draft.title = preview.title || state.draft.title || state.draft.shareTitle || "";
+        // TikTokの「title」は説明文の全文。本文として読み取り、料理名は1行目から作る。
+        if (preview.title && !state.draft.caption) state.draft.caption = preview.title;
+        state.draft.title = tiktokTitle(preview.title) || state.draft.title || state.draft.shareTitle || "";
+        if (preview.videoUrl) state.draft.videoUrl = preview.videoUrl;
         state.draft.source = "TikTok";
         state.draft.author = state.draft.author || preview.author.slice(0, 60);
         state.draftThumbnailUrl = preview.thumbnailUrl || "";
-        state.fetchStatus = "TikTokからタイトルとサムネイルを取得しました。キャプションを貼り付けると材料メモを作れます。";
+        state.fetchStatus = "TikTokの説明文から読み取りました。材料と作り方を確かめてください（説明文に材料がない動画もあります）。";
         showToast("動画情報を取得しました。");
       } catch {
         state.draft.source = platform.label;
@@ -2235,12 +2250,14 @@ async function handleAction(event) {
       const result = await importRecipeFromYouTube(importingUrl);
       if (state.draft.videoUrl !== importingUrl) return;
       applyImportedRecipe(result);
-      state.fetchStatus = `${result.cacheHit ? "分析済みのレシピを再利用しました。" : "YouTubeの説明文から材料メモを作成しました。"} 保存前に内容を確認してください。`;
+      state.fetchStatus = result.analysis?.ok === false
+        ? "AIでの読み取りに失敗したため、説明文から直接読み取りました。材料と作り方を確かめてください。"
+        : `${result.cacheHit ? "分析済みのレシピを再利用しました。" : "YouTubeの説明文から材料メモを作成しました。"} 保存前に内容を確認してください。`;
       saveState();
       showToast("材料メモを作成しました。");
     } catch (error) {
       if (state.draft.videoUrl !== importingUrl) return;
-      state.fetchStatus = `${error.message || "URLから取得できませんでした。"} キャプションを手動で貼り付けて抽出できます。`;
+      state.fetchStatus = `${error.message || "読み取れませんでした。"} 動画の説明文をコピーして「出典・メモ・本文」の説明文欄に貼ると、そこから読み取れます。`;
       state.extractedIngredients = parseIngredients(state.draft.caption);
       detectDraftServings();
       state.originalIngredients = clone(state.extractedIngredients);
@@ -3216,29 +3233,46 @@ function isTikTokPlatform(platform) {
   return platform.label === "TikTok";
 }
 
+function tiktokTitle(text) {
+  const line = String(text || "").split(/\n/).map((l) => l.replace(/#[^\s#]+/g, "").trim()).find(Boolean) || "";
+  return line.length > 40 ? line.slice(0, 40) + "…" : line;
+}
+// 応答が返らないまま「読み取り中」で止まらないよう、上限時間を決めて知らせる。
+async function fetchWithTimeout(url, options = {}, ms = 45_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    throw new Error(error?.name === "AbortError" ? "読み取りに時間がかかっています。通信のよい所でもう一度お試しください。" : "サーバーに接続できませんでした。通信状態を確かめて、もう一度お試しください。");
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function fetchTikTokPreview(videoUrl) {
   const endpoint = API_BASE_URL
     ? `${API_BASE_URL}/api/oembed/tiktok?url=${encodeURIComponent(videoUrl)}`
     : `https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`;
-  const response = await fetch(endpoint);
+  const response = await fetchWithTimeout(endpoint, {}, 20_000);
   if (!response.ok) throw new Error("TikTokの動画情報を取得できませんでした。");
   const data = await response.json();
   return {
     title: String(data.title || "").trim(),
     thumbnailUrl: String(data.thumbnailUrl || data.thumbnail_url || "").trim(),
-    author: String(data.author || data.author_name || "").trim()
+    author: String(data.author || data.author_name || "").trim(),
+    videoUrl: String(data.videoUrl || "").trim()
   };
 }
 
 async function importRecipeFromYouTube(videoUrl) {
-  const response = await fetch(`${API_BASE_URL}/api/import/youtube`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/import/youtube`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: videoUrl })
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error?.message || "YouTubeの説明文を取得できませんでした。");
+    throw new Error(`${data.error?.message || "YouTubeの説明文を取得できませんでした。"}${data.error?.code ? `（${data.error.code}）` : `（HTTP ${response.status}）`}`);
   }
   return data;
 }
@@ -3273,7 +3307,9 @@ function applyImportedRecipe(result) {
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
   };
-  state.originalIngredients = normalizeImportedIngredients(result.ingredients);
+  // AI分析が失敗しても説明文は届く。材料はアプリ側で説明文から読み取る。
+  const imported = normalizeImportedIngredients(result.ingredients);
+  state.originalIngredients = imported.length ? imported : parseIngredients(state.draft.caption || "");
   state.extractedIngredients = clone(state.originalIngredients);
   state.extractedSteps = Array.isArray(result.steps) && result.steps.length
     ? result.steps.map((step) => String(step || "").trim()).filter(Boolean)
@@ -3655,7 +3691,10 @@ document.addEventListener("visibilitychange", () => {
   requestPersistentStorage();
   render();
   checkPlaylistAvailability();
-  if (hasSharedUrl) showToast("共有されたURLを受け取りました。");
+  if (hasSharedUrl) {
+    showToast("共有されたURLを受け取りました。");
+    setTimeout(() => document.querySelector('[data-action="fetch-caption"]:not([disabled])')?.click(), 300);
+  }
   if (syncEnabled()) syncNow({ silent: true });
 })();
 // Like a browser toolbar: bars slide away while scrolling down, come back on scroll up.
