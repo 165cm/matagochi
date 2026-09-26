@@ -2882,3 +2882,22 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .tk-cost small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tk-skip { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding: 4px 0; }
 .tk-skip input { width: 18px; height: 18px; accent-color: var(--tomato); }
+/* レシピの選択モード */
+.tabs-row { display: flex; align-items: center; gap: 8px; }
+.tabs-row .chip-tabs { flex: 1; min-width: 0; }
+.select-toggle { flex-shrink: 0; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.select-toggle[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.recipe-tile.is-selecting .tile-mark, .recipe-tile.is-selecting .tile-more, .recipe-tile.is-selecting .tile-request { visibility: hidden; }
+.select-cover { position: absolute; inset: 0; z-index: 3; border: 0; border-radius: 18px; background: transparent; cursor: pointer; }
+.select-cover i { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; background: rgba(42, 36, 32, .25); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.select-cover[aria-pressed="true"] { background: rgba(238, 106, 76, .12); outline: 3px solid var(--tomato); outline-offset: -3px; }
+.select-cover[aria-pressed="true"] i { background: var(--tomato); }
+.select-cover[aria-pressed="true"] i::after { content: ""; position: absolute; left: 7px; top: 3px; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+.select-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 15; width: min(calc(100% - 24px), 430px); display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 14px; border-radius: 18px; background: var(--surface); box-shadow: 0 10px 30px rgba(40, 25, 15, .22); border: 1px solid var(--line); font-size: 13px; }
+.select-bar > span { white-space: nowrap; }
+.select-bar .text-button { flex: 1; font-size: 12px; min-width: 0; }
+.select-bar .primary-button { flex-shrink: 0; min-height: 40px; padding: 0 14px; font-size: 14px; }
+.danger-fill { background: #d9442a; }
+.danger-fill:disabled { opacity: .45; }
+.starter-hidden { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.select-space { height: 72px; }

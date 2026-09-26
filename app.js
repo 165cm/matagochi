@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-free";
+const APP_VERSION = "20260927-select";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -876,6 +876,7 @@ function setView(view) {
   if (imageFeedback?.tone === "pending") imageFeedback = null;
   if (state.view === "register") captureDraft();
   profileEditing = false;
+  selecting = false; selectedRecipes = new Set();
   state.view = view;
   saveState();
   render();
@@ -1158,7 +1159,8 @@ function renderCollection() {
   const starters = allStarters.filter((r) => facetMatch(r));
   const query = state.searchText.trim();
   const filtering = Object.values(recipeFacets).some(Boolean);
-  const shownStarters = recipeTab === "starter" || starterShowAll || query || filtering ? starters : starters.slice(0, 6);
+  const shownStarters = recipeTab === "starter" || starterShowAll || query || filtering || selecting ? starters : starters.slice(0, 6);
+  selectable = [...(recipeTab === "starter" ? [] : saved.map((r) => `r:${r.id}`)), ...shownStarters.map((r) => `s:${r.id}`)];
   const tab = (id, label, count) => `<button class="chip-tab" type="button" aria-pressed="${recipeTab === id}" data-action="life-recipe-tab" data-tab="${id}">${label}${count != null ? ` <small>${count}</small>` : ""}</button>`;
   const tiles = [
     ...(recipeTab === "starter" ? [] : saved.map(renderRecipeTile)),
@@ -1170,7 +1172,7 @@ function renderCollection() {
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderSaveGuide()}
     ${renderStarterHint()}
-    ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>`}
+    ${isViewer() ? "" : `<div class="tabs-row"><div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>${recipeTab === "creators" ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>`}
     ${recipeTab === "creators" ? renderCreators(allSaved) : `${renderFacets(pool)}
     <section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>
     ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}`}
@@ -1179,10 +1181,52 @@ function renderCollection() {
       <button class="secondary-button full-button" type="button" data-action="go-view" data-view="playlist">📺 YouTubeの再生リストから追加</button>
     </section>` : ""}
     ${renderBackupReminder()}
+    ${renderSelectBar()}
   `;
 }
 
 let recipeTab = "all";
+// 選択モード：タイルをタップで選び、まとめて削除（保存したレシピ）・非表示（おすすめ）にする。
+let selecting = false, selectedRecipes = new Set(), selectable = [];
+function selectMark(key) {
+  return selecting ? `<button type="button" class="select-cover" data-action="life-select-toggle" data-key="${escapeAttr(key)}" aria-pressed="${selectedRecipes.has(key)}" aria-label="選ぶ"><i aria-hidden="true"></i></button>` : "";
+}
+function renderSelectBar() {
+  if (!selecting || isViewer()) return "";
+  const n = selectedRecipes.size, all = selectable.length && selectable.every((k) => selectedRecipes.has(k));
+  const starters = [...selectedRecipes].filter((k) => k.startsWith("s:")).length;
+  const label = !n ? "削除" : starters === n ? "非表示" : starters ? "削除・非表示" : "削除";
+  return `<div class="select-space" aria-hidden="true"></div><div class="select-bar" role="toolbar" aria-label="選んだレシピ"><span><b>${n}</b>品を選択中</span><button type="button" class="text-button" data-action="life-select-all">${all ? "選択を解除" : `すべて選択（${selectable.length}）`}</button><button type="button" class="primary-button danger-fill" data-action="life-select-delete" ${n ? "" : "disabled"}>🗑 ${label}</button></div>`;
+}
+// 保存したレシピを消す（関連する食事の記録も消える）。1品でも複数でも同じ処理。
+function removeRecipes(ids) {
+  const deletedAt = nowIso(), gone = new Set(ids);
+  ids.forEach((id) => { state.tombstones.recipes[id] = deletedAt; });
+  state.evaluations.filter((item) => gone.has(item.recipeId)).forEach((item) => { state.tombstones.evaluations[item.id] = deletedAt; });
+  state.recipes = state.recipes.filter((item) => !gone.has(item.id));
+  state.evaluations = state.evaluations.filter((item) => !gone.has(item.recipeId));
+  Object.keys(state.planOverrides).forEach((date) => { if (gone.has(state.planOverrides[date])) delete state.planOverrides[date]; });
+  if (gone.has(state.editingRecipeId)) state.editingRecipeId = null;
+  if (state.view === "recipe" && gone.has(recipeDetailId)) state.view = "collection";
+  if (gone.has(state.selectedRecipeId)) state.selectedRecipeId = state.recipes[0]?.id || null;
+}
+function deleteSelectedRecipes() {
+  const own = [...selectedRecipes].filter((k) => k.startsWith("r:")).map((k) => k.slice(2)).filter((id) => recipeById(id));
+  const starters = [...selectedRecipes].filter((k) => k.startsWith("s:")).map((k) => k.slice(2));
+  if (!own.length && !starters.length) return;
+  const withRecords = own.filter((id) => state.evaluations.some((e) => e.recipeId === id)).length;
+  const lines = [
+    own.length ? `保存したレシピ ${own.length}品を削除します。${withRecords ? `うち${withRecords}品は、作った記録も消えます。` : ""}${syncEnabled() ? "家族の端末からも消えます。" : ""}` : "",
+    starters.length ? `おすすめ ${starters.length}品を非表示にします（設定からいつでも戻せます）。` : "",
+  ].filter(Boolean);
+  if (!window.confirm(`${lines.join("\n")}\nよろしいですか？`)) return;
+  if (own.length) removeRecipes(own);
+  if (starters.length) state.starterPref = { ...normalizeStarterPref(state.starterPref), hidden: [...new Set([...(state.starterPref?.hidden || []), ...starters])], updatedAt: nowIso() };
+  selectedRecipes = new Set(); selecting = false;
+  saveState();
+  showToast([own.length ? `${own.length}品を削除しました` : "", starters.length ? `おすすめ${starters.length}品を非表示にしました` : ""].filter(Boolean).join("・") + "。");
+  render();
+}
 // 3 taps: 主食 → 素材 → 気分・作り方 (one choice per row; tap again to clear)
 let recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
 // わが家：repeat-aware shortcuts. 投稿者：names saved from YouTube / TikTok (or typed in).
@@ -1287,7 +1331,7 @@ function tileMinutes(recipe) {
 function renderRecipeTile(recipe) {
   const last = lastEatenLabel(recipe);
   return `
-    <article class="recipe-tile recipe-card">
+    <article class="recipe-tile recipe-card${selecting ? " is-selecting" : ""}">${selectMark(`r:${recipe.id}`)}
       <button type="button" class="tile-photo" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}のレシピを見る">${dishTile(recipe)}${tileMinutes(recipe)}</button>
       <span class="tile-mark is-saved" aria-label="保存済み"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></span>
       <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
@@ -1303,7 +1347,7 @@ function renderRecipeTile(recipe) {
 }
 function renderStarterTile(recipe) {
   return `
-    <article class="recipe-tile is-starter">
+    <article class="recipe-tile is-starter${selecting ? " is-selecting" : ""}">${selectMark(`s:${recipe.id}`)}
       <button type="button" class="tile-photo" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}のレシピを見る">${dishTile(recipe)}${tileMinutes(recipe)}</button>
       ${isViewer() ? "" : `<button type="button" class="tile-mark" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></button>`}
       <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
@@ -2121,6 +2165,10 @@ async function handleAction(event) {
   const saveUnreviewed = action === "save-recipe-unreviewed";
   if (saveUnreviewed) action = "save-recipe";
   if (viewerBlocked(action)) return;
+  if (action === "life-select") { selecting = !selecting; selectedRecipes = new Set(); render(); return; }
+  if (action === "life-select-toggle") { const k = event.currentTarget.dataset.key; selectedRecipes.has(k) ? selectedRecipes.delete(k) : selectedRecipes.add(k); render(); return; }
+  if (action === "life-select-all") { selectedRecipes = selectable.every((k) => selectedRecipes.has(k)) ? new Set() : new Set(selectable); render(); return; }
+  if (action === "life-select-delete") { deleteSelectedRecipes(); return; }
   if (handleTicketAction(action, event.currentTarget.dataset)) return;
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
   if (action === "paste-recipe-url") { await pasteRecipeUrl(); return; }
@@ -2643,19 +2691,7 @@ async function handleAction(event) {
     const id = event.currentTarget.dataset.recipe;
     const recipe = recipeById(id);
     if (recipe && window.confirm(`「${recipe.title}」を削除します。関連する食事の記録も消えます。${syncEnabled() ? "共有中の家族の端末からも消えます。" : ""}よろしいですか？`)) {
-      const deletedAt = nowIso();
-      state.tombstones.recipes[id] = deletedAt;
-      state.evaluations.filter((item) => item.recipeId === id).forEach((item) => {
-        state.tombstones.evaluations[item.id] = deletedAt;
-      });
-      state.recipes = state.recipes.filter((item) => item.id !== id);
-      state.evaluations = state.evaluations.filter((item) => item.recipeId !== id);
-      Object.keys(state.planOverrides).forEach((date) => {
-        if (state.planOverrides[date] === id) delete state.planOverrides[date];
-      });
-      if (state.editingRecipeId === id) state.editingRecipeId = null;
-      if (state.view === "recipe") state.view = "collection";
-      if (state.selectedRecipeId === id) state.selectedRecipeId = state.recipes[0]?.id || null;
+      removeRecipes([id]);
       saveState();
       showToast("レシピを削除しました。");
       render();

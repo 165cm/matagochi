@@ -885,3 +885,17 @@ test("persona: plain-language features, one per answered axis", () => {
   assert.ok(r.features.every(([icon, text]) => icon && text.length <= 20));
   assert.ok(!/今夜|今日の気分/.test(JSON.stringify(P.characters)));
 });
+
+test("hidden starter recipes leave the list and the planner; bulk delete removes recipes and their records", () => {
+  const run = app();
+  run(`state.onboarded=true; state.recipes=[{...clone(Lifestyle.curated[0]),id:"own1",curated:undefined,mealType:"dinner"},{...clone(Lifestyle.curated[1]),id:"own2",curated:undefined,mealType:"dinner"}];
+    state.evaluations=[{id:"e1",recipeId:"own1",cookedAt:today(),familyRepeatCycles:{}}];
+    state.starterPref=normalizeStarterPref({hidden:["${L.curated[5].id}", 3, "${L.curated[5].id}"]});`);
+  assert.equal(run("JSON.stringify(state.starterPref.hidden)"), JSON.stringify([L.curated[5].id]));
+  assert.equal(run(`allDinnerRecipes().some((r)=>r.id==="${L.curated[5].id}")`), false);
+  assert.equal(run(`starterRecipeList().some((r)=>r.id==="${L.curated[5].id}")`), false);
+  run(`removeRecipes(["own1"])`);
+  assert.equal(run("state.recipes.map((r)=>r.id).join()"), "own2");
+  assert.equal(run("state.evaluations.length"), 0);
+  assert.ok(run("!!state.tombstones.recipes.own1 && !!state.tombstones.evaluations.e1"));
+});
