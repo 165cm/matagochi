@@ -998,6 +998,12 @@ function handleDailyAction(action, data) {
   if (action === "life-month") reflMonth = Math.min(0, reflMonth + (Number(data.delta) || 0));
   if (action === "life-recipe-tab") recipeTab = ["saved", "starter", "creators"].includes(data.tab) ? data.tab : "all";
   if (action === "life-creator") { recipeFacets = { home: "", staple: "", main: "", style: "", author: data.name || "" }; recipeTab = "saved"; }
+  if (action === "life-creator-edit") { creatorEditing = data.key || ""; globalThis.setTimeout?.(() => document.querySelector("#creator-alias")?.select?.(), 30); }
+  if (action === "life-creator-save" && data.key) {
+    const alias = data.reset === "true" ? "" : (document.querySelector("#creator-alias")?.value || "").trim().slice(0, 16);
+    state.creatorNames = { ...(state.creatorNames || {}), [data.key]: { alias, updatedAt: nowIso() } };
+    creatorEditing = "";
+  }
   if (action === "life-save-starter") {
     const r = Lifestyle.curated.find((x) => x.id === data.recipe);
     if (r) {

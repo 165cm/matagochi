@@ -77,6 +77,7 @@ export async function fetchYouTubeSnippet(videoId, env = process.env, fetchImpl 
     title: snippet.title || "",
     description: snippet.description || "",
     channelTitle: snippet.channelTitle || "",
+    channelId: snippet.channelId || "",
     publishedAt: snippet.publishedAt || "",
     thumbnails: snippet.thumbnails || {},
     durationSeconds: parseIsoDuration(item.contentDetails?.duration)
@@ -197,6 +198,7 @@ export async function fetchYouTubePlaylist(playlistId, env = process.env, fetchI
         url: `https://www.youtube.com/watch?v=${id}`,
         title: String(video.snippet.title || "").slice(0, 200),
         channelTitle: String(video.snippet.channelTitle || "").slice(0, 100),
+        channelId: String(video.snippet.channelId || "").slice(0, 40),
         description: String(video.snippet.description || "").slice(0, PLAYLIST_DESCRIPTION_LIMIT),
         thumbnailUrl: bestThumbnail(video.snippet.thumbnails),
         publishedAt: video.snippet.publishedAt || ""

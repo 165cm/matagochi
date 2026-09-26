@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-quota";
+const APP_VERSION = "20260926-alias";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -67,6 +67,7 @@ const demoState = {
   rhythm: { preset: "", shopTime: "17:00", dismissed: false, updatedAt: "" },
   shopDone: {},
   aisleOverrides: {},
+  creatorNames: {},
   starterPref: { show: true, asked: false, updatedAt: "" },
   skillProfile: null,
   sync: { code: "", roomId: "", lastSyncAt: "" },
@@ -303,6 +304,7 @@ function normalizeState(saved) {
     rhythm: normalizeRhythm(saved.rhythm),
     shopDone: normalizeShopDone(saved.shopDone),
     aisleOverrides: normalizeAisleOverrides(saved.aisleOverrides),
+    creatorNames: normalizeCreatorNames(saved.creatorNames),
     starterPref: normalizeStarterPref(saved.starterPref),
     skillProfile: normalizeSkillProfile(saved.skillProfile),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
@@ -424,6 +426,13 @@ function normalizeAisleOverrides(raw) {
   return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([k, v]) => k && ids.includes(v?.aisle)).map(([k, v]) => [k.slice(0, 60), { aisle: v.aisle, updatedAt: normalizeTimestamp(v.updatedAt) }]));
 }
 
+// 投稿者の略称：家庭で付けた呼び名。空文字は「自動の略称に戻す」の記録として残す（同期で消し忘れないため）。
+function normalizeCreatorNames(raw) {
+  return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {})
+    .filter(([k, v]) => /^(yt|name):/.test(k) && v && typeof v.alias === "string")
+    .map(([k, v]) => [k.slice(0, 80), { alias: v.alias.trim().slice(0, 16), updatedAt: normalizeTimestamp(v.updatedAt) }]));
+}
+
 function normalizeSyncSettings(sync) {
   const roomId = typeof sync?.roomId === "string" && SYNC_ROOM_ID_PATTERN.test(sync.roomId) ? sync.roomId : "";
   return {
@@ -537,6 +546,7 @@ function buildSyncPayload() {
     rhythm: state.rhythm || {},
     shopDone: state.shopDone || {},
     aisleOverrides: state.aisleOverrides || {},
+    creatorNames: state.creatorNames || {},
     starterPref: state.starterPref || {}
   };
 }
@@ -576,6 +586,7 @@ function mergeSyncPayloads(local, remote) {
     rhythm: (remote.rhythm?.updatedAt || "") > (local.rhythm?.updatedAt || "") ? remote.rhythm : local.rhythm,
     shopDone: { ...(remote.shopDone || {}), ...(local.shopDone || {}) },
     aisleOverrides: Lifestyle.mergeMap(local.aisleOverrides, remote.aisleOverrides),
+    creatorNames: Lifestyle.mergeMap(local.creatorNames, remote.creatorNames),
     starterPref: (remote.starterPref?.updatedAt || "") > (local.starterPref?.updatedAt || "") ? remote.starterPref : local.starterPref
   };
 }
@@ -627,6 +638,7 @@ function applySyncPayload(payload) {
   state.rhythm = normalizeRhythm(payload.rhythm || state.rhythm);
   state.shopDone = normalizeShopDone(payload.shopDone || state.shopDone);
   state.aisleOverrides = normalizeAisleOverrides(payload.aisleOverrides || state.aisleOverrides);
+  state.creatorNames = normalizeCreatorNames(payload.creatorNames || state.creatorNames);
   state.starterPref = normalizeStarterPref(payload.starterPref || state.starterPref);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
@@ -1176,6 +1188,26 @@ const HOME_FACET = { id: "home", label: "わが家", options: [
 ] };
 // 投稿者：保存した名前。無ければTikTokのURLにある @アカウント名。
 const authorOf = (r) => (r.author || "").trim() || (String(r.videoUrl || "").match(/tiktok\.com\/(@[\w.]+)/i)?.[1] || "");
+// 投稿者をまとめる鍵：YouTubeはチャンネルID（名前が変わっても同じ人）、それ以外は名前。
+function creatorKey(r) {
+  if (r.channelId) return `yt:${r.channelId}`;
+  const name = authorOf(r);
+  return name ? `name:${name}` : "";
+}
+// 長いチャンネル名から、自動で短い呼び名を作る。例：「リュウジのバズレシピ【料理研究家】」→「リュウジ」
+function shortCreatorName(name) {
+  let n = String(name || "").normalize("NFKC").replace(/[【\[（(<＜][^】\]）)>＞]*[】\]）)>＞]/g, " ").replace(/\s*[|｜/／・-]\s*.*$/, "").trim();
+  n = n.replace(/\s*(公式)?\s*(チャンネル|ちゃんねる|channel|Channel|CHANNEL)$/, "").trim();
+  const m = n.match(/^(.{2,8}?)\s*の\s*\S/);
+  if (m && !/^[ぁ-ん]$/.test(m[1])) n = m[1];
+  n = n.replace(/^@/, "").trim() || String(name || "").trim();
+  return [...n].length > 12 ? [...n].slice(0, 12).join("") + "…" : n;
+}
+function creatorName(r) {
+  const key = creatorKey(r);
+  const own = key && state.creatorNames?.[key]?.alias;
+  return own || shortCreatorName(authorOf(r));
+}
 function sourceOf(r) {
   const u = String(r.videoUrl || "").toLowerCase();
   if (/tiktok\.com/.test(u)) return "tiktok";
@@ -1191,18 +1223,21 @@ function creatorLabel(name, source) {
 function creatorsIn(pool) {
   const map = new Map();
   for (const r of pool) {
-    const name = authorOf(r);
-    if (!name) continue;
-    const c = map.get(name) || { name, source: sourceOf(r), recipes: [] };
+    const key = creatorKey(r);
+    if (!key) continue;
+    const c = map.get(key) || { key, name: creatorName(r), full: authorOf(r), source: sourceOf(r), recipes: [] };
     c.recipes.push(r);
-    map.set(name, c);
+    map.set(key, c);
   }
   return [...map.values()].sort((a, b) => b.recipes.length - a.recipes.length || a.name.localeCompare(b.name, "ja"));
 }
+let creatorEditing = "";
 function renderCreators(pool) {
   const list = creatorsIn(pool);
   if (!list.length) return '<p class="muted small">動画から保存したレシピが増えると、チャンネル・アカウントごとに並びます。</p>';
-  return `<section class="creator-list" aria-label="チャンネル・アカウント">${list.map((c) => `<button type="button" class="creator-row" data-action="life-creator" data-name="${escapeAttr(c.name)}"><span class="creator-name">${creatorLabel(c.name, c.source)}</span><span class="creator-thumbs">${c.recipes.slice(0, 3).map((r) => dishTile(r, "creator-thumb")).join("")}</span><small>${c.recipes.length}品</small></button>`).join("")}</section>`;
+  return `<section class="creator-list" aria-label="チャンネル・アカウント">${list.map((c) => creatorEditing === c.key
+    ? `<div class="creator-row is-editing"><label class="creator-rename">${creatorLabel(c.full, c.source)}<input id="creator-alias" class="input" maxlength="16" value="${escapeAttr(state.creatorNames?.[c.key]?.alias || c.name)}" aria-label="${escapeAttr(c.full)}の呼び名"></label><button type="button" class="primary-button" data-action="life-creator-save" data-key="${escapeAttr(c.key)}">保存</button><button type="button" class="text-button" data-action="life-creator-save" data-key="${escapeAttr(c.key)}" data-reset="true">自動に戻す</button></div>`
+    : `<div class="creator-row"><button type="button" class="creator-open" data-action="life-creator" data-name="${escapeAttr(c.key)}"><span class="creator-name">${creatorLabel(c.name, c.source)}</span><span class="creator-thumbs">${c.recipes.slice(0, 3).map((r) => dishTile(r, "creator-thumb")).join("")}</span><small>${c.recipes.length}品</small></button>${isViewer() ? "" : `<button type="button" class="creator-edit" data-action="life-creator-edit" data-key="${escapeAttr(c.key)}" aria-label="${escapeAttr(c.full)}の呼び名を変える">✏️</button>`}</div>`).join("")}</section><p class="muted small creator-note">呼び名は家族で共有されます。✏️で好きな呼び方に変えられます。</p>`;
 }
 const tagCache = new Map();
 function recipeTags(recipe) {
@@ -1215,7 +1250,7 @@ function facetMatch(recipe, skip = "") {
   return Object.entries(recipeFacets).every(([facet, value]) => {
     if (facet === skip || !value) return true;
     if (facet === "home") return HOME_FACET.options.find((o) => o[0] === value)?.[2](recipe);
-    if (facet === "author") return authorOf(recipe) === value;
+    if (facet === "author") return creatorKey(recipe) === value;
     return t.includes(value);
   });
 }
@@ -1235,7 +1270,8 @@ function renderFacets(pool) {
   }).join("");
   const count = pool.filter((r) => facetMatch(r)).length;
   const any = Object.values(recipeFacets).some(Boolean);
-  const author = recipeFacets.author ? `<button type="button" class="facet-chip facet-author" data-action="life-facet" data-facet="author" data-value="${escapeAttr(recipeFacets.author)}" aria-pressed="true">${escapeHtml(recipeFacets.author)} ✕</button>` : "";
+  const picked = recipeFacets.author ? pool.find((r) => creatorKey(r) === recipeFacets.author) || state.recipes.find((r) => creatorKey(r) === recipeFacets.author) : null;
+  const author = recipeFacets.author ? `<button type="button" class="facet-chip facet-author" data-action="life-facet" data-facet="author" data-value="${escapeAttr(recipeFacets.author)}" aria-pressed="true">${escapeHtml(picked ? creatorName(picked) : recipeFacets.author.replace(/^(yt|name):/, ""))} ✕</button>` : "";
   const legend = `<p class="facet-legend" aria-hidden="true">${facets.map((f) => `<span data-facet="${f.id}">${f.label}</span>`).join("")}</p>`;
   return `<section class="facets" aria-label="レシピを絞り込む">${author}${rows}${legend}${any ? `<p class="facet-result"><b>${count}品</b><button type="button" class="text-button" data-action="life-facet-clear">条件をクリア</button></p>` : ""}</section>`;
 }
@@ -1250,7 +1286,7 @@ function renderRecipeTile(recipe) {
       <span class="tile-mark is-saved" aria-label="保存済み"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></span>
       <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
       ${requestButton(recipe)}
-      <div class="tile-foot"><small class="muted">${authorOf(recipe) ? `<span class="tile-creator">${creatorLabel(authorOf(recipe), sourceOf(recipe))}</span>` : escapeHtml(last === "はじめて" ? "まだ作っていない" : last)}</small>
+      <div class="tile-foot"><small class="muted">${authorOf(recipe) ? `<span class="tile-creator">${creatorLabel(creatorName(recipe), sourceOf(recipe))}</span>` : escapeHtml(last === "はじめて" ? "まだ作っていない" : last)}</small>
         ${isViewer() ? "" : `<details class="plan-more tile-more"><summary aria-label="${escapeAttr(recipe.title)}のメニュー">⋯</summary><div class="plan-more-menu">
           ${recipe.videoUrl ? `<a class="text-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>` : ""}
           <button class="text-button" type="button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">編集</button>
@@ -2483,6 +2519,7 @@ async function handleAction(event) {
       existing.steps = steps;
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.author = state.draft.author || "";
+      if (state.draft.channelId) existing.channelId = state.draft.channelId;
       existing.note = state.draft.note;
       existing.planning = state.draft.planning || undefined;
       existing.thumbnailUrl = state.draftThumbnailUrl || existing.thumbnailUrl || "";
@@ -2512,6 +2549,7 @@ async function handleAction(event) {
         videoUrl: state.draft.videoUrl,
         source: state.draft.source,
         author: state.draft.author || "",
+        channelId: state.draft.channelId || "",
         mealType: state.draft.mealType,
         caption: state.draft.caption,
         ingredients,
@@ -3346,6 +3384,7 @@ function applyImportedRecipe(result) {
     videoUrl: result.videoUrl || state.draft.videoUrl,
     source: result.source || platform.label,
     author: state.draft.author || String(result.channelTitle || result.author || "").trim().slice(0, 60),
+    channelId: result.channelId || state.draft.channelId || "",
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
   };
