@@ -441,6 +441,16 @@ test("pantry page and setup share one pantry: either place updates the saved pro
   run('handleDailyAction("life-pantry-toggle",{name:"しょうゆ"})');assert.equal(run('state.householdProfile.pantry["しょうゆ"]'),"have");
   run('handleDailyAction("life-pantry-back",{})');assert.equal(run('state.view'),"shopping");
 });
+test("creators: channel names and TikTok handles group saved recipes and filter the grid",()=>{
+  const run=app();
+  run(`state.recipes.push({id:"t1",title:"A丼",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://www.tiktok.com/@kurashiru/video/1",author:""},{id:"t2",title:"B丼",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://www.youtube.com/watch?v=x",author:"リュウジ<b>"})`);
+  assert.equal(run('authorOf(state.recipes.find(r=>r.id==="t1"))'),"@kurashiru");
+  assert.equal(run('sourceOf(state.recipes.find(r=>r.id==="t2"))'),"youtube");
+  run('recipeTab="creators"');const html=run('renderCollection()');
+  assert.ok(html.includes("@kurashiru"));assert.ok(html.includes("リュウジ&lt;b&gt;"));assert.ok(!html.includes("リュウジ<b>"));
+  run('handleDailyAction("life-creator",{name:"@kurashiru"})');
+  assert.equal(run('recipeFacets.author'),"@kurashiru");assert.equal(run('recipeTab'),"saved");
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));
@@ -667,7 +677,7 @@ test("app: saved SNS recipes keep the poster and can be filtered by 投稿者 an
   assert.equal(run('state.recipes[0].author'), "山田ごはん");
   run('recipeFacets={home:"",staple:"",main:"",style:"",author:"山田ごはん"}');
   assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'), 1);
-  assert.ok(run('renderFacets(state.recipes).includes("投稿者")'));
+  assert.ok(run(`renderFacets(state.recipes).includes("山田ごはん ✕")`));assert.ok(!run(`renderFacets(state.recipes).includes("投稿者")`));
   run('recipeFacets={home:"new",staple:"",main:"",style:"",author:""}');
   assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'), 2);
   assert.ok(run('getFilteredRecipes({allMeals:true}).length===2'));
