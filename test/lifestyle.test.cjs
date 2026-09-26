@@ -431,6 +431,16 @@ test("shopping renders one-tap checkboxes and aisle headings instead of status s
   assert.ok(html.includes('🥬 野菜・果物'));assert.ok(html.includes('🥩 肉'));
   assert.ok(!html.includes('<select'));
 });
+test("pantry page and setup share one pantry: either place updates the saved profile",()=>{
+  const run=app();run('state.foodProfile=Lifestyle.profile({completed:true,pantry:{"しょうゆ":"have"}});state.view="shopping"');
+  run('handleDailyAction("life-pantry-open",{})');assert.equal(run('state.view'),"pantry");
+  assert.ok(run('renderPantryPage()').includes('data-action="life-pantry-set" data-name="しょうゆ"'));
+  run('handleDailyAction("life-pantry-set",{name:"しょうゆ"})');
+  assert.equal(run('state.householdProfile.pantry["しょうゆ"]'),"none");assert.equal(run('dailyProfile().pantry["しょうゆ"]'),"none");
+  run('handleDailyAction("life-profile",{});profileDraft().step=8');assert.equal(run('profileDraft().pantry["しょうゆ"]'),"none");
+  run('handleDailyAction("life-pantry-toggle",{name:"しょうゆ"})');assert.equal(run('state.householdProfile.pantry["しょうゆ"]'),"have");
+  run('handleDailyAction("life-pantry-back",{})');assert.equal(run('state.view'),"shopping");
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));
@@ -667,7 +677,7 @@ test("app: saved SNS recipes keep the poster and can be filtered by 投稿者 an
 
 test("aisles: names decide the aisle, not the recipe's category; household fixes win and sync", () => {
   const A = require("../aisles.js");
-  const cases = { "豚バラ薄切り肉": "meat", "鶏ガラスープの素": "seasoning", "にんにく（チューブ）": "seasoning", "しょうが": "veg", "ほうれんそう": "veg", "えのきだけ": "mushroom", "ツナ缶": "dry", "油揚げ": "chilled", "ごま油": "seasoning", "塩鮭": "fish", "冷凍うどん": "frozen", "中華麺": "staple", "パン粉": "dry", "豆腐": "chilled" };
+  const cases = { "豚バラ薄切り肉": "meat", "鶏ガラスープの素": "seasoning", "にんにく（チューブ）": "seasoning", "しょうが": "veg", "ほうれんそう": "veg", "えのきだけ": "veg", "ツナ缶": "dry", "油揚げ": "daily", "牛乳": "chilled", "卵": "chilled", "納豆": "daily", "ごま油": "seasoning", "塩鮭": "fish", "冷凍うどん": "frozen", "中華麺": "staple", "パン粉": "dry", "豆腐": "daily" };
   for (const [name, aisle] of Object.entries(cases)) assert.equal(A.aisleOf(name, "その他"), aisle, name);
   assert.equal(A.aisleOf("謎の食材", "野菜"), "veg", "falls back to the recipe category");
   assert.equal(A.aisleOf("謎の食材"), "other");

@@ -569,7 +569,7 @@ function bothLike(recipe) {
 let aisleEdit = false;
 let shopDoneLater = false;
 // Vertical aisle tags: three characters at most so a one-item aisle stays one row tall.
-const AISLE_SHORT = { "🥬 野菜・果物": "野菜", "🍄 きのこ": "きのこ", "🥩 肉": "肉", "🐟 魚": "魚", "🥚 卵・豆腐・乳製品": "卵豆腐", "🧊 冷凍": "冷凍", "🍚 米・麺・パン": "主食", "🥫 缶詰・乾物": "乾物", "🧂 調味料": "調味料", "🛒 その他": "他" };
+const AISLE_SHORT = { veg: "野菜", fish: "魚", meat: "肉", daily: "日配", chilled: "乳・卵", frozen: "冷凍", staple: "主食", dry: "乾物", seasoning: "調味料", other: "他" };
 // Small dish photos: just enough to feel which meal an item is for.
 function useIcons(uses) {
   const meals = tripMeals();
@@ -589,7 +589,7 @@ function renderDailyShopping() {
   const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}</span></label>${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
   const groups = (status) => order.map((category) => {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
-    return list.length ? `<section class="aisle-group"><h4 class="aisle-tag" title="${escapeAttr(category)}"><span class="sr-only">${category}</span><span aria-hidden="true">${AISLE_SHORT[category] || category}</span></h4><div class="aisle-items">${list.map((i) => row(i, status)).join("")}</div></section>` : "";
+    return list.length ? `<section class="aisle-group"><h4 class="aisle-tag" title="${escapeAttr(category)}"><span class="sr-only">${category}</span><span aria-hidden="true">${AISLE_SHORT[Aisles.AISLES.find(([, l]) => l === category)?.[0]] || category}</span></h4><div class="aisle-items">${list.map((i) => row(i, status)).join("")}</div></section>` : "";
   }).join("");
   const buy = count("buy"), purchased = count("purchased"), total = buy + purchased;
   const all = total > 0 && !buy;
@@ -597,7 +597,7 @@ function renderDailyShopping() {
   const progress = total ? `<div class="shop-progress" role="status"><span>${buy ? `あと<strong>${buy}</strong>` : "そろった！"}</span><span class="shop-bar"><i style="width:${Math.round((purchased / total) * 100)}%"></i></span><small>${purchased}/${total}</small></div>` : "";
   const folded = (status, title, hint) => count(status) ? `<details class="shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${groups(status)}</details>` : "";
   const done = renderShoppingDone(items);
-  const menu = items.length ? `<details class="shop-menu"><summary aria-label="買い物メニュー">⋯</summary><div class="shop-menu-list">${dailyButton("copy-shopping", "リストをコピー")}${dailyButton("share-shopping", "共有")}<button type="button" class="secondary-button" data-action="life-aisle-edit">${aisleEdit ? "売り場の直しを終える" : "売り場を直す"}</button>${isViewer() ? "" : '<button type="button" class="secondary-button" data-action="life-profile">常備品・頻度</button>'}${done}</div></details>` : "";
+  const menu = items.length ? `<details class="shop-menu"><summary aria-label="買い物メニュー">⋯</summary><div class="shop-menu-list">${dailyButton("copy-shopping", "リストをコピー")}${dailyButton("share-shopping", "共有")}<button type="button" class="secondary-button" data-action="life-aisle-edit">${aisleEdit ? "売り場の直しを終える" : "売り場を直す"}</button>${isViewer() ? "" : '<button type="button" class="secondary-button" data-action="life-pantry-open">常備品</button>'}${done}</div></details>` : "";
   const sheet = all && done && !shopDoneLater ? `<div class="shop-done-sheet" role="dialog" aria-label="買い物完了"><p><b>全部そろった！</b>買い物完了にする？</p><div>${done}<button type="button" class="text-button" data-action="life-shop-later">あとで</button></div></div>` : "";
   return `<section class="shop-head">${renderTripMeals()}${progress}${menu}</section>
   ${!items.length ? `<section class="panel shop-empty"><p>献立が決まると、必要な材料だけのリストができます。</p>${dailyButton("go-view", isViewer() ? "献立を見る" : "献立を決める", 'data-view="plan"', true)}</section>` : ""}
@@ -605,6 +605,26 @@ function renderDailyShopping() {
   ${buy ? `<div class="shop-list">${groups("buy")}</div>` : ""}
   ${isViewer() ? "" : `<details class="shop-add"><summary>＋ 買い足す</summary><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></details>`}
   ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "調味料は残量も確認してください")}${sheet}`;
+}
+// 常備品だけを直すページ。設定ウィザードと同じデータ（householdProfile / foodProfile / 下書き）を書き換える。
+let pantryReturn = "shopping";
+function setPantry(name, value) {
+  const base = dailyProfile();
+  const pantry = { ...base.pantry, [name]: value };
+  state.householdProfile = { equipment: base.equipment, pantry, updatedAt: nowIso() };
+  if (state.foodProfile) state.foodProfile = { ...state.foodProfile, pantry };
+  if (state.onboardingDraft) state.onboardingDraft.pantry = { ...state.onboardingDraft.pantry, [name]: value };
+  touchSettings();
+}
+function renderPantryPage() {
+  const pantry = dailyProfile().pantry;
+  const known = Object.values(Lifestyle.pantry).flat();
+  const extras = Object.keys(pantry).filter((n) => !known.includes(n));
+  const card = (name) => { const v = pantry[name] || "unknown"; return `<button type="button" class="equipment-choice" data-action="life-pantry-set" data-name="${escapeAttr(name)}" aria-pressed="${v === "unknown" ? "mixed" : v === "have"}">${emojiMark(itemEmojis[name] || "🫙")}<span>${escapeHtml(name)}</span><strong>${v === "have" ? "ある" : v === "none" ? "ない" : "未確認"}</strong></button>`; };
+  const groups = [...Object.entries(Lifestyle.pantry), ...(extras.length ? [["追加したもの", extras]] : [])];
+  return `<section class="pantry-page"><div class="pantry-head"><button type="button" class="text-button" data-action="life-pantry-back">← もどる</button><h2>常備品</h2></div><p class="muted small">「ある」ものは買い物リストで「家にある」に回ります。ここでの変更は設定にもそのまま反映されます。</p>
+  ${groups.map(([label, names]) => `<h3 class="pantry-group">${escapeHtml(label)}</h3><div class="equipment-grid pantry-grid" role="group" aria-label="${escapeAttr(label)}">${names.map(card).join("")}</div>`).join("")}
+  <div class="shopping-add pantry-add"><input id="pantry-name" class="input" maxlength="99" placeholder="一覧にないもの（例：白だし）" aria-label="常備品の名前"><button type="button" class="primary-button" data-action="life-pantry-add">追加</button></div></section>`;
 }
 // Device-local progress: never share cooking checkmarks with another household member.
 let cookingProgress = (() => {
@@ -868,6 +888,7 @@ function handleDailyAction(action, data) {
   if (action === "life-pantry-toggle") {
     const p = profileDraft();
     p.pantry[data.name] = p.pantry[data.name] === "have" ? "none" : "have";
+    if (state.foodProfile?.completed) setPantry(data.name, p.pantry[data.name]);
   }
   if (action === "life-equipment-toggle") {
     const p = profileDraft();
@@ -1069,6 +1090,10 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-aisle-edit") aisleEdit = !aisleEdit;
   if (action === "life-shop-later") shopDoneLater = true;
+  if (action === "life-pantry-open") { pantryReturn = state.view === "pantry" ? pantryReturn : state.view; state.view = "pantry"; }
+  if (action === "life-pantry-back") state.view = pantryReturn || "shopping";
+  if (action === "life-pantry-set") { const v = dailyProfile().pantry[data.name]; setPantry(data.name, v === "have" ? "none" : "have"); }
+  if (action === "life-pantry-add") { const name = document.querySelector("#pantry-name")?.value.trim().slice(0, 99); if (name) setPantry(name, "have"); }
   if (action === "life-recipe-open") { recipeDetailId = data.recipe; state.view = "recipe"; }
   if (action === "life-recipe-back") state.view = "collection";
   if (action === "life-starters" && !isViewer()) {

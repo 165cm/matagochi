@@ -2559,3 +2559,12 @@ body.bars-hidden .shop-done-sheet { bottom: calc(12px + env(safe-area-inset-bott
 .shop-done-sheet .primary-button { flex: 1; }
 @keyframes sheetUp { from { transform: translate(-50%, 30px); opacity: 0; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pantry-head { display: flex; align-items: center; gap: 8px; }
+.pantry-head h2 { margin: 0; font-size: 22px; }
+.pantry-group { margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+.pantry-add { margin-top: 14px; }
+.pantry-page .pantry-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.pantry-page .equipment-choice { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 4px; min-height: 48px; padding: 6px 8px; text-align: left; }
+.pantry-page .equipment-choice .choice-emoji { grid-row: 1 / 3; font-size: 15px; margin: 0; }
+.pantry-page .equipment-choice > span:not(.choice-emoji) { font-size: 12px; line-height: 1.2; overflow-wrap: anywhere; }
+.pantry-page .equipment-choice strong { font-size: 10px; line-height: 1.1; }
