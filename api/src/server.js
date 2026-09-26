@@ -17,7 +17,7 @@ export function createApp(env = process.env, deps = {}) {
   const recipeStore = deps.recipeStore ?? createRecipeStore(env);
   const catalog = createRecipeCatalog(recipeStore,
     deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
-      analyzeRecipeVideo: env.VIDEO_ANALYSIS_ENABLED === "false" ? undefined : (videoUrl, snippet) => analyzeRecipeVideo(videoUrl, snippet, env),
+      analyzeRecipeVideo: env.VIDEO_ANALYSIS_ENABLED === "false" ? undefined : (videoUrl, snippet, videoOptions) => analyzeRecipeVideo(videoUrl, snippet, env, videoOptions),
       analyzeRecipeDescription: requireAnalyzer((snippet) => analyzeRecipeDescription(snippet, env))
     }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),

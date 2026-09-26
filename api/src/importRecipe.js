@@ -16,12 +16,15 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   let analyzedFrom = "description";
   const weak = !normalizeSteps(analysis.steps).length || !normalizeIngredients(analysis.ingredients).length;
   const maxSeconds = Number(options.videoMaxSeconds ?? VIDEO_MAX_SECONDS);
-  const shortEnough = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 && snippet.durationSeconds <= maxSeconds;
-  if (weak && shortEnough && typeof deps.analyzeRecipeVideo === "function") {
+  const duration = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 ? snippet.durationSeconds : null;
+  // 長い動画（や長さ不明）は頭から maxSeconds だけを見る。作り方がその中で完結した時だけ使う。
+  const clipSeconds = !duration || duration > maxSeconds ? maxSeconds : null;
+  if (weak && maxSeconds > 0 && typeof deps.analyzeRecipeVideo === "function") {
     try {
       await options.reserveBudget?.();
-      const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet);
-      const videoSteps = normalizeSteps(video.steps);
+      const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds });
+      const complete = video.stepsComplete !== false;
+      const videoSteps = complete ? normalizeSteps(video.steps) : [];
       const videoIngredients = normalizeIngredients(video.ingredients);
       analysis = {
         ...analysis,
@@ -31,12 +34,12 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         steps: videoSteps.length ? videoSteps : analysis.steps,
         tags: analysis.tags?.length ? analysis.tags : video.tags
       };
-      if (videoSteps.length || videoIngredients.length) analyzedFrom = "video";
+      if (videoSteps.length) analyzedFrom = clipSeconds ? "video-clip" : "video";
     } catch (error) {
       if (!hasDescription) throw error;
     }
   }
-  if (!hasDescription && analyzedFrom !== "video") throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
+  if (!hasDescription && !analyzedFrom.startsWith("video")) throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
 
   return {
     ...normalizeImportResult({
