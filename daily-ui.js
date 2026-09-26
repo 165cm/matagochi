@@ -666,7 +666,7 @@ function renderRecordEditor() {
   if (!d) return `<section class="panel"><p>記録が見つかりません。</p>${dailyButton("go-view", "ふりかえりへ", 'data-view="repeat"')}</section>`;
   const r = recordRecipe(d);
   const fixedDate = d.id.startsWith("meal-");
-  const photo = d.photo ? `<img class="dish-tile record-photo" src="${escapeAttr(d.photo)}" alt="">` : dishTile(r, "record-photo");
+  const photo = isDataPhoto(d.photo) ? `<img class="dish-tile record-photo" src="${escapeAttr(d.photo)}" alt="">` : dishTile(r, "record-photo");
   return `<section class="record-editor">
     <button type="button" class="text-button cooking-back" data-action="life-record-back">‹ ふりかえりへ</button>
     <div class="record-head">${photo}<div><p class="eyebrow">${d.isNew ? "作った記録をつける" : "記録を編集"}</p><h2>${escapeHtml(r.title)}</h2><p class="muted small">${escapeHtml(lastEatenLabel(r) === "はじめて" ? "はじめての記録" : lastEatenLabel(r))}</p></div></div>
@@ -706,7 +706,7 @@ function renderReflection() {
   const nav = `<div class="month-nav"><button type="button" class="round-icon" data-action="life-month" data-delta="-1" aria-label="前の月">‹</button><strong>${month.label}</strong><button type="button" class="round-icon" data-action="life-month" data-delta="1" aria-label="次の月" ${reflMonth >= 0 ? "disabled" : ""}>›</button></div>`;
   const tiles = list.slice(0, 31).map((e) => {
     const r = recipeOf(e);
-    const photo = e.photo ? `<img class="dish-tile" src="${escapeAttr(e.photo)}" alt="" loading="lazy">` : dishTile(r);
+    const photo = isDataPhoto(e.photo) ? `<img class="dish-tile" src="${escapeAttr(e.photo)}" alt="" loading="lazy">` : dishTile(r);
     return `<button type="button" class="table-tile" data-action="life-edit-record" data-id="${escapeAttr(e.id)}" aria-label="${escapeAttr(`${formatDate(e.cookedAt)} ${r.title}の記録を開く`)}">${photo}<span class="day-num">${Number(e.cookedAt.slice(8, 10))}</span>${loved(e) ? '<span class="tile-love" aria-hidden="true">😍</span>' : ""}<small>${escapeHtml(r.title)}</small></button>`;
   }).join("");
   return `<div class="page-actions">${nav}</div>

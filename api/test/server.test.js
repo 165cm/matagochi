@@ -127,3 +127,23 @@ test('tickets: 25 to start, a video read uses one, 886 needs none, rewards are c
   const pre = await fetch(`${base}/api/import/youtube`, { method: 'OPTIONS', headers: { Origin: 'https://165cm.github.io', 'Access-Control-Request-Method': 'POST' } });
   assert.match(pre.headers.get('access-control-allow-headers') || '', /X-Household-Prev/);
 });
+
+test('sync over HTTP: gzip, unchanged answers, gzip uploads and photos', async (t) => {
+  const { gzipSync } = await import('node:zlib');
+  const { createHash } = await import('node:crypto');
+  const app = createApp({}, { recipeStore: null, syncStore: createMemorySyncStore(), photoStore: createMemorySyncStore() });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
+  const room = `http://127.0.0.1:${server.address().port}/api/sync/rooms/${'d'.repeat(64)}`;
+  const data = { recipes: Array.from({ length: 40 }, (_, i) => ({ id: `r${i}`, title: 'とりの照り焼き'.repeat(5) })), evaluations: [] };
+  const put = await fetch(room, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' }, body: gzipSync(JSON.stringify({ baseRevision: '', data })) });
+  assert.equal(put.status, 200); const { revision } = await put.json();
+  const got = await fetch(room, { headers: { 'Accept-Encoding': 'gzip' } });
+  assert.equal(got.headers.get('content-encoding'), 'gzip'); assert.equal((await got.json()).data.recipes.length, 40);
+  const same = await fetch(`${room}?since=${revision}`).then((r) => r.json());
+  assert.equal(same.unchanged, true); assert.equal(same.data, undefined);
+  const photo = 'data:image/png;base64,iVBORw0KGgo=';
+  const hash = createHash('sha256').update(photo).digest('hex');
+  assert.equal((await fetch(`${room}/photos/${hash}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: photo }) })).status, 200);
+  const back = await fetch(`${room}/photos/${hash}`);
+  assert.match(back.headers.get('cache-control'), /immutable/); assert.equal((await back.json()).data, photo);
+});

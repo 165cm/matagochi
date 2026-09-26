@@ -84,3 +84,25 @@ test("memory store enforces generation preconditions", async () => {
   assert.equal(await store.put(ROOM_ID, envelope, { ifGeneration: 0 }), null);
   assert.deepEqual(await store.put(ROOM_ID, envelope, { ifGeneration: 1 }), { generation: 2 });
 });
+
+test("an unchanged room is answered without its data", async () => {
+  const store = createMemorySyncStore();
+  const saved = await putSyncRoom(store, ROOM_ID, { data: payload({ recipes: [{ id: "r1" }] }), baseRevision: "" });
+  const same = await getSyncRoom(store, ROOM_ID, { since: saved.revision });
+  assert.equal(same.unchanged, true); assert.equal(same.data, undefined);
+  assert.deepEqual((await getSyncRoom(store, ROOM_ID, { since: "old" })).data.recipes, [{ id: "r1" }]);
+});
+
+test("photos are stored once per room under their SHA-256 and checked", async () => {
+  const { createHash } = await import("node:crypto");
+  const { putSyncPhoto, getSyncPhoto } = await import("../src/sync.js");
+  const store = createMemorySyncStore();
+  const data = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+  const hash = createHash("sha256").update(data).digest("hex");
+  await putSyncPhoto(store, ROOM_ID, hash, { data });
+  await putSyncPhoto(store, ROOM_ID, hash, { data });
+  assert.equal((await getSyncPhoto(store, ROOM_ID, hash)).data, data);
+  await assert.rejects(putSyncPhoto(store, ROOM_ID, "b".repeat(64), { data }), { code: "invalid_photo" });
+  await assert.rejects(putSyncPhoto(store, ROOM_ID, hash, { data: "javascript:alert(1)" }), { code: "invalid_photo" });
+  await assert.rejects(getSyncPhoto(store, ROOM_ID, "c".repeat(64)), { code: "photo_not_found" });
+});

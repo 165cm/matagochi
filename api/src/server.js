@@ -7,14 +7,16 @@ import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo } fro
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { ApiError, toErrorResponse } from "./errors.js";
 import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
-import { getSyncRoom, putSyncRoom } from "./sync.js";
-import { createSyncStore } from "./syncStore.js";
+import { getSyncPhoto, getSyncRoom, putSyncPhoto, putSyncRoom } from "./sync.js";
+import { gzipSync } from "node:zlib";
+import { createPhotoStore, createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
 import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet } from "./youtube.js";
 
 export function createApp(env = process.env, deps = {}) {
   const app = express();
   const syncStore = "syncStore" in deps ? deps.syncStore : createSyncStore(env);
+  const photoStore = "photoStore" in deps ? deps.photoStore : createPhotoStore(env);
   const recipeStore = deps.recipeStore ?? createRecipeStore(env);
   const tickets = recipeStore ? createTicketBook(recipeStore, { now: deps.now || Date.now, startTickets: Number(env.START_TICKETS || 25) }) : null;
   const catalog = createRecipeCatalog(recipeStore,
@@ -189,9 +191,30 @@ export function createApp(env = process.env, deps = {}) {
     }
   });
 
+  app.get("/api/sync/rooms/:roomId/photos/:hash", async (req, res) => {
+    try {
+      const result = await getSyncPhoto(photoStore, req.params.roomId, req.params.hash);
+      // 中身は名前（ハッシュ）で決まるので、端末側で長く持ってよい。
+      res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+      res.json(result);
+    } catch (error) { const { status, body } = toErrorResponse(error); res.status(status).json(body); }
+  });
+  app.put("/api/sync/rooms/:roomId/photos/:hash", async (req, res) => {
+    try { res.json(await putSyncPhoto(photoStore, req.params.roomId, req.params.hash, req.body)); }
+    catch (error) { const { status, body } = toErrorResponse(error); res.status(status).json(body); }
+  });
   app.get("/api/sync/rooms/:roomId", async (req, res) => {
     try {
-      const result = await getSyncRoom(syncStore, req.params.roomId);
+      const result = await getSyncRoom(syncStore, req.params.roomId, { since: String(req.query?.since || "") });
+      res.setHeader("Cache-Control", "no-store");
+      // 同期データは文字が多いので、圧縮して送る（通信量が数分の1になる）。
+      const json = JSON.stringify(result);
+      if (json.length > 1024 && /\bgzip\b/.test(String(req.get("accept-encoding") || ""))) {
+        res.setHeader("Content-Encoding", "gzip");
+        res.setHeader("Vary", "Accept-Encoding");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        return res.end(gzipSync(json));
+      }
       res.json(result);
     } catch (error) {
       const { status, body } = toErrorResponse(error);
@@ -233,7 +256,7 @@ function createCorsMiddleware(env) {
       res.setHeader("Vary", "Origin");
     }
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Household, X-Household-Prev, X-Dev-Code");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Content-Encoding, X-Household, X-Household-Prev, X-Dev-Code");
 
     if (req.method === "OPTIONS") {
       res.status(204).end();
