@@ -524,6 +524,18 @@ test("playlist import keeps chatter out of steps and offers a video re-read",()=
   run('state.recipes.unshift(__r);recipeDetailId=__r.id;state.view="recipe"');
   assert.ok(!run('renderRecipeDetail()').includes('data-action="life-reread"'),"no API here, so no re-read button");
 });
+test("AI-judged conditions need no check, unless the household has foods it cannot eat",()=>{
+  const run=app();
+  run('state.onboarded=true;state.foodProfile=Lifestyle.profile({servings:2,completed:true,restrictions:[]})');
+  run('state.draft={...clone(emptyDraft),videoUrl:"https://youtu.be/abcdefghijk"}');
+  run(`applyImportedRecipe({title:"丼",ingredients:[{name:"豚こま",amount:"200g"}],steps:["焼く","盛る"],planning:{minutes:20,easy:true,equipment:["コンロ","フライパン"],tasks:[],tastes:["和風"]}})`);
+  assert.equal(run('state.draft.planning.aiJudged'),true);assert.equal(run('state.draft.planning.conditionsConfirmed'),true);assert.equal(run('state.draft.planning.ingredientsVerified'),true);
+  assert.equal(run('state.draft.planning.minutes'),20);
+  assert.ok(!run('renderPlanningFields()').includes("未確認で保存"));
+  run('state.foodProfile=Lifestyle.profile({servings:2,completed:true,restrictions:["卵"]})');
+  run(`applyImportedRecipe({title:"丼",ingredients:[{name:"卵",amount:"2個"}],steps:["焼く","盛る"],planning:{minutes:15,easy:true,equipment:["コンロ"]}})`);
+  assert.equal(run('state.draft.planning.ingredientsVerified'),false);assert.ok(run('renderPlanningFields()').includes("食べられないもの（卵）"));
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

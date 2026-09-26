@@ -15,7 +15,8 @@ const STALE_PENDING_MS = 10 * 60_000;
 const EXTRACTOR_VERSION = 3;
 // A durable conditional claim precedes all paid work, including across instances.
 // Pending claims are deliberately not stolen: an expired request may still incur AI cost.
-export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true } = {}) {
+const SNIPPET_MAX_AGE_MS = 30 * 86_400_000;
+export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true, videoDailyLimit = 3, refreshSnippet = null } = {}) {
   const inFlight = new Map();
   const required = () => {
     if (!store) throw new ApiError(503, "catalog_not_configured", "分析結果の保存先が未設定です。手動入力をご利用ください。");
@@ -36,7 +37,39 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!reserved) throw new ApiError(429, "analysis_busy", "混雑しています。しばらくしてからお試しください。");
     }
   }
-  async function run(id, { forceVideo = false } = {}) {
+  // 動画の読み取りは家庭ごとに1日 videoDailyLimit 本まで（開発用コードで解除）。
+  async function reserveVideo(household, unlimited) {
+    if (unlimited) return;
+    if (!household) throw new ApiError(429, "video_quota", `今日の動画読み取り（${videoDailyLimit}本）を使い切りました。`);
+    const key = `video-quota/${new Date(now()).toISOString().slice(0, 10)}/${household}`;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const entry = await store.get(key);
+      const used = entry?.envelope.used || 0;
+      if (used >= videoDailyLimit) throw new ApiError(429, "video_quota", `今日の動画読み取り（${videoDailyLimit}本）を使い切りました。明日また使えます。`);
+      if (await store.put(key, { used: used + 1 }, { ifGeneration: entry?.generation ?? 0 })) return;
+    }
+    throw new ApiError(429, "analysis_busy", "混雑しています。しばらくしてからお試しください。");
+  }
+  async function videoQuota(household, unlimited) {
+    if (!store) return null;
+    if (unlimited) return { used: 0, limit: videoDailyLimit, unlimited: true };
+    const entry = household ? await store.get(`video-quota/${new Date(now()).toISOString().slice(0, 10)}/${household}`) : null;
+    return { used: entry?.envelope.used || 0, limit: videoDailyLimit, unlimited: false };
+  }
+  // YouTube APIで取得した説明文などは30日を超えて持たない：古ければ取り直し、取れなければ消す。
+  async function refreshed(key, current) {
+    const result = current.envelope.result;
+    const fetchedAt = Date.parse(result.snippetFetchedAt || result.catalog?.analyzedAt || 0);
+    if (now() - fetchedAt <= SNIPPET_MAX_AGE_MS) return result;
+    let next = { ...result, caption: "", channelTitle: "", snippetFetchedAt: new Date(now()).toISOString() };
+    try {
+      const fresh = await refreshSnippet?.(result.videoId || key.replace(/^youtube-/, ""));
+      if (fresh) next = { ...next, caption: fresh.caption || "", channelTitle: fresh.channelTitle || "" };
+    } catch {}
+    await store.put(key, { status: "ready", result: next }, { ifGeneration: current.generation }).catch(() => {});
+    return next;
+  }
+  async function run(id, { forceVideo = false, household = "", unlimited = false } = {}) {
     required();
     const key = `youtube-${id}`;
     const current = await store.get(key);
@@ -44,7 +77,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const fresh = (current?.envelope.result?.catalog?.extractorVersion || 1) >= EXTRACTOR_VERSION;
     // 「動画から読み直す」：すでに動画から読んだ結果があれば、同じ結果になるので再解析しない（費用をかけない）。
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
-    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) return { ...structuredClone(current.envelope.result), cacheHit: true };
+    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) return { ...structuredClone(await refreshed(key, current)), cacheHit: true };
+    // 読み直しは、枠を先に確かめる（枠がなければ保存済みの結果には触れない）。
+    if (forceVideo) await reserveVideo(household, unlimited);
     // A claim older than STALE_PENDING_MS cannot still be waiting on the AI (timeout is 60s), so it may be retried.
     const stale = current?.envelope.status === "pending" && now() - Date.parse(current.envelope.startedAt || 0) > STALE_PENDING_MS;
     if (current?.envelope.status === "pending" && !stale) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
@@ -53,27 +88,36 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     if (!claim) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
     try {
       await reserveBudget();
-      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget, forceVideo });
+      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget, forceVideo, reserveVideo: forceVideo ? null : () => reserveVideo(household, unlimited) });
       const result = { ...normalizeImportResult(raw), analyzedFrom: ["video", "video-clip"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description" };
-      if (!result.title || !result.ingredients.length || !result.steps.length) throw new ApiError(422, "incomplete_recipe", "材料や手順を読み取れませんでした。手動入力をご利用ください。");
+      if (!result.title || !result.ingredients.length || !result.steps.length) {
+        const error = new ApiError(422, "incomplete_recipe", "材料や手順を読み取れませんでした。手動入力をご利用ください。");
+        error.videoLimited = !!raw?.videoLimited;
+        throw error;
+      }
       result.catalog = { id: key, revision: randomUUID(), analyzedAt: new Date(now()).toISOString(), model, extractorVersion: EXTRACTOR_VERSION };
-      const revision = await store.put(`versions/${result.catalog.revision}`, result, { ifGeneration: 0 });
+      result.snippetFetchedAt = result.catalog.analyzedAt;
+      // 履歴には説明文の原文を残さない（30日ルール）。
+      const revision = await store.put(`versions/${result.catalog.revision}`, { ...result, caption: "", channelTitle: "" }, { ifGeneration: 0 });
       if (!revision) throw new Error("Revision collision");
       const written = await store.put(key, { status: "ready", result }, { ifGeneration: claim.generation });
       if (!written) throw new ApiError(409, "catalog_conflict", "分析結果が更新されました。再取得してください。");
-      return { ...structuredClone(result), cacheHit: false };
+      return { ...structuredClone(result), cacheHit: false, videoLimited: !!raw?.videoLimited };
     } catch (error) {
       if (error.code === "analysis_uncertain") throw error;
-      await store.put(key, { status: "failed", retryAt: now() + 60_000 }, { ifGeneration: claim.generation }).catch(() => {});
+      // 読み直しに失敗しても、保存済みの結果は消さない。
+      if (current?.envelope.status === "ready") await store.put(key, current.envelope, { ifGeneration: claim.generation }).catch(() => {});
+      else await store.put(key, { status: "failed", retryAt: now() + 60_000 }, { ifGeneration: claim.generation }).catch(() => {});
       throw error;
     }
   }
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
-    async import(rawUrl, { forceVideo = false } = {}) {
+    videoQuota,
+    async import(rawUrl, { forceVideo = false, household = "", unlimited = false } = {}) {
       const id = extractYouTubeVideoId(rawUrl);
-      const key = forceVideo ? `${id}:video` : id;
-      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo }).finally(() => inFlight.delete(key)));
+      const key = forceVideo ? `${id}:video:${household}` : id;
+      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited }).finally(() => inFlight.delete(key)));
       return structuredClone(await inFlight.get(key));
     },
     async get(id) {

@@ -21,7 +21,9 @@ export function createApp(env = process.env, deps = {}) {
       analyzeRecipeDescription: requireAnalyzer((snippet) => analyzeRecipeDescription(snippet, env))
     }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
-      enabled: env.AI_IMPORT_ENABLED !== "false" });
+      enabled: env.AI_IMPORT_ENABLED !== "false",
+      videoDailyLimit: Number(env.VIDEO_DAILY_LIMIT || 3),
+      refreshSnippet: async (videoId) => { const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env); return { caption: buildCaption(snippet), channelTitle: snippet.channelTitle }; } });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
@@ -55,24 +57,31 @@ export function createApp(env = process.env, deps = {}) {
       models: { text: env.GEMINI_MODEL || "gemini-2.5-flash", video: env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash" } });
   });
 
+  // 家庭の識別子（同期ルームIDか端末ID）と、開発用コード。動画の読み取り枠に使う。
+  const devCode = String(env.DEV_UNLOCK_CODE || "886");
+  const householdOf = (req) => { const h = String(req.get("x-household") || ""); return /^[\w-]{8,80}$/.test(h) ? h : ""; };
+  const unlimitedOf = (req) => !!devCode && String(req.get("x-dev-code") || "") === devCode;
   app.post("/api/import/youtube", async (req, res) => {
+    const household = householdOf(req), unlimited = unlimitedOf(req);
+    const quota = async () => catalog.videoQuota(household, unlimited).catch(() => null);
     try {
-      const result = await catalog.import(req.body?.url, { forceVideo: req.body?.mode === "video" });
-      res.json(result);
+      const result = await catalog.import(req.body?.url, { forceVideo: req.body?.mode === "video", household, unlimited });
+      res.json({ ...result, videoQuota: await quota() });
     } catch (error) {
       // AI分析が失敗・上限・停止中でも、動画のタイトルと説明文は返す。材料はアプリ側で説明文から読み取る。
-      if (!["invalid_url", "unsupported_url"].includes(error.code)) {
+      // 動画の読み取り枠を使い切った時は、そのことを知らせる（保存済みの結果には触れていない）。
+      if (!["invalid_url", "unsupported_url", "video_quota"].includes(error.code)) {
         console.error(JSON.stringify({ event: "youtube_import_failed", code: error.code || "unknown", message: String(error.message || "").slice(0, 200) }));
         try {
           const videoId = extractYouTubeVideoId(req.body?.url);
           const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env);
-          return res.json({ ...normalizeImportResult({ title: snippet.title, caption: buildCaption(snippet), source: /youtube\.com\/shorts\//i.test(req.body?.url || "") ? "YouTube Shorts" : "YouTube", videoId, videoUrl: canonicalYouTubeUrl(videoId, req.body?.url || ""), channelTitle: snippet.channelTitle }), analysis: { ok: false, code: error.code || "unknown" } });
+          return res.json({ ...normalizeImportResult({ title: snippet.title, caption: buildCaption(snippet), source: /youtube\.com\/shorts\//i.test(req.body?.url || "") ? "YouTube Shorts" : "YouTube", videoId, videoUrl: canonicalYouTubeUrl(videoId, req.body?.url || ""), channelTitle: snippet.channelTitle }), analysis: { ok: false, code: error.code || "unknown" }, videoLimited: !!error.videoLimited, videoQuota: await quota() });
         } catch (fallbackError) {
           console.error(JSON.stringify({ event: "youtube_snippet_failed", code: fallbackError.code || "unknown", message: String(fallbackError.message || "").slice(0, 200) }));
         }
       }
       const { status, body } = toErrorResponse(error);
-      res.status(status).json(body);
+      res.status(status).json(error.code === "video_quota" ? { ...body, videoQuota: await quota() } : body);
     }
   });
 
@@ -186,7 +195,7 @@ function createCorsMiddleware(env) {
       res.setHeader("Vary", "Origin");
     }
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Household, X-Dev-Code");
 
     if (req.method === "OPTIONS") {
       res.status(204).end();

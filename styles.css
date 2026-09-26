@@ -2781,3 +2781,14 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .reread-row.is-empty p { margin: 0; font-size: 13px; }
 .reread-row.is-empty p b { display: block; font-size: 14px; }
 .reread-row .secondary-button { justify-self: start; min-height: 38px; }
+/* 動画読み取りの枠と、開発者コードのキーパッド */
+.plan-fill { display: block; max-width: calc(100% - 96px); margin-top: 2px; padding: 2px 0; font-size: 12px; line-height: 1.35; text-align: left; }
+.quota-sheet { position: fixed; inset: 0; z-index: 20; display: grid; place-items: end center; padding: 12px; background: rgba(40, 25, 15, .35); }
+.quota-card { width: min(100%, 406px); display: grid; gap: 8px; padding: 16px; border-radius: 22px; background: var(--surface); box-shadow: 0 16px 40px rgba(40, 25, 15, .25); margin-bottom: env(safe-area-inset-bottom); }
+.quota-title { margin: 0; font-size: 17px; font-weight: 900; }
+.quota-dev > summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 4px 0; }
+.quota-code { margin: 6px 0; text-align: center; font-size: 22px; letter-spacing: .4em; min-height: 28px; }
+.quota-wrong { margin: 4px 0 0; text-align: center; color: #c0392b; font-size: 13px; font-weight: 700; }
+.quota-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+.quota-key { min-height: 48px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface-soft); font: inherit; font-size: 20px; font-weight: 800; color: var(--ink); cursor: pointer; }
+.planning-panel.is-ai { background: #f6fbf4; border-color: #cfe5c7; }

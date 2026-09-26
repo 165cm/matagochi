@@ -127,8 +127,35 @@ test('re-reading from the video re-runs a description result once, then serves t
   let calls = 0; const seen = [];
   const catalog = createRecipeCatalog(createMemorySyncStore(), async (u, o) => { calls++; seen.push(!!o.forceVideo); return { ...sample(), analyzedFrom: o.forceVideo ? 'video' : 'description' }; });
   assert.equal((await catalog.import(url)).analyzedFrom, 'description');
-  const again = await catalog.import(url, { forceVideo: true });
+  const again = await catalog.import(url, { forceVideo: true, household: 'h1' });
   assert.equal(again.analyzedFrom, 'video'); assert.equal(again.cacheHit, false);
-  assert.equal((await catalog.import(url, { forceVideo: true })).cacheHit, true, 'no second paid video read');
+  assert.equal((await catalog.import(url, { forceVideo: true, household: 'h1' })).cacheHit, true, 'no second paid video read');
   assert.equal(calls, 2); assert.deepEqual(seen, [false, true]);
+});
+
+test('video reads are limited per household per day; the developer code lifts the limit; a refused re-read keeps the saved result', async () => {
+  const store = createMemorySyncStore();
+  const urls = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc', 'ddddddddddd'].map((id) => `https://youtu.be/${id}`);
+  const catalog = createRecipeCatalog(store, async (u, o) => ({ ...sample(), analyzedFrom: o.forceVideo ? 'video' : 'description' }), { videoDailyLimit: 3 });
+  for (const u of urls) await catalog.import(u);
+  for (const u of urls.slice(0, 3)) await catalog.import(u, { forceVideo: true, household: 'h1' });
+  await assert.rejects(catalog.import(urls[3], { forceVideo: true, household: 'h1' }), { code: 'video_quota' });
+  assert.equal((await catalog.import(urls[3])).analyzedFrom, 'description', 'the saved result survives a refused re-read');
+  assert.equal((await catalog.import(urls[3], { forceVideo: true, household: 'h1', unlimited: true })).analyzedFrom, 'video');
+  assert.deepEqual(await catalog.videoQuota('h1', false), { used: 3, limit: 3, unlimited: false });
+  await catalog.import(urls[0], { forceVideo: true, household: 'h2' });
+  assert.equal((await catalog.videoQuota('h2', false)).used, 0, 'cached video results cost no quota');
+});
+
+test('description and channel older than 30 days are fetched again, or dropped', async () => {
+  let now = Date.parse('2026-09-01T00:00:00Z');
+  const store = createMemorySyncStore();
+  let refreshes = 0;
+  const catalog = createRecipeCatalog(store, async () => ({ ...sample(), caption: '説明文', channelTitle: 'ch' }), { now: () => now, refreshSnippet: async () => { refreshes++; return { caption: '新しい説明文', channelTitle: 'ch2' }; } });
+  assert.equal((await catalog.import(url)).caption, '説明文');
+  now += 31 * 86_400_000;
+  const again = await catalog.import(url);
+  assert.equal(again.caption, '新しい説明文'); assert.equal(refreshes, 1);
+  const failing = createRecipeCatalog(store, async () => sample(), { now: () => now + 31 * 86_400_000, refreshSnippet: async () => { throw new Error('gone'); } });
+  assert.equal((await failing.import(url)).caption, '');
 });
