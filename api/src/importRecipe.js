@@ -14,6 +14,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const hasDescription = !!String(snippet.description || "").trim();
   let analysis = hasDescription ? await deps.analyzeRecipeDescription(snippet) : {};
   let analyzedFrom = "description";
+  // 説明文に本当の手順がない（AIの判定・手順が1つ以下）なら、説明文の「手順」は使わず動画を読む。
+  if (analysis.stepsInDescription === false || normalizeSteps(analysis.steps).length < 2) analysis = { ...analysis, steps: [] };
   const weak = !normalizeSteps(analysis.steps).length || !normalizeIngredients(analysis.ingredients).length;
   const maxSeconds = Number(options.videoMaxSeconds ?? VIDEO_MAX_SECONDS);
   const duration = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 ? snippet.durationSeconds : null;

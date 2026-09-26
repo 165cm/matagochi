@@ -53,8 +53,10 @@ test("video analysis runs only when the description has no steps; long videos ar
   const cut = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: async () => ({ steps: ["切る"], stepsComplete: false }) });
   assert.equal(cut.analyzedFrom, "description"); assert.deepEqual(cut.steps, [], "steps cut off by the clip are not used");
   assert.equal(videoCalls, 2);
-  const full = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(50), analyzeRecipeDescription: async () => ({ ingredients: [{ name: "キャベツ", amount: "1/2玉" }], steps: ["切る"] }), analyzeRecipeVideo: video });
+  const full = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(50), analyzeRecipeDescription: async () => ({ ingredients: [{ name: "キャベツ", amount: "1/2玉" }], steps: ["切る", "和える"], stepsInDescription: true }), analyzeRecipeVideo: video });
   assert.equal(full.analyzedFrom, "description"); assert.equal(videoCalls, 2);
+  const chatter = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: async () => ({ ingredients: [{ name: "キャベツ", amount: "1/2玉" }], steps: ["キャベツ使い切り", "味付けはケンタッキー風で"], stepsInDescription: false }), analyzeRecipeVideo: video });
+  assert.equal(chatter.analyzedFrom, "video-clip", "descriptions without a real procedure go to the video"); assert.deepEqual(chatter.steps, ["キャベツを切る", "調味料で和える"]);
 });
 
 test("YouTube durations are read from ISO 8601", () => {

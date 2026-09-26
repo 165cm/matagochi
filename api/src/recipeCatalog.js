@@ -12,7 +12,7 @@ export function createRecipeStore(env) {
 }
 
 const STALE_PENDING_MS = 10 * 60_000;
-const EXTRACTOR_VERSION = 2;
+const EXTRACTOR_VERSION = 3;
 // A durable conditional claim precedes all paid work, including across instances.
 // Pending claims are deliberately not stolen: an expired request may still incur AI cost.
 export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true } = {}) {
