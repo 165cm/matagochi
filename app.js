@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-lp";
+const APP_VERSION = "20260926-video";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2241,7 +2241,7 @@ async function handleAction(event) {
     }
 
     isCaptionImporting = true;
-    state.fetchStatus = "YouTubeの説明文を取得して、材料メモを作成しています。";
+    state.fetchStatus = "YouTubeの説明文を読んでいます。作り方が書かれていない時は、動画も見て読み取ります（最大1分ほど）。";
     saveState();
     render();
 
@@ -2252,7 +2252,9 @@ async function handleAction(event) {
       applyImportedRecipe(result);
       state.fetchStatus = result.analysis?.ok === false
         ? "AIでの読み取りに失敗したため、説明文から直接読み取りました。材料と作り方を確かめてください。"
-        : `${result.cacheHit ? "分析済みのレシピを再利用しました。" : "YouTubeの説明文から材料メモを作成しました。"} 保存前に内容を確認してください。`;
+        : result.analyzedFrom === "video"
+          ? "説明文に作り方がなかったので、動画の音声と画面から読み取りました。材料と作り方を確かめてください。"
+          : `${result.cacheHit ? "分析済みのレシピを再利用しました。" : "YouTubeの説明文から材料メモを作成しました。"} 保存前に内容を確認してください。`;
       saveState();
       showToast("材料メモを作成しました。");
     } catch (error) {
@@ -3151,7 +3153,7 @@ function parseIngredients(caption) {
   const stop = lines.findIndex((l) => /^[【\[■●◆<＜]?\s*(?:作り方|手順|つくり方)/.test(l));
   const byLine = (stop >= 0 ? lines.slice(0, stop) : lines).map((line) => {
     const clean = line.replace(/^[・\-－*●○◎■□◆◇☆★✓✔︎]+\s*/, "").replace(/^[A-ZＡ-Ｚa-z]\s*[.．:：]\s*/, "").trim();
-    if (!clean || /^[【\[]?\s*(?:材料|用意するもの)/.test(clean) || /人分|人前/.test(clean) && !AMOUNT.test(clean.replace(/\d+\s*(?:人分|人前)/, ""))) return null;
+    if (!clean || /kcal|カロリー|糖質|たんぱく質|タンパク質|脂質|炭水化物|PFC|1人前あたり|1人分あたり/i.test(clean) || /^[【\[]?\s*(?:材料|用意するもの)/.test(clean) || /人分|人前/.test(clean) && !AMOUNT.test(clean.replace(/\d+\s*(?:人分|人前)/, ""))) return null;
     const m = clean.match(new RegExp(`^(.+?)[\\s　:：…･・\\.]*(${AMOUNT.source})\\s*$`));
     if (!m) return null;
     const name = m[1].replace(/[\s　:：…]+$/, "").trim();
@@ -3269,7 +3271,7 @@ async function importRecipeFromYouTube(videoUrl) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: videoUrl })
-  });
+  }, 100_000);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(`${data.error?.message || "YouTubeの説明文を取得できませんでした。"}${data.error?.code ? `（${data.error.code}）` : `（HTTP ${response.status}）`}`);

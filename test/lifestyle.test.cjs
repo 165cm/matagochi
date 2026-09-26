@@ -478,6 +478,13 @@ test("import fallback: when AI analysis failed, ingredients are read from the de
   assert.equal(run('state.extractedIngredients.length'),2);assert.equal(run('state.draft.sourceServings'),2);assert.equal(run('state.extractedSteps[0]'),"炒める");
   assert.equal(run('tiktokTitle("#時短 豚こま丼の作り方 #料理\\n材料 豚こま 200g")'),"豚こま丼の作り方");
 });
+test("video-read recipes say so; nutrition lines never become ingredients",()=>{
+  const run=app();
+  run('state.draft={...clone(emptyDraft),videoUrl:"https://youtube.com/shorts/abcdefghijk"}');
+  run(`applyImportedRecipe({title:"コールスロー",caption:"",ingredients:[{name:"キャベツ",amount:"1/2玉"}],steps:["切る","和える"],analyzedFrom:"video"})`);
+  assert.equal(run('state.extractedSteps.length'),2);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(parseIngredients("キャベツ 1/2玉\\n酢 大さじ4\\n1人前あたり、約102kcal P2.1g 11.6g").map(i=>i.name))')),["キャベツ","酢"]);
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

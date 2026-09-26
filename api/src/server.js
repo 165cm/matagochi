@@ -2,7 +2,7 @@ import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { ApiError, toErrorResponse } from "./errors.js";
 import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
@@ -16,9 +16,10 @@ export function createApp(env = process.env, deps = {}) {
   const syncStore = "syncStore" in deps ? deps.syncStore : createSyncStore(env);
   const recipeStore = deps.recipeStore ?? createRecipeStore(env);
   const catalog = createRecipeCatalog(recipeStore,
-    deps.importRecipe || ((url) => importYouTubeRecipe(url, {
+    deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
+      analyzeRecipeVideo: env.VIDEO_ANALYSIS_ENABLED === "false" ? undefined : (videoUrl, snippet) => analyzeRecipeVideo(videoUrl, snippet, env),
       analyzeRecipeDescription: requireAnalyzer((snippet) => analyzeRecipeDescription(snippet, env))
-    })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
+    }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 180) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
       enabled: env.AI_IMPORT_ENABLED !== "false" });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });

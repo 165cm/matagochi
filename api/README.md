@@ -19,6 +19,9 @@ npm start
 - `GEMINI_MODEL`
 - `ALLOWED_ORIGINS`
 - `SYNC_BUCKET`（合言葉同期の保存先Cloud Storageバケット名。未設定時は同期APIが503を返す）
+- `VIDEO_ANALYSIS_ENABLED`（既定 true。`false` で動画の映像・音声からの読み取りを止める）
+- `VIDEO_MAX_SECONDS`（既定 180。これより長い動画は映像から読まない）
+- `GEMINI_VIDEO_MODEL`（任意。動画の読み取りだけ別のモデルにする時）
 - `SYNC_STORE=memory`（ローカル開発用。バケットの代わりにメモリへ保存し、再起動で消える）
 
 ## Endpoint
@@ -31,7 +34,7 @@ npm start
 }
 ```
 
-YouTube Data APIでタイトル・説明文・チャンネル名を取得し、Vertex AIのGemini Flashで材料、手順、タグ、メモ候補に整形します。字幕トラックは取得しません。
+YouTube Data APIでタイトル・説明文・チャンネル名・長さを取得し、Vertex AIのGemini Flashで材料、手順、タグ、メモ候補に整形します。説明文から作り方か材料が取れず、動画が `VIDEO_MAX_SECONDS` 以内なら、公開動画のURLをGeminiに渡して映像と音声から読み取ります（低画質指定・AI利用上限に1回分として加算）。結果は動画ごとに保存し、同じ動画は再解析しません。
 
 `GET /api/sync/rooms/:roomId`
 

@@ -112,3 +112,13 @@ test('a pending claim left by a lost AI response can be retried after 10 minutes
   now += 11 * 60_000;
   assert.equal((await retry.import(url)).title, sample().title);
 });
+
+test('results from the old extractor are analysed once more; new ones come from cache', async () => {
+  let calls = 0;
+  const store = createMemorySyncStore();
+  await store.put('youtube-abcdefghijk', { status: 'ready', result: { ...sample(), catalog: { id: 'youtube-abcdefghijk', revision: 'r1', extractorVersion: 1 } } }, { ifGeneration: 0 });
+  const catalog = createRecipeCatalog(store, async () => { calls++; return { ...sample(), analyzedFrom: 'video' }; });
+  const first = await catalog.import(url);
+  assert.equal(calls, 1); assert.equal(first.cacheHit, false); assert.equal(first.analyzedFrom, 'video');
+  assert.equal((await catalog.import(url)).cacheHit, true); assert.equal(calls, 1);
+});
