@@ -443,7 +443,7 @@ function renderViewerPlan() {
     const sent = openRequests().find((q) => q.date === d.date && q.from === me());
     return `<div class="viewer-day">${dishTile(r)}<div><b>${label}</b><strong>${escapeHtml(r.title)}</strong>${sent ? `<small>🙋 ${escapeHtml(requestRecipe(sent).title)}を送ったよ</small>` : ""}</div>${d.slot?.status === "cooked" || !canSwapRequest(d.date) ? "" : `<button type="button" class="tile-request" data-action="${swapDate === d.date ? "life-close-swap" : "life-swap"}" data-date="${d.date}">${swapDate === d.date ? "閉じる" : "🙋 変えたい"}</button>`}</div>${swapDate === d.date ? renderSwapChoices() : ""}`;
   }).join("");
-  return `${renderWeekBoard()}<section class="viewer-plan-top"><h2>${open && canSwapRequest() ? "買い物の前に、<br /><span class=\"marker nobr\">🙋で送ってね</span>" : "献立、<br /><span class=\"marker nobr\">決まったよ</span>"}</h2></section><section class="viewer-days">${rows}</section>`;
+  return `${renderWeekBoard()}${open && canSwapRequest() ? '<p class="page-hint">変えたい日は、買い物の前に🙋で送ってね</p>' : ""}<section class="viewer-days">${rows}</section>`;
 }
 function renderRoleSettings() {
   if (!syncEnabled()) return "";

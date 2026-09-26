@@ -2568,3 +2568,74 @@ body.bars-hidden .shop-done-sheet { bottom: calc(12px + env(safe-area-inset-bott
 .pantry-page .equipment-choice .choice-emoji { grid-row: 1 / 3; font-size: 15px; margin: 0; }
 .pantry-page .equipment-choice > span:not(.choice-emoji) { font-size: 12px; line-height: 1.2; overflow-wrap: anywhere; }
 .pantry-page .equipment-choice strong { font-size: 10px; line-height: 1.1; }
+/* ===== 2026-09-26 app bar: compact header, page name instead of 2-line headings ===== */
+.topbar { align-items: center; gap: 8px; min-height: 52px; padding: 6px 12px 6px 16px; }
+.brand-block { flex: 1; min-width: 0; }
+.app-logo { font-size: 22px; line-height: 1.2; }
+.app-tagline { display: none; }
+.page-title { display: none; margin: 0; font-size: 19px; font-weight: 900; line-height: 1.2; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.has-page-title .app-logo { display: none; }
+body.has-page-title .page-title { display: block; }
+.topbar-actions { display: flex; align-items: center; gap: 6px; }
+.topbar-actions:empty { display: none; }
+.topbar-actions .round-icon, .profile-button { width: 38px; height: 38px; min-height: 38px; }
+.topbar-actions .round-icon svg, .profile-button svg { width: 20px; height: 20px; }
+.topbar-actions .segmented .choice-button { min-height: 34px; padding: 4px 10px; font-size: 13px; }
+.plan-top, .coll-top { margin: 0; }
+.plan-top:not(:has(*)) { display: none; }
+.page-hint { margin: 0 2px 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.refl-top { justify-content: center; margin: 0 0 8px; }
+.today-date { margin: 0 4px 8px; }
+.screen { padding-top: 6px; }
+/* Plan: one row per meal (photo thumb + text + swap), not a half-screen card. */
+.plan-list { gap: 8px; }
+.plan-list .plan-card { grid-template-columns: 92px minmax(0, 1fr); border-radius: 16px; box-shadow: 0 3px 10px rgba(90, 60, 30, 0.05); }
+.plan-photo .dish-tile { min-height: 92px; }
+.today-badge { left: 6px; top: 6px; padding: 2px 8px; font-size: 11px; }
+.plan-body { position: relative; gap: 0; padding: 8px 10px 8px 12px; }
+.plan-date { font-size: 11px; }
+.plan-title { font-size: 16px; line-height: 1.3; padding-right: 2px; }
+.plan-time { margin: 2px 0 0; font-size: 12px; }
+.plan-note { margin: 2px 0 0; font-size: 11px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 96px; }
+.plan-controls { position: absolute; right: 6px; bottom: 4px; margin: 0; }
+.plan-swap { grid-auto-flow: column; gap: 3px; min-width: 0; min-height: 34px; padding: 2px 8px; border-radius: 12px; }
+.plan-swap span:first-child { font-size: 15px; }
+.block-head { margin: 10px 4px 6px; font-size: 15px; }
+.week-board { margin: 0 0 8px; padding: 8px 10px; border-radius: 16px; }
+@media (max-width: 360px) { .plan-list .plan-card { grid-template-columns: 80px minmax(0, 1fr); } .plan-title { font-size: 15px; } }
+/* Recipes: smaller search, chips and tiles so more dishes show at once. */
+.search-pill { min-height: 40px; padding: 0 12px; }
+.search-pill input { font-size: 16px; }
+.chip-tabs { gap: 6px; margin: 8px 0; }
+.chip-tab { min-height: 34px; padding: 0 12px; font-size: 14px; }
+.facet-chip { min-height: 32px; padding: 0 10px; }
+.facet-row { gap: 4px; }
+.recipe-grid { gap: 12px 10px; }
+.tile-photo .dish-tile { aspect-ratio: 4 / 3; border-radius: 14px; }
+.tile-mark { width: 34px; height: 34px; top: 6px; right: 6px; }
+.tile-title { font-size: 14px; line-height: 1.35; }
+.tile-foot { min-height: 24px; }
+/* Settings rows: list density. */
+.settings-list { gap: 6px; }
+.setting-row { border-radius: 14px; }
+.setting-row > summary { padding: 9px 12px; gap: 8px; }
+.facets { gap: 4px; margin: 4px 0 10px; }
+/* Today: tonight's dish stays the hero, but leaves room for the to-do list below. */
+.tonight-card { padding: 12px; border-radius: 18px; }
+.tonight-head { align-items: baseline; gap: 8px; margin: 0 2px 8px; }
+.tonight-label { margin: 0; font-size: 17px; }
+.tonight-head .today-date { margin: 0; font-size: 12px; }
+.tonight-photo { aspect-ratio: 16 / 9; border-radius: 14px; }
+.tonight-title { font-size: 21px; margin: 8px 0 2px; }
+.tonight-reason { font-size: 13px; margin: 0 0 2px; }
+.tonight-meta { margin: 0 0 2px; font-size: 12px; }
+.tonight-actions { gap: 6px; margin-top: 8px; }
+.tonight-actions .primary-button { min-height: 48px; font-size: 16px; }
+.tonight-actions .secondary-button { min-height: 42px; }
+.tonight-actions .text-button { min-height: 36px; padding: 4px; }
+.today-todos { margin: 10px 0 0; gap: 6px; }
+.todo-row { padding: 8px 10px; border-radius: 14px; }
+.topbar-actions .month-nav { display: flex; align-items: center; gap: 4px; margin: 0; }
+.topbar-actions .month-nav strong { font-size: 14px; white-space: nowrap; }
+.topbar-actions .shop-menu > summary { width: 38px; height: 38px; }
+.topbar-actions .shop-menu-list { top: 44px; }

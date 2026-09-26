@@ -863,7 +863,22 @@ function render() {
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
   document.querySelector("#app").innerHTML = views[state.view]();
+  placePageChrome();
   bindEvents();
+}
+
+// App-bar pattern: the logo on 今日, the page name elsewhere; a page's own buttons sit at the right.
+const PAGE_TITLES = { plan: "献立", shopping: "買い物", collection: "レシピ", recipe: "レシピ", register: "レシピを追加", playlist: "まとめて追加", repeat: "ふりかえり", recordDetails: "記録", cooking: "作る", settings: "設定", pantry: "常備品" };
+function placePageChrome() {
+  const title = PAGE_TITLES[state.view] || "";
+  const el = document.querySelector("#page-title");
+  if (el) el.textContent = title;
+  document.body.classList.toggle("has-page-title", !!title);
+  const slot = document.querySelector("#topbar-actions");
+  if (!slot) return;
+  slot.innerHTML = "";
+  const actions = document.querySelector("#app .page-actions");
+  if (actions) slot.appendChild(actions);
 }
 
 function renderOnboarding() { renderProfileWizard(); }
@@ -1143,10 +1158,7 @@ function renderCollection() {
   ].join("");
   const empty = query ? renderEmpty("一致するレシピはありません。") : recipeTab === "saved" ? '<p class="muted small">まだ保存したレシピはありません。おすすめの🔖で1タップ保存できます。</p>' : "";
   return `
-    <section class="coll-top">
-      <h2>${isViewer() ? '食べたいのを<br /><span class="marker nobr">🙋で送ろう</span>' : 'おいしい、を<br /><span class="marker nobr">集めよう。</span>'}</h2>
-      ${isViewer() ? "" : `<button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>`}
-    </section>
+    ${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう</p>' : `<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderStarterHint()}
     ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${showStarters() ? tab("starter", "おすすめ") : ""}</div>`}
