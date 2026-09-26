@@ -2901,3 +2901,13 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .danger-fill:disabled { opacity: .45; }
 .starter-hidden { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .select-space { height: 72px; }
+/* ログイン */
+.account-panel { display: grid; gap: 8px; }
+.account-panel h3 { margin: 0; }
+.account-in { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.account-dot { width: 10px; height: 10px; border-radius: 50%; background: #3aa76d; }
+.google-login { min-height: 44px; }
+.login-row { display: flex; gap: 8px; }
+.login-row .input { flex: 1; min-width: 0; }
+.tk-login { text-align: left; font-size: 13px; }
+.google-login { font-size: 12px; color: var(--muted); }

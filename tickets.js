@@ -208,6 +208,7 @@ function renderTicketSheet() {
     </section>`;
   return `<div class="quota-sheet ticket-sheet" role="dialog" aria-modal="true" aria-label="チケット"><div class="quota-card">
     ${head}${challenge}
+    ${!ticketSheet.need && loginAvailable() && !account ? '<button type="button" class="text-button tk-login" data-action="tickets-login">🔐 ログインしておくと、機種変更してもチケットが戻ります ›</button>' : ""}
     ${ticketSheet.need ? "" : `<label class="tk-skip"><input type="checkbox" data-action="tickets-ask-toggle" ${ticketSkipAsk() ? "" : "checked"}> チケットを使う前に確認する</label>`}
     <details class="quota-dev" ${ticketCode || ticketCodeWrong ? "open" : ""}><summary>開発者コードを入れる</summary>
       ${ticketCodeWrong ? '<p class="quota-wrong">コードが違うようです。</p>' : ""}<p class="quota-code" aria-live="polite">${ticketCode ? "●".repeat(ticketCode.length) : "&nbsp;"}</p>
@@ -231,6 +232,7 @@ function renderTicketParty() {
 }
 function handleTicketAction(action, data) {
   if (action === "tickets-open") { openTicketSheet(); return true; }
+  if (action === "tickets-login") { ticketSheet = null; setView("settings"); return true; }
   if (action === "tickets-ask-yes") {
     const run = ticketAsk?.run;
     if (document.querySelector("#ticket-skip")?.checked) { try { localStorage.setItem("ripigochi-ticket-ask", "skip"); } catch {} showToast("次からは確認せずに読みます。チケット画面で戻せます。"); }

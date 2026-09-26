@@ -2,6 +2,7 @@ import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createTicketBook } from "./tickets.js";
+import { createAuth } from "./auth.js";
 import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
@@ -18,6 +19,7 @@ export function createApp(env = process.env, deps = {}) {
   const syncStore = "syncStore" in deps ? deps.syncStore : createSyncStore(env);
   const photoStore = "photoStore" in deps ? deps.photoStore : createPhotoStore(env);
   const recipeStore = deps.recipeStore ?? createRecipeStore(env);
+  const auth = createAuth(recipeStore, env, { sendMail: deps.sendMail, fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
   const tickets = recipeStore ? createTicketBook(recipeStore, { now: deps.now || Date.now, startTickets: Number(env.START_TICKETS || 25) }) : null;
   const catalog = createRecipeCatalog(recipeStore,
     deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
@@ -79,6 +81,19 @@ export function createApp(env = process.env, deps = {}) {
     return view;
   };
   const ticketsView = async (req) => walletFor(req).catch(() => null);
+  // ログイン
+  const send = (res, work) => work.then((body) => res.json(body)).catch((error) => { const { status, body } = toErrorResponse(error); res.status(status).json(body); });
+  const signedIn = async (req) => {
+    const uid = await auth.verifySession(String(req.get("authorization") || "").replace(/^Bearer /, ""));
+    if (!uid) throw new ApiError(401, "signed_out", "ログインし直してください。");
+    return uid;
+  };
+  app.get("/api/auth/config", (req, res) => res.json(auth.config()));
+  app.post("/api/auth/google", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, auth.google(req.body?.credential)); });
+  app.post("/api/auth/email/start", (req, res) => send(res, auth.emailStart(req.body?.email)));
+  app.post("/api/auth/email/verify", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, auth.emailVerify(req.body?.email, req.body?.code)); });
+  app.get("/api/auth/me", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => auth.me(uid))); });
+  app.put("/api/auth/me", (req, res) => send(res, signedIn(req).then((uid) => auth.link(uid, req.body))));
   app.get("/api/tickets", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     try {
@@ -256,7 +271,7 @@ function createCorsMiddleware(env) {
       res.setHeader("Vary", "Origin");
     }
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Content-Encoding, X-Household, X-Household-Prev, X-Dev-Code");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Content-Encoding, Authorization, X-Household, X-Household-Prev, X-Dev-Code");
 
     if (req.method === "OPTIONS") {
       res.status(204).end();
