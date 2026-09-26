@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-select";
+const APP_VERSION = "20260927-sync";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -438,7 +438,10 @@ function normalizeSyncSettings(sync) {
   return {
     code: roomId && typeof sync?.code === "string" ? sync.code : "",
     roomId,
-    lastSyncAt: roomId ? normalizeTimestamp(sync?.lastSyncAt) : ""
+    lastSyncAt: roomId ? normalizeTimestamp(sync?.lastSyncAt) : "",
+    // 最後にそろえた版と、その時の手元データの指紋。変わっていなければ中身をやりとりしない。
+    revision: roomId && typeof sync?.revision === "string" ? sync.revision.slice(0, 80) : "",
+    sentHash: roomId && typeof sync?.sentHash === "string" ? sync.sentHash.slice(0, 64) : ""
   };
 }
 
@@ -667,34 +670,126 @@ function scheduleAutoSync() {
 }
 
 // サーバーの最新を取り込み→マージ→書き戻し。他端末が先に書いた場合(409)は取り直して繰り返す。
-async function syncOnce() {
-  const roomUrl = `${API_BASE_URL}/api/sync/rooms/${state.sync.roomId}`;
-  const response = await fetch(roomUrl);
+// ---- 同期の通信を小さくする ----
+// 料理写真は同期データから外し、1枚ずつ一度だけ送る（データ内は "sync-photo:<SHA-256>"）。
+// 相手の版が変わっていなければ中身は受け取らない。送るデータは圧縮する。
+const PHOTO_REF = "sync-photo:";
+const isDataPhoto = (v) => typeof v === "string" && v.startsWith("data:image/");
+const photoHashes = new Map();
+const photoCache = new Map();
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function photoHash(url) {
+  if (!photoHashes.has(url)) photoHashes.set(url, await sha256Hex(url));
+  return photoHashes.get(url);
+}
+const knownPhotosKey = () => `ripigochi-photos-${state.sync.roomId.slice(0, 16)}`;
+function knownPhotos() {
+  try { return new Set(JSON.parse(localStorage.getItem(knownPhotosKey()) || "[]")); } catch { return new Set(); }
+}
+function rememberPhotos(set) { try { localStorage.setItem(knownPhotosKey(), JSON.stringify([...set].slice(-2000))); } catch {} }
+const roomUrl = () => `${API_BASE_URL}/api/sync/rooms/${state.sync.roomId}`;
+async function uploadPhoto(hash, data) {
+  try { return (await fetch(`${roomUrl()}/photos/${hash}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) })).ok; } catch { return false; }
+}
+async function downloadPhoto(hash) {
+  if (photoCache.has(hash)) return photoCache.get(hash);
+  try {
+    const response = await fetch(`${roomUrl()}/photos/${hash}`);
+    if (!response.ok) return "";
+    const { data } = await response.json();
+    if (!isDataPhoto(data) || (await sha256Hex(data)) !== hash) return "";
+    photoCache.set(hash, data); photoHashes.set(data, hash);
+    return data;
+  } catch { return ""; }
+}
+// 送る形：送り済みの写真は参照に置き換える（まだの写真は1回の同期で20枚まで送る。送れなければそのまま埋め込む）。
+async function toWire(payload) {
+  const known = knownPhotos();
+  let uploads = 0;
+  const evaluations = [];
+  for (const e of payload.evaluations || []) {
+    if (!isDataPhoto(e.photo)) { evaluations.push(e); continue; }
+    const hash = await photoHash(e.photo);
+    if (!known.has(hash) && uploads < 20) { uploads++; if (await uploadPhoto(hash, e.photo)) known.add(hash); }
+    evaluations.push(known.has(hash) ? { ...e, photo: PHOTO_REF + hash } : e);
+  }
+  rememberPhotos(known);
+  return { ...payload, evaluations };
+}
+// 受け取った形：参照を写真に戻す（手元にある写真はそれを使い、ない写真だけ取りに行く）。
+async function fromWire(data) {
+  if (!Array.isArray(data?.evaluations)) return data;
+  const local = new Map();
+  for (const e of state.evaluations) if (isDataPhoto(e.photo)) local.set(await photoHash(e.photo), e.photo);
+  const known = knownPhotos();
+  const evaluations = [];
+  for (const e of data.evaluations) {
+    if (typeof e?.photo !== "string" || !e.photo.startsWith(PHOTO_REF)) { evaluations.push(e); continue; }
+    const hash = e.photo.slice(PHOTO_REF.length);
+    known.add(hash);
+    const url = local.get(hash) || (await downloadPhoto(hash));
+    // 取れなかった写真は参照のまま持っておき、次の同期でまた取りに行く（消して送り返さない）。
+    evaluations.push(url ? { ...e, photo: url } : e);
+  }
+  rememberPhotos(known);
+  return { ...data, evaluations };
+}
+async function resolvePendingPhotos() {
+  let changed = false;
+  for (const e of state.evaluations) {
+    if (typeof e.photo !== "string" || !e.photo.startsWith(PHOTO_REF)) continue;
+    const url = await downloadPhoto(e.photo.slice(PHOTO_REF.length));
+    if (url) { e.photo = url; changed = true; }
+  }
+  return changed;
+}
+async function jsonRequestBody(value) {
+  const text = JSON.stringify(value);
+  if (typeof CompressionStream === "undefined" || text.length < 2048) return { body: text, headers: { "Content-Type": "application/json" } };
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  return { body: await new Response(stream).blob(), headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" } };
+}
+async function syncOnce({ full = false } = {}) {
+  let changedLocal = await resolvePendingPhotos();
+  const since = !full && state.sync.revision ? state.sync.revision : "";
+  const response = await fetch(since ? `${roomUrl()}?since=${encodeURIComponent(since)}` : roomUrl());
   if (!response.ok) throw new Error("sync_fetch_failed");
   const remote = await response.json();
-  let changedLocal = false;
   let payload = buildSyncPayload();
-  if (remote.found) {
+  let baseRevision = remote.found ? remote.revision : "";
+  if (remote.found && remote.unchanged) {
+    // 相手は前回から変わっていない：手元も変わっていなければ、何も送らない。
+    const localHash = await sha256Hex(JSON.stringify(payload));
+    if (localHash === state.sync.sentHash) { lastSyncedFingerprint = JSON.stringify(payload); return { done: true, changedLocal }; }
+  } else if (remote.found) {
+    const remoteData = await fromWire(remote.data || {});
     const before = JSON.stringify(payload);
-    const merged = mergeSyncPayloads(payload, remote.data || {});
+    const merged = mergeSyncPayloads(payload, remoteData);
     if (JSON.stringify(merged) !== before) {
       if (state.view === "register") captureDraft();
       applySyncPayload(merged);
       changedLocal = true;
     }
     payload = buildSyncPayload();
-    if (JSON.stringify(payload) === JSON.stringify(remote.data)) {
-      lastSyncedFingerprint = JSON.stringify(payload);
-      return { done: true, changedLocal };
-    }
   }
-  const putResponse = await fetch(roomUrl, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ baseRevision: remote.found ? remote.revision : "", data: payload })
-  });
-  if (putResponse.status === 409) return { done: false, changedLocal };
+  const wire = await toWire(payload);
+  if (remote.found && !remote.unchanged && JSON.stringify(wire) === JSON.stringify(remote.data)) {
+    state.sync.revision = remote.revision;
+    state.sync.sentHash = await sha256Hex(JSON.stringify(payload));
+    lastSyncedFingerprint = JSON.stringify(payload);
+    return { done: true, changedLocal };
+  }
+  const request = await jsonRequestBody({ baseRevision, data: wire });
+  const putResponse = await fetch(roomUrl(), { method: "PUT", headers: request.headers, body: request.body });
+  // 先に別の端末が保存していたら、次は中身ごと取り直してまとめる。
+  if (putResponse.status === 409) { state.sync.revision = ""; return { done: false, changedLocal }; }
   if (!putResponse.ok) throw new Error("sync_push_failed");
+  const saved = await putResponse.json().catch(() => ({}));
+  state.sync.revision = typeof saved.revision === "string" ? saved.revision : "";
+  state.sync.sentHash = await sha256Hex(JSON.stringify(payload));
   lastSyncedFingerprint = JSON.stringify(payload);
   return { done: true, changedLocal };
 }
@@ -1423,7 +1518,7 @@ function recipeThumbnail(recipe) {
   if (starter) return starter;
   const videoId = youtubeVideoId(recipe.videoUrl);
   if (videoId) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-  return getRecipeEvaluationHistory(recipe.id).find((evaluation) => evaluation.photo)?.photo || "";
+  return getRecipeEvaluationHistory(recipe.id).find((evaluation) => isDataPhoto(evaluation.photo))?.photo || "";
 }
 
 function renderRecipeThumb(recipe) {
@@ -1847,7 +1942,7 @@ function renderMissingChip(item) {
 }
 
 function renderRepeatPhotoPicker(recipeId) {
-  const latest = getRecipeEvaluationHistory(recipeId).find((evaluation) => evaluation.photo);
+  const latest = getRecipeEvaluationHistory(recipeId).find((evaluation) => isDataPhoto(evaluation.photo));
   const photo = state.repeatDraft.photo || latest?.photo || "";
   return `
     <label class="repeat-photo-tap" for="repeat-photo" title="写真を追加">
@@ -1872,7 +1967,7 @@ function renderRepeatRecipeRow(recipe, selectedId) {
 
 function renderLatestPhoto(recipeId) {
   const recipe = recipeById(recipeId);
-  const photo = getRecipeEvaluationHistory(recipeId).find((evaluation) => evaluation.photo)?.photo
+  const photo = getRecipeEvaluationHistory(recipeId).find((evaluation) => isDataPhoto(evaluation.photo))?.photo
     || (recipe ? recipeThumbnail(recipe) : "");
   return photo
     ? `<img class="repeat-thumb" src="${escapeAttr(photo)}" alt="料理写真" loading="lazy" onerror="this.outerHTML='<span class=&quot;repeat-thumb is-empty&quot;>写真</span>'">`
@@ -1993,7 +2088,7 @@ function renderEvaluationCard(evaluation) {
         <span class="badge ${summary.badgeClass}">${escapeHtml(summary.shortLabel)}</span>
       </div>
       <p class="muted small">${escapeHtml(evaluation.memo)}</p>
-      ${evaluation.photo ? `<img class="eval-photo" src="${escapeAttr(evaluation.photo)}" alt="料理写真">` : ""}
+      ${isDataPhoto(evaluation.photo) ? `<img class="eval-photo" src="${escapeAttr(evaluation.photo)}" alt="料理写真">` : ""}
       <div class="chip-row">
         ${state.family.map((name) => `<span class="chip">${name}: ${escapeHtml(repeatLabel(evaluation.familyRepeatCycles?.[name]) || "-")}</span>`).join("")}
       </div>

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ApiError } from "./errors.js";
 
 // クライアントが合言葉から導出するSHA-256ハッシュ(hex)。合言葉そのものはサーバーへ送らない。
@@ -16,11 +16,13 @@ function assertRoomId(roomId) {
   }
 }
 
-export async function getSyncRoom(store, roomId) {
+export async function getSyncRoom(store, roomId, { since = "" } = {}) {
   assertStore(store);
   assertRoomId(roomId);
   const entry = await store.get(roomId);
   if (!entry) return { found: false };
+  // 手元と同じ版なら、中身は送らない（変わっていない時の通信をほぼゼロに）。
+  if (since && since === entry.envelope.revision) return { found: true, unchanged: true, revision: entry.envelope.revision, updatedAt: entry.envelope.updatedAt };
   return {
     found: true,
     revision: entry.envelope.revision,
@@ -53,4 +55,33 @@ export async function putSyncRoom(store, roomId, body) {
     throw new ApiError(409, "sync_conflict", "他の端末が先に保存しました。もう一度同期してください。");
   }
   return { revision: envelope.revision, updatedAt: envelope.updatedAt };
+}
+
+// 料理写真は同期データから外し、ルームごとに1枚ずつ保存する（中身のSHA-256が名前）。
+// 一度送った写真は、同期のたびに送り直さない。
+const PHOTO_HASH = /^[a-f0-9]{64}$/;
+const PHOTO_DATA = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+export const MAX_PHOTO_CHARS = 2_000_000;
+
+export async function putSyncPhoto(store, roomId, hash, body) {
+  assertStore(store);
+  assertRoomId(roomId);
+  const data = String(body?.data || "");
+  if (!PHOTO_HASH.test(String(hash || "")) || data.length > MAX_PHOTO_CHARS || !PHOTO_DATA.test(data)) {
+    throw new ApiError(400, "invalid_photo", "写真の形式が正しくありません。");
+  }
+  const actual = createHash("sha256").update(data).digest("hex");
+  if (actual !== hash) throw new ApiError(400, "invalid_photo", "写真の内容が名前と一致しません。");
+  const key = `${roomId}/${hash}`;
+  if (!(await store.get(key))) await store.put(key, { data }, { ifGeneration: 0 });
+  return { hash };
+}
+
+export async function getSyncPhoto(store, roomId, hash) {
+  assertStore(store);
+  assertRoomId(roomId);
+  if (!PHOTO_HASH.test(String(hash || ""))) throw new ApiError(400, "invalid_photo", "写真の名前が正しくありません。");
+  const entry = await store.get(`${roomId}/${hash}`);
+  if (!entry) throw new ApiError(404, "photo_not_found", "写真が見つかりません。");
+  return { data: entry.envelope.data };
 }

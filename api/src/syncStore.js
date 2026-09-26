@@ -9,6 +9,13 @@ export function createSyncStore(env = process.env, deps = {}) {
   return null;
 }
 
+// 料理写真の置き場（同期データとは別のオブジェクト）。
+export function createPhotoStore(env = process.env, deps = {}) {
+  if (env.SYNC_BUCKET) return createGcsSyncStore(env.SYNC_BUCKET, { ...deps, prefix: "room-photos" });
+  if (env.SYNC_STORE === "memory") return createMemorySyncStore();
+  return null;
+}
+
 // テストとローカル開発用。プロセスが終わるとデータは消える。
 export function createMemorySyncStore() {
   const rooms = new Map();
