@@ -2671,3 +2671,74 @@ body.has-page-title .page-title { display: block; }
 .creator-row small { color: var(--muted); font-size: 12px; min-width: 2.5em; text-align: right; }
 .creator-thumb small { display: none; }
 .creator-thumb.dish-fallback { background-size: cover; background-position: center; }
+/* Saving recipes from SNS: a small always-visible strip, a step card the first time. */
+.save-strip { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; }
+.paste-button { flex: 1; min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1.5px dashed var(--tomato); background: #fff4ee; color: var(--tomato); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.save-guide-link { flex: 0 0 auto; min-height: 38px; padding: 0 4px; font-size: 12px; }
+.save-guide { margin: 8px 0 0; padding: 10px 12px; border-radius: 14px; background: #fff4ee; border: 1.5px solid #f6d3c5; }
+.save-guide-title { margin: 0 0 4px; font-weight: 900; font-size: 14px; }
+.save-guide ol { margin: 0; padding-left: 1.3em; font-size: 13px; line-height: 1.6; }
+.save-guide-tip { margin: 4px 0 0; font-size: 11px; color: var(--muted); }
+.save-guide-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.save-guide-actions .paste-button { background: var(--surface); }
+.paste-inline { margin-top: 4px; padding: 4px 0; font-size: 13px; }
+.register-hero { padding: 12px; }
+.register-lead { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.quick-url-row .fetch-button { white-space: nowrap; padding: 0 14px; font-size: 14px; }
+.register-hero .entry-methods { margin-top: 0; }
+/* ===== Recipe add / edit: fewer boxes, one line per ingredient ===== */
+.register-hero { padding: 10px; }
+.register-hero .entry-methods { margin: 0 0 8px; gap: 6px; }
+.register-hero .entry-methods button { min-height: 52px; padding: 6px 4px; }
+.quick-url-row { display: flex; gap: 6px; align-items: center; }
+.quick-url-row .url-input { flex: 1; min-width: 0; }
+.quick-url-row .fetch-button { flex: 0 0 auto; min-height: 44px; padding: 0 14px; font-size: 14px; white-space: nowrap; }
+.entry-detail-panel { display: grid; gap: 8px; padding: 12px; }
+.title-input { font-size: 18px; font-weight: 800; }
+.servings-pick { padding: 8px 10px; border-radius: 12px; background: var(--surface-soft); }
+.servings-pick p { margin: 0 0 6px; font-size: 13px; }
+.servings-pick p small { margin-left: 6px; color: var(--sage-dark, #3f7a35); font-weight: 700; }
+.servings-options { display: flex; gap: 4px; flex-wrap: wrap; }
+.servings-options .choice-button { min-width: 40px; min-height: 36px; padding: 0 8px; }
+.servings-pick.is-unknown { background: #fff0ee; border: 1.5px solid #e2574c; }
+.servings-warn { margin: 6px 0 0 !important; color: #c0392b; font-size: 12px !important; font-weight: 700; }
+.ingredient-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; }
+.ingredient-head h3 { margin: 0; font-size: 15px; }
+.ingredient-head h3 small { font-size: 11px; font-weight: 700; }
+.ingredient-head .text-button { padding: 4px 6px; font-size: 13px; }
+.ingredient-editor-list { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.ingredient-editor-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 32px; gap: 4px; align-items: center; padding: 3px 4px; border-top: 1px dashed var(--line); margin: 0; background: none; border-radius: 0; box-shadow: none; }
+.ingredient-editor-row:first-child { border-top: 0; }
+.ingredient-editor-row .input { min-height: 34px; padding: 4px 8px; font-size: 14px; border-color: transparent; background: transparent; }
+.ingredient-editor-row .input:focus { border-color: var(--tomato); background: var(--surface); }
+.ingredient-editor-row .ingredient-amount-select { color: var(--muted); }
+.ingredient-delete-button { width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 14px; cursor: pointer; }
+.steps-input { min-height: 120px; font-size: 14px; }
+.entry-detail-panel .subhead { margin: 4px 0 0; font-size: 15px; }
+.servings-banner { display: flex; gap: 10px; align-items: center; margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: #fff0ee; border: 1.5px solid #e2574c; color: #c0392b; }
+.servings-banner p { flex: 1; margin: 0; font-size: 12px; line-height: 1.5; }
+.servings-banner b { font-size: 13px; }
+.servings-banner .secondary-button { flex: 0 0 auto; min-height: 38px; padding: 0 12px; font-size: 13px; border-color: #e2574c; color: #c0392b; }
+.ingredient-editor-list .ingredient-editor-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 32px; gap: 4px; padding: 3px 4px; border-radius: 0; background: none; }
+.ingredient-editor-list .ingredient-delete-button { grid-column: auto; grid-row: auto; }
+.servings-options { flex-wrap: nowrap; }
+.servings-options .choice-button { flex: 1 1 0; min-width: 0; padding: 0 2px; }
+.servings-options .choice-button:last-child { flex: 1.4 1 0; }
+/* 献立の条件：要約だけ見せ、直す時に開く。チップは小さく。 */
+.planning-panel { margin: 0 0 10px; padding: 10px; border-radius: 14px; }
+.planning-panel h3 { margin: 0; font-size: 15px; }
+.planning-row { margin: 6px 0; }
+.planning-options { display: flex; flex-wrap: wrap; gap: 4px; }
+.planning-options .choice-button { min-height: 34px; padding: 0 9px; font-size: 13px; }
+.planning-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.planning-chip { min-height: 34px; padding: 4px 8px; gap: 4px; font-size: 13px; }
+.planning-chip input { width: 15px; height: 15px; }
+.planning-edit h4 { margin: 8px 0 4px; font-size: 12px; }
+.ingredient-editor-list .ingredient-editor-row { border: 0; border-top: 1px dashed var(--line); margin: 0; min-height: 0; }
+.ingredient-editor-list .ingredient-editor-row:first-child { border-top: 0; }
+.ingredient-editor-list .input { min-height: 32px; }
+.ingredient-head { margin: 2px 0 -2px; }
+.ingredient-head .text-button { min-height: 32px; }
+.planning-options .choice-button { flex: 0 0 auto; }
+.ingredient-editor-list .ingredient-editor-row { align-items: center; } .ingredient-editor-list .ingredient-editor-row .input { height: 32px; }
+.entry-detail-panel .ingredient-head { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 4px; } .entry-detail-panel .ingredient-head > span { display: flex; flex: 0 0 auto; }

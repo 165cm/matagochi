@@ -110,6 +110,7 @@ const assert = require("node:assert/strict");
   await page.locator("#recipe-steps").fill("材料を温める");
   await page.locator('[data-planning-minute="15"]').click();
   await page.locator('[data-planning-easy="true"]').click();
+  await page.locator(".planning-edit > summary").click();
   await page.locator('[data-planning-field="equipment"][value="コンロ"]').check();
   await page.locator("#planning-verified").check();
   await page.locator("[data-action=save-recipe]").click();
