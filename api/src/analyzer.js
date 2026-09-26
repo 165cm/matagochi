@@ -32,7 +32,8 @@ export async function analyzeRecipeDescription(snippet, env = process.env) {
 }
 
 // 説明文に手順がない動画向け：公開YouTube動画を映像と音声ごと読む（低画質で費用を抑える）。
-export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env) {
+// clipSeconds を渡すと、動画の頭からその秒数だけを見る（長い動画の後半の感想・雑談は読まない）。
+export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env, { clipSeconds = null } = {}) {
   const project = env.GOOGLE_CLOUD_PROJECT;
   if (!project) throw new ApiError(500, "missing_google_cloud_project", "Google Cloudプロジェクトが設定されていません。");
   const ai = new GoogleGenAI({ vertexai: true, project, location: env.GOOGLE_CLOUD_LOCATION || "us-central1" });
@@ -40,8 +41,8 @@ export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env) {
   const response = await ai.models.generateContent({
     model,
     contents: [{ role: "user", parts: [
-      { fileData: { fileUri: videoUrl, mimeType: "video/mp4" } },
-      { text: buildVideoPrompt(snippet) }
+      { fileData: { fileUri: videoUrl, mimeType: "video/mp4" }, ...(clipSeconds ? { videoMetadata: { startOffset: "0s", endOffset: `${Math.round(clipSeconds)}s` } } : {}) },
+      { text: buildVideoPrompt(snippet, clipSeconds) }
     ] }],
     config: {
       httpOptions: { timeout: 150_000, retryOptions: { attempts: 1 } },
@@ -57,10 +58,11 @@ export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env) {
   return parseJsonResponse(response.text || "");
 }
 
-function buildVideoPrompt(snippet) {
+function buildVideoPrompt(snippet, clipSeconds) {
   return `
 あなたは家庭向けレシピメモ作成アシスタントです。
 この料理動画の音声・字幕・画面の文字から、材料と作り方を日本語で抽出してください。
+${clipSeconds ? `渡しているのは動画の最初の${Math.round(clipSeconds / 60)}分だけです。この範囲で料理が完成まで作られていれば stepsComplete を true、途中で終わっていれば false にしてください。` : "料理が完成まで作られていれば stepsComplete を true にしてください。"}
 
 制約:
 - 動画と説明文で確認できない材料や分量は推測で補完しないでください。分量が不明なら "適量"。
@@ -72,7 +74,7 @@ function buildVideoPrompt(snippet) {
 - JSONのみを返してください。
 
 返却JSON:
-{ "title": "短いレシピ名", "sourceServings": null, "ingredients": [{ "name": "材料名", "amount": "分量", "category": "分類" }], "steps": ["手順"], "tags": ["タグ"], "note": "" }
+{ "title": "短いレシピ名", "sourceServings": null, "ingredients": [{ "name": "材料名", "amount": "分量", "category": "分類" }], "steps": ["手順"], "stepsComplete": true, "tags": ["タグ"], "note": "" }
 
 参考（動画のタイトルと説明文）:
 ${snippet.title || ""}

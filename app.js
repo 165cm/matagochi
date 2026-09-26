@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-video";
+const APP_VERSION = "20260926-clip";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2252,7 +2252,9 @@ async function handleAction(event) {
       applyImportedRecipe(result);
       state.fetchStatus = result.analysis?.ok === false
         ? "AIでの読み取りに失敗したため、説明文から直接読み取りました。材料と作り方を確かめてください。"
-        : result.analyzedFrom === "video"
+        : result.analyzedFrom === "video-clip"
+          ? "説明文に作り方がなかったので、動画の最初の10分の音声と画面から読み取りました。材料と作り方を確かめてください。"
+          : result.analyzedFrom === "video"
           ? "説明文に作り方がなかったので、動画の音声と画面から読み取りました。材料と作り方を確かめてください。"
           : `${result.cacheHit ? "分析済みのレシピを再利用しました。" : "YouTubeの説明文から材料メモを作成しました。"} 保存前に内容を確認してください。`;
       saveState();

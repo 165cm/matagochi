@@ -52,7 +52,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     try {
       await reserveBudget();
       const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget });
-      const result = { ...normalizeImportResult(raw), analyzedFrom: raw?.analyzedFrom === "video" ? "video" : "description" };
+      const result = { ...normalizeImportResult(raw), analyzedFrom: ["video", "video-clip"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description" };
       if (!result.title || !result.ingredients.length || !result.steps.length) throw new ApiError(422, "incomplete_recipe", "材料や手順を読み取れませんでした。手動入力をご利用ください。");
       result.catalog = { id: key, revision: randomUUID(), analyzedAt: new Date(now()).toISOString(), model, extractorVersion: EXTRACTOR_VERSION };
       const revision = await store.put(`versions/${result.catalog.revision}`, result, { ifGeneration: 0 });
