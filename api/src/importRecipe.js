@@ -21,8 +21,14 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const duration = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 ? snippet.durationSeconds : null;
   // 長い動画（や長さ不明）は頭から maxSeconds だけを見る。作り方がその中で完結した時だけ使う。
   const clipSeconds = !duration || duration > maxSeconds ? maxSeconds : null;
+  let videoLimited = false;
   if (weak && maxSeconds > 0 && typeof deps.analyzeRecipeVideo === "function") {
-    try {
+    // 自動で動画を読む時も、家庭ごとの1日の枠を使う。枠がなければ説明文の結果のまま返す。
+    let allowed = true;
+    if (options.reserveVideo) {
+      try { await options.reserveVideo(); } catch (error) { if (error.code !== "video_quota") throw error; allowed = false; videoLimited = true; }
+    }
+    if (allowed) try {
       await options.reserveBudget?.();
       const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds });
       const complete = video.stepsComplete !== false;
@@ -34,7 +40,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         sourceServings: Number.isInteger(analysis.sourceServings) ? analysis.sourceServings : video.sourceServings,
         ingredients: normalizeIngredients(analysis.ingredients).length ? analysis.ingredients : videoIngredients,
         steps: videoSteps.length ? videoSteps : analysis.steps,
-        tags: analysis.tags?.length ? analysis.tags : video.tags
+        tags: analysis.tags?.length ? analysis.tags : video.tags,
+        planning: videoSteps.length && video.planning ? video.planning : analysis.planning || video.planning
       };
       if (videoSteps.length) analyzedFrom = clipSeconds ? "video-clip" : "video";
     } catch (error) {
@@ -53,7 +60,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       videoUrl,
       channelTitle: snippet.channelTitle
     }),
-    analyzedFrom
+    analyzedFrom,
+    videoLimited
   };
 }
 
@@ -69,7 +77,8 @@ export function normalizeImportResult(result) {
     note: cleanText(result.note),
     videoId: cleanText(result.videoId),
     videoUrl: cleanText(result.videoUrl),
-    channelTitle: cleanText(result.channelTitle)
+    channelTitle: cleanText(result.channelTitle),
+    planning: normalizePlanning(result.planning)
   };
 }
 
@@ -92,6 +101,24 @@ function normalizeIngredients(value) {
     }))
     .filter((item) => item.name && !NUTRITION.test(`${item.name} ${item.amount}`))
     .slice(0, 20);
+}
+
+// AIが判定した「献立に使う条件」。決まった選択肢だけを通す。
+const EQUIPMENT = ["コンロ", "電子レンジ", "炊飯器", "オーブン", "トースター", "フライパン", "鍋", "包丁", "まな板", "キッチンばさみ", "耐熱ボウル", "ざる", "ふた", "計量スプーン", "はかり", "電気ケトル", "圧力鍋", "ミキサー", "ホットプレート"];
+const MINUTES = [10, 15, 20, 30, 45, 60];
+function normalizePlanning(value) {
+  if (!value || typeof value !== "object") return null;
+  const n = Number(value.minutes);
+  const minutes = Number.isFinite(n) && n > 0 ? MINUTES.find((m) => n <= m) || 60 : null;
+  const pick = (list, allowed) => [...new Set((Array.isArray(list) ? list : []).map(cleanText).filter((x) => allowed.includes(x)))];
+  const planning = {
+    minutes,
+    easy: typeof value.easy === "boolean" ? value.easy : null,
+    equipment: pick(value.equipment, EQUIPMENT),
+    tasks: pick(value.tasks, ["肉を切る", "揚げる", "長く煮込む"]),
+    tastes: pick(value.tastes, ["和風", "洋風", "中華風"])
+  };
+  return planning.minutes || planning.equipment.length ? planning : null;
 }
 
 function normalizeSteps(value) {

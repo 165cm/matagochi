@@ -414,7 +414,7 @@ function renderDailyPlan() {
       const minutes = recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
       const more = day.slot?.status === "cooked" || isViewer() ? "" : `<details class="plan-more"><summary aria-label="${dateLabel}のその他の操作">⋯</summary><div>${day.slot?.status === "confirmed" && slotHasUpdates(day.slot) ? dailyButton("life-refresh", "今のレシピ・人数を反映", `data-date="${day.date}"`) : ""}<button class="text-button" data-action="life-off" data-date="${day.date}">この日は自炊お休み</button></div></details>`;
       const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">入れ替え</span>'}</button>`;
-      return `<article class="plan-card ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${escapeHtml(recipe.title)}</button>${minutes ? `<p class="plan-time"><span class="marker">${minutes}</span></p>` : ""}<p class="hand plan-note">${escapeHtml(note)}</p><div class="plan-controls">${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}`;
+      return `<article class="plan-card ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${escapeHtml(recipe.title)}</button>${minutes ? `<p class="plan-time"><span class="marker">${minutes}</span></p>` : ""}<p class="hand plan-note">${escapeHtml(note)}</p>${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : `🎬 動画で作り方をそろえる${quotaNote()}`}</button>` : ""}<div class="plan-controls">${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}`;
     })
     ;
   const cards = cardList.map((html, i) => {
@@ -1023,6 +1023,18 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-analyze") { analyzeCookingRecipe(data.date); return true; }
   if (action === "life-reread") { rereadRecipe(data.recipe); return true; }
+  if (action === "life-fill-video") { fillRecipeFromVideo(data.recipe); return true; }
+  if (action === "life-quota-key") { quotaCode = data.key === "⌫" ? quotaCode.slice(0, -1) : (quotaCode + data.key).slice(0, 6); render(); return true; }
+  if (action === "life-quota-close") { quotaSheetOpen = false; quotaCode = ""; quotaRetry = null; render(); return true; }
+  if (action === "life-quota-unlock") {
+    try { localStorage.setItem("ripigochi-dev-code", quotaCode); } catch {}
+    const retry = quotaRetry;
+    quotaSheetOpen = false; quotaCode = ""; quotaRetry = null;
+    showToast("開発者コードを設定しました。もう一度読み取ります。");
+    render();
+    retry?.();
+    return true;
+  }
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
     const slot = state.mealSlots[cookingDate];
@@ -1217,7 +1229,14 @@ function renderPlanningFields() {
   const p = state.draft.planning;
   const chips = (values,field) => `<div class="planning-chips">${values.map(v=>`<label class="planning-chip"><input type="checkbox" data-planning-field="${field}" value="${escapeAttr(v)}" ${(p[field]||[]).includes(v)?"checked":""}><span>${escapeHtml(v)}</span></label>`).join("")}</div>`;
   const summary = planningSummaryText(p);
-  return `<section id="planning-panel" class="planning-panel"><h3>🍳 献立に使う条件</h3><p class="muted small">材料と手順から読み取りました。違うところだけ直してください。</p>
+  const restricted = dailyProfile().restrictions;
+  const ai = !!p.aiJudged;
+  // AIが判定した時は確認なしで保存できる。食べられないものがある家庭だけ、含む食材を1回確かめる。
+  const confirm = ai
+    ? (restricted.length ? `<label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified ? "checked" : ""}>食べられないもの（${escapeHtml(restricted.join("・"))}）が入っていないか、材料と市販品の表示を確認した</label>` : "")
+    : `<label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified && p.conditionsConfirmed?"checked":""}>材料・市販品の表示と、上の条件を確認した</label>
+  <p class="muted small">わからなければ未確認のまま保存できます。自動の献立には使わず、入れ替え時に確認します。</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button>`;
+  return `<section id="planning-panel" class="planning-panel ${ai ? "is-ai" : ""}">${ai ? '<input id="planning-ai" type="hidden" value="1">' : ""}<h3>${ai ? "🤖 献立に使う条件" : "🍳 献立に使う条件"}</h3><p class="muted small">${ai ? "AIが材料と作り方から判定しました。違っていたら、ここで直せます。" : "材料と手順から読み取りました。違うところだけ直してください。"}</p>
   <div class="planning-row"><span>時間</span><div class="planning-options">${[10,15,20,30,45,60].map(n=>`<button type="button" class="choice-button" data-planning-minute="${n}" aria-pressed="${p.minutes===n}">${n}分</button>`).join("")}</div></div>
   <div class="planning-row"><span>手間</span><div class="planning-options"><input id="planning-easy" type="hidden" value="${p.easy===true?"true":p.easy===false?"false":""}"><button type="button" class="choice-button" data-planning-easy="true" aria-pressed="${p.easy===true}">😊 かんたん</button><button type="button" class="choice-button" data-planning-easy="false" aria-pressed="${p.easy===false}">🍳 手間をかける</button></div></div>
   <dl class="planning-summary"><div><dt>器具</dt><dd data-planning-summary="equipment">${escapeHtml(summary.equipment)}</dd></div><div><dt>含む食材</dt><dd data-planning-summary="contains">${escapeHtml(summary.contains)}</dd></div><div><dt>作業</dt><dd data-planning-summary="tasks">${escapeHtml(summary.tasks)}</dd></div></dl>
@@ -1228,8 +1247,7 @@ function renderPlanningFields() {
   <h4>必要な作業</h4>${chips(["肉を切る","揚げる","長く煮込む"],"tasks")}
   <h4>味の分類</h4>${chips(["和風","洋風","中華風"],"tastes")}
   ${dailyButton("life-planning-suggest","材料・手順から読み取り直す")}</details>
-  <label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified && p.conditionsConfirmed?"checked":""}>材料・市販品の表示と、上の条件を確認した</label>
-  <p class="muted small">わからなければ未確認のまま保存できます。自動の献立には使わず、入れ替え時に確認します。</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button></section>`;
+  ${confirm}</section>`;
 }
 function capturePlanningFields() {
   const minutes = document.querySelector("#planning-minutes");
@@ -1244,6 +1262,11 @@ function capturePlanningFields() {
     ingredientsVerified:!!document.querySelector("#planning-verified")?.checked,
     conditionsConfirmed:!!document.querySelector("#planning-verified")?.checked,
   };
+  // AI判定：条件は確定済み。含む食材の確認は、食べられないものがある家庭だけ。
+  if (document.querySelector("#planning-ai")) {
+    const verify = document.querySelector("#planning-verified");
+    state.draft.planning = { ...state.draft.planning, aiJudged: true, conditionsConfirmed: true, ingredientsVerified: verify ? verify.checked : true };
+  }
 }
 function conditionWarning(recipe, date) {
   const fit = Lifestyle.fit(recipe, dailyProfile(), date);
@@ -1317,19 +1340,76 @@ async function rereadRecipe(id) {
     const result = await importRecipeFromYouTube(own.videoUrl, { mode: "video" });
     if (state.view !== "register" || state.editingRecipeId !== id) await handleAction({ currentTarget: { dataset: { action: "edit-recipe", recipe: id } } });
     applyImportedRecipe(result);
-    state.draft.planning = undefined;
     state.draftExpanded = true;
     state.fetchStatus = result.analyzedFrom?.startsWith("video")
       ? `${result.cacheHit ? "動画から読み取った結果を表示しています。" : "動画から読み直しました。"}まだおかしい所は、このまま直して「更新する」を押してください。`
       : "動画からは作り方を読み取れませんでした。動画を見ながら、このまま直して「更新する」を押してください。";
     showToast("読み直しました。確かめて保存してください。");
   } catch (error) {
-    showToast(error.message || "読み直せませんでした。");
+    if (error.code === "video_quota") openQuotaSheet(() => rereadRecipe(id));
+    else showToast(error.message || "読み直せませんでした。");
   } finally {
     rereadingId = "";
     saveState(); render();
     globalThis.scrollTo?.({ top: 0, behavior: "instant" });
   }
+}
+// 献立から：作り方がない料理を、編集画面を開かずに動画でそろえる（直したい時はレシピを開いて編集）。
+async function fillRecipeFromVideo(id) {
+  if (rereadingId) return;
+  const own = state.recipes.find((x) => x.id === id);
+  if (!canRereadRecipe(own)) return;
+  rereadingId = id; render();
+  try {
+    const result = await importRecipeFromYouTube(own.videoUrl, { mode: "video" });
+    const steps = (result.steps || []).map((x) => String(x || "").trim()).filter(Boolean);
+    if (!steps.length) { showToast("動画からも作り方を読み取れませんでした。レシピを開いて手で入れてください。"); return; }
+    const ingredients = normalizeImportedIngredients(result.ingredients);
+    const planning = aiPlanning(result.planning, { ingredients: ingredients.length ? ingredients : own.ingredients, steps });
+    Object.assign(own, {
+      steps,
+      ingredients: own.ingredients?.length ? own.ingredients : ingredients,
+      sourceServings: own.sourceServings ?? result.sourceServings ?? null,
+      planning: own.planning?.conditionsConfirmed ? own.planning : planning || own.planning,
+      updatedAt: nowIso(),
+    });
+    showToast(`「${own.title}」の作り方をそろえました。${quotaNote()}`);
+  } catch (error) {
+    if (error.code === "video_quota") openQuotaSheet(() => fillRecipeFromVideo(id));
+    else showToast(error.message || "読み取れませんでした。");
+  } finally {
+    rereadingId = "";
+    saveState(); render();
+  }
+}
+function quotaNote() {
+  const q = videoQuotaState;
+  if (!q) return "";
+  if (q.unlimited) return "（開発モード）";
+  return `（今日あと${Math.max(0, q.limit - q.used)}本）`;
+}
+// 1日の枠を使い切った時のお知らせ。開発用コード（886）をタップで入れると、この端末は制限なし。
+let quotaRetry = null, quotaSheetOpen = false, quotaCode = "";
+let quotaWrong = false;
+function openQuotaSheet(retry) {
+  // コードを入れてもまた枠切れなら、コードが違う。
+  quotaWrong = !!devCode();
+  if (quotaWrong) try { localStorage.removeItem("ripigochi-dev-code"); } catch {}
+  quotaRetry = retry; quotaSheetOpen = true; quotaCode = ""; render();
+}
+function renderQuotaSheet() {
+  if (!quotaSheetOpen) return "";
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
+  return `<div class="quota-sheet" role="dialog" aria-modal="true" aria-label="今日の動画読み取り"><div class="quota-card">
+    <p class="quota-title">🎬 今日の動画読み取りは、ここまで</p>
+    <p class="small">1日${videoQuotaState?.limit || 3}本まで使えます。明日になると、また使えます。</p>
+    <details class="quota-dev" ${quotaCode || quotaWrong ? "open" : ""}><summary>開発者コードを入れる</summary>
+      ${quotaWrong ? '<p class="quota-wrong">コードが違うようです。</p>' : ""}<p class="quota-code" aria-live="polite">${quotaCode ? "●".repeat(quotaCode.length) : "&nbsp;"}</p>
+      <div class="quota-keys">${keys.map((k) => k ? `<button type="button" class="quota-key" data-action="life-quota-key" data-key="${k}" aria-label="${k === "⌫" ? "1文字消す" : k}">${k}</button>` : "<span></span>").join("")}</div>
+      <button type="button" class="primary-button full-button" data-action="life-quota-unlock" ${quotaCode.length ? "" : "disabled"}>決定</button>
+    </details>
+    <button type="button" class="text-button full-button" data-action="life-quota-close">閉じる</button>
+  </div></div>`;
 }
 function canAnalyzeRecipe(recipe) {
   return !!API_BASE_URL && !!youtubeVideoId(recipe?.videoUrl) && recipe.bulkImport?.privacyStatus !== "unlisted" && !recipe.catalog && !recipe.planning?.ingredientsVerified;
@@ -1354,7 +1434,6 @@ async function analyzeCookingRecipe(date) {
     reviewReturnDate = date;
     // The saved recipe and confirmed slot remain untouched until user review.
     applyImportedRecipe(result);
-    state.draft.planning = undefined;
     state.draftExpanded = true;
     applied = true;
     showToast("下書きを作りました。材料・手順・調理条件を確認して保存してください。");

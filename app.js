@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-reread";
+const APP_VERSION = "20260926-quota";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -914,7 +914,7 @@ function render() {
     pantry: renderPantryPage
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = views[state.view]();
+  document.querySelector("#app").innerHTML = views[state.view]() + renderQuotaSheet();
   placePageChrome();
   bindEvents();
 }
@@ -2251,7 +2251,9 @@ async function handleAction(event) {
       const result = await importRecipeFromYouTube(importingUrl);
       if (state.draft.videoUrl !== importingUrl) return;
       applyImportedRecipe(result);
-      state.fetchStatus = result.analysis?.ok === false
+      state.fetchStatus = result.videoLimited
+        ? "今日の動画読み取り枠を使い切ったため、説明文だけで読み取りました。作り方が足りなければ、明日「動画から読み直す」でそろえられます。"
+        : result.analysis?.ok === false
         ? `${state.extractedSteps.length ? "AIでの読み取りに失敗したため、説明文から直接読み取りました。材料と作り方を確かめてください。" : "説明文にも動画の中にも、作り方を見つけられませんでした。材料は説明文から入れています。作り方は動画を見ながら入力してください。"}`
         : result.analyzedFrom === "video-clip"
           ? "説明文に作り方がなかったので、動画の最初の10分の音声と画面から読み取りました。材料と作り方を確かめてください。"
@@ -3277,13 +3279,30 @@ async function fetchTikTokPreview(videoUrl) {
   };
 }
 
+// 動画の読み取り枠は家庭ごと（つながっていれば同期ルーム、なければこの端末）に数える。
+function householdKey() {
+  if (state.sync?.roomId) return state.sync.roomId;
+  try {
+    let id = localStorage.getItem("ripigochi-device-id");
+    if (!id) { id = `dev-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`; localStorage.setItem("ripigochi-device-id", id); }
+    return id;
+  } catch { return ""; }
+}
+function devCode() { try { return localStorage.getItem("ripigochi-dev-code") || ""; } catch { return ""; } }
+let videoQuotaState = null;
 async function importRecipeFromYouTube(videoUrl, { mode = "" } = {}) {
   const response = await fetchWithTimeout(`${API_BASE_URL}/api/import/youtube`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Household": householdKey(), ...(devCode() ? { "X-Dev-Code": devCode() } : {}) },
     body: JSON.stringify(mode ? { url: videoUrl, mode } : { url: videoUrl })
   }, 180_000);
   const data = await response.json().catch(() => ({}));
+  if (data.videoQuota) videoQuotaState = data.videoQuota;
+  if (!response.ok && data.error?.code === "video_quota") {
+    const error = new Error(data.error.message);
+    error.code = "video_quota";
+    throw error;
+  }
   if (!response.ok) {
     throw new Error(`${data.error?.message || "YouTubeの説明文を取得できませんでした。"}${data.error?.code ? `（${data.error.code}）` : `（HTTP ${response.status}）`}`);
   }
@@ -3302,6 +3321,16 @@ function detectDraftServings() {
   if (n) { state.draft.sourceServings = n; state.draft.servingsDetected = true; }
 }
 
+// AIが判定した献立の条件。時間・手間・器具は確定。含む食材は、食べられないものがある家庭だけ確認してもらう。
+function aiPlanning(ai, recipe) {
+  if (!ai || !(ai.minutes || ai.equipment?.length)) return undefined;
+  const base = Lifestyle.suggestPlanning(recipe);
+  const restricted = dailyProfile().restrictions.length > 0;
+  return { ...base, minutes: ai.minutes || base.minutes, easy: typeof ai.easy === "boolean" ? ai.easy : base.easy,
+    equipment: ai.equipment?.length ? ai.equipment : base.equipment, noEquipment: false,
+    tasks: ai.tasks || base.tasks, tastes: ai.tastes || base.tastes,
+    aiJudged: true, conditionsConfirmed: true, ingredientsVerified: !restricted };
+}
 function applyImportedRecipe(result) {
   const platform = detectPlatform(state.draft.videoUrl);
   state.draft = {
@@ -3320,6 +3349,7 @@ function applyImportedRecipe(result) {
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
   };
+  state.draft.planning = aiPlanning(result.planning, { ingredients: result.ingredients || [], steps: result.steps || [] });
   // AI分析が失敗しても説明文は届く。材料はアプリ側で説明文から読み取る。
   const imported = normalizeImportedIngredients(result.ingredients);
   state.originalIngredients = imported.length ? imported : parseIngredients(state.draft.caption || "");

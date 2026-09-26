@@ -22,6 +22,8 @@ npm start
 - `VIDEO_ANALYSIS_ENABLED`（既定 true。`false` で動画の映像・音声からの読み取りを止める）
 - `VIDEO_MAX_SECONDS`（既定 600＝10分。これより長い動画は最初の10分だけを読み、作り方がその中で完結した時だけ使う）
 - `GEMINI_VIDEO_MODEL`（任意。動画の読み取りだけ別のモデルにする時）
+- `VIDEO_DAILY_LIMIT`（既定 3。動画の読み取りを家庭ごとに1日何本まで許すか。家庭はアプリが送る `X-Household`＝同期ルームIDか端末ID）
+- `DEV_UNLOCK_CODE`（既定 886。アプリから `X-Dev-Code` で送ると動画の読み取り枠が無制限になる開発用コード。リポジトリが公開のため、本番運用前に変更すること）
 - `SYNC_STORE=memory`（ローカル開発用。バケットの代わりにメモリへ保存し、再起動で消える）
 
 ## Endpoint
@@ -111,3 +113,7 @@ bash api/scripts/setup-github-deploy.sh
 ```
 
 AIモデルは `deploy-api.yml` の `GEMINI_MODEL` / `GEMINI_VIDEO_MODEL` で固定しています。モデルの提供終了の案内が来たら、この2行を書き換えてマージすれば切り替わります。今のモデルは `/health` の `models` で確認できます。
+
+## YouTube APIデータの保存期間
+
+分析結果に含まれる説明文の原文（`caption`）とチャンネル名は、取得から30日を過ぎると次の利用時にYouTube APIから取り直し、取れなければ消します。分析の履歴（`versions/`）には原文を残しません。

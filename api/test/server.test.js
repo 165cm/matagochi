@@ -100,3 +100,19 @@ test('youtube import still returns the title and description when AI analysis fa
   const bad = await fetch(`http://127.0.0.1:${server.address().port}/api/import/youtube`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/x' }) });
   assert.equal(bad.status, 400);
 });
+
+test('video re-reads: daily limit per household, 886 lifts it, CORS allows the headers', async (t) => {
+  const app = createApp({ VIDEO_DAILY_LIMIT: '1' }, { recipeStore: createMemorySyncStore(), syncStore: null,
+    importRecipe: async (u, o) => ({ title: '丼', ingredients: [{ name: '米', amount: '2合' }], steps: ['炊く', '盛る'], analyzedFrom: o.forceVideo ? 'video' : 'description' }) });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (url, headers = {}) => fetch(`${base}/api/import/youtube`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Household': 'house-0001', ...headers }, body: JSON.stringify({ url, mode: 'video' }) });
+  const first = await post('https://youtu.be/aaaaaaaaaaa');
+  assert.equal(first.status, 200); assert.deepEqual((await first.json()).videoQuota, { used: 1, limit: 1, unlimited: false });
+  const second = await post('https://youtu.be/bbbbbbbbbbb');
+  assert.equal(second.status, 429); assert.equal((await second.json()).error.code, 'video_quota');
+  const dev = await post('https://youtu.be/bbbbbbbbbbb', { 'X-Dev-Code': '886' });
+  assert.equal(dev.status, 200); assert.equal((await dev.json()).videoQuota.unlimited, true);
+  const pre = await fetch(`${base}/api/import/youtube`, { method: 'OPTIONS', headers: { Origin: 'https://165cm.github.io', 'Access-Control-Request-Method': 'POST' } });
+  assert.match(pre.headers.get('access-control-allow-headers') || '', /X-Household/);
+});
