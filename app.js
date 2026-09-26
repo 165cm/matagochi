@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-sync";
+const APP_VERSION = "20260927-login";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -857,6 +857,7 @@ async function connectSync() {
   showToast("合言葉でつながりました。同じ合言葉の端末とデータがそろいます。");
   render();
   refreshTickets();
+  linkAccount();
 }
 
 function disconnectSync() {
@@ -869,6 +870,7 @@ function disconnectSync() {
   showToast("共有をやめました。");
   render();
   refreshTickets();
+  linkAccount({ leftRoom: true });
 }
 
 function formatSyncTime(iso) {
@@ -1030,6 +1032,7 @@ function render() {
   placePageChrome();
   renderTicketChip();
   bindEvents();
+  if (state.view === "settings") mountGoogleButton();
 }
 
 // App-bar pattern: the logo on 今日, the page name elsewhere; a page's own buttons sit at the right.
@@ -2110,6 +2113,7 @@ function openSetting(id) {
 
 function renderSettings() {
   if (isViewer()) return `
+    ${renderAccountPanel()}
     ${renderSharePanel()}
     <section class="panel settings-food"><h2>わたしの設定</h2>
       <p class="muted small">食べられないもの：${escapeHtml(memberPrefs().restrictions.join("・") || "なし")}</p>
@@ -2119,6 +2123,7 @@ function renderSettings() {
   const sp = skillProfile();
   const leave = [...p.restrictions, ...p.dislikes];
   return `
+    ${renderAccountPanel()}
     <section class="settings-list" aria-label="設定">
     ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 2 ? "disabled" : ""}>＋</button></div></div>
       ${(() => { const p = dailyProfile(); return `<dl class="planning-summary"><div><dt>平日の時間</dt><dd>${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"}</dd></div><div><dt>食べられない</dt><dd>${escapeHtml(p.restrictions.join("・") || "未指定")}</dd></div><div><dt>苦手</dt><dd>${escapeHtml(p.dislikes.join("・") || "未指定")}</dd></div></dl>`; })()}
@@ -2264,6 +2269,7 @@ async function handleAction(event) {
   if (action === "life-select-toggle") { const k = event.currentTarget.dataset.key; selectedRecipes.has(k) ? selectedRecipes.delete(k) : selectedRecipes.add(k); render(); return; }
   if (action === "life-select-all") { selectedRecipes = selectable.every((k) => selectedRecipes.has(k)) ? new Set() : new Set(selectable); render(); return; }
   if (action === "life-select-delete") { deleteSelectedRecipes(); return; }
+  if (action.startsWith("auth-") && (await handleAuthAction(action))) return;
   if (handleTicketAction(action, event.currentTarget.dataset)) return;
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
   if (action === "paste-recipe-url") { await pasteRecipeUrl(); return; }
@@ -3937,6 +3943,7 @@ document.addEventListener("visibilitychange", () => {
   }
   if (syncEnabled()) syncNow({ silent: true });
   refreshTickets();
+  loadAuth();
 })();
 // Like a browser toolbar: bars slide away while scrolling down, come back on scroll up.
 (() => {
