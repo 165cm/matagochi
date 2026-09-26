@@ -2765,3 +2765,19 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .request-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .request-actions .secondary-button { min-height: 34px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
 .viewer-save-note { margin: 0 0 10px; }
+/* Join: pick which of the two people you are (a second device joins under the same name). */
+.join-q { font-weight: 800; }
+.join-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.join-choice { display: grid; gap: 2px; justify-items: center; min-height: 64px; padding: 10px 6px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); font: inherit; color: var(--ink); cursor: pointer; }
+.join-choice b { font-size: 17px; }
+.join-choice small { font-size: 11px; color: var(--muted); }
+.join-choice[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ea; }
+.join-custom { justify-self: start; padding: 4px 0; font-size: 13px; }
+/* 動画から読み直す */
+.reread-row { display: grid; gap: 4px; margin: 6px 0; }
+.reread-row small { color: var(--muted); font-size: 11px; }
+.reread-row .text-button { justify-self: start; padding: 6px 0; font-size: 13px; }
+.reread-row.is-empty { padding: 10px 12px; border-radius: 14px; background: #fff4e6; border: 1.5px solid #f3c27a; }
+.reread-row.is-empty p { margin: 0; font-size: 13px; }
+.reread-row.is-empty p b { display: block; font-size: 14px; }
+.reread-row .secondary-button { justify-self: start; min-height: 38px; }

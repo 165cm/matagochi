@@ -122,3 +122,13 @@ test('results from the old extractor are analysed once more; new ones come from 
   assert.equal(calls, 1); assert.equal(first.cacheHit, false); assert.equal(first.analyzedFrom, 'video');
   assert.equal((await catalog.import(url)).cacheHit, true); assert.equal(calls, 1);
 });
+
+test('re-reading from the video re-runs a description result once, then serves the video result from cache', async () => {
+  let calls = 0; const seen = [];
+  const catalog = createRecipeCatalog(createMemorySyncStore(), async (u, o) => { calls++; seen.push(!!o.forceVideo); return { ...sample(), analyzedFrom: o.forceVideo ? 'video' : 'description' }; });
+  assert.equal((await catalog.import(url)).analyzedFrom, 'description');
+  const again = await catalog.import(url, { forceVideo: true });
+  assert.equal(again.analyzedFrom, 'video'); assert.equal(again.cacheHit, false);
+  assert.equal((await catalog.import(url, { forceVideo: true })).cacheHit, true, 'no second paid video read');
+  assert.equal(calls, 2); assert.deepEqual(seen, [false, true]);
+});

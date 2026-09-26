@@ -506,6 +506,24 @@ test("request replies: the requester hears it was planned or passed, the planner
   run('state.requests["req-2"]={id:"req-2",recipeId:"x",recipeTitle:"餃子",from:"むすめ",status:"dismissed",createdAt:nowIso(),updatedAt:nowIso()};state.me="むすめ"');
   assert.ok(run('requestNews().some(n=>n.kind==="passed")'));
 });
+test("joining under a new name renames the invitee instead of adding a third person",()=>{
+  const run=app();
+  run('state.family=["パパ","むすめ"];state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()};state.memberPrefs={"むすめ":{restrictions:[],likes:[],done:true,updatedAt:nowIso()}};state.evaluations=[{id:"e1",recipeId:"x",recipeTitle:"丼",cookedAt:today(),familyRepeatCycles:{"むすめ":"weekly"}}]');
+  run('renameHouseholdMember("むすめ","ゆい")');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.family)')),["パパ","ゆい"]);
+  assert.equal(run('state.roles.members["ゆい"]'),"viewer");assert.equal(run('"むすめ" in state.roles.members'),false);
+  assert.equal(run('state.memberPrefs["ゆい"].done'),true);assert.equal(run('state.evaluations[0].familyRepeatCycles["ゆい"]'),"weekly");
+  run('joinInvite={code:"x",from:"パパ",to:"ゆい"};joinPick=""');
+  const html=run('renderJoin()');assert.ok(html.includes('data-name="ゆい"'));assert.ok(html.includes('data-name="パパ"'));
+});
+test("playlist import keeps chatter out of steps and offers a video re-read",()=>{
+  const run=app();
+  run('state.onboarded=true');
+  run(`globalThis.__r=playlistRecipe({title:"濃厚冷やし胡麻坦々うどん",url:"https://www.youtube.com/watch?v=abcdefghijk",description:"材料\\nうどん 1玉\\nごま 大さじ2\\n本当にレンジだけで作ったの？と全く信じて貰えなかったりw\\n#レンジレシピ #無限レシピ",channelTitle:"こったそ"},{id:"PL1",title:"料理"})`);
+  assert.equal(run('__r.steps.length'),0);assert.equal(run('__r.ingredients.length'),2);
+  run('state.recipes.unshift(__r);recipeDetailId=__r.id;state.view="recipe"');
+  assert.ok(!run('renderRecipeDetail()').includes('data-action="life-reread"'),"no API here, so no re-read button");
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

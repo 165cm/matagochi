@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-reply";
+const APP_VERSION = "20260926-reread";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -964,6 +964,8 @@ function renderRecipeEntry() {
     ${!editing && entryMethod === "image" ? renderImageImport() : ""}
     ${showDetails ? `
     <section class="panel entry-detail-panel">
+      ${editing && canRereadRecipe(recipeById(state.editingRecipeId)) ? `<div class="reread-row"><button type="button" class="secondary-button" data-action="life-reread" data-recipe="${escapeAttr(state.editingRecipeId)}" ${rereadingId ? "disabled" : ""}>${rereadingId ? "動画を読んでいます…（最大2分）" : "🎬 動画から読み直す"}</button><small>作り方がおかしい時に。読み直した内容は、保存前にここで直せます。</small></div>` : ""}
+      ${state.fetchStatus && editing ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
       <input id="recipe-title" class="input title-input" value="${escapeAttr(state.draft.title)}" placeholder="料理名" aria-label="料理名">
       ${state.draft.requiresImageReview ? `<p class="notice">${escapeHtml((state.draft.imageWarnings || []).join(" / ") || "AIは読み違えることがあります。元画像と材料・分量・手順を照合してください。")}</p>
       <label><input id="image-reviewed" type="checkbox" ${state.draft.imageReviewed ? "checked" : ""}> 元画像と材料・分量・手順を確認しました</label>` : ""}
@@ -3275,11 +3277,11 @@ async function fetchTikTokPreview(videoUrl) {
   };
 }
 
-async function importRecipeFromYouTube(videoUrl) {
+async function importRecipeFromYouTube(videoUrl, { mode = "" } = {}) {
   const response = await fetchWithTimeout(`${API_BASE_URL}/api/import/youtube`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: videoUrl })
+    body: JSON.stringify(mode ? { url: videoUrl, mode } : { url: videoUrl })
   }, 180_000);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
