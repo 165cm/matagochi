@@ -25,7 +25,7 @@ test('scales source portions without assuming unknown serves one; qualitative am
   assert.equal(run(`scaleAmountForServings('300g', 1, 2)`), '150g');
   assert.equal(run(`scaleAmountForServings('大さじ1/2', 2, 4)`), '大さじ0.25');
   assert.equal(run(`scaleAmountForServings('適量', 2, 2)`), '適量');
-  assert.equal(run(`scaleAmountForServings('300g', 2, null)`), '300g（元の人数未確認）');
+  assert.equal(run(`scaleAmountForServings('300g', 2, null)`), '300g');
   assert.equal(run(`scaleAmountForServings('300g', 2)`), '600g');
 });
 
@@ -59,7 +59,7 @@ test('shopping scales each saved recipe independently of an unrelated draft', ()
 
 test('invalid imported portion metadata never divides by zero', () => {
   const run = app();
-  assert.equal(run(`scaleAmountForServings('300g', 1, 0)`), '300g（元の人数未確認）');
+  assert.equal(run(`scaleAmountForServings('300g', 1, 0)`), '300g');
 });
 
 test('image drafts cannot be saved without explicit review; accepted text has no shared catalog', async () => {

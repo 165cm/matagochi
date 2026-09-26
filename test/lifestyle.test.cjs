@@ -457,8 +457,19 @@ test("save guide: first visit shows steps, then a small paste strip stays; copie
   run('saveGuideOpen=false');const html=run('renderCollection()');
   assert.ok(html.includes('class="save-strip"'));assert.ok(!html.includes('class="save-guide"'));
   assert.equal(run('startRecipeFromText("そぼろ丼 https://www.tiktok.com/@kurashiru/video/1")'),true);
-  assert.equal(run('state.view'),"register");assert.equal(run('state.draft.title'),"そぼろ丼");assert.equal(run('state.draft.source'),"TikTok");
+  assert.equal(run('state.view'),"register");assert.equal(run('state.draft.shareTitle'),"そぼろ丼");assert.equal(run('state.draft.title'),"");assert.equal(run('state.draft.source'),"TikTok");
   assert.equal(run('startRecipeFromText("URLなし")'),false);
+});
+test("register: servings are read from the caption; unknown servings keep amounts as written",()=>{
+  const run=app();
+  assert.equal(run('detectSourceServings("材料（2人分）豚こま 200g")'),2);
+  assert.equal(run('detectSourceServings("3〜4人前です")'),3);
+  assert.equal(run('detectSourceServings("豚こま 200g")'),null);
+  assert.equal(run('scaleAmountForServings("200g",2,null)'),"200g");
+  run('state.onboarded=true;state.view="register";state.draft={...clone(emptyDraft),title:"丼",videoUrl:"https://youtu.be/x"};state.extractedIngredients=[{name:"豚こま",amount:"200g",category:"肉"}];state.draftExpanded=true');
+  const html=run('renderRecipeEntry()');
+  assert.ok(html.includes('servings-pick is-unknown'));assert.ok(!html.includes('ingredient-category-input'));
+  run('state.editingRecipeId="x"');assert.ok(!run('renderRecipeEntry()').includes('entry-methods'));
 });
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
