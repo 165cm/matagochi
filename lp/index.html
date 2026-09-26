@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>リピごち | かぶらない、飽きない、また食べたい。ふたりの夜ごはん</title>
-    <meta name="description" content="最近食べたものと、ふたりの「また食べたい」を覚えて、かぶらない夜ごはんを3日分。買い物リストまで自動で。ふたり暮らし・ひとり暮らしの夜ごはんアプリ「リピごち」。公開のお知らせをメールで受け取れます。" />
+    <meta name="description" content="最近食べたものと、ふたりの「また食べたい」を覚えて、買い物の日に合わせて、かぶらない夜ごはんを。スマホ1画面の買い物リスト、SNSのレシピ動画の保存まで。ふたり暮らし・ひとり暮らしの夜ごはんアプリ「リピごち」。公開のお知らせをメールで受け取れます。" />
     <meta property="og:title" content="リピごち | かぶらない、飽きない、また食べたい。" />
-    <meta property="og:description" content="最近食べたものと、ふたりの「また食べたい」を覚えて、かぶらない夜ごはんを3日分。公開のお知らせを受け付け中。" />
+    <meta property="og:description" content="最近食べたものと、ふたりの「また食べたい」を覚えて、買い物の日に合わせて、かぶらない夜ごはんを。いまのβ版は無料。" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://165cm.github.io/matagochi/lp/" />
     <meta property="og:image" content="https://165cm.github.io/matagochi/lp/assets/ogp-20260924.jpg" />
@@ -19,18 +19,18 @@
     <meta name="twitter:image:alt" content="今夜、これ食べたい。3問で、3日分の夜ごはんと買い物リスト" />
     <meta name="theme-color" content="#fff8ee" />
     <link rel="canonical" href="https://165cm.github.io/matagochi/lp/" />
-    <link rel="icon" href="../icons/favicon-32.png?v=20260926-fetchfix" />
+    <link rel="icon" href="../icons/favicon-32.png?v=20260926-lp" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Klee+One:wght@600&display=swap" />
-    <link rel="preload" as="image" href="assets/screen-recent.webp" />
-    <link rel="stylesheet" href="styles.css?v=20260924-waitlist" />
+    <link rel="preload" as="image" href="assets/screen-today.webp" />
+    <link rel="stylesheet" href="styles.css?v=20260926-lp" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
         <a class="brand" href="#top" aria-label="リピごち トップへ">
-          <img class="brand-icon" src="../icons/icon-192.png?v=20260926-fetchfix" width="40" height="40" alt="" /><span class="logo">リピごち</span>
+          <img class="brand-icon" src="../icons/icon-192.png?v=20260926-lp" width="40" height="40" alt="" /><span class="logo">リピごち</span>
           <span class="hand brand-note">また、これ食べたい。</span>
         </a>
         <a class="button button-small" href="#waitlist"><span class="wide-only">公開の</span>お知らせ登録</a>
@@ -44,7 +44,7 @@
           <div class="hero-copy">
             <p class="pill">ふたり暮らし・ひとり暮らしの夜ごはんアプリ</p>
             <h1>かぶらない、<br />飽きない、<br /><span class="marker nobr">また食べたい。</span></h1>
-            <p class="lead"><span class="nobr">最近食べたものと、</span><span class="nobr">ふたりの「また食べたい」を覚えて、</span><span class="nobr">ちょうどいい夜ごはんを3日分。</span></p>
+            <p class="lead"><span class="nobr">最近食べたもの、</span><span class="nobr">ふたりの「また食べたい」、</span><span class="nobr">料理の腕前まで覚えて、</span><span class="nobr">次の買い物までの夜ごはんを。</span></p>
             <form class="waitlist-form waitlist-inline" data-source="hero" novalidate>
               <label class="sr-only" for="wl-email-hero">メールアドレス</label>
               <input id="wl-email-hero" class="wl-email" type="email" name="email" inputmode="email" autocomplete="email" placeholder="メールアドレス" required />
@@ -56,11 +56,11 @@
             <p class="beta-link small"><a class="text-link" href="../?start=quick">いまのβ版を、無料で試してみる →</a></p>
           </div>
           <div class="hero-visual">
-            <p class="hand note note-a" aria-hidden="true">一昨日パスタなら、<br />今日はごはんもの。</p>
+            <p class="hand note note-a" aria-hidden="true">一昨日うどんなら、<br />今日はごはんもの。</p>
             <figure class="phone phone-hero">
-              <img src="assets/screen-recent.webp" width="640" height="1326" alt="リピごちの今日の画面。最近のごはん「一昨日 納豆パスタ」「昨日 親子丼」と、今夜のおすすめ「照り焼きチキン丼：一昨日はパスタだったので、ごはんものに」「ふたりとも好き」" fetchpriority="high" /><figcaption>画面はイメージです（開発中）</figcaption>
+              <img src="assets/screen-today.webp" width="640" height="1326" alt="リピごちの今日の画面。今夜の一品「もやしでかさまし鶏つくね丼」と、理由「一昨日はうどんだったので、ごはんものに」、作り方を見るボタン" fetchpriority="high" /><figcaption>いまのβ版の画面です</figcaption>
             </figure>
-            <span class="sticker sticker-time" aria-hidden="true">🍝 → 🍚 かぶらない</span>
+            <span class="sticker sticker-time" aria-hidden="true">🍜 → 🍚 かぶらない</span>
             <span class="sticker sticker-list" aria-hidden="true">😋 ふたりとも好き</span>
           </div>
         </div>
@@ -135,7 +135,7 @@
               <p class="hand promise-note">久しぶりの、あの味。</p>
             </article>
           </div>
-          <p class="center small muted">正式版で順次お届けする機能です。いまのβ版では一部をお試しいただけます。</p>
+          <p class="center small muted">どれも、いまのβ版で無料で使えます。</p>
         </div>
       </section>
 
@@ -146,34 +146,62 @@
           <h2 class="center">3ステップで、<span class="marker nobr">今夜が決まる。</span></h2>
 
           <article class="step">
-            <figure class="phone"><img src="assets/screen-plan.webp" width="640" height="1309" alt="献立の画面。3日分の料理が写真付きで並び、それぞれ入れ替えられる" loading="lazy" /><figcaption>画面はイメージです（開発中）</figcaption></figure>
+            <figure class="phone"><img src="assets/screen-plan.webp" width="640" height="1326" alt="献立の画面。今週のカレンダーに決まった料理の写真が並び、その下に買い物ごとの献立が1行ずつ並ぶ" loading="lazy" /><figcaption>いまのβ版の画面です</figcaption></figure>
             <div class="step-copy">
               <span class="step-no">1</span>
-              <h3>3問で、3日分。</h3>
-              <p>人数・平日の調理時間・食べられない食材だけ。気分じゃなければ、ワンタップで入れ替え。</p>
-              <p class="hand step-note">3日分でも7日分でも◎</p>
+              <h3>買い物の日を決めたら、献立がそろう。</h3>
+              <p>「3日ずつ」「1週間」「平日だけ」から選ぶだけ。人数・調理時間・苦手な食材・料理の腕前に合わせて、次の買い物までの献立を提案します。気分じゃなければ、ワンタップで入れ替え。</p>
+              <p class="hand step-note">腕前は、1分の診断で。</p>
             </div>
           </article>
 
           <article class="step reverse">
-            <figure class="phone"><img src="assets/screen-shopping.webp" width="640" height="1326" alt="買い物の画面。確定した献立の材料が売り場ごとに並び、タップで購入済みにできる" loading="lazy" /><figcaption>画面はイメージです（開発中）</figcaption></figure>
+            <figure class="phone"><img src="assets/screen-shopping.webp" width="640" height="1326" alt="買い物の画面。材料が売り場ごとに1行ずつ並び、行の右にどの料理に使うかの小さな写真が付く" loading="lazy" /><figcaption>いまのβ版の画面です</figcaption></figure>
             <div class="step-copy">
               <span class="step-no">2</span>
-              <h3>決めたら、買い物リスト。</h3>
-              <p>確定した献立の材料だけを、売り場ごとにまとめます。家にあるものはよけて、買ったらタップ。</p>
+              <h3>買い物リストは、スマホ1画面。</h3>
+              <p>献立の材料だけを、スーパーを回る順に1行ずつ。どの料理に使うかは小さな写真でひと目で。家にある常備品はよけて、全部そろったら「買い物完了」。</p>
               <p class="hand step-note">LINEで送って、おつかいも</p>
             </div>
           </article>
 
           <article class="step">
-            <figure class="phone"><img src="assets/screen-records.webp" width="640" height="1309" alt="ふりかえりの画面のイメージ。作った料理の写真が並ぶ" loading="lazy" /><figcaption>画面はイメージです（開発中）</figcaption></figure>
+            <figure class="phone"><img src="assets/screen-records.webp" width="640" height="1326" alt="ふりかえりの画面。今月つくった回数と「また食べたい」の数、今月の偏愛の一皿、作った料理の写真が日付つきで並ぶ" loading="lazy" /><figcaption>いまのβ版の画面です</figcaption></figure>
             <div class="step-copy">
               <span class="step-no">3</span>
               <h3>食べたら、ふたりで「また食べたい」。</h3>
-              <p>ひとりずつワンタップ。記録がたまるほど、次の3日分がふたりの好みに近づきます。</p>
+              <p>ひとりずつワンタップ。記録がたまるほど、次の献立がふたりの好みに近づきます。月ごとの「偏愛の一皿」も。</p>
               <p class="hand step-note">好きな一皿が、増えていく。</p>
             </div>
           </article>
+        </div>
+      </section>
+
+      <!-- ふたりで使う -->
+      <section class="promise together" id="together">
+        <div class="container">
+          <p class="kicker center">ふたりで使う</p>
+          <h2 class="center">招待リンクひとつで、<br /><span class="marker nobr">ふたりの献立に。</span></h2>
+          <div class="promise-grid">
+            <article>
+              <span class="promise-icon" aria-hidden="true">🔗📱</span>
+              <h3>LINEで招待、すぐつながる</h3>
+              <p>献立・レシピ・買い物リストが、もうひとりのスマホにも。アカウント登録はいりません。</p>
+              <p class="hand promise-note">見るだけの家族も、気軽に。</p>
+            </article>
+            <article>
+              <span class="promise-icon" aria-hidden="true">🙋🍛</span>
+              <h3>「これ食べたい」を送れる</h3>
+              <p>食べたい料理や「この日を変えたい」を、ワンタップでリクエスト。買い物の前なら、献立に入ります。</p>
+              <p class="hand promise-note">「なんでもいい」から卒業。</p>
+            </article>
+            <article>
+              <span class="promise-icon" aria-hidden="true">🛒⏰</span>
+              <h3>買い物の前に、ひと声</h3>
+              <p>「◯日に買い物に行く予定。変更のリクエストはそれまでに！」を、そのままLINEへ。</p>
+              <p class="hand promise-note">締め切りがあると、決めやすい。</p>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -183,14 +211,16 @@
           <div class="split-copy">
             <p class="kicker">レシピ</p>
             <h2>保存しただけの<br /><span class="marker nobr">レシピ動画も、</span><span class="marker nobr">献立に。</span></h2>
-            <p>SNSで見つけたレシピは、リンク・スクショ・手入力で残せます。保存したレシピも、最近食べたものとかぶらないように献立に入ります。</p>
+            <p>YouTube・TikTok・Instagramで見つけたレシピは、リンクをコピーして📋ボタンでそのまま保存（Androidは共有メニューからも）。説明文から、材料・作り方・何人分かを読み取ります。保存したレシピも、かぶらないように献立に入ります。</p>
             <ul class="checks">
-              <li>最初から、すぐ作れるオリジナルレシピ入り</li>
+              <li>チャンネル・アカウントごとに、保存したレシピを一覧</li>
+              <li>主食・素材・気分の色分けタグで、すぐ絞り込み</li>
               <li>スクショからAIが下書き。確認してから保存</li>
-              <li>YouTubeの再生リストからまとめて追加<span class="small">（準備中）</span></li>
+              <li>YouTubeの再生リストからまとめて追加</li>
+              <li>最初から、すぐ作れるオリジナルレシピ入り</li>
             </ul>
           </div>
-          <figure class="phone"><img src="assets/screen-recipes.webp" width="640" height="1326" alt="レシピの画面のイメージ。料理の写真が2列で並び、調理時間が表示される" loading="lazy" /><figcaption>画面はイメージです（開発中）</figcaption></figure>
+          <figure class="phone"><img src="assets/screen-recipes.webp" width="640" height="1326" alt="レシピの画面。コピーしたURLから保存するボタン、色分けされた絞り込みタグ、保存したレシピの写真が並ぶ" loading="lazy" /><figcaption>いまのβ版の画面です</figcaption></figure>
         </div>
       </section>
 
@@ -293,12 +323,20 @@
             <p>いまは全機能を無料で提供しています。保存・記録・バックアップの基本機能はこの先も無料です。有料プランは価格や内容が決まる前にお知らせし、自動で課金に切り替えることはありません。</p>
           </details>
           <details>
+            <summary>SNSのレシピ動画は、どうやって保存しますか？</summary>
+            <p>YouTube・TikTok・Instagramで動画の「共有 → リンクをコピー」をして、リピごちのレシピ画面の「📋 コピーしたURLから保存」を押すだけです。Androidでホーム画面に追加している場合は、共有メニューに出る「リピごち」からも保存できます。説明文に材料が書かれていない動画は、スクショや手入力で補えます。</p>
+          </details>
+          <details>
+            <summary>ふたりで使うには、どうすればいいですか？</summary>
+            <p>設定の「ふたりで使う」から招待リンクを作って、LINEなどで送るだけです。相手がリンクを開くと、献立・レシピ・買い物リストが同じになります。「見るだけ」で参加して、食べたいものをリクエストする使い方もできます。</p>
+          </details>
+          <details>
             <summary>アレルギーがあっても大丈夫？</summary>
             <p>食べられない食材を設定すると、その食材を含む料理は提案しません。ただし安全を保証するものではありません。市販品の原材料表示は必ずご自身で確認してください。</p>
           </details>
           <details>
             <summary>iPhoneでも使えますか？</summary>
-            <p>使えます。SafariやChromeで開いて「ホーム画面に追加」すると、アプリのように起動できます。</p>
+            <p>使えます。Safariで開いて、共有ボタンから「ホーム画面に追加」すると、アプリのように起動できます。</p>
           </details>
           <details id="privacy">
             <summary>メールアドレスはどう扱われますか？</summary>

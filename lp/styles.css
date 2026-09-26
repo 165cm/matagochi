@@ -362,3 +362,4 @@ body.is-registered .sticky-cta { display: none; }
 .quiz-skill { padding-top: 0; }
 .quiz-skill .quiz-card { background: #fff1dc; }
 .skill-row img { border-radius: 50%; object-fit: cover; }
+.promise.together { background: #fff1e6; }

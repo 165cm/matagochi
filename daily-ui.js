@@ -684,7 +684,7 @@ let reflMonth = 0; // 0 = this month, -1 = last month, ...
 function reflectionMonth() {
   const [y, m] = today().split("-").map(Number);
   const d = new Date(y, m - 1 + reflMonth, 1);
-  return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: `${d.getFullYear()}年${d.getMonth() + 1}月` };
+  return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: d.getFullYear() === new Date().getFullYear() ? `${d.getMonth() + 1}月` : `${d.getFullYear()}年${d.getMonth() + 1}月` };
 }
 function renderReflection() {
   const month = reflectionMonth();
