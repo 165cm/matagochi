@@ -1029,8 +1029,8 @@ function handleDailyAction(action, data) {
     state.view = "cooking";
   }
   if (action === "life-analyze") { analyzeCookingRecipe(data.date); return true; }
-  if (action === "life-reread") { rereadRecipe(data.recipe); return true; }
-  if (action === "life-fill-video") { fillRecipeFromVideo(data.recipe); return true; }
+  if (action === "life-reread") { askTicket(() => rereadRecipe(data.recipe), recipeById(data.recipe)?.videoUrl); return true; }
+  if (action === "life-fill-video") { askTicket(() => fillRecipeFromVideo(data.recipe), recipeById(data.recipe)?.videoUrl); return true; }
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
     const slot = state.mealSlots[cookingDate];

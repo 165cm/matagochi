@@ -2877,3 +2877,8 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
   .ticket-dot, .ticket-nudge-icon, .tk-stamp.ready, .tp-card, .tp-ticket, .tp-stamp, .ticket-party { animation: none; }
   .tp-confetti { display: none; }
 }
+.tk-cost { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: #fffaf0; border: 1.5px solid #f6dfb4; }
+.tk-cost p { margin: 0; display: grid; font-size: 15px; }
+.tk-cost small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tk-skip { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding: 4px 0; }
+.tk-skip input { width: 18px; height: 18px; accent-color: var(--tomato); }

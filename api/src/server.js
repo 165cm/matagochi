@@ -94,6 +94,11 @@ export function createApp(env = process.env, deps = {}) {
       res.json({ granted, tickets: tickets.view(wallet, unlimitedOf(req)) });
     } catch (error) { const { status, body } = toErrorResponse(error); res.status(status).json(body); }
   });
+  app.get("/api/import/youtube/status", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    try { res.json({ videoRead: await catalog.videoRead(req.query?.url) }); }
+    catch (error) { const { status, body } = toErrorResponse(error); res.status(status).json(body); }
+  });
   app.post("/api/import/youtube", async (req, res) => {
     const household = householdOf(req), unlimited = unlimitedOf(req);
     const quota = () => ticketsView(req);
