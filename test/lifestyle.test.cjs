@@ -491,6 +491,21 @@ test("fallback does not turn description chatter into steps",()=>{
   run(`applyImportedRecipe({title:"コールスロー",caption:"キャベツ 1/2玉\\n酢 大さじ4\\nキャベツ使い切り\\n味付けはケンタッキー風で、甘味料を入れてほんのり甘めに、具材には玉ねぎを入れています",ingredients:[],steps:[],analysis:{ok:false,code:"incomplete_recipe"}})`);
   assert.equal(run('state.extractedSteps.length'),0);assert.equal(run('state.extractedIngredients.length'),2);
 });
+test("request replies: the requester hears it was planned or passed, the planner hears thanks",()=>{
+  const run=app();
+  run('state.onboarded=true;state.family=["パパ","むすめ"];state.me="むすめ";state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()};globalThis.localStorage&&localStorage.removeItem&&localStorage.removeItem("ripigochi-request-seen")');
+  run('const r=Lifestyle.curated[4];state.requests={"req-1":{id:"req-1",recipeId:r.id,recipeTitle:r.title,from:"むすめ",date:addDays(today(),1),status:"open",createdAt:nowIso(),updatedAt:nowIso()}}');
+  assert.equal(run('requestNews().length'),0,"nothing until the planner acts");
+  run('state.me="パパ";handleHouseholdAction("life-apply-swap",{id:"req-1"})');
+  assert.equal(run('state.requests["req-1"].adoptedDate'),run('addDays(today(),1)'));
+  run('state.me="むすめ"');
+  assert.equal(run('requestNews()[0].kind'),"planned");assert.ok(run('renderRequestNews()').includes("パパが献立に入れてくれたよ"));
+  run('handleHouseholdAction("life-request-thanks",{id:"req-1",key:"req-1:planned"})');
+  assert.equal(run('requestNews().length'),0);assert.ok(run('state.requests["req-1"].thanksAt'));
+  run('state.me="パパ"');assert.equal(run('requestNews()[0].kind'),"thanks");
+  run('state.requests["req-2"]={id:"req-2",recipeId:"x",recipeTitle:"餃子",from:"むすめ",status:"dismissed",createdAt:nowIso(),updatedAt:nowIso()};state.me="むすめ"');
+  assert.ok(run('requestNews().some(n=>n.kind==="passed")'));
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

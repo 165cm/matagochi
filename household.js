@@ -109,6 +109,8 @@ function normalizeRequests(raw) {
       late: !!r.late,
       status: r.status,
       date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || "") ? r.date : "",
+      adoptedDate: /^\d{4}-\d{2}-\d{2}$/.test(r.adoptedDate || "") ? r.adoptedDate : "",
+      thanksAt: r.thanksAt ? normalizeTimestamp(r.thanksAt) : "",
       createdAt: normalizeTimestamp(r.createdAt),
       updatedAt: normalizeTimestamp(r.updatedAt),
     }]));
@@ -122,6 +124,47 @@ function openRequests() {
 function openRequestFor(recipe) {
   const q = openRequests().filter((x) => !x.date).find((x) => Lifestyle.sameDish(requestRecipe(x), recipe));
   return q ? { id: q.id, from: q.from } : null;
+}
+// ----- request replies: the requester hears back, the planner hears "thank you" -----
+const REQUEST_SEEN_KEY = "ripigochi-request-seen";
+function requestSeen() { try { return JSON.parse(localStorage.getItem(REQUEST_SEEN_KEY) || "{}") || {}; } catch { return {}; } }
+function markRequestSeen(key) {
+  const seen = requestSeen();
+  seen[key] = nowIso();
+  try { localStorage.setItem(REQUEST_SEEN_KEY, JSON.stringify(seen)); } catch {}
+}
+// The day a request landed on: set when a swap is applied, or found among confirmed meals.
+function requestPlannedDate(q) {
+  if (q.adoptedDate && q.adoptedDate >= today()) return q.adoptedDate;
+  const r = requestRecipe(q), since = (q.createdAt || "").slice(0, 10);
+  const hit = Object.values(state.mealSlots || {}).filter((s) => s.status === "confirmed" && s.recipe && s.date >= today() && s.date >= since && Lifestyle.sameDish(s.recipe, r)).sort((a, b) => a.date.localeCompare(b.date))[0];
+  return hit?.date || "";
+}
+function deciderName() {
+  return Object.entries(state.roles?.members || {}).find(([n, r]) => r === "owner" && n !== me())?.[0] || partnerName() || "相手";
+}
+function requestNews() {
+  const seen = requestSeen(), recent = addDays(today(), -7), out = [];
+  for (const q of Object.values(state.requests || {})) {
+    if ((q.updatedAt || "").slice(0, 10) < recent) continue;
+    if (q.from === me()) {
+      const date = ["open", "done"].includes(q.status) ? requestPlannedDate(q) : "";
+      if (date && !q.thanksAt && !seen[`${q.id}:planned`]) out.push({ kind: "planned", q, date, key: `${q.id}:planned` });
+      if (q.status === "dismissed" && !seen[`${q.id}:passed`]) out.push({ kind: "passed", q, key: `${q.id}:passed` });
+    } else if (q.thanksAt && !seen[`${q.id}:thanks`]) out.push({ kind: "thanks", q, key: `${q.id}:thanks` });
+  }
+  return out.slice(0, 3);
+}
+function renderRequestNews() {
+  const news = requestNews();
+  if (!news.length) return "";
+  return `<section class="request-news" aria-label="リクエストのお知らせ">${news.map((n) => {
+    const r = requestRecipe(n.q), title = escapeHtml(r.title || n.q.recipeTitle);
+    const close = (label) => `<button type="button" class="text-button" data-action="life-request-seen" data-key="${escapeAttr(n.key)}">${label}</button>`;
+    if (n.kind === "planned") return `<div class="news-card is-good">${dishTile(r, "news-thumb")}<div><p class="news-title">🎉 ${escapeHtml(deciderName())}が献立に入れてくれたよ！</p><p class="news-body"><b>${title}</b>・${n.date === today() ? "今夜" : `${formatDate(n.date)}（${weekdayLabel(n.date)}）`}</p><div class="news-actions"><button type="button" class="primary-button" data-action="life-request-thanks" data-id="${escapeAttr(n.q.id)}" data-key="${escapeAttr(n.key)}">😋 ありがとう</button>${close("閉じる")}</div></div></div>`;
+    if (n.kind === "passed") return `<div class="news-card">${dishTile(r, "news-thumb")}<div><p class="news-title">今回は見送りになったよ</p><p class="news-body"><b>${title}</b>は、また今度。食べたい気持ちは、いつでも🙋で送ってね。</p><div class="news-actions">${close("OK")}</div></div></div>`;
+    return `<div class="news-card is-thanks">${dishTile(r, "news-thumb")}<div><p class="news-title">😋 ${escapeHtml(n.q.from)}から「ありがとう」</p><p class="news-body"><b>${title}</b>を献立に入れたお礼が届きました。</p><div class="news-actions">${close("うれしい！")}</div></div></div>`;
+  }).join("")}</section>`;
 }
 // ----- roles: owner (決める人) / viewer (見るだけ) / editor (変えられる) -----
 function normalizeRoles(raw) {
@@ -140,7 +183,7 @@ function isViewer() {
 function isOwner() {
   return roleOf(me()) === "owner";
 }
-const VIEWER_BLOCKED = ["paste-recipe-url", "life-profile", "life-pantry-set", "life-pantry-add", "life-pantry-open", "life-confirm", "life-confirm-one", "life-choose", "life-off", "life-reopen", "life-refresh", "life-add-item", "life-remove-item", "life-shopping-status", "life-quick", "life-review-saved", "edit-recipe", "delete-recipe"];
+const VIEWER_BLOCKED = ["life-profile", "life-pantry-set", "life-pantry-add", "life-pantry-open", "life-confirm", "life-confirm-one", "life-choose", "life-off", "life-reopen", "life-refresh", "life-add-item", "life-remove-item", "life-shopping-status", "life-quick", "life-review-saved", "edit-recipe", "delete-recipe"];
 function viewerBlocked(action) {
   if (!isViewer() || !VIEWER_BLOCKED.includes(action)) return false;
   showToast("見るだけモードです。食べたいものは🙋で送ってね。");
@@ -193,6 +236,10 @@ function requestButton(recipe) {
   const mine = q && q.from === me();
   return `<button type="button" class="tile-request" data-action="life-request" data-recipe="${escapeAttr(recipe.id)}" aria-pressed="${!!mine}" aria-label="${escapeAttr(recipe.title)}を${mine ? "リクエスト中（取り消す）" : "食べたいとリクエスト"}">${mine ? "✓ リクエスト中" : q ? `${escapeHtml(q.from)}のリクエスト` : "🙋 食べたい"}</button>`;
 }
+// A recipe saved without its conditions (e.g. by a viewer) needs one look before it can be planned.
+function needsCheck(recipe) {
+  return !!recipeById(recipe.id) && recipe.mealType === "dinner" && !(recipe.planning?.conditionsConfirmed && recipe.planning?.ingredientsVerified);
+}
 function renderRequests() {
   const list = openRequests().filter((q) => !q.date);
   if (!list.length) {
@@ -203,12 +250,12 @@ function renderRequests() {
   const where = (q) => {
     const r = requestRecipe(q);
     const day = plan.find((d) => Lifestyle.sameDish(d.slot?.recipe || d.candidate?.recipe, r));
-    return day ? `${dayWordFor(day.date) === "今日" ? "今夜" : `${formatDate(day.date)}（${weekdayLabel(day.date)}）`}の献立に入りました` : "今の条件（時間・器具・食材）では献立に入れられません";
+    return day ? `${dayWordFor(day.date) === "今日" ? "今夜" : `${formatDate(day.date)}（${weekdayLabel(day.date)}）`}の献立に入りました` : needsCheck(r) ? "時間・器具・食材を確認すると、献立に入れられます" : "今の条件（時間・器具・食材）では献立に入れられません";
   };
   const rows = list.map((q) => {
     const r = requestRecipe(q);
     const mine = q.from === me();
-    return `<div class="request-row">${dishTile(r, "request-thumb")}<div><p class="request-from">${mine ? "あなたのリクエスト" : `${escapeHtml(q.from)}から`}${q.late ? "（食べたい気持ち）" : ""}</p><strong>${escapeHtml(r.title || q.recipeTitle)}</strong><small>${escapeHtml(where(q))}</small></div>${mine ? `<button type="button" class="text-button" data-action="life-request" data-recipe="${escapeAttr(q.recipeId)}">取り消す</button>` : `<button type="button" class="text-button" data-action="life-request-pass" data-id="${escapeAttr(q.id)}">今回はパス</button>`}</div>`;
+    return `<div class="request-row">${dishTile(r, "request-thumb")}<div><p class="request-from">${mine ? "あなたのリクエスト" : `${escapeHtml(q.from)}から`}${q.late ? "（食べたい気持ち）" : ""}</p><strong>${escapeHtml(r.title || q.recipeTitle)}</strong><small>${escapeHtml(where(q))}</small></div>${mine ? `<button type="button" class="text-button" data-action="life-request" data-recipe="${escapeAttr(q.recipeId)}">取り消す</button>` : `<span class="request-actions">${needsCheck(r) ? `<button type="button" class="secondary-button" data-action="edit-recipe" data-recipe="${escapeAttr(r.id)}">条件を確認</button>` : ""}<button type="button" class="text-button" data-action="life-request-pass" data-id="${escapeAttr(q.id)}">今回はパス</button></span>`}</div>`;
   }).join("");
   return `<section class="request-card" aria-label="リクエスト"><h3>💌 リクエスト</h3>${rows}${isViewer() ? "" : renderRequestLog()}</section>`;
 }
@@ -287,8 +334,8 @@ function handleHouseholdAction(action, data) {
     if (recipe) {
       if (state.mealSlots[q.date]?.status === "confirmed") confirmDaily({ date: q.date }, recipe);
       else state.planOverrides[q.date] = recipe.id;
-      setRequest(q.id, "done");
-      showToast(`${formatDate(q.date)}を「${recipe.title}」にしました。`);
+      state.requests[q.id] = { ...state.requests[q.id], status: "done", adoptedDate: q.date, updatedAt: nowIso() };
+      showToast(`${formatDate(q.date)}を「${recipe.title}」にしました。${q.from}に届きます。`);
     }
     saveState(); render(); return true;
   }
@@ -304,6 +351,14 @@ function handleHouseholdAction(action, data) {
     showToast(next === "editor" ? `${data.member}も献立を変えられるようにしました。` : `${data.member}を見るだけモードにしました。`);
     saveState(); render(); return true;
   }
+  if (action === "life-request-thanks") {
+    const q = state.requests?.[data.id];
+    if (q) state.requests[q.id] = { ...q, thanksAt: nowIso(), updatedAt: nowIso() };
+    markRequestSeen(data.key);
+    showToast(`${deciderName()}に「ありがとう」を送りました。`);
+    saveState(); render(); return true;
+  }
+  if (action === "life-request-seen") { markRequestSeen(data.key); render(); return true; }
   if (action === "life-request-pass") {
     setRequest(data.id, "dismissed");
     saveState(); render(); return true;
@@ -425,7 +480,7 @@ function renderViewerToday() {
   const tomorrow = dailyPlan()[1];
   const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
   const mine = openRequests().filter((q) => q.from === me());
-  return `${renderPreferencePrompt()}
+  return `${renderRequestNews()}${renderPreferencePrompt()}
     <section class="viewer-today"><p class="hand">今夜のごはん</p>
       ${off || !recipe ? '<h2 class="viewer-title">今夜はお休み 🌙</h2>' : `${dishTile(recipe, "viewer-photo")}<h2 class="viewer-title">${escapeHtml(recipe.title)}</h2>`}
       ${tr ? `<p class="viewer-next">明日は <b>${escapeHtml(tr.title)}</b></p>` : ""}

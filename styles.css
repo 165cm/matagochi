@@ -2750,3 +2750,18 @@ body.has-page-title .page-title { display: block; }
 .shop-head .trip-range { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 360px) { .shop-head .trip-range { font-size: 11px; } }
 body.has-page-title .brand-block { flex: 1 0 auto; }
+/* Request replies: the requester hears back, the planner hears thanks. */
+.request-news { display: grid; gap: 8px; margin: 0 0 10px; }
+.news-card { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px; border-radius: 16px; background: var(--surface); border: 1.5px solid var(--line); }
+.news-card.is-good { background: #fff4e6; border-color: #f3c27a; }
+.news-card.is-thanks { background: #fdecef; border-color: #f2b8c3; }
+.news-card .news-thumb { width: 56px; height: 56px; border-radius: 12px; }
+.news-card .news-thumb small { display: none; }
+.news-title { margin: 0; font-size: 14px; font-weight: 900; }
+.news-body { margin: 2px 0 0; font-size: 13px; line-height: 1.5; }
+.news-actions { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.news-actions .primary-button { min-height: 36px; padding: 0 14px; font-size: 14px; }
+.news-actions .text-button { min-height: 36px; padding: 0 6px; font-size: 13px; }
+.request-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.request-actions .secondary-button { min-height: 34px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.viewer-save-note { margin: 0 0 10px; }

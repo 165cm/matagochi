@@ -51,7 +51,8 @@ export function createApp(env = process.env, deps = {}) {
   });
 
   app.get("/health", (req, res) => {
-    res.json({ ok: true, capabilities: { playlistImport: true } });
+    res.json({ ok: true, capabilities: { playlistImport: true, videoAnalysis: env.VIDEO_ANALYSIS_ENABLED !== "false" },
+      models: { text: env.GEMINI_MODEL || "gemini-2.5-flash", video: env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash" } });
   });
 
   app.post("/api/import/youtube", async (req, res) => {
