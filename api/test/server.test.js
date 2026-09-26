@@ -101,18 +101,26 @@ test('youtube import still returns the title and description when AI analysis fa
   assert.equal(bad.status, 400);
 });
 
-test('video re-reads: daily limit per household, 886 lifts it, CORS allows the headers', async (t) => {
-  const app = createApp({ VIDEO_DAILY_LIMIT: '1' }, { recipeStore: createMemorySyncStore(), syncStore: null,
+test('tickets: 25 to start, a video read uses one, 886 needs none, rewards are claimed once, CORS allows the headers', async (t) => {
+  const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null,
     importRecipe: async (u, o) => ({ title: '丼', ingredients: [{ name: '米', amount: '2合' }], steps: ['炊く', '盛る'], analyzedFrom: o.forceVideo ? 'video' : 'description' }) });
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const post = (url, headers = {}) => fetch(`${base}/api/import/youtube`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Household': 'house-0001', ...headers }, body: JSON.stringify({ url, mode: 'video' }) });
+  const headers = { 'Content-Type': 'application/json', 'X-Household': 'house-0001' };
+  const post = (url, extra = {}) => fetch(`${base}/api/import/youtube`, { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify({ url, mode: 'video' }) });
+  const wallet = await fetch(`${base}/api/tickets`, { headers }).then((r) => r.json());
+  assert.equal(wallet.tickets.balance, 25); assert.equal(wallet.tickets.created, true);
   const first = await post('https://youtu.be/aaaaaaaaaaa');
-  assert.equal(first.status, 200); assert.deepEqual((await first.json()).videoQuota, { used: 1, limit: 1, unlimited: false });
-  const second = await post('https://youtu.be/bbbbbbbbbbb');
-  assert.equal(second.status, 429); assert.equal((await second.json()).error.code, 'video_quota');
+  assert.equal(first.status, 200); assert.equal((await first.json()).tickets.balance, 24);
   const dev = await post('https://youtu.be/bbbbbbbbbbb', { 'X-Dev-Code': '886' });
-  assert.equal(dev.status, 200); assert.equal((await dev.json()).videoQuota.unlimited, true);
+  assert.equal(dev.status, 200); const devBody = await dev.json(); assert.equal(devBody.tickets.unlimited, true); assert.equal(devBody.tickets.balance, 24);
+  const claim = (claims) => fetch(`${base}/api/tickets/claim`, { method: 'POST', headers, body: JSON.stringify({ claims }) }).then((r) => r.json());
+  const got = await claim(['w0-plan-1', 'w0-plan-2', 'w0-cook-2', 'bogus']);
+  assert.deepEqual(got.granted, ['w0-plan-1', 'w0-plan-2'], 'cooking a whole week cannot be claimed on day one');
+  assert.equal(got.tickets.balance, 29);
+  assert.deepEqual((await claim(['w0-plan-1'])).granted, [], 'each reward once');
+  const moved = await fetch(`${base}/api/tickets`, { headers: { ...headers, 'X-Household': 'a'.repeat(64), 'X-Household-Prev': 'house-0001' } }).then((r) => r.json());
+  assert.equal(moved.tickets.balance, 29, 'a new shared room takes over the device wallet');
   const pre = await fetch(`${base}/api/import/youtube`, { method: 'OPTIONS', headers: { Origin: 'https://165cm.github.io', 'Access-Control-Request-Method': 'POST' } });
-  assert.match(pre.headers.get('access-control-allow-headers') || '', /X-Household/);
+  assert.match(pre.headers.get('access-control-allow-headers') || '', /X-Household-Prev/);
 });

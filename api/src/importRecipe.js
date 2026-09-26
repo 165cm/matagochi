@@ -21,14 +21,10 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const duration = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 ? snippet.durationSeconds : null;
   // 長い動画（や長さ不明）は頭から maxSeconds だけを見る。作り方がその中で完結した時だけ使う。
   const clipSeconds = !duration || duration > maxSeconds ? maxSeconds : null;
-  let videoLimited = false;
-  if (weak && maxSeconds > 0 && typeof deps.analyzeRecipeVideo === "function") {
-    // 自動で動画を読む時も、家庭ごとの1日の枠を使う。枠がなければ説明文の結果のまま返す。
-    let allowed = true;
-    if (options.reserveVideo) {
-      try { await options.reserveVideo(); } catch (error) { if (error.code !== "video_quota") throw error; allowed = false; videoLimited = true; }
-    }
-    if (allowed) try {
+  // 動画はボタンを押した時（forceVideo）だけ読む。取り込みでは読まず、読めることだけ知らせる（チケットを勝手に使わない）。
+  const videoSkipped = weak && !options.forceVideo;
+  if (weak && options.forceVideo && maxSeconds > 0 && typeof deps.analyzeRecipeVideo === "function") {
+    try {
       await options.reserveBudget?.();
       const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds });
       const complete = video.stepsComplete !== false;
@@ -62,7 +58,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       channelId: snippet.channelId
     }),
     analyzedFrom,
-    videoLimited
+    videoSkipped
   };
 }
 

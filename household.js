@@ -51,6 +51,7 @@ async function connectRoom(code) {
     state.sync = { code: "", roomId: "", lastSyncAt: "" };
     saveState({ scheduleSync: false });
   }
+  if (ok) refreshTickets();
   return ok;
 }
 // Keep the household order; only fill in the placeholder names ("自分" / "いっしょに食べた人").
