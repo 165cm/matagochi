@@ -263,7 +263,7 @@ function allDinnerRecipes() {
   const originals = new Set(personal.map((r) => r.starterId));
   return [
     ...personal,
-    ...(showStarters() ? Lifestyle.curated.filter((r) => !originals.has(r.id)) : []),
+    ...(showStarters() ? Lifestyle.curated.filter((r) => !originals.has(r.id) && !starterHidden().has(r.id)) : []),
   ];
 }
 // Meals actually eaten (or confirmed and past) in the last two weeks, newest first.
@@ -1110,6 +1110,7 @@ function handleDailyAction(action, data) {
     state.starterPref = { show: data.show === "true", asked: true, updatedAt: nowIso() };
     showToast(data.show === "true" ? "おすすめレシピを表示します。" : "おすすめを隠しました。自分のレシピだけで献立を作ります。");
   }
+  if (action === "life-starters-unhide" && !isViewer()) { state.starterPref = { ...normalizeStarterPref(state.starterPref), hidden: [], updatedAt: nowIso() }; showToast("非表示にしたおすすめを戻しました。"); }
   if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
   if (action === "life-skill-growth" && state.skillProfile) { state.skillProfile = { ...state.skillProfile, growth: data.value === "grow" ? "grow" : "steady", updatedAt: nowIso() }; state.planOverrides = {}; }
   // The first-plan welcome stays until the next real action on the plan.
@@ -1420,8 +1421,9 @@ function starterRecipeList() {
   if (!showStarters()) return [];
   const saved = new Set(state.recipes.map((r) => r.starterId).filter(Boolean));
   const query = (state.searchText || "").trim().toLowerCase();
+  const hidden = starterHidden();
   return Lifestyle.curated
-    .filter((r) => !saved.has(r.id))
+    .filter((r) => !saved.has(r.id) && !hidden.has(r.id))
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok)
     .filter((r) => !query || [r.title, ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
@@ -1477,8 +1479,11 @@ function showStarters() {
   return state.starterPref?.show !== false;
 }
 function normalizeStarterPref(raw) {
-  return { show: raw?.show !== false, asked: !!raw?.asked, updatedAt: normalizeTimestamp(raw?.updatedAt) };
+  const hidden = Array.isArray(raw?.hidden) ? [...new Set(raw.hidden.filter((id) => typeof id === "string" && id.length < 80))] : [];
+  return { show: raw?.show !== false, asked: !!raw?.asked, hidden, updatedAt: normalizeTimestamp(raw?.updatedAt) };
 }
+// 一覧から選んで「非表示」にしたおすすめ。一覧にも献立にも出さない（設定で戻せる）。
+const starterHidden = () => new Set(state.starterPref?.hidden || []);
 function ownDinnerCount() {
   return state.recipes.filter((r) => r.mealType === "dinner").length;
 }
@@ -1491,6 +1496,7 @@ function renderStarterSettings() {
   const n = ownDinnerCount();
   return `<section class="panel starter-settings"><h3>🍳 おすすめレシピ</h3>
     <button type="button" class="role-toggle" data-action="life-starters" data-show="${!showStarters()}" aria-pressed="${showStarters()}"><span>最初から入っている料理を使う<small>${showStarters() ? "レシピ一覧と献立に、おすすめも出します" : "自分のレシピだけで献立を作ります"}</small></span><i aria-hidden="true"></i></button>
+    ${state.starterPref?.hidden?.length ? `<p class="small starter-hidden">非表示にしたおすすめ <b>${state.starterPref.hidden.length}品</b> <button type="button" class="text-button" data-action="life-starters-unhide">すべて戻す</button></p>` : ""}
     ${!showStarters() && n < 6 ? `<p class="notice">自分の夜ごはんのレシピが${n}品です。少ないと、献立が組めない日があります。</p>` : ""}</section>`;
 }
 
