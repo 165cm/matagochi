@@ -101,3 +101,14 @@ test('stale approval can still be rejected without manual repair', async () => {
   await assert.rejects(catalog.review(b.proposalId,'approve'),{code:'stale_revision'});
   assert.equal((await catalog.review(b.proposalId,'reject')).status,'rejected');
 });
+
+test('a pending claim left by a lost AI response can be retried after 10 minutes', async () => {
+  let now = Date.parse('2026-09-26T00:00:00Z');
+  const store = createMemorySyncStore();
+  const lost = createRecipeCatalog(store, async () => { const e = new Error('lost'); e.code = 'analysis_uncertain'; throw e; }, { now: () => now });
+  await assert.rejects(lost.import(url), { code: 'analysis_uncertain' });
+  const retry = createRecipeCatalog(store, async () => sample(), { now: () => now });
+  await assert.rejects(retry.import(url), { code: 'analysis_pending' });
+  now += 11 * 60_000;
+  assert.equal((await retry.import(url)).title, sample().title);
+});

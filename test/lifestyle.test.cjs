@@ -471,6 +471,13 @@ test("register: servings are read from the caption; unknown servings keep amount
   assert.ok(html.includes('servings-pick is-unknown'));assert.ok(!html.includes('ingredient-category-input'));
   run('state.editingRecipeId="x"');assert.ok(!run('renderRecipeEntry()').includes('entry-methods'));
 });
+test("import fallback: when AI analysis failed, ingredients are read from the description; TikTok caption gives a short title",()=>{
+  const run=app();
+  run('state.draft={...clone(emptyDraft),videoUrl:"https://youtube.com/shorts/abcdefghijk"}');
+  run(`applyImportedRecipe({title:"豚こま丼",caption:"説明文:\\n材料（2人分）\\n豚こま 200g\\n玉ねぎ 1個\\n作り方\\n1. 炒める",ingredients:[],steps:[],analysis:{ok:false,code:"analysis_uncertain"}})`);
+  assert.equal(run('state.extractedIngredients.length'),2);assert.equal(run('state.draft.sourceServings'),2);assert.equal(run('state.extractedSteps[0]'),"炒める");
+  assert.equal(run('tiktokTitle("#時短 豚こま丼の作り方 #料理\\n材料 豚こま 200g")'),"豚こま丼の作り方");
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

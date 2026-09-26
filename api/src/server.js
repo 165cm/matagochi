@@ -5,11 +5,11 @@ import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { ApiError, toErrorResponse } from "./errors.js";
-import { importYouTubeRecipe, requireAnalyzer } from "./importRecipe.js";
+import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
 import { getSyncRoom, putSyncRoom } from "./sync.js";
 import { createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
-import { extractYouTubePlaylistId, fetchYouTubePlaylist } from "./youtube.js";
+import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet } from "./youtube.js";
 
 export function createApp(env = process.env, deps = {}) {
   const app = express();
@@ -58,6 +58,17 @@ export function createApp(env = process.env, deps = {}) {
       const result = await catalog.import(req.body?.url);
       res.json(result);
     } catch (error) {
+      // AI分析が失敗・上限・停止中でも、動画のタイトルと説明文は返す。材料はアプリ側で説明文から読み取る。
+      if (!["invalid_url", "unsupported_url"].includes(error.code)) {
+        console.error(JSON.stringify({ event: "youtube_import_failed", code: error.code || "unknown", message: String(error.message || "").slice(0, 200) }));
+        try {
+          const videoId = extractYouTubeVideoId(req.body?.url);
+          const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env);
+          return res.json({ ...normalizeImportResult({ title: snippet.title, caption: buildCaption(snippet), source: /youtube\.com\/shorts\//i.test(req.body?.url || "") ? "YouTube Shorts" : "YouTube", videoId, videoUrl: canonicalYouTubeUrl(videoId, req.body?.url || ""), channelTitle: snippet.channelTitle }), analysis: { ok: false, code: error.code || "unknown" } });
+        } catch (fallbackError) {
+          console.error(JSON.stringify({ event: "youtube_snippet_failed", code: fallbackError.code || "unknown", message: String(fallbackError.message || "").slice(0, 200) }));
+        }
+      }
       const { status, body } = toErrorResponse(error);
       res.status(status).json(body);
     }

@@ -11,6 +11,7 @@ export function createRecipeStore(env) {
   return null;
 }
 
+const STALE_PENDING_MS = 10 * 60_000;
 // A durable conditional claim precedes all paid work, including across instances.
 // Pending claims are deliberately not stolen: an expired request may still incur AI cost.
 export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true } = {}) {
@@ -39,7 +40,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const key = `youtube-${id}`;
     const current = await store.get(key);
     if (current?.envelope.status === "ready") return { ...structuredClone(current.envelope.result), cacheHit: true };
-    if (current?.envelope.status === "pending") throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
+    // A claim older than STALE_PENDING_MS cannot still be waiting on the AI (timeout is 60s), so it may be retried.
+    const stale = current?.envelope.status === "pending" && now() - Date.parse(current.envelope.startedAt || 0) > STALE_PENDING_MS;
+    if (current?.envelope.status === "pending" && !stale) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
     if (current?.envelope.retryAt > now()) throw new ApiError(429, "analysis_cooldown", "分析に失敗したため、1分ほど待ってから再試行してください。");
     const claim = await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
     if (!claim) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
