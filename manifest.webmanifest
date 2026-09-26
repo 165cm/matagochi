@@ -10,17 +10,17 @@
   "theme_color": "#FFF8EE",
   "icons": [
     {
-      "src": "icons/icon-192.png?v=20260926-ask",
+      "src": "icons/icon-192.png?v=20260926-free",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-512.png?v=20260926-ask",
+      "src": "icons/icon-512.png?v=20260926-free",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-maskable-512.png?v=20260926-ask",
+      "src": "icons/icon-maskable-512.png?v=20260926-free",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

@@ -110,8 +110,11 @@ test('tickets: 25 to start, a video read uses one, 886 needs none, rewards are c
   const post = (url, extra = {}) => fetch(`${base}/api/import/youtube`, { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify({ url, mode: 'video' }) });
   const wallet = await fetch(`${base}/api/tickets`, { headers }).then((r) => r.json());
   assert.equal(wallet.tickets.balance, 25); assert.equal(wallet.tickets.created, true);
+  const status = (id) => fetch(`${base}/api/import/youtube/status?url=${encodeURIComponent(`https://youtu.be/${id}`)}`).then((r) => r.json());
+  assert.equal((await status('aaaaaaaaaaa')).videoRead, false);
   const first = await post('https://youtu.be/aaaaaaaaaaa');
   assert.equal(first.status, 200); assert.equal((await first.json()).tickets.balance, 24);
+  assert.equal((await status('aaaaaaaaaaa')).videoRead, true, 'a video already read is known before the tap');
   const dev = await post('https://youtu.be/bbbbbbbbbbb', { 'X-Dev-Code': '886' });
   assert.equal(dev.status, 200); const devBody = await dev.json(); assert.equal(devBody.tickets.unlimited, true); assert.equal(devBody.tickets.balance, 24);
   const claim = (claims) => fetch(`${base}/api/tickets/claim`, { method: 'POST', headers, body: JSON.stringify({ claims }) }).then((r) => r.json());

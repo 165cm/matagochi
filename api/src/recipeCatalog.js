@@ -106,6 +106,13 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited }).finally(() => inFlight.delete(key)));
       return structuredClone(await inFlight.get(key));
     },
+    // 動画から読んだ結果がもうあるか（あればチケットなしで返せる）。ボタンを押す前の確認用。
+    async videoRead(rawUrl) {
+      required();
+      const current = await store.get(`youtube-${extractYouTubeVideoId(rawUrl)}`);
+      const result = current?.envelope.status === "ready" ? current.envelope.result : null;
+      return !!result && (result.catalog?.extractorVersion || 1) >= EXTRACTOR_VERSION && String(result.analyzedFrom || "").startsWith("video");
+    },
     async get(id) {
       required();
       if (!/^youtube-[\w-]{11}$/.test(id)) throw new ApiError(400, "invalid_catalog_id", "レシピIDが正しくありません。");

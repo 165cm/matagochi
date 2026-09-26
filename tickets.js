@@ -198,7 +198,7 @@ function renderTicketSheet() {
   const daysLeft = start ? Math.max(0, daysBetween(today(), addDays(start, Tickets.WEEKS * 7 - 1)) + 1) : 0;
   const head = ticketSheet.need
     ? `<div class="tk-balance"><p class="quota-title">🎟 チケットがあと1枚いります</p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div><p class="small">動画1本の作り方をAIが読むのに、チケットを1枚使います。${g ? `<b>${goalText(g)} +${Tickets.REWARD}枚</b>もらえます。` : ""}</p>`
-    : `<div class="tk-balance"><span class="tk-ticket" aria-hidden="true">🎟</span><p><b>${t?.unlimited ? "∞" : t ? fmtTickets(t.balance) : "…"}</b><small>枚</small></p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div><p class="small tk-what">1枚で、動画1本の作り方をAIが読み取ります。<b>だれかが読んだ動画は0枚</b>、読めなかった時は戻ります。</p>`;
+    : `<div class="tk-balance"><span class="tk-ticket" aria-hidden="true">🎟</span><p><b>${t?.unlimited ? "∞" : t ? fmtTickets(t.balance) : "…"}</b><small>枚</small></p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div><p class="small tk-what">1枚で、動画1本の作り方をAIが読み取ります。<b>読み取り済みの動画は0枚</b>で、自動で見分けます。</p>`;
   const challenge = !t || !start ? "" : `<section class="tk-challenge" aria-label="はじめての4週間チャレンジ">
       <p class="tk-title"><b>はじめての4週間チャレンジ</b><span>${live ? `のこり${daysLeft}日` : "おわり"}</span></p>
       <div class="tk-meter"><progress max="${max}" value="${earned}" aria-label="獲得したチケット"></progress><span><b>${fmtTickets(earned)}</b> / ${max}枚</span></div>
@@ -254,8 +254,22 @@ function handleTicketAction(action, data) {
 }
 // チケットを使う前の確認。「次から確認しない」を選んだ端末では省く（チケット画面で戻せる）。
 const ticketSkipAsk = () => { try { return localStorage.getItem("ripigochi-ticket-ask") === "skip"; } catch { return false; } };
-function askTicket(run) {
-  if (!ticketState || ticketState.unlimited || ticketSkipAsk()) return run();
+// 押した時にサーバーへ聞く：だれかがもう動画から読んでいれば、確認なし・チケットなしでそのまま読む。
+let ticketChecking = false;
+async function videoAlreadyRead(url) {
+  if (!url || !API_BASE_URL) return false;
+  try {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api/import/youtube/status?url=${encodeURIComponent(url)}`, {}, 6_000);
+    return response.ok && (await response.json()).videoRead === true;
+  } catch { return false; }
+}
+async function askTicket(run, url = "") {
+  if (!ticketState || ticketState.unlimited) return run();
+  if (ticketChecking) return;
+  ticketChecking = true;
+  const free = await videoAlreadyRead(url);
+  ticketChecking = false;
+  if (free || ticketSkipAsk()) return run();
   if (ticketState.balance < 1) return openTicketSheet({ need: true, retry: run });
   ticketAsk = { run }; render();
 }
@@ -264,7 +278,7 @@ function renderTicketAsk() {
   return `<div class="quota-sheet ticket-ask" role="dialog" aria-modal="true" aria-label="チケットを使う確認"><div class="quota-card">
     <p class="quota-title">🎬 動画から作り方を読みますか？</p>
     <div class="tk-cost"><span class="tk-ticket" aria-hidden="true">🎟</span><p><span><b>チケットを1枚</b>使います</span><small>のこり ${fmtTickets(ticketState.balance)}枚 → ${fmtTickets(ticketState.balance - 1)}枚</small></p></div>
-    <p class="small tk-what">だれかが読んだ動画なら0枚。読めなかった時は戻ります。</p>
+    <p class="small tk-what">読めなかった時は、チケットは戻ります。</p>
     <label class="tk-skip"><input id="ticket-skip" type="checkbox"> 次から確認しない</label>
     <button type="button" class="primary-button full-button" data-action="tickets-ask-yes">🎟1枚で読む</button>
     <button type="button" class="text-button full-button" data-action="tickets-ask-no">やめる</button>
@@ -274,6 +288,6 @@ function renderTicketAsk() {
 function ticketNote(result) {
   if (!result?.tickets) return "";
   if (result.tickets.unlimited) return "（開発モード）";
-  if (result.cacheHit) return "だれかが読んだ動画だったので、チケットは使いませんでした🎉";
+  if (result.cacheHit) return "読み取り済みの動画だったので、チケットは使いませんでした🎉";
   return result.ticketUsed ? `🎟 のこり${fmtTickets(result.tickets.balance)}枚` : "";
 }
