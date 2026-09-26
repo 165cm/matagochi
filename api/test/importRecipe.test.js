@@ -33,7 +33,7 @@ test("builds an import result from mocked YouTube and Gemini responses", async (
 });
 
 test("an empty description is an error only when the video cannot be read either", async () => {
-  const snippet = { title: "no description", description: "", channelTitle: "c", durationSeconds: 600 };
+  const snippet = { title: "no description", description: "", channelTitle: "c", durationSeconds: 900 };
   await assert.rejects(importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet, analyzeRecipeDescription: async () => ({}), analyzeRecipeVideo: async () => ({ steps: ["焼く"] }) }), { code: "empty_description" });
   const short = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => ({ ...snippet, durationSeconds: 45 }), analyzeRecipeDescription: async () => { throw new Error("must not run"); }, analyzeRecipeVideo: async () => ({ title: "丼", ingredients: [{ name: "豚こま", amount: "200g" }], steps: ["焼く"] }) });
   assert.equal(short.analyzedFrom, "video"); assert.deepEqual(short.steps, ["焼く"]);

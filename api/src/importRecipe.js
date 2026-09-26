@@ -4,7 +4,7 @@ import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from 
 const DEFAULT_CATEGORY = "その他";
 const NUTRITION = /kcal|キロカロリー|カロリー|糖質|たんぱく質|タンパク質|脂質|炭水化物|食物繊維|塩分|PFC|1人前あたり|1人分あたり/i;
 
-const VIDEO_MAX_SECONDS = 180;
+const VIDEO_MAX_SECONDS = 600;
 
 // まず説明文（安い）。作り方か材料が取れない時だけ、短い動画を映像ごと読む。
 export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {

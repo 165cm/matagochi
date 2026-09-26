@@ -20,7 +20,7 @@ npm start
 - `ALLOWED_ORIGINS`
 - `SYNC_BUCKET`（合言葉同期の保存先Cloud Storageバケット名。未設定時は同期APIが503を返す）
 - `VIDEO_ANALYSIS_ENABLED`（既定 true。`false` で動画の映像・音声からの読み取りを止める）
-- `VIDEO_MAX_SECONDS`（既定 180。これより長い動画は映像から読まない）
+- `VIDEO_MAX_SECONDS`（既定 600＝10分。これより長い動画は映像から読まない）
 - `GEMINI_VIDEO_MODEL`（任意。動画の読み取りだけ別のモデルにする時）
 - `SYNC_STORE=memory`（ローカル開発用。バケットの代わりにメモリへ保存し、再起動で消える）
 

@@ -44,7 +44,7 @@ export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env) {
       { text: buildVideoPrompt(snippet) }
     ] }],
     config: {
-      httpOptions: { timeout: 90_000, retryOptions: { attempts: 1 } },
+      httpOptions: { timeout: 150_000, retryOptions: { attempts: 1 } },
       mediaResolution: "MEDIA_RESOLUTION_LOW",
       maxOutputTokens: 4096,
       temperature: 0.2,

@@ -19,7 +19,7 @@ export function createApp(env = process.env, deps = {}) {
     deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
       analyzeRecipeVideo: env.VIDEO_ANALYSIS_ENABLED === "false" ? undefined : (videoUrl, snippet) => analyzeRecipeVideo(videoUrl, snippet, env),
       analyzeRecipeDescription: requireAnalyzer((snippet) => analyzeRecipeDescription(snippet, env))
-    }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 180) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
+    }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
       enabled: env.AI_IMPORT_ENABLED !== "false" });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });

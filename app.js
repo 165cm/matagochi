@@ -2241,7 +2241,7 @@ async function handleAction(event) {
     }
 
     isCaptionImporting = true;
-    state.fetchStatus = "YouTubeの説明文を読んでいます。作り方が書かれていない時は、動画も見て読み取ります（最大1分ほど）。";
+    state.fetchStatus = "YouTubeの説明文を読んでいます。作り方が書かれていない時は、動画も見て読み取ります（長い動画は2分ほどかかります）。";
     saveState();
     render();
 
@@ -3271,7 +3271,7 @@ async function importRecipeFromYouTube(videoUrl) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: videoUrl })
-  }, 100_000);
+  }, 180_000);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(`${data.error?.message || "YouTubeの説明文を取得できませんでした。"}${data.error?.code ? `（${data.error.code}）` : `（HTTP ${response.status}）`}`);
