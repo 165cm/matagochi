@@ -485,6 +485,12 @@ test("video-read recipes say so; nutrition lines never become ingredients",()=>{
   assert.equal(run('state.extractedSteps.length'),2);
   assert.deepEqual(JSON.parse(run('JSON.stringify(parseIngredients("キャベツ 1/2玉\\n酢 大さじ4\\n1人前あたり、約102kcal P2.1g 11.6g").map(i=>i.name))')),["キャベツ","酢"]);
 });
+test("fallback does not turn description chatter into steps",()=>{
+  const run=app();
+  run('state.draft={...clone(emptyDraft),videoUrl:"https://youtube.com/watch?v=abcdefghijk"}');
+  run(`applyImportedRecipe({title:"コールスロー",caption:"キャベツ 1/2玉\\n酢 大さじ4\\nキャベツ使い切り\\n味付けはケンタッキー風で、甘味料を入れてほんのり甘めに、具材には玉ねぎを入れています",ingredients:[],steps:[],analysis:{ok:false,code:"incomplete_recipe"}})`);
+  assert.equal(run('state.extractedSteps.length'),0);assert.equal(run('state.extractedIngredients.length'),2);
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

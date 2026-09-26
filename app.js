@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-clip";
+const APP_VERSION = "20260926-steps";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2251,7 +2251,7 @@ async function handleAction(event) {
       if (state.draft.videoUrl !== importingUrl) return;
       applyImportedRecipe(result);
       state.fetchStatus = result.analysis?.ok === false
-        ? "AIでの読み取りに失敗したため、説明文から直接読み取りました。材料と作り方を確かめてください。"
+        ? `${state.extractedSteps.length ? "AIでの読み取りに失敗したため、説明文から直接読み取りました。材料と作り方を確かめてください。" : "説明文にも動画の中にも、作り方を見つけられませんでした。材料は説明文から入れています。作り方は動画を見ながら入力してください。"}`
         : result.analyzedFrom === "video-clip"
           ? "説明文に作り方がなかったので、動画の最初の10分の音声と画面から読み取りました。材料と作り方を確かめてください。"
           : result.analyzedFrom === "video"
@@ -3175,12 +3175,14 @@ function parseIngredients(caption) {
   return parsed.length ? parsed : [ingredient("材料メモ", "キャプションを確認", "その他")];
 }
 
-function parseCookingSteps(caption) {
+// numberedOnly：サーバーが手順なしと判断した説明文から、感想や宣伝を手順として拾わない。
+function parseCookingSteps(caption, { numberedOnly = false } = {}) {
   const normalized = caption
     .replaceAll("\n", "。")
     .replace(/作り方[:：]/g, "。")
     .replace(/手順[:：]/g, "。");
   const numbered = normalized.match(/(?:^|。)\s*(?:\d+\.|[①②③④⑤⑥⑦⑧⑨]|\d+[）)])\s*[^。]+/g)?.map((x) => x.replace(/^。?\s*/, ""));
+  if (numberedOnly && !numbered?.length) return [];
   const candidates = numbered?.length ? numbered : normalized.split(/[。.!！]/);
   const cookingWords = /切|炒|焼|煮|蒸|混ぜ|和え|のせ|かけ|包|入れ|加え|ゆで|冷や|仕上げ|レンジ|チン|盛/;
   // 番号つきの手順はそのまま採用（「焼く」のような短い手順も落とさない）。
@@ -3317,7 +3319,7 @@ function applyImportedRecipe(result) {
   state.extractedIngredients = clone(state.originalIngredients);
   state.extractedSteps = Array.isArray(result.steps) && result.steps.length
     ? result.steps.map((step) => String(step || "").trim()).filter(Boolean)
-    : parseCookingSteps(state.draft.caption);
+    : parseCookingSteps(state.draft.caption, { numberedOnly: true });
 }
 
 function normalizeImportedIngredients(items) {
