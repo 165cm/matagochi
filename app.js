@@ -773,10 +773,17 @@ function applySharedUrlFromLocation() {
     .trim();
   if (!sharedText) return false;
   history.replaceState(null, "", location.pathname);
-  const urlMatch = sharedText.match(/https?:\/\/\S+/);
+  if (!startRecipeFromText(sharedText)) return false;
+  state.fetchStatus = "共有からURLを受け取りました。「URLから取得」で材料メモを作れます。";
+  saveState();
+  return true;
+}
+// 共有・コピーされた文章からURLを取り出し、登録画面の下書きにする。
+function startRecipeFromText(text) {
+  const urlMatch = String(text || "").match(/https?:\/\/\S+/);
   if (!urlMatch) return false;
   const sharedUrl = urlMatch[0];
-  const sharedTitle = sharedText.replace(sharedUrl, "").replace(/\s+/g, " ").trim();
+  const sharedTitle = String(text).replace(sharedUrl, "").replace(/\s+/g, " ").trim();
   if (!state.onboarded) {
     // オンボーディング前の共有はデモデータを持ち込まず、空の状態で始める
     state.recipes = [];
@@ -787,9 +794,10 @@ function applySharedUrlFromLocation() {
   }
   state.view = "register";
   state.editingRecipeId = null;
+  entryMethod = "url";
   state.draft = {
     ...clone(emptyDraft),
-    title: sharedTitle.length >= 2 ? sharedTitle : "",
+    title: sharedTitle.length >= 2 ? sharedTitle.slice(0, 100) : "",
     videoUrl: sharedUrl,
     source: detectPlatform(sharedUrl).label
   };
@@ -798,9 +806,42 @@ function applySharedUrlFromLocation() {
   state.extractedIngredients = [];
   state.extractedSteps = [];
   state.draftExpanded = false;
-  state.fetchStatus = "共有からURLを受け取りました。「URLから取得」で材料メモを作れます。";
-  saveState();
   return true;
+}
+const isIOSDevice = () => { const n = globalThis.navigator || {}; return /iP(hone|ad|od)/.test(n.userAgent || "") || (n.platform === "MacIntel" && n.maxTouchPoints > 1); };
+const isInstalledApp = () => !!globalThis.matchMedia?.("(display-mode: standalone)").matches || globalThis.navigator?.standalone === true;
+let pasteNotice = "";
+// iPhoneは共有メニューにWebアプリを出せないため、「リンクをコピー → ここで貼る」で保存する。
+async function pasteRecipeUrl() {
+  let text = "";
+  try { text = await navigator.clipboard.readText(); } catch { text = ""; }
+  if (!startRecipeFromText(text)) {
+    pasteNotice = "コピーしたURLが見つかりませんでした。SNSで「共有 → リンクをコピー」してから、もう一度押してください。";
+    render();
+    return;
+  }
+  pasteNotice = "";
+  state.fetchStatus = "コピーしたURLを受け取りました。材料を読み取っています…";
+  saveState();
+  render();
+  globalThis.scrollTo?.({ top: 0, behavior: "instant" });
+  setTimeout(() => document.querySelector('[data-action="fetch-caption"]:not([disabled])')?.click(), 60);
+}
+let saveGuideOpen = null;
+function saveGuideSeen() { try { return localStorage.getItem("ripigochi-save-guide") === "seen"; } catch { return false; } }
+function renderSaveGuide() {
+  if (isViewer()) return "";
+  const open = saveGuideOpen ?? !saveGuideSeen();
+  const strip = `<div class="save-strip"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button save-guide-link" data-action="save-guide" aria-expanded="${open}">${open ? "閉じる" : "保存のしかた"}</button></div>`;
+  if (!open) return strip + (pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : "");
+  const ios = isIOSDevice();
+  const steps = ios
+    ? ["YouTube・TikTok・Instagramで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"]
+    : isInstalledApp()
+      ? ["YouTube・TikTok・Instagramで、動画の<b>「共有」</b>", "一覧から <b>リピごち</b> を選ぶ（「リンクをコピー」→ 📋 でもOK）", "材料と作り方を確かめて保存"]
+      : ["YouTube・TikTok・Instagramで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"];
+  const tip = !ios && !isInstalledApp() ? '<p class="save-guide-tip">ブラウザのメニューから「ホーム画面に追加」すると、SNSの共有メニューに<b>リピごち</b>が出ます。</p>' : "";
+  return `<section class="save-guide" aria-label="レシピの保存のしかた"><p class="save-guide-title">見つけたレシピ動画を、そのまま保存</p><ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>${tip}<div class="save-guide-actions"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button" data-action="save-guide-done">わかった</button></div>${pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : ""}</section>`;
 }
 
 function setView(view) {
@@ -870,7 +911,7 @@ function render() {
 // App-bar pattern: the logo on 今日, the page name elsewhere; a page's own buttons sit at the right.
 const PAGE_TITLES = { plan: "献立", shopping: "買い物", collection: "レシピ", recipe: "レシピ", register: "レシピを追加", playlist: "まとめて追加", repeat: "ふりかえり", recordDetails: "記録", cooking: "作る", settings: "設定", pantry: "常備品" };
 function placePageChrome() {
-  const title = PAGE_TITLES[state.view] || "";
+  const title = state.view === "register" && state.editingRecipeId ? "レシピを編集" : PAGE_TITLES[state.view] || "";
   const el = document.querySelector("#page-title");
   if (el) el.textContent = title;
   document.body.classList.toggle("has-page-title", !!title);
@@ -895,15 +936,9 @@ function renderRecipeEntry() {
 
   return `
     <section class="hero-card register-hero">
-      <div class="section-head">
-        <div>
-          <h2>${state.editingRecipeId ? "わが家の味に、ひと工夫。" : "おいしそう、を残そう。"}</h2>
-          <p>まずは1品。保存方法を選んでください。</p>
-        </div>
-        <span class="badge">${state.editingRecipeId ? "編集中" : "1 / 2 保存方法"}</span>
-      </div>
+      <p class="register-lead"><span>保存方法を選ぶ</span><span class="badge">${state.editingRecipeId ? "編集中" : "1 / 2"}</span></p>
       <div class="entry-methods" role="group" aria-label="保存方法">
-        ${[["url", "リンク", "YouTubeから"], ["image", "画像", "SNSのスクショ"], ["manual", "手入力", "自分のレシピ"]].map(([method, label, hint]) => `<button type="button" data-action="entry-method" data-method="${method}" aria-pressed="${entryMethod === method}" ${isCaptionImporting || imageSession?.busy ? "disabled" : ""}><strong>${label}</strong><small>${hint}</small></button>`).join("")}
+        ${[["url", "リンク", "SNSの動画から"], ["image", "画像", "SNSのスクショ"], ["manual", "手入力", "自分のレシピ"]].map(([method, label, hint]) => `<button type="button" data-action="entry-method" data-method="${method}" aria-pressed="${entryMethod === method}" ${isCaptionImporting || imageSession?.busy ? "disabled" : ""}><strong>${label}</strong><small>${hint}</small></button>`).join("")}
       </div>
       ${playlistAvailable && !state.editingRecipeId ? '<button class="text-button" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加する</button>' : ""}
       <div ${entryMethod === "url" ? "" : "hidden"}>
@@ -911,6 +946,7 @@ function renderRecipeEntry() {
         <div class="field">
           <label for="recipe-url">ショート動画リンク</label>
           <input id="recipe-url" class="input url-input" value="${escapeAttr(state.draft.videoUrl)}" placeholder="https://youtube.com/shorts/...">
+          ${state.draft.videoUrl ? "" : '<button type="button" class="text-button paste-inline" data-action="paste-recipe-url">📋 コピーしたURLを貼る</button>'}
         </div>
         <button class="primary-button fetch-button" type="button" data-action="fetch-caption" ${isCaptionImporting || imageSession?.busy ? "disabled" : ""}>${isCaptionImporting ? "取得中" : "URLから取得"}</button>
       </div>
@@ -1160,6 +1196,7 @@ function renderCollection() {
   return `
     ${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう</p>' : `<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
+    ${renderSaveGuide()}
     ${renderStarterHint()}
     ${isViewer() ? "" : `<div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>`}
     ${recipeTab === "creators" ? renderCreators(allSaved) : `${renderFacets(pool)}
@@ -2088,6 +2125,9 @@ async function handleAction(event) {
   if (saveUnreviewed) action = "save-recipe";
   if (viewerBlocked(action)) return;
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
+  if (action === "paste-recipe-url") { await pasteRecipeUrl(); return; }
+  if (action === "save-guide") { saveGuideOpen = !(saveGuideOpen ?? !saveGuideSeen()); render(); return; }
+  if (action === "save-guide-done") { try { localStorage.setItem("ripigochi-save-guide", "seen"); } catch {} saveGuideOpen = false; render(); return; }
   if (handlePlaylistAction(action, event.currentTarget.dataset)) return;
 
   if (["image-up", "image-down", "image-remove", "clear-images", "cancel-images"].includes(action)) {

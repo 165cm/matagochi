@@ -451,6 +451,15 @@ test("creators: channel names and TikTok handles group saved recipes and filter 
   run('handleDailyAction("life-creator",{name:"@kurashiru"})');
   assert.equal(run('recipeFacets.author'),"@kurashiru");assert.equal(run('recipeTab'),"saved");
 });
+test("save guide: first visit shows steps, then a small paste strip stays; copied text becomes a draft",()=>{
+  const run=app();run('state.onboarded=true;state.view="collection"');
+  assert.ok(run('renderCollection()').includes('class="save-guide"'));
+  run('saveGuideOpen=false');const html=run('renderCollection()');
+  assert.ok(html.includes('class="save-strip"'));assert.ok(!html.includes('class="save-guide"'));
+  assert.equal(run('startRecipeFromText("そぼろ丼 https://www.tiktok.com/@kurashiru/video/1")'),true);
+  assert.equal(run('state.view'),"register");assert.equal(run('state.draft.title'),"そぼろ丼");assert.equal(run('state.draft.source'),"TikTok");
+  assert.equal(run('startRecipeFromText("URLなし")'),false);
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

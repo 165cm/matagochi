@@ -2671,3 +2671,18 @@ body.has-page-title .page-title { display: block; }
 .creator-row small { color: var(--muted); font-size: 12px; min-width: 2.5em; text-align: right; }
 .creator-thumb small { display: none; }
 .creator-thumb.dish-fallback { background-size: cover; background-position: center; }
+/* Saving recipes from SNS: a small always-visible strip, a step card the first time. */
+.save-strip { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; }
+.paste-button { flex: 1; min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1.5px dashed var(--tomato); background: #fff4ee; color: var(--tomato); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.save-guide-link { flex: 0 0 auto; min-height: 38px; padding: 0 4px; font-size: 12px; }
+.save-guide { margin: 8px 0 0; padding: 10px 12px; border-radius: 14px; background: #fff4ee; border: 1.5px solid #f6d3c5; }
+.save-guide-title { margin: 0 0 4px; font-weight: 900; font-size: 14px; }
+.save-guide ol { margin: 0; padding-left: 1.3em; font-size: 13px; line-height: 1.6; }
+.save-guide-tip { margin: 4px 0 0; font-size: 11px; color: var(--muted); }
+.save-guide-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.save-guide-actions .paste-button { background: var(--surface); }
+.paste-inline { margin-top: 4px; padding: 4px 0; font-size: 13px; }
+.register-hero { padding: 12px; }
+.register-lead { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.quick-url-row .fetch-button { white-space: nowrap; padding: 0 14px; font-size: 14px; }
+.register-hero .entry-methods { margin-top: 0; }
