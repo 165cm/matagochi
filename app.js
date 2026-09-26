@@ -1176,8 +1176,6 @@ function renderCollection() {
 let recipeTab = "all";
 // 3 taps: 主食 → 素材 → 気分・作り方 (one choice per row; tap again to clear)
 let recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
-// Tag layout under review: a = 縦書きの見出し, b = 色分けで敷き詰め, c = 2列の箱.
-let facetLayout = (() => { try { const q = new URLSearchParams(location.search).get("tags"); if (["a", "b", "c"].includes(q)) localStorage.setItem("ripigochi-facet-layout", q); return ["a", "b", "c"].includes(localStorage.getItem("ripigochi-facet-layout")) ? localStorage.getItem("ripigochi-facet-layout") : "a"; } catch { return "a"; } })();
 // わが家：repeat-aware shortcuts. 投稿者：names saved from YouTube / TikTok (or typed in).
 const HOME_FACET = { id: "home", label: "わが家", options: [
   ["loved", "❤ 好き", (r) => Object.values({ ...likedCycles(r), ...recipeRatings(r) }).some((c) => c === "weekly" || c === "tomorrow")],
@@ -1230,10 +1228,9 @@ function facetMatch(recipe, skip = "") {
     return t.includes(value);
   });
 }
-const FACET_SHORT = { home: "家", staple: "主食", main: "素材", style: "気分", author: "投稿" };
 function renderFacets(pool) {
-  const creators = creatorsIn(pool);
-  const facets = [HOME_FACET, ...Lifestyle.FACETS, ...(creators.length ? [{ id: "author", label: "投稿者", options: creators.map((c) => [c.name, creatorLabel(c.name, c.source), (r) => authorOf(r) === c.name]) }] : [])];
+  // 投稿者は「投稿者」タブで選ぶ。ここは料理の中身のタグだけ。
+  const facets = [HOME_FACET, ...Lifestyle.FACETS];
   const rows = facets.map((f) => {
     const base = pool.filter((r) => facetMatch(r, f.id));
     const chips = f.options.map(([id, label, test]) => {
@@ -1243,11 +1240,13 @@ function renderFacets(pool) {
       return `<button type="button" class="facet-chip" data-action="life-facet" data-facet="${f.id}" data-value="${escapeAttr(id)}" aria-pressed="${on}">${label}<small>${n}</small></button>`;
     }).join("");
     if (!chips) return "";
-    return `<div class="facet-row" data-facet="${f.id}"><span class="facet-label"><i>${f.label}</i><b aria-hidden="true">${FACET_SHORT[f.id] || f.label}</b></span><div class="facet-chips" role="group" aria-label="${f.label}">${chips}</div></div>`;
+    return `<div class="facet-row" data-facet="${f.id}"><span class="facet-label">${f.label}</span><div class="facet-chips" role="group" aria-label="${f.label}">${chips}</div></div>`;
   }).join("");
   const count = pool.filter((r) => facetMatch(r)).length;
   const any = Object.values(recipeFacets).some(Boolean);
-  return `<section class="facets layout-${facetLayout}" aria-label="レシピを絞り込む">${rows}${any ? `<p class="facet-result"><b>${count}品</b><button type="button" class="text-button" data-action="life-facet-clear">条件をクリア</button></p>` : ""}</section>`;
+  const author = recipeFacets.author ? `<button type="button" class="facet-chip facet-author" data-action="life-facet" data-facet="author" data-value="${escapeAttr(recipeFacets.author)}" aria-pressed="true">${escapeHtml(recipeFacets.author)} ✕</button>` : "";
+  const legend = `<p class="facet-legend" aria-hidden="true">${facets.map((f) => `<span data-facet="${f.id}">${f.label}</span>`).join("")}</p>`;
+  return `<section class="facets" aria-label="レシピを絞り込む">${author}${rows}${legend}${any ? `<p class="facet-result"><b>${count}品</b><button type="button" class="text-button" data-action="life-facet-clear">条件をクリア</button></p>` : ""}</section>`;
 }
 function tileMinutes(recipe) {
   return !isViewer() && recipe.planning?.minutes ? `<span class="tile-time">⏱ ${recipe.planning.minutes}分</span>` : "";
