@@ -118,62 +118,61 @@ async function shareTasteResult(downloadOnly = false) {
     canvas.width = 1080;
     canvas.height = 1350;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#f8f1e6";
+    if (!ctx.roundRect) ctx.roundRect = function (x, y, w, h) { this.rect(x, y, w, h); };
+    const font = (w, px) => `${w} ${px}px "Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif`;
+    ctx.fillStyle = "#fff8ee";
     ctx.fillRect(0, 0, 1080, 1350);
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.roundRect(60, 60, 960, 1230, 48);
+    ctx.fill();
     ctx.textAlign = "center";
-    ctx.fillStyle = "#325c47";
-    ctx.font = "bold 44px sans-serif";
-    ctx.fillText("わたしの夜ごはんタイプ", 540, 200);
+    ctx.fillStyle = "#8a7968";
+    ctx.font = font(700, 40);
+    ctx.fillText("わたしの ごはんタイプは…", 540, 150);
     const character = document.querySelector(".persona-portrait");
-    if (character) {
-      try {
-        await character.decode();
-        ctx.drawImage(character, 350, 240, 380, 380);
-      } catch {
-        ctx.font = "150px sans-serif";
-        ctx.fillText(r.emoji, 540, 470);
-      }
-    } else {
-      ctx.font = "150px sans-serif";
-      ctx.fillText(r.emoji, 540, 470);
+    try {
+      if (!character) throw new Error("none");
+      await character.decode();
+      ctx.drawImage(character, 360, 180, 360, 360);
+    } catch {
+      ctx.font = "200px sans-serif";
+      ctx.fillText(r.emoji, 540, 440);
     }
-
-    ctx.font = "bold 64px sans-serif";
-    ctx.fillText(r.title, 540, 710, 940);
-    ctx.font = "32px sans-serif";
-    ctx.fillText(
-      r.dimensions
-        .map((d) =>
-          d.pole === "L"
-            ? d.left
-            : d.pole === "R"
-              ? d.right
-              : d.pole === "="
-                ? "どちらも大事"
-                : "探索中",
-        )
-        .join(" × "),
-      540,
-      790,
-      940,
-    );
-    ctx.fillText(r.conversation, 540, 910, 940);
-    ctx.font = "26px sans-serif";
-    ctx.fillText("8皿＋9つの二択。あなたの夜ごはんタイプは？", 540, 990, 940);
-    ctx.font = "bold 42px sans-serif";
-    ctx.fillText("リピごち", 540, 1090);
-    ctx.font = "30px sans-serif";
-    ctx.fillText("165cm.github.io/matagochi/?quiz=1", 540, 1160);
+    ctx.fillStyle = "#e0573a";
+    ctx.font = font(900, 84);
+    ctx.fillText(r.title, 540, 640, 900);
+    ctx.fillStyle = "#2b2420";
+    ctx.font = font(700, 38);
+    ctx.fillText(`「${r.description}」`, 540, 715, 900);
+    ctx.textAlign = "left";
+    ctx.font = font(700, 40);
+    r.features.forEach(([icon, text], i) => {
+      const y = 810 + i * 92;
+      ctx.fillStyle = "#fff1dc";
+      ctx.beginPath();
+      ctx.roundRect(130, y - 56, 820, 76, 38);
+      ctx.fill();
+      ctx.fillStyle = "#2b2420";
+      ctx.fillText(`${icon}  ${text}`, 165, y, 760);
+    });
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e0573a";
+    ctx.font = font(900, 44);
+    ctx.fillText("あなたは何タイプ？ 1分でわかる", 540, 1140, 900);
+    ctx.fillStyle = "#8a7968";
+    ctx.font = font(700, 32);
+    ctx.fillText("リピごち ｜ 165cm.github.io/matagochi/?quiz=1", 540, 1210, 900);
     const blob = await new Promise((resolve) =>
       canvas.toBlob(resolve, "image/png"),
     );
     if (!blob) throw new Error("image");
-    const file = new File([blob], "my-dinner-type.png", { type: "image/png" });
-    const text = `わたしは「${r.title}」でした！あなたは何系？`;
+    const file = new File([blob], "my-gohan-type.png", { type: "image/png" });
+    const text = `わたしのごはんタイプは「${r.title}」でした！${r.features.map((f) => f[0]).join("")} あなたは何タイプ？`;
     if (!downloadOnly && navigator.canShare?.({ files: [file] })) {
       await navigator.share({
         files: [file],
-        title: "夜ごはんタイプ診断",
+        title: "ごはんの好み診断",
         text,
         url: "https://165cm.github.io/matagochi/?quiz=1",
       });
@@ -202,7 +201,21 @@ function renderPriorityQuestion(q, count) {
 }
 function renderPersonaResult(r, likes) {
   const known = Boolean(DinnerPersona.characters[r.code]);
-  return `<div class="taste-result" aria-live="polite">${known ? `<img class="persona-portrait" src="assets/persona/${r.code}.webp" alt="${r.title}のキャラクター">` : `<span class="taste-result-emoji" aria-hidden="true">${r.emoji}</span>`}<p>あなたの夜ごはんタイプ</p><h3>${r.title}</h3><p>${r.description}</p><div class="persona-axes">${r.dimensions.map((d) => `<div><p><span>${d.left}</span><strong>${d.pole === "?" ? "回答不足" : d.pole === "=" ? "拮抗" : (d.pole === "L" ? d.left : d.right) + "寄り"}</strong><span>${d.right}</span></p><meter min="-3" max="3" value="${d.score}" aria-label="${d.name}、${d.count}問回答、左をマイナスとして${d.score}"></meter></div>`).join("")}</div><p class="persona-operation">🍽️ ${r.operation}</p><p class="persona-conversation">💬 ${r.conversation}</p><p class="muted small">今の回答からの傾向。性格や健康状態の判定ではありません。</p><details class="persona-details"><summary>献立への反映・採点を見る</summary><p>各軸3問、左寄り−1／右寄り＋1（設問により左右を入れ替え）。同じくらいは0、保留は採点外。2問未満は回答不足、合計0は拮抗です。</p><p>写真の好み・時短・常備品の活用を候補の加点に使います。食材制限と調理時間を優先。価格・栄養量・盛り付けのデータがない料理には、その軸の点を付けません。栄養・彩り・ひと手間の好みは今後の対応用に保存します。</p></details>${renderPersonaMatrix(r.code)}${likes.length ? `<details class="persona-details"><summary>食べたいと選んだ料理</summary><p>${likes.map((c) => c.title).join("・")}</p></details>` : ""}<button type="button" class="primary-button" id="taste-share">キャラクターをシェア ↗</button><button type="button" class="text-button" id="taste-download">画像を保存</button><p id="taste-share-status" role="status"></p><button type="button" class="text-button" id="taste-retry">もう一度選ぶ</button><button type="button" class="text-button" id="taste-undo">ひとつ戻す</button></div>`;
+  const liked = likes.slice(0, 3);
+  return `<div class="taste-result persona-card" aria-live="polite">
+    <p class="persona-kicker">わたしの ごはんタイプは…</p>
+    ${known ? `<img class="persona-portrait" src="assets/persona/${r.code}.webp" alt="${r.title}のキャラクター">` : `<span class="taste-result-emoji" aria-hidden="true">${r.emoji}</span>`}
+    <h3 class="persona-name">${r.title}</h3>
+    <p class="persona-catch">「${r.description}」</p>
+    ${r.features.length ? `<ul class="persona-features">${r.features.map(([icon, text]) => `<li><span aria-hidden="true">${icon}</span>${text}</li>`).join("")}</ul>` : ""}
+    <p class="persona-operation"><b>好きそうな料理</b>${r.operation}</p>
+    ${liked.length ? `<div class="persona-likes">${liked.map((c) => `<figure><img src="${c.image}" alt="" loading="lazy"><figcaption>${c.title}</figcaption></figure>`).join("")}</div>` : ""}
+    <p class="persona-conversation">💬 ${r.conversation}</p>
+    <button type="button" class="primary-button" id="taste-share">画像でシェアする ↗</button><button type="button" class="text-button" id="taste-download">画像を保存</button><p id="taste-share-status" role="status"></p>
+    ${renderPersonaMatrix(r.code)}
+    <details class="persona-details"><summary>くわしい判定と献立への反映</summary>${r.dimensions.map((d) => `<p>${d.name}：${d.pole === "?" ? "回答不足" : d.pole === "=" ? "どちらも" : d.pole === "L" ? d.left : d.right}（${d.count}問）</p>`).join("")}<p>各軸3問、合計がマイナスなら左、プラスなら右、0なら「どちらも」。写真の好み・時短・常備品の活用を献立の加点に使います。食材制限と調理時間を優先します。</p></details>
+    <p class="muted small">ふだんの好みの傾向です。性格や健康状態の判定ではありません。</p>
+    <button type="button" class="text-button" id="taste-retry">もう一度選ぶ</button><button type="button" class="text-button" id="taste-undo">ひとつ戻す</button></div>`;
 }
 function renderPersonaMatrix(current) {
   return `<details class="persona-details"><summary>全8タイプのマトリックス</summary>${[
