@@ -31,6 +31,7 @@ function playlistRecipe(item, playlist) {
     videoUrl: item.url,
     source: "YouTube",
     author: String(item.channelTitle || "").slice(0, 60),
+    channelId: String(item.channelId || "").slice(0, 40),
     mealType: "dinner",
     caption: item.description || "",
     ingredients,

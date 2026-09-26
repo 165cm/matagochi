@@ -536,6 +536,22 @@ test("AI-judged conditions need no check, unless the household has foods it cann
   run(`applyImportedRecipe({title:"丼",ingredients:[{name:"卵",amount:"2個"}],steps:["焼く","盛る"],planning:{minutes:15,easy:true,equipment:["コンロ"]}})`);
   assert.equal(run('state.draft.planning.ingredientsVerified'),false);assert.ok(run('renderPlanningFields()').includes("食べられないもの（卵）"));
 });
+test("creators: short names, a shared nickname, and grouping by channel ID",()=>{
+  const run=app();
+  assert.equal(run('shortCreatorName("リュウジのバズレシピ【料理研究家】")'),"リュウジ");
+  assert.equal(run('shortCreatorName("だれウマ【料理研究家】")'),"だれウマ");
+  assert.equal(run('shortCreatorName("こったそ の自由気ままに")'),"こったそ");
+  assert.equal(run('shortCreatorName("@kurashiru")'),"kurashiru");
+  assert.equal(run('shortCreatorName("Kurashiru [クラシル] 公式チャンネル")'),"Kurashiru");
+  run(`state.recipes.push({id:"c1",title:"A",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://youtu.be/aaaaaaaaaaa",author:"リュウジのバズレシピ",channelId:"UCabcdefghij123"},{id:"c2",title:"B",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://youtu.be/bbbbbbbbbbb",author:"料理のおにいさんリュウジ",channelId:"UCabcdefghij123"})`);
+  assert.equal(run('creatorsIn(state.recipes).length'),1,"a renamed channel stays one creator");
+  run('handleDailyAction("life-creator-edit",{key:"yt:UCabcdefghij123"})');
+  run('document.querySelector=(q)=>q==="#creator-alias"?{value:"リュウジさん"}:null;handleDailyAction("life-creator-save",{key:"yt:UCabcdefghij123"})');
+  assert.equal(run('creatorName(state.recipes.find(r=>r.id==="c1"))'),"リュウジさん");
+  assert.ok(run('JSON.stringify(buildSyncPayload().creatorNames)').includes("リュウジさん"));
+  run('handleDailyAction("life-creator",{name:"yt:UCabcdefghij123"})');
+  assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'),2);
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));
@@ -760,7 +776,7 @@ test("app: saved SNS recipes keep the poster and can be filtered by 投稿者 an
   const run = app();
   run('state.onboarded=true;state.recipes=normalizeRecipes([{...clone(Lifestyle.curated[3]),id:"r1",curated:undefined,author:"山田ごはん",mealType:"dinner"},{...clone(Lifestyle.curated[4]),id:"r2",curated:undefined,author:"",mealType:"dinner"}])');
   assert.equal(run('state.recipes[0].author'), "山田ごはん");
-  run('recipeFacets={home:"",staple:"",main:"",style:"",author:"山田ごはん"}');
+  run(`recipeFacets={home:"",staple:"",main:"",style:"",author:"name:山田ごはん"}`);
   assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'), 1);
   assert.ok(run(`renderFacets(state.recipes).includes("山田ごはん ✕")`));assert.ok(!run(`renderFacets(state.recipes).includes("投稿者")`));
   run('recipeFacets={home:"new",staple:"",main:"",style:"",author:""}');

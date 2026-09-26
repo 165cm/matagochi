@@ -58,7 +58,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       title: analysis.title || snippet.title,
       videoId,
       videoUrl,
-      channelTitle: snippet.channelTitle
+      channelTitle: snippet.channelTitle,
+      channelId: snippet.channelId
     }),
     analyzedFrom,
     videoLimited
@@ -78,6 +79,8 @@ export function normalizeImportResult(result) {
     videoId: cleanText(result.videoId),
     videoUrl: cleanText(result.videoUrl),
     channelTitle: cleanText(result.channelTitle),
+    // チャンネルIDは投稿者をまとめる鍵。名前が変わっても同じ人として扱える。
+    channelId: /^[\w-]{10,40}$/.test(cleanText(result.channelId)) ? cleanText(result.channelId) : "",
     planning: normalizePlanning(result.planning)
   };
 }
