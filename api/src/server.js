@@ -57,7 +57,7 @@ export function createApp(env = process.env, deps = {}) {
 
   app.post("/api/import/youtube", async (req, res) => {
     try {
-      const result = await catalog.import(req.body?.url);
+      const result = await catalog.import(req.body?.url, { forceVideo: req.body?.mode === "video" });
       res.json(result);
     } catch (error) {
       // AI分析が失敗・上限・停止中でも、動画のタイトルと説明文は返す。材料はアプリ側で説明文から読み取る。

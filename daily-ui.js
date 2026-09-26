@@ -1022,6 +1022,7 @@ function handleDailyAction(action, data) {
     state.view = "cooking";
   }
   if (action === "life-analyze") { analyzeCookingRecipe(data.date); return true; }
+  if (action === "life-reread") { rereadRecipe(data.recipe); return true; }
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
     const slot = state.mealSlots[cookingDate];
@@ -1302,6 +1303,34 @@ function renderQuickSetup() {
 }
 const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒める・煮るならOK", 3: "照り焼きやガパオも作れる", 4: "ハンバーグや揚げ焼きも", 5: "揚げ物も魚をおろすのも" };
 
+// 「動画から読み直す」：保存したYouTubeレシピなら、いつでも読み直して編集画面で確かめられる。
+let rereadingId = "";
+function canRereadRecipe(recipe) {
+  return !!API_BASE_URL && !!recipe && !!youtubeVideoId(recipe.videoUrl) && recipe.bulkImport?.privacyStatus !== "unlisted" && !!state.recipes.find((x) => x.id === recipe.id);
+}
+async function rereadRecipe(id) {
+  if (rereadingId) return;
+  const own = state.recipes.find((x) => x.id === id);
+  if (!canRereadRecipe(own)) return;
+  rereadingId = id; render();
+  try {
+    const result = await importRecipeFromYouTube(own.videoUrl, { mode: "video" });
+    if (state.view !== "register" || state.editingRecipeId !== id) await handleAction({ currentTarget: { dataset: { action: "edit-recipe", recipe: id } } });
+    applyImportedRecipe(result);
+    state.draft.planning = undefined;
+    state.draftExpanded = true;
+    state.fetchStatus = result.analyzedFrom?.startsWith("video")
+      ? `${result.cacheHit ? "動画から読み取った結果を表示しています。" : "動画から読み直しました。"}まだおかしい所は、このまま直して「更新する」を押してください。`
+      : "動画からは作り方を読み取れませんでした。動画を見ながら、このまま直して「更新する」を押してください。";
+    showToast("読み直しました。確かめて保存してください。");
+  } catch (error) {
+    showToast(error.message || "読み直せませんでした。");
+  } finally {
+    rereadingId = "";
+    saveState(); render();
+    globalThis.scrollTo?.({ top: 0, behavior: "instant" });
+  }
+}
 function canAnalyzeRecipe(recipe) {
   return !!API_BASE_URL && !!youtubeVideoId(recipe?.videoUrl) && recipe.bulkImport?.privacyStatus !== "unlisted" && !recipe.catalog && !recipe.planning?.ingredientsVerified;
 }
@@ -1383,6 +1412,7 @@ function renderRecipeDetail() {
     ${renderSkillLine(r)}
     <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
     <div class="detail-actions">${requestButton(r)}${edit ? (saved ? dailyButton("edit-recipe", "✏️ 編集する", `data-recipe="${escapeAttr(r.id)}"`) : dailyButton("life-save-starter", "🔖 自分のレシピに保存", `data-recipe="${escapeAttr(r.id)}"`)) : ""}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>
+    ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? "🎬 作り方がおかしい？動画から読み直す" : "🎬 動画から読み取る"}</button></div>` : ""}
     ${servingsUnknownBanner(r, saved && edit)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
     ${r.ingredients?.length ? `<ul class="detail-ingredients">${r.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</span></li>`).join("")}</ul>` : '<p class="muted small">材料が登録されていません。</p>'}

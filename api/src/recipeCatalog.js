@@ -36,13 +36,15 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!reserved) throw new ApiError(429, "analysis_busy", "混雑しています。しばらくしてからお試しください。");
     }
   }
-  async function run(id) {
+  async function run(id, { forceVideo = false } = {}) {
     required();
     const key = `youtube-${id}`;
     const current = await store.get(key);
     // 古い抽出方式の結果は、作り方の質が低いことがあるので一度だけ読み直す。
     const fresh = (current?.envelope.result?.catalog?.extractorVersion || 1) >= EXTRACTOR_VERSION;
-    if (current?.envelope.status === "ready" && fresh) return { ...structuredClone(current.envelope.result), cacheHit: true };
+    // 「動画から読み直す」：すでに動画から読んだ結果があれば、同じ結果になるので再解析しない（費用をかけない）。
+    const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
+    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) return { ...structuredClone(current.envelope.result), cacheHit: true };
     // A claim older than STALE_PENDING_MS cannot still be waiting on the AI (timeout is 60s), so it may be retried.
     const stale = current?.envelope.status === "pending" && now() - Date.parse(current.envelope.startedAt || 0) > STALE_PENDING_MS;
     if (current?.envelope.status === "pending" && !stale) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
@@ -51,7 +53,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     if (!claim) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
     try {
       await reserveBudget();
-      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget });
+      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget, forceVideo });
       const result = { ...normalizeImportResult(raw), analyzedFrom: ["video", "video-clip"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description" };
       if (!result.title || !result.ingredients.length || !result.steps.length) throw new ApiError(422, "incomplete_recipe", "材料や手順を読み取れませんでした。手動入力をご利用ください。");
       result.catalog = { id: key, revision: randomUUID(), analyzedAt: new Date(now()).toISOString(), model, extractorVersion: EXTRACTOR_VERSION };
@@ -68,10 +70,11 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   }
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
-    async import(rawUrl) {
+    async import(rawUrl, { forceVideo = false } = {}) {
       const id = extractYouTubeVideoId(rawUrl);
-      if (!inFlight.has(id)) inFlight.set(id, run(id).finally(() => inFlight.delete(id)));
-      return structuredClone(await inFlight.get(id));
+      const key = forceVideo ? `${id}:video` : id;
+      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo }).finally(() => inFlight.delete(key)));
+      return structuredClone(await inFlight.get(key));
     },
     async get(id) {
       required();

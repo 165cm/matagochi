@@ -34,9 +34,10 @@ function playlistRecipe(item, playlist) {
     mealType: "dinner",
     caption: item.description || "",
     ingredients,
-    planning: Lifestyle.suggestPlanning({ingredients,steps:parseCookingSteps(item.description || "")}),
+    planning: Lifestyle.suggestPlanning({ingredients,steps:parseCookingSteps(item.description || "", { numberedOnly: true })}),
     originalIngredients: clone(ingredients),
-    steps: parseCookingSteps(item.description || ""),
+    // 説明文の感想やハッシュタグを作り方にしない。番号付きの手順がなければ空のままにし、「動画から読み取る」で補う。
+    steps: parseCookingSteps(item.description || "", { numberedOnly: true }),
     tags: [mealLabel("dinner"), "YouTube", "動画"],
     savedAt: today(),
     updatedAt: nowIso(),
@@ -149,7 +150,8 @@ function addPlaylistRecipes() {
   state.view = "plan";
   swapDate = today();
   saveState();
-  showToast(`${recipes.length}品を追加しました。入れ替え候補から調理条件を確認してください。`);
+  const empty = recipes.filter((r) => !r.steps.length).length;
+  showToast(`${recipes.length}品を追加しました。${empty ? `作り方がない${empty}品は、レシピを開いて「動画から読み取る」でそろえられます。` : "入れ替え候補から調理条件を確認してください。"}`);
   render();
   globalThis.scrollTo?.({ top: 0, behavior: "instant" });
 }

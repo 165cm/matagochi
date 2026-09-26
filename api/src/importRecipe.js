@@ -16,7 +16,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   let analyzedFrom = "description";
   // 説明文に本当の手順がない（AIの判定・手順が1つ以下）なら、説明文の「手順」は使わず動画を読む。
   if (analysis.stepsInDescription === false || normalizeSteps(analysis.steps).length < 2) analysis = { ...analysis, steps: [] };
-  const weak = !normalizeSteps(analysis.steps).length || !normalizeIngredients(analysis.ingredients).length;
+  const weak = options.forceVideo || !normalizeSteps(analysis.steps).length || !normalizeIngredients(analysis.ingredients).length;
   const maxSeconds = Number(options.videoMaxSeconds ?? VIDEO_MAX_SECONDS);
   const duration = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 ? snippet.durationSeconds : null;
   // 長い動画（や長さ不明）は頭から maxSeconds だけを見る。作り方がその中で完結した時だけ使う。
