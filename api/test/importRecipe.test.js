@@ -35,27 +35,31 @@ test("builds an import result from mocked YouTube and Gemini responses", async (
 test("an empty description is an error only when the video cannot be read either", async () => {
   const snippet = { title: "no description", description: "", channelTitle: "c", durationSeconds: 900 };
   await assert.rejects(importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet, analyzeRecipeDescription: async () => ({}), analyzeRecipeVideo: async () => ({ steps: ["焼く"], stepsComplete: false }) }), { code: "empty_description" });
-  const short = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => ({ ...snippet, durationSeconds: 45 }), analyzeRecipeDescription: async () => { throw new Error("must not run"); }, analyzeRecipeVideo: async () => ({ title: "丼", ingredients: [{ name: "豚こま", amount: "200g" }], steps: ["焼く"] }) });
+  const shortDeps = { fetchYouTubeSnippet: async () => ({ ...snippet, durationSeconds: 45 }), analyzeRecipeDescription: async () => { throw new Error("must not run"); }, analyzeRecipeVideo: async () => ({ title: "丼", ingredients: [{ name: "豚こま", amount: "200g" }], steps: ["焼く"] }) };
+  await assert.rejects(importYouTubeRecipe("https://youtu.be/abcdefghijk", shortDeps), { code: "empty_description" }, "importing never reads the video on its own");
+  const short = await importYouTubeRecipe("https://youtu.be/abcdefghijk", shortDeps, { forceVideo: true });
   assert.equal(short.analyzedFrom, "video"); assert.deepEqual(short.steps, ["焼く"]);
 });
 
-test("video analysis runs only when the description has no steps; long videos are read for their first 10 minutes", async () => {
+test("the video is read only on request (a ticket); importing flags that it could help; long videos are read for their first 10 minutes", async () => {
   let videoCalls = 0, reserved = 0;
   const video = async () => { videoCalls++; return { steps: ["キャベツを切る", "調味料で和える"], ingredients: [{ name: "キャベツ", amount: "1/2玉" }] }; };
   const snippet = (d) => ({ title: "コールスロー", description: "キャベツ 1/2玉", channelTitle: "c", durationSeconds: d });
   const noSteps = async () => ({ title: "コールスロー", ingredients: [{ name: "キャベツ", amount: "1/2玉" }, { name: "1人前あたり約102kcal", amount: "11.6g" }], steps: [] });
-  const r = await importYouTubeRecipe("https://youtube.com/shorts/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(50), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: video }, { reserveBudget: async () => { reserved++; } });
+  const skipped = await importYouTubeRecipe("https://youtube.com/shorts/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(50), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: video });
+  assert.equal(skipped.videoSkipped, true); assert.equal(skipped.analyzedFrom, "description"); assert.equal(videoCalls, 0, "no ticket is spent without a tap");
+  const r = await importYouTubeRecipe("https://youtube.com/shorts/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(50), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: video }, { forceVideo: true, reserveBudget: async () => { reserved++; } });
   assert.equal(r.analyzedFrom, "video"); assert.deepEqual(r.steps, ["キャベツを切る", "調味料で和える"]); assert.equal(reserved, 1);
   assert.deepEqual(r.ingredients.map((i) => i.name), ["キャベツ"], "nutrition lines are not ingredients");
   let clip = "unset";
-  const long = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: async (u, s, o) => { clip = o.clipSeconds; return video(); } });
+  const long = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: async (u, s, o) => { clip = o.clipSeconds; return video(); } }, { forceVideo: true });
   assert.equal(long.analyzedFrom, "video-clip"); assert.equal(clip, 600, "long videos: only the first 10 minutes");
-  const cut = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: async () => ({ steps: ["切る"], stepsComplete: false }) });
+  const cut = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: noSteps, analyzeRecipeVideo: async () => ({ steps: ["切る"], stepsComplete: false }) }, { forceVideo: true });
   assert.equal(cut.analyzedFrom, "description"); assert.deepEqual(cut.steps, [], "steps cut off by the clip are not used");
   assert.equal(videoCalls, 2);
   const full = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(50), analyzeRecipeDescription: async () => ({ ingredients: [{ name: "キャベツ", amount: "1/2玉" }], steps: ["切る", "和える"], stepsInDescription: true }), analyzeRecipeVideo: video });
-  assert.equal(full.analyzedFrom, "description"); assert.equal(videoCalls, 2);
-  const chatter = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: async () => ({ ingredients: [{ name: "キャベツ", amount: "1/2玉" }], steps: ["キャベツ使い切り", "味付けはケンタッキー風で"], stepsInDescription: false }), analyzeRecipeVideo: video });
+  assert.equal(full.analyzedFrom, "description"); assert.equal(full.videoSkipped, false); assert.equal(videoCalls, 2);
+  const chatter = await importYouTubeRecipe("https://youtu.be/abcdefghijk", { fetchYouTubeSnippet: async () => snippet(631), analyzeRecipeDescription: async () => ({ ingredients: [{ name: "キャベツ", amount: "1/2玉" }], steps: ["キャベツ使い切り", "味付けはケンタッキー風で"], stepsInDescription: false }), analyzeRecipeVideo: video }, { forceVideo: true });
   assert.equal(chatter.analyzedFrom, "video-clip", "descriptions without a real procedure go to the video"); assert.deepEqual(chatter.steps, ["キャベツを切る", "調味料で和える"]);
 });
 

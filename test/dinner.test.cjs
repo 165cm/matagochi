@@ -6,7 +6,7 @@ const fullSource = fs.readFileSync(require('node:path').join(__dirname, '../app.
 const source = fullSource.slice(0, fullSource.lastIndexOf('document.querySelectorAll(".tab")'));
 function app() {
   const context = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] } });
-  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','skills.js','aisles.js','lifestyle.js','daily-ui.js','playlist-import.js','household.js','skill-quiz.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
+  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','skills.js','aisles.js','lifestyle.js','daily-ui.js','playlist-import.js','household.js','skill-quiz.js','tickets.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
   vm.runInContext(source, context);
   return (code) => vm.runInContext(code, context);
 }

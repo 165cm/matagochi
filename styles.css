@@ -2801,3 +2801,79 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .creator-rename .input { min-height: 40px; font-size: 16px; }
 .creator-row.is-editing .primary-button { min-height: 38px; padding: 0 16px; }
 .creator-note { margin: 6px 2px 0; }
+/* 🎟 チケットと、はじめての4週間チャレンジ */
+.ticket-chip { flex-shrink: 0; position: relative; display: inline-flex; align-items: center; gap: 3px; height: 36px; padding: 0 11px 0 9px; margin-right: 6px; border-radius: 999px; border: 1.5px solid #f3c27a; background: #fff7e8; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
+.ticket-chip[hidden] { display: none; }
+.ticket-chip b { font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.ticket-dot { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--tomato); border: 2px solid var(--surface); animation: tk-pulse 1.6s ease-in-out infinite; }
+.ticket-nudge { display: flex; align-items: center; gap: 8px; width: 100%; margin: 8px 0; padding: 8px 12px; border-radius: 14px; border: 1.5px solid #f3c27a; background: linear-gradient(90deg, #fff4dc, #fffaf0); font: inherit; font-size: 13px; color: var(--ink); text-align: left; cursor: pointer; }
+.ticket-nudge > span:nth-child(2) { flex: 1; min-width: 0; }
+.ticket-nudge b { color: #c2551f; font-weight: 900; white-space: nowrap; }
+.ticket-nudge i { font-style: normal; color: var(--muted); }
+.ticket-nudge-icon { font-size: 17px; display: inline-block; animation: tk-wiggle 3.2s ease-in-out infinite; }
+.ticket-sheet .quota-card { max-height: calc(100dvh - 24px); overflow-y: auto; }
+.tk-balance { display: flex; align-items: center; gap: 10px; }
+.tk-balance p { flex: 1; margin: 0; display: flex; align-items: baseline; gap: 4px; }
+.tk-balance p b { font-size: 34px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.tk-balance p small { font-size: 14px; font-weight: 800; }
+.tk-ticket { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: #fff0d2; font-size: 26px; transform: rotate(-8deg); }
+.tk-close { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--surface-soft); font-size: 20px; color: var(--muted); cursor: pointer; }
+.tk-what { margin: 0; color: var(--muted); }
+.tk-what b { color: var(--ink); }
+.tk-challenge { display: grid; gap: 8px; padding: 12px; border-radius: 18px; background: #fffaf0; border: 1.5px solid #f6dfb4; }
+.tk-title { margin: 0; display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+.tk-title span { font-size: 12px; font-weight: 800; color: #c2551f; }
+.tk-meter { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.tk-meter progress { flex: 1; height: 10px; border: 0; border-radius: 99px; overflow: hidden; background: #f3e6d2; appearance: none; }
+.tk-meter progress::-webkit-progress-bar { background: #f3e6d2; border-radius: 99px; }
+.tk-meter progress::-webkit-progress-value { background: linear-gradient(90deg, #f6b73c, var(--tomato)); border-radius: 99px; }
+.tk-meter progress::-moz-progress-bar { background: linear-gradient(90deg, #f6b73c, var(--tomato)); border-radius: 99px; }
+.tk-meter b { color: var(--ink); font-size: 14px; }
+.tk-next { margin: 0; font-size: 13px; }
+.tk-plus { display: inline-block; padding: 1px 7px; border-radius: 99px; background: var(--tomato); color: #fff; font-weight: 900; font-size: 12px; }
+.tk-weeks { display: grid; gap: 6px; }
+.tk-week { display: grid; gap: 2px; padding: 6px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.tk-week.is-now { border: 1.5px solid #f3c27a; box-shadow: 0 2px 10px rgba(238, 106, 76, .12); }
+.tk-week.is-future { opacity: .55; }
+.tk-week.is-perfect { background: linear-gradient(135deg, #fffdf3, #fff1c9); }
+.tk-week-head { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.tk-week-head b { color: var(--ink); font-size: 13px; }
+.tk-week-head em { font-style: normal; padding: 0 6px; border-radius: 99px; background: var(--tomato); color: #fff; font-weight: 800; font-size: 11px; }
+.tk-week-head em.tk-crown { background: #f6cf5b; color: #5a3b00; }
+.tk-line { display: flex; align-items: center; gap: 6px; }
+.tk-kind { width: 5.2em; flex-shrink: 0; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.tk-dots { flex: 1; display: flex; gap: 3px; min-width: 0; }
+.tk-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; background: #efe4d6; }
+.tk-dot.on { background: #f29f3d; }
+.tk-dot.moon { background: #c9c2e8; }
+.tk-dot.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+.tk-stamp { flex-shrink: 0; display: grid; place-items: center; width: 36px; height: 27px; border-radius: 9px; border: 1.5px dashed #e3c9a4; font-size: 10px; font-weight: 800; line-height: 1.05; color: var(--muted); }
+.tk-stamp small { font-size: 10px; }
+.tk-stamp.ready { border-style: solid; border-color: var(--tomato); color: var(--tomato); animation: tk-pulse 1.4s ease-in-out infinite; }
+.tk-stamp.got { border: 2px solid #d9442a; color: #d9442a; background: #fff1ec; transform: rotate(-10deg); font-size: 12px; }
+/* 達成の瞬間 */
+.ticket-party { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: rgba(40, 25, 15, .45); animation: tk-fade .2s ease-out; }
+.tp-card { position: relative; width: min(100%, 340px); display: grid; gap: 8px; justify-items: center; padding: 22px 18px 16px; border-radius: 26px; background: var(--surface); text-align: center; box-shadow: 0 20px 50px rgba(40, 25, 15, .3); animation: tk-pop .45s cubic-bezier(.2, 1.6, .4, 1); }
+.tp-kicker { margin: 0; font-size: 13px; font-weight: 800; color: #c2551f; }
+.tp-gain { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 800; }
+.tp-gain b { font-size: 48px; font-weight: 900; line-height: 1; color: var(--tomato); }
+.tp-ticket { font-size: 40px; display: inline-block; animation: tk-fly .7s cubic-bezier(.2, 1.4, .4, 1) both; }
+.tp-stamps { display: flex; gap: 10px; margin: 4px 0 8px; }
+.tp-stamp { width: 52px; height: 40px; font-size: 15px; animation: tk-stamp .5s .25s cubic-bezier(.3, 1.8, .5, 1) both; }
+.tp-what, .tp-next { margin: 0; font-size: 13px; }
+.tp-next b { color: #c2551f; }
+.tp-card .primary-button { margin-top: 6px; }
+.tp-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.tp-confetti i { position: absolute; top: -12px; left: calc(var(--i) * 7% + 2%); width: 8px; height: 13px; border-radius: 2px; background: hsl(calc(var(--i) * 47), 85%, 62%); animation: tk-fall calc(1.4s + var(--i) * .07s) calc(var(--i) * .04s) ease-in forwards; }
+@keyframes tk-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes tk-fade { from { opacity: 0; } }
+@keyframes tk-fly { from { transform: translateY(40px) rotate(-30deg) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes tk-stamp { from { transform: scale(2.4) rotate(-10deg); opacity: 0; } to { transform: scale(1) rotate(-10deg); opacity: 1; } }
+@keyframes tk-fall { to { transform: translateY(110vh) rotate(540deg); } }
+@keyframes tk-pulse { 50% { transform: scale(1.12); } }
+@keyframes tk-wiggle { 0%, 80%, 100% { transform: none; } 85% { transform: rotate(-14deg); } 90% { transform: rotate(12deg); } 95% { transform: rotate(-6deg); } }
+.draft-video { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .ticket-dot, .ticket-nudge-icon, .tk-stamp.ready, .tp-card, .tp-ticket, .tp-stamp, .ticket-party { animation: none; }
+  .tp-confetti { display: none; }
+}
