@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260926-steps";
+const APP_VERSION = "20260926-reply";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -842,7 +842,6 @@ async function pasteRecipeUrl() {
 let saveGuideOpen = null;
 function saveGuideSeen() { try { return localStorage.getItem("ripigochi-save-guide") === "seen"; } catch { return false; } }
 function renderSaveGuide() {
-  if (isViewer()) return "";
   const open = saveGuideOpen ?? !saveGuideSeen();
   const strip = `<div class="save-strip"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button save-guide-link" data-action="save-guide" aria-expanded="${open}">${open ? "閉じる" : "保存のしかた"}</button></div>`;
   if (!open) return strip + (pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : "");
@@ -998,7 +997,7 @@ function renderRecipeEntry() {
     </section>
     <section class="panel ingredient-edit-panel">
       ${renderPlanningFields()}
-      <button class="primary-button full-button save-recipe-button" type="button" data-action="save-recipe">${editing ? "更新する" : "このレシピを保存する"}</button>
+      <button class="primary-button full-button save-recipe-button" type="button" data-action="save-recipe">${editing ? "更新する" : isViewer() ? "保存して🙋リクエスト" : "このレシピを保存する"}</button>
       ${editing ? `<button class="text-button full-button" type="button" data-action="cancel-edit">編集をやめる</button>` : ""}
     </section>
     ` : ""}
@@ -1147,7 +1146,7 @@ function renderCollection() {
   ].join("");
   const empty = query ? renderEmpty("一致するレシピはありません。") : recipeTab === "saved" ? '<p class="muted small">まだ保存したレシピはありません。おすすめの🔖で1タップ保存できます。</p>' : "";
   return `
-    ${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう</p>' : `<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
+    ${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう。保存したレシピもリクエストになるよ</p>' : ""}${`<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderSaveGuide()}
     ${renderStarterHint()}
@@ -2455,14 +2454,14 @@ async function handleAction(event) {
     }
     if (!state.draft.planning) state.draft.planning = Lifestyle.suggestPlanning({ingredients:state.extractedIngredients,steps:state.extractedSteps});
     const planning = state.draft.planning;
-    if (state.draft.mealType === "dinner" && !saveUnreviewed &&
+    if (state.draft.mealType === "dinner" && !saveUnreviewed && !isViewer() &&
         (!planning?.conditionsConfirmed || !planning.minutes || planning.easy == null ||
          !(planning.equipment?.length || planning.noEquipment) || !planning.ingredientsVerified)) {
       showToast("献立に使う時間・器具・食材区分を確認してください。未確認のまま保存することもできます。");
       document.querySelector("#planning-panel")?.scrollIntoView({block:"start",behavior:"smooth"});
       return;
     }
-    if (saveUnreviewed && planning) { planning.conditionsConfirmed=false; planning.ingredientsVerified=false; }
+    if ((saveUnreviewed || isViewer()) && planning) { planning.conditionsConfirmed=false; planning.ingredientsVerified=false; }
     const ingredients = clone(state.extractedIngredients);
     const originalIngredients = state.originalIngredients.length ? clone(state.originalIngredients) : clone(ingredients);
     const steps = state.extractedSteps;
@@ -2523,6 +2522,12 @@ async function handleAction(event) {
       };
       state.recipes.unshift(recipe);
       state.selectedRecipeId = recipe.id;
+      // 見るだけの家族が保存したレシピは、そのまま「食べたい」リクエストになる。
+      const asRequest = isViewer() && requestsEnabled() && recipe.mealType === "dinner";
+      if (asRequest) {
+        const id = generateId("req-");
+        state.requests[id] = { id, recipeId: recipe.id, recipeTitle: recipe.title, from: me(), status: "open", late: !canSwapRequest(), createdAt: nowIso(), updatedAt: nowIso() };
+      }
       state.draft = clone(emptyDraft);
       state.draftThumbnailUrl = "";
       state.draftExpanded = false;
@@ -2534,7 +2539,7 @@ async function handleAction(event) {
       imageSession?.clear();
       imageFeedback = null;
       saveState();
-      showToast("レシピを保存しました。");
+      showToast(asRequest ? `保存して、${deciderName()}に🙋リクエストしました。` : "レシピを保存しました。");
       render();
     }
   }

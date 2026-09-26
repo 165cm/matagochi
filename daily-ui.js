@@ -491,7 +491,7 @@ function renderToday() {
   const tomorrow = plan[1];
   const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
-  return `${renderPreferencePrompt()}
+  return `${renderRequestNews()}${renderPreferencePrompt()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div>
     ${pre ? `<p class="tonight-off">最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b>。<br>それまでは、いつもどおりで大丈夫！ 🍳</p>` : off ? '<p class="tonight-off">また次の夜ごはんで。🌙</p>' : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${escapeHtml(recipe.title)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", `${servings}人分`, bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
@@ -1210,6 +1210,8 @@ function planningSummaryText(p) {
   return { equipment: p.noEquipment ? "特別な器具なし" : list(p.equipment, "未確認"), contains: list(p.contains, "該当なし"), tasks: list(p.tasks, "なし") };
 }
 function renderPlanningFields() {
+  // 見るだけの家族は条件を決めない。保存するとリクエストになり、決める人が条件を確かめる。
+  if (isViewer()) return '<p class="muted small viewer-save-note">保存すると、🙋 食べたいリクエストとして届きます。献立に入れる条件は、決める人が確かめます。</p>';
   if (!state.draft.planning) state.draft.planning = Lifestyle.suggestPlanning({ingredients:state.extractedIngredients, steps:state.extractedSteps});
   const p = state.draft.planning;
   const chips = (values,field) => `<div class="planning-chips">${values.map(v=>`<label class="planning-chip"><input type="checkbox" data-planning-field="${field}" value="${escapeAttr(v)}" ${(p[field]||[]).includes(v)?"checked":""}><span>${escapeHtml(v)}</span></label>`).join("")}</div>`;

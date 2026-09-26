@@ -1,0 +1,56 @@
+# Deploys api/ to Cloud Run when it changes on main.
+# One-time setup: run api/scripts/setup-github-deploy.sh in Cloud Shell (see api/README.md).
+name: Deploy API
+on:
+  push:
+    branches: [main]
+    paths: ["api/**", ".github/workflows/deploy-api.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+env:
+  PROJECT_ID: youtube-quiz-mvp
+  PROJECT_NUMBER: "292190013809"
+  REGION: us-central1
+  SERVICE: matagochi-api
+  # AIモデルはここで固定する。提供終了の案内が来たら、この2行を書き換えてマージすれば切り替わる。
+  GEMINI_MODEL: gemini-2.5-flash
+  GEMINI_VIDEO_MODEL: gemini-2.5-flash
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci --prefix api --ignore-scripts
+      - run: npm test --prefix api
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/matagochi
+          service_account: github-deploy@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+      - id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          source: ./api
+          env_vars: |-
+            GEMINI_MODEL=${{ env.GEMINI_MODEL }}
+            GEMINI_VIDEO_MODEL=${{ env.GEMINI_VIDEO_MODEL }}
+          env_vars_update_strategy: merge
+      - name: Health check
+        run: curl -fsS "${{ steps.deploy.outputs.url }}/health"

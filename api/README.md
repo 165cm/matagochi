@@ -99,3 +99,15 @@ API全体にプロセス内IP毎分60回の補助制限を設けています。�
 クライアントは画像をページのメモリだけに保持し、レシピ状態・JSONバックアップ・合言葉同期へ含めません。利用者が確認して保存した抽出テキストは通常のマイレシピになり、同期を使う場合はそのレシピテキストが同期されます。Google側の取り扱い・ログ基盤でのリクエスト本文非記録は本番構成で確認してください。
 
 再生リスト取得は全体45秒、1リクエスト15秒、最大4ページ。同一インスタンス内の同時取得をまとめ、最大100件・5分の短期キャッシュを使います。IPあたり毎分6回（既存の全API制限とは別）です。分散インスタンス全体のYouTubeクォータ上限ではありません。health応答の `capabilities.playlistImport` がtrueになるとフロントの入口が表示されます。
+
+## 自動デプロイ（GitHub Actions → Cloud Run）
+
+`api/` を変更して main にマージすると、`.github/workflows/deploy-api.yml` がテストのあとCloud Runへデプロイします。鍵ファイルは使わず、Workload Identity でこのリポジトリの main ブランチだけにデプロイを許可しています。
+
+最初の1回だけ、Cloud Shellで次を実行してください（何度実行しても安全です）。
+
+```bash
+bash api/scripts/setup-github-deploy.sh
+```
+
+AIモデルは `deploy-api.yml` の `GEMINI_MODEL` / `GEMINI_VIDEO_MODEL` で固定しています。モデルの提供終了の案内が来たら、この2行を書き換えてマージすれば切り替わります。今のモデルは `/health` の `models` で確認できます。
