@@ -52,7 +52,7 @@ export async function fetchYouTubeSnippet(videoId, env = process.env, fetchImpl 
   }
 
   const params = new URLSearchParams({
-    part: "snippet,status",
+    part: "snippet,status,contentDetails",
     id: videoId,
     key: apiKey
   });
@@ -72,17 +72,23 @@ export async function fetchYouTubeSnippet(videoId, env = process.env, fetchImpl 
     throw new ApiError(422, "non_public_video", "共通レシピへの取り込みは公開動画のみ対応しています。手動入力をご利用ください。");
   }
   const snippet = item.snippet;
-  if (!String(snippet.description || "").trim()) {
-    throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
-  }
 
   return {
     title: snippet.title || "",
     description: snippet.description || "",
     channelTitle: snippet.channelTitle || "",
     publishedAt: snippet.publishedAt || "",
-    thumbnails: snippet.thumbnails || {}
+    thumbnails: snippet.thumbnails || {},
+    durationSeconds: parseIsoDuration(item.contentDetails?.duration)
   };
+}
+
+// "PT1M5S" → 65。読めなければ null。
+export function parseIsoDuration(value) {
+  const m = String(value || "").match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m || !value || value === "P" || value === "PT") return null;
+  const [, d = 0, h = 0, min = 0, sec = 0] = m.map((x) => Number(x || 0));
+  return d * 86400 + h * 3600 + min * 60 + sec;
 }
 
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{12,64}$/;

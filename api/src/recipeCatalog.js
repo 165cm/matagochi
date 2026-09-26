@@ -12,6 +12,7 @@ export function createRecipeStore(env) {
 }
 
 const STALE_PENDING_MS = 10 * 60_000;
+const EXTRACTOR_VERSION = 2;
 // A durable conditional claim precedes all paid work, including across instances.
 // Pending claims are deliberately not stolen: an expired request may still incur AI cost.
 export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true } = {}) {
@@ -39,7 +40,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     required();
     const key = `youtube-${id}`;
     const current = await store.get(key);
-    if (current?.envelope.status === "ready") return { ...structuredClone(current.envelope.result), cacheHit: true };
+    // 古い抽出方式の結果は、作り方の質が低いことがあるので一度だけ読み直す。
+    const fresh = (current?.envelope.result?.catalog?.extractorVersion || 1) >= EXTRACTOR_VERSION;
+    if (current?.envelope.status === "ready" && fresh) return { ...structuredClone(current.envelope.result), cacheHit: true };
     // A claim older than STALE_PENDING_MS cannot still be waiting on the AI (timeout is 60s), so it may be retried.
     const stale = current?.envelope.status === "pending" && now() - Date.parse(current.envelope.startedAt || 0) > STALE_PENDING_MS;
     if (current?.envelope.status === "pending" && !stale) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
@@ -48,9 +51,10 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     if (!claim) throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。");
     try {
       await reserveBudget();
-      const result = normalizeImportResult(await analyze(canonicalYouTubeUrl(id)));
+      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget });
+      const result = { ...normalizeImportResult(raw), analyzedFrom: raw?.analyzedFrom === "video" ? "video" : "description" };
       if (!result.title || !result.ingredients.length || !result.steps.length) throw new ApiError(422, "incomplete_recipe", "材料や手順を読み取れませんでした。手動入力をご利用ください。");
-      result.catalog = { id: key, revision: randomUUID(), analyzedAt: new Date(now()).toISOString(), model, extractorVersion: 1 };
+      result.catalog = { id: key, revision: randomUUID(), analyzedAt: new Date(now()).toISOString(), model, extractorVersion: EXTRACTOR_VERSION };
       const revision = await store.put(`versions/${result.catalog.revision}`, result, { ifGeneration: 0 });
       if (!revision) throw new Error("Revision collision");
       const written = await store.put(key, { status: "ready", result }, { ifGeneration: claim.generation });

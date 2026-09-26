@@ -2,22 +2,54 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from "./youtube.js";
 
 const DEFAULT_CATEGORY = "その他";
+const NUTRITION = /kcal|キロカロリー|カロリー|糖質|たんぱく質|タンパク質|脂質|炭水化物|食物繊維|塩分|PFC|1人前あたり|1人分あたり/i;
 
-export async function importYouTubeRecipe(rawUrl, deps = {}) {
+const VIDEO_MAX_SECONDS = 600;
+
+// まず説明文（安い）。作り方か材料が取れない時だけ、短い動画を映像ごと読む。
+export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const videoId = extractYouTubeVideoId(rawUrl);
   const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId);
-  const analysis = await deps.analyzeRecipeDescription(snippet);
   const videoUrl = canonicalYouTubeUrl(videoId, rawUrl);
+  const hasDescription = !!String(snippet.description || "").trim();
+  let analysis = hasDescription ? await deps.analyzeRecipeDescription(snippet) : {};
+  let analyzedFrom = "description";
+  const weak = !normalizeSteps(analysis.steps).length || !normalizeIngredients(analysis.ingredients).length;
+  const maxSeconds = Number(options.videoMaxSeconds ?? VIDEO_MAX_SECONDS);
+  const shortEnough = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 && snippet.durationSeconds <= maxSeconds;
+  if (weak && shortEnough && typeof deps.analyzeRecipeVideo === "function") {
+    try {
+      await options.reserveBudget?.();
+      const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet);
+      const videoSteps = normalizeSteps(video.steps);
+      const videoIngredients = normalizeIngredients(video.ingredients);
+      analysis = {
+        ...analysis,
+        title: analysis.title || video.title,
+        sourceServings: Number.isInteger(analysis.sourceServings) ? analysis.sourceServings : video.sourceServings,
+        ingredients: normalizeIngredients(analysis.ingredients).length ? analysis.ingredients : videoIngredients,
+        steps: videoSteps.length ? videoSteps : analysis.steps,
+        tags: analysis.tags?.length ? analysis.tags : video.tags
+      };
+      if (videoSteps.length || videoIngredients.length) analyzedFrom = "video";
+    } catch (error) {
+      if (!hasDescription) throw error;
+    }
+  }
+  if (!hasDescription && analyzedFrom !== "video") throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
 
-  return normalizeImportResult({
-    ...analysis,
-    caption: buildCaption(snippet),
-    source: /youtube\.com\/shorts\//i.test(rawUrl) ? "YouTube Shorts" : "YouTube",
-    title: analysis.title || snippet.title,
-    videoId,
-    videoUrl,
-    channelTitle: snippet.channelTitle
-  });
+  return {
+    ...normalizeImportResult({
+      ...analysis,
+      caption: buildCaption(snippet),
+      source: /youtube\.com\/shorts\//i.test(rawUrl) ? "YouTube Shorts" : "YouTube",
+      title: analysis.title || snippet.title,
+      videoId,
+      videoUrl,
+      channelTitle: snippet.channelTitle
+    }),
+    analyzedFrom
+  };
 }
 
 export function normalizeImportResult(result) {
@@ -53,7 +85,7 @@ function normalizeIngredients(value) {
       amount: cleanText(item?.amount || "適量"),
       category: cleanText(item?.category || DEFAULT_CATEGORY)
     }))
-    .filter((item) => item.name)
+    .filter((item) => item.name && !NUTRITION.test(`${item.name} ${item.amount}`))
     .slice(0, 20);
 }
 
