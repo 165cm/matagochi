@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v36";
-const APP_VERSION = "20260926-list";
+const CACHE_NAME = "ripigochi-v38";
+const APP_VERSION = "20260926-pantry";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -22,12 +22,12 @@ const CORE_ASSETS = [
   `./skill-quiz.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260926-list",
-  "./icons/favicon-32.png?v=20260926-list",
-  "./icons/icon-192.png?v=20260926-list",
-  "./icons/icon-512.png?v=20260926-list",
-  "./icons/icon-maskable-512.png?v=20260926-list",
-  "./icons/apple-touch-icon.png?v=20260926-list"
+  "./manifest.webmanifest?v=20260926-pantry",
+  "./icons/favicon-32.png?v=20260926-pantry",
+  "./icons/icon-192.png?v=20260926-pantry",
+  "./icons/icon-512.png?v=20260926-pantry",
+  "./icons/icon-maskable-512.png?v=20260926-pantry",
+  "./icons/apple-touch-icon.png?v=20260926-pantry"
 ];
 
 self.addEventListener("install", (event) => {
