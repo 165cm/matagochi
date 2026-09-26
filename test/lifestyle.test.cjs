@@ -677,7 +677,7 @@ test("app: saved SNS recipes keep the poster and can be filtered by 投稿者 an
   assert.equal(run('state.recipes[0].author'), "山田ごはん");
   run('recipeFacets={home:"",staple:"",main:"",style:"",author:"山田ごはん"}');
   assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'), 1);
-  assert.ok(run(`renderFacets(state.recipes).includes("山田ごはん ✕")`));assert.ok(!run(`renderFacets(state.recipes).includes("facet-row\" data-facet=\"author")`));
+  assert.ok(run(`renderFacets(state.recipes).includes("山田ごはん ✕")`));assert.ok(!run(`renderFacets(state.recipes).includes("投稿者")`));
   run('recipeFacets={home:"new",staple:"",main:"",style:"",author:""}');
   assert.equal(run('state.recipes.filter(r=>facetMatch(r)).length'), 2);
   assert.ok(run('getFilteredRecipes({allMeals:true}).length===2'));
