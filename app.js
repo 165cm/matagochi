@@ -3594,3 +3594,19 @@ document.addEventListener("visibilitychange", () => {
   if (hasSharedUrl) showToast("共有されたURLを受け取りました。");
   if (syncEnabled()) syncNow({ silent: true });
 })();
+// Like a browser toolbar: bars slide away while scrolling down, come back on scroll up.
+(() => {
+  let lastY = window.scrollY, ticking = false;
+  window.addEventListener("scroll", () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY, dy = y - lastY;
+      const atBottom = y + innerHeight >= document.documentElement.scrollHeight - 4;
+      if (y < 48 || dy < -6 || atBottom) document.body.classList.remove("bars-hidden");
+      else if (dy > 6) document.body.classList.add("bars-hidden");
+      if (Math.abs(dy) > 6 || y < 48) lastY = y;
+      ticking = false;
+    });
+  }, { passive: true });
+})();

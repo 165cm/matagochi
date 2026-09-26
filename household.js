@@ -565,7 +565,7 @@ function renderShoppingDone(items) {
   const phase = roundPhase();
   if (isViewer() || !(phase === "open" || phase === "closed")) return "";
   const all = items.length && items.every((i) => i.status !== "buy");
-  return `<section class="round-done ${all ? "is-ready" : ""}"><p>${all ? "全部そろった！" : `${deadlineLabel()}の買い物`}</p>${dailyButton("life-round-done", "買い物完了", "", all)}</section>`;
+  return dailyButton("life-round-done", "買い物完了", "", all);
 }
 function renderRequestLog() {
   const all = Object.values(state.requests || {}).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30);
@@ -796,7 +796,7 @@ function renderBlockShoppingDone(items) {
   const b = shoppingBlock();
   if (isViewer() || !b) return "";
   const all = items.length && items.every((i) => i.status !== "buy");
-  return `<section class="round-done ${all ? "is-ready" : ""}"><p>${all ? "全部そろった！" : `${blockRange(b)}の買い物`}</p>${dailyButton("life-block-shopped", "買い物完了", `data-key="${b.key}"`, all)}</section>`;
+  return dailyButton("life-block-shopped", "買い物完了", `data-key="${b.key}"`, all);
 }
 function renderRhythmSettings(first = false) {
   const cur = state.rhythm?.preset || "3day";

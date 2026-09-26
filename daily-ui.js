@@ -359,7 +359,7 @@ function renderTripMeals() {
   if (!meals.length) return "";
   const first = meals[0].date, last = meals[meals.length - 1].date;
   const range = first === last ? `${formatDate(first)}（${weekdayLabel(first)}）` : `${formatDate(first)}（${weekdayLabel(first)}）〜${formatDate(last)}（${weekdayLabel(last)}）`;
-  return `<section class="trip-meals" aria-label="この買い物で作るごはん"><p class="trip-range"><b>${range}</b>の${meals.length}食分</p><div class="trip-row">${meals.map((m) => `<button type="button" class="trip-meal" data-action="life-cook" data-date="${m.date}" aria-label="${escapeAttr(`${formatDate(m.date)} ${m.recipe.title}`)}">${dishTile(m.recipe)}<small>${WD[new Date(m.date + "T12:00:00").getDay()]}</small><span>${escapeHtml(m.recipe.title)}</span></button>`).join("")}</div></section>`;
+  return `<section class="trip-meals" aria-label="この買い物で作るごはん"><p class="trip-range"><b>${range}</b> ${meals.length}食分</p><div class="trip-row">${meals.map((m) => `<button type="button" class="trip-meal" data-action="life-cook" data-date="${m.date}" aria-label="${escapeAttr(`${formatDate(m.date)} ${m.recipe.title}`)}">${dishTile(m.recipe)}<small>${WD[new Date(m.date + "T12:00:00").getDay()]}</small></button>`).join("")}</div></section>`;
 }
 function dailyShopping() {
   const p = dailyProfile();
@@ -567,33 +567,44 @@ function bothLike(recipe) {
   return values.length >= 2 && values.every((c) => c === "weekly" || c === "tomorrow");
 }
 let aisleEdit = false;
+let shopDoneLater = false;
+// Vertical aisle tags: three characters at most so a one-item aisle stays one row tall.
+const AISLE_SHORT = { "🥬 野菜・果物": "野菜", "🍄 きのこ": "きのこ", "🥩 肉": "肉", "🐟 魚": "魚", "🥚 卵・豆腐・乳製品": "卵豆腐", "🧊 冷凍": "冷凍", "🍚 米・麺・パン": "主食", "🥫 缶詰・乾物": "乾物", "🧂 調味料": "調味料", "🛒 その他": "他" };
+// Small dish photos: just enough to feel which meal an item is for.
+function useIcons(uses) {
+  const meals = tripMeals();
+  return (uses || []).slice(0, 3).map((title) => {
+    const r = meals.find((m) => m.recipe.title === title)?.recipe || (state.recipes || []).find((x) => x.title === title);
+    const photo = r ? recipeThumbnail(r) : "";
+    return photo ? `<img class="use-icon" src="${escapeAttr(photo)}" alt="" title="${escapeAttr(title)}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="use-icon use-letter" title="${escapeAttr(title)}">${escapeHtml([...title][0] || "")}</span>`;
+  }).join("");
+}
 function renderDailyShopping() {
   const items = dailyShopping();
   const aisle = (i) => Aisles.aisleLabel(Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}));
   const order = Aisles.AISLES.map(([, label]) => label);
   const count = (status) => items.filter((i) => i.status === status).length;
   const fix = (i) => aisleEdit ? `<select class="aisle-select" data-aisle-name="${escapeAttr(i.name)}" aria-label="${escapeAttr(i.name)}の売り場">${Aisles.AISLES.map(([id, label]) => `<option value="${id}" ${Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}) === id ? "selected" : ""}>${label}</option>`).join("")}</select>` : "";
-  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}${i.uses?.length ? `<em class="shop-uses"> · ${escapeHtml(i.uses.join("・"))}</em>` : ""}</small>${i.recheck ? '<small class="notice">必要量を再確認</small>' : ""}</span></label>${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "家にある"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
-  const rows = (status) => order.map((category) => {
+  const uses = (i) => i.uses?.length ? `<span class="use-icons" aria-label="${escapeAttr(i.uses.join("・"))}に使う">${useIcons(i.uses)}</span>` : "";
+  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}</span></label>${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
+  const groups = (status) => order.map((category) => {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
-    return list.length ? `<h4>${category}</h4>${list.map((i) => row(i, status)).join("")}` : "";
-  }).join("");
-  const cards = order.map((category) => {
-    const list = items.filter((i) => i.status === "buy" && aisle(i) === category);
-    return list.length ? `<section class="aisle-card"><h4>${category} <small>${list.length}</small></h4>${list.map((i) => row(i, "buy")).join("")}</section>` : "";
+    return list.length ? `<section class="aisle-group"><h4 class="aisle-tag" title="${escapeAttr(category)}"><span class="sr-only">${category}</span><span aria-hidden="true">${AISLE_SHORT[category] || category}</span></h4><div class="aisle-items">${list.map((i) => row(i, status)).join("")}</div></section>` : "";
   }).join("");
   const buy = count("buy"), purchased = count("purchased"), total = buy + purchased;
-  const progress = total ? `<div class="shop-progress" role="status"><p><span>${buy ? `あと <strong class="marker">${buy}つ</strong>` : "🎉 全部そろいました！"}</span><small>${purchased}/${total}</small></p><span class="shop-bar"><i style="width:${Math.round((purchased / total) * 100)}%"></i></span></div>` : "";
-  const folded = (status, title, hint) => count(status) ? `<details class="shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${rows(status)}</details>` : "";
-  return `<section class="shop-top"><div><h2>買ったら、<br /><span class="marker nobr">ポン。</span></h2>${items.length ? `<p class="hand">買えたら、丸をタップ。</p>` : ""}</div>${items.length ? `<div class="shop-tools">${dailyButton("copy-shopping", "コピー")}${dailyButton("share-shopping", "共有")}</div>` : ""}</section>
-  ${renderTripMeals()}
-  ${shoppingNotice ? `<p role="status" class="notice">${escapeHtml(shoppingNotice)}</p>` : ""}
+  const all = total > 0 && !buy;
+  if (buy) shopDoneLater = false;
+  const progress = total ? `<div class="shop-progress" role="status"><span>${buy ? `あと<strong>${buy}</strong>` : "そろった！"}</span><span class="shop-bar"><i style="width:${Math.round((purchased / total) * 100)}%"></i></span><small>${purchased}/${total}</small></div>` : "";
+  const folded = (status, title, hint) => count(status) ? `<details class="shopping-fold"><summary><h3>${title} <span class="badge">${count(status)}</span></h3><small class="muted">${hint}</small></summary>${groups(status)}</details>` : "";
+  const done = renderShoppingDone(items);
+  const menu = items.length ? `<details class="shop-menu"><summary aria-label="買い物メニュー">⋯</summary><div class="shop-menu-list">${dailyButton("copy-shopping", "リストをコピー")}${dailyButton("share-shopping", "共有")}<button type="button" class="secondary-button" data-action="life-aisle-edit">${aisleEdit ? "売り場の直しを終える" : "売り場を直す"}</button>${isViewer() ? "" : '<button type="button" class="secondary-button" data-action="life-profile">常備品・頻度</button>'}${done}</div></details>` : "";
+  const sheet = all && done && !shopDoneLater ? `<div class="shop-done-sheet" role="dialog" aria-label="買い物完了"><p><b>全部そろった！</b>買い物完了にする？</p><div>${done}<button type="button" class="text-button" data-action="life-shop-later">あとで</button></div></div>` : "";
+  return `<section class="shop-head">${renderTripMeals()}${progress}${menu}</section>
   ${!items.length ? `<section class="panel shop-empty"><p>献立が決まると、必要な材料だけのリストができます。</p>${dailyButton("go-view", isViewer() ? "献立を見る" : "献立を決める", 'data-view="plan"', true)}</section>` : ""}
-  ${renderShoppingDone(items)}${progress}${cards}
-  ${isViewer() ? "" : `<section class="shop-add"><h3>＋ 買い足す</h3><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></section>`}
-  ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "調味料は残量も確認してください")}
-  ${items.length ? `<button type="button" class="text-button full-button" data-action="life-aisle-edit">${aisleEdit ? "売り場の直しを終える" : "🛒 売り場がちがう品を直す"}</button>` : ""}
-  ${isViewer() ? "" : '<button type="button" class="text-button full-button" data-action="life-profile">常備品・買い物の頻度を変える</button>'}`;
+  ${aisleEdit ? '<button type="button" class="primary-button full-button" data-action="life-aisle-edit">売り場の直しを終える</button>' : ""}
+  ${buy ? `<div class="shop-list">${groups("buy")}</div>` : ""}
+  ${isViewer() ? "" : `<details class="shop-add"><summary>＋ 買い足す</summary><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></details>`}
+  ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "調味料は残量も確認してください")}${sheet}`;
 }
 // Device-local progress: never share cooking checkmarks with another household member.
 let cookingProgress = (() => {
@@ -1057,6 +1068,7 @@ function handleDailyAction(action, data) {
     if (r) openRecordEditor({ id: generateId("e"), isNew: true, recipeId: r.id, recipeTitle: r.title, cookedAt: today(), mealType: "dinner", preferencePending: true, familyRepeatCycles: {}, memo: "", photo: "" });
   }
   if (action === "life-aisle-edit") aisleEdit = !aisleEdit;
+  if (action === "life-shop-later") shopDoneLater = true;
   if (action === "life-recipe-open") { recipeDetailId = data.recipe; state.view = "recipe"; }
   if (action === "life-recipe-back") state.view = "collection";
   if (action === "life-starters" && !isViewer()) {

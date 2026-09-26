@@ -2508,3 +2508,54 @@ button.tile-title { padding: 0; border: 0; background: none; font: inherit; font
 .setting-body { padding: 0 16px 16px; display: grid; gap: 10px; }
 .setting-body > .panel, .setting-body > details.panel { margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
 .setting-body > .panel > h3:first-child, .setting-body > .panel > .section-head:first-child h3 { display: none; }
+/* ===== 2026-09-26 compact shopping list + auto-hiding bars ===== */
+.topbar, .bottom-tabs { transition: transform .22s ease; }
+body.bars-hidden .topbar { transform: translateY(-110%); }
+body.bars-hidden .bottom-tabs { transform: translate(-50%, 110%); }
+body.bars-hidden .playlist-footer, body.bars-hidden .cooking-primary { bottom: env(safe-area-inset-bottom); }
+.shop-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.shop-head .trip-meals { flex: 1; min-width: 0; margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
+.shop-head .trip-range { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
+.shop-head .trip-row { display: flex; gap: 4px; overflow-x: auto; }
+.shop-head .trip-meal { position: relative; flex: 0 0 auto; width: 36px; min-height: 0; padding: 0; border: 0; background: none; }
+.shop-head .trip-meal .dish-tile { width: 36px; height: 36px; border-radius: 10px; }
+.shop-head .trip-meal .dish-tile small { display: none; }
+.shop-head .trip-meal > small { position: absolute; top: auto; left: auto; right: -3px; bottom: -3px; font-size: 9px; line-height: 1; padding: 2px 3px; border-radius: 6px; background: var(--surface); }
+.shop-head .shop-progress { flex: 0 0 auto; display: grid; justify-items: end; gap: 3px; margin: 0; padding: 0; background: none; border: 0; font-size: 12px; }
+.shop-head .shop-progress strong { font-size: 18px; color: var(--tomato); margin-left: 2px; }
+.shop-head .shop-bar { width: 64px; height: 5px; }
+.shop-head .shop-progress small { font-size: 10px; color: var(--muted); }
+.shop-menu { position: relative; flex: 0 0 auto; }
+.shop-menu > summary { list-style: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); font-weight: 900; cursor: pointer; }
+.shop-menu > summary::-webkit-details-marker { display: none; }
+.shop-menu-list { position: absolute; right: 0; top: 42px; z-index: 5; display: grid; gap: 6px; width: 190px; padding: 10px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(60, 30, 10, .15); }
+.shop-menu-list button { width: 100%; min-height: 40px; font-size: 13px; }
+.shop-list { display: grid; gap: 0; border-radius: 14px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); }
+.aisle-group { display: grid; grid-template-columns: 22px 1fr; border-top: 1px solid var(--line); }
+.aisle-group:first-child { border-top: 0; }
+.aisle-tag { margin: 0; writing-mode: vertical-rl; text-orientation: upright; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; letter-spacing: 0; line-height: 1.05; padding: 2px 0; background: var(--surface-soft, #fff4e8); color: var(--muted); overflow: hidden; white-space: nowrap; }
+.aisle-items { min-width: 0; }
+.aisle-items .daily-shopping-row { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 6px; margin: 0; border: 0; border-top: 1px dashed var(--line); border-radius: 0; background: none; box-shadow: none; }
+.aisle-items .daily-shopping-row:first-child { border-top: 0; }
+.aisle-items .daily-shopping-check { flex: 1; min-width: 0; min-height: 38px; display: flex; align-items: center; gap: 8px; }
+.aisle-items .daily-shopping-check input { width: 24px; height: 24px; }
+.aisle-items .daily-shopping-check input:checked::after { width: 10px; height: 6px; }
+.shop-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.shop-line strong { flex: 0 1 auto; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shop-line small { flex: 0 10 auto; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.use-icons { flex: 0 0 auto; display: flex; }
+.use-icon { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--surface); margin-left: -6px; background: #f3e6d6; }
+.use-icon:first-child { margin-left: 0; }
+.use-letter { display: grid; place-items: center; font-size: 10px; font-weight: 700; color: var(--muted); }
+.aisle-items .shopping-inline { flex: 0 0 auto; width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; font-size: 13px; opacity: .75; }
+.shopping-fold .aisle-group { border: 0; margin-top: 4px; }
+.shop-add { margin: 10px 0 0; }
+.shop-add > summary { cursor: pointer; font-weight: 700; color: var(--tomato); padding: 8px 2px; }
+.shop-done-sheet { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 6; width: min(calc(100% - 24px), 406px); transform: translateX(-50%); padding: 14px; border-radius: 20px; background: var(--surface); border: 2px solid var(--tomato); box-shadow: 0 12px 36px rgba(60, 30, 10, .22); animation: sheetUp .25s ease; }
+body.bars-hidden .shop-done-sheet { bottom: calc(12px + env(safe-area-inset-bottom)); }
+.shop-done-sheet p { margin: 0 0 10px; font-size: 15px; }
+.shop-done-sheet p b { display: block; font-size: 18px; color: var(--tomato); }
+.shop-done-sheet div { display: flex; gap: 8px; align-items: center; }
+.shop-done-sheet .primary-button { flex: 1; }
+@keyframes sheetUp { from { transform: translate(-50%, 30px); opacity: 0; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
