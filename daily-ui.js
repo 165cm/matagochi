@@ -995,7 +995,8 @@ function handleDailyAction(action, data) {
   if (action === "life-facet" && data.facet in recipeFacets) recipeFacets[data.facet] = recipeFacets[data.facet] === data.value ? "" : data.value;
   if (action === "life-facet-clear") recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
   if (action === "life-month") reflMonth = Math.min(0, reflMonth + (Number(data.delta) || 0));
-  if (action === "life-recipe-tab") recipeTab = ["saved", "starter"].includes(data.tab) ? data.tab : "all";
+  if (action === "life-recipe-tab") recipeTab = ["saved", "starter", "creators"].includes(data.tab) ? data.tab : "all";
+  if (action === "life-creator") { recipeFacets = { home: "", staple: "", main: "", style: "", author: data.name || "" }; recipeTab = "saved"; }
   if (action === "life-save-starter") {
     const r = Lifestyle.curated.find((x) => x.id === data.recipe);
     if (r) {

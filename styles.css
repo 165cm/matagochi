@@ -2639,3 +2639,61 @@ body.has-page-title .page-title { display: block; }
 .topbar-actions .month-nav strong { font-size: 14px; white-space: nowrap; }
 .topbar-actions .shop-menu > summary { width: 38px; height: 38px; }
 .topbar-actions .shop-menu-list { top: 44px; }
+/* ===== Recipe tags: three layouts, one markup. Every tag visible, no sideways scrolling. ===== */
+.facets .facet-chips { flex-wrap: wrap; overflow: visible; }
+.facet-row[data-facet="home"] { --fc: #fde4ea; --fl: #c0395a; }
+.facet-row[data-facet="staple"] { --fc: #fff1c7; --fl: #9a6a00; }
+.facet-row[data-facet="main"] { --fc: #ffe3d6; --fl: #c24e21; }
+.facet-row[data-facet="style"] { --fc: #e3f2df; --fl: #3f7a35; }
+.facet-row[data-facet="author"] { --fc: #e3ecfb; --fl: #3a62a8; }
+.facets .facet-chip { min-height: 30px; padding: 0 9px; gap: 3px; font-size: 12.5px; }
+.facets .facet-chip small { font-size: 9.5px; }
+/* A: shopping-list style — a thin vertical label on the left, chips wrap to the right. */
+.facets.layout-a { gap: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
+.layout-a .facet-row { grid-template-columns: 20px minmax(0, 1fr); gap: 0; border-top: 1px solid var(--line); }
+.layout-a .facet-row:first-child { border-top: 0; }
+.layout-a .facet-label { writing-mode: vertical-rl; text-orientation: upright; display: flex; align-items: center; justify-content: center; padding: 3px 0; font-size: 10px; font-weight: 800; letter-spacing: 0; line-height: 1.05; background: var(--fc); color: var(--fl); white-space: nowrap; overflow: hidden; }
+.layout-a .facet-chips { gap: 4px; padding: 5px 6px; }
+.layout-a .facet-chip { border-color: transparent; background: var(--surface-soft); }
+.layout-a .facet-result { padding: 4px 8px; border-top: 1px solid var(--line); }
+/* B: no headings — every tag in one cloud, the category shown by color (legend underneath). */
+.facets.layout-b { display: flex; flex-wrap: wrap; gap: 4px; }
+.layout-b .facet-row, .layout-b .facet-chips { display: contents; }
+.layout-b .facet-label { display: none; }
+.layout-b .facet-chip { background: var(--fc); border-color: transparent; color: var(--ink); }
+.layout-b .facet-chip small { color: var(--fl); }
+.layout-b .facet-result { flex-basis: 100%; }
+.layout-b::after { content: "■わが家 ■主食 ■素材 ■気分・作り方 ■投稿者"; flex-basis: 100%; font-size: 10px; color: var(--muted); letter-spacing: .02em; background: linear-gradient(90deg, #c0395a 0 18%, #9a6a00 18% 33%, #c24e21 33% 48%, #3f7a35 48% 78%, #3a62a8 78%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+/* C: a tiled board of small boxes, two per row; wide groups span both columns. */
+.facets.layout-c { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.layout-c .facet-row { display: block; padding: 5px 6px 6px; border-radius: 12px; background: var(--fc); }
+.layout-c .facet-row[data-facet="main"], .layout-c .facet-row[data-facet="style"], .layout-c .facet-row[data-facet="author"] { grid-column: 1 / -1; }
+.layout-c .facet-label { display: block; margin: 0 2px 3px; font-size: 10px; font-weight: 800; color: var(--fl); }
+.layout-c .facet-chips { gap: 4px; padding: 0; }
+.layout-c .facet-chip { border-color: transparent; }
+.layout-c .facet-result { grid-column: 1 / -1; }
+.facet-chip[aria-pressed="true"] { background: var(--tomato) !important; color: #fff !important; }
+.facet-chip[aria-pressed="true"] .src-mark { color: #fff; }
+/* Channel / account names. */
+.src-mark { display: inline-block; margin-right: 3px; font-size: .85em; font-weight: 900; }
+.src-youtube { color: #e02b20; }
+.src-tiktok { color: #111; }
+.src-instagram { color: #c13584; }
+.src-other { color: var(--muted); }
+.tile-creator { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.creator-list { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+.creator-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 52px; padding: 6px 10px; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.creator-row:first-child { border-top: 0; }
+.creator-name { font-weight: 800; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.creator-thumbs { display: flex; }
+.creator-thumb { width: 34px; height: 34px; border-radius: 8px; margin-left: -8px; border: 2px solid var(--surface); }
+.creator-thumbs .creator-thumb:first-child { margin-left: 0; }
+.creator-row small { color: var(--muted); font-size: 12px; min-width: 2.5em; text-align: right; }
+.facet-label i { font-style: normal; }
+.facet-label b { display: none; }
+.layout-a .facet-label i { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.layout-a .facet-label b { display: inline; font-weight: 800; }
+.layout-a .facet-row { align-items: stretch; }
+.layout-a .facet-label { min-height: 100%; }
+.creator-thumb small { display: none; }
+.creator-thumb.dish-fallback { background-size: cover; background-position: center; }
