@@ -65,6 +65,7 @@
 let ticketState = (() => { try { return JSON.parse(localStorage.getItem("ripigochi-tickets") || "null"); } catch { return null; } })();
 let ticketSheet = null; // { need: bool, retry: fn }
 let ticketParties = []; // お祝いの順番待ち：[{ welcome: true } | { claims: [...] }]
+let ticketAsk = null; // 使う前の確認：{ run }
 let ticketCode = "", ticketCodeWrong = false, ticketClaiming = false, ticketClaimTimer = null;
 const ticketRejected = new Set();
 
@@ -207,6 +208,7 @@ function renderTicketSheet() {
     </section>`;
   return `<div class="quota-sheet ticket-sheet" role="dialog" aria-modal="true" aria-label="チケット"><div class="quota-card">
     ${head}${challenge}
+    ${ticketSheet.need ? "" : `<label class="tk-skip"><input type="checkbox" data-action="tickets-ask-toggle" ${ticketSkipAsk() ? "" : "checked"}> チケットを使う前に確認する</label>`}
     <details class="quota-dev" ${ticketCode || ticketCodeWrong ? "open" : ""}><summary>開発者コードを入れる</summary>
       ${ticketCodeWrong ? '<p class="quota-wrong">コードが違うようです。</p>' : ""}<p class="quota-code" aria-live="polite">${ticketCode ? "●".repeat(ticketCode.length) : "&nbsp;"}</p>
       <div class="quota-keys">${keys.map((k) => k ? `<button type="button" class="quota-key" data-action="tickets-key" data-key="${k}" aria-label="${k === "⌫" ? "1文字消す" : k}">${k}</button>` : "<span></span>").join("")}</div>
@@ -229,6 +231,13 @@ function renderTicketParty() {
 }
 function handleTicketAction(action, data) {
   if (action === "tickets-open") { openTicketSheet(); return true; }
+  if (action === "tickets-ask-yes") {
+    const run = ticketAsk?.run;
+    if (document.querySelector("#ticket-skip")?.checked) { try { localStorage.setItem("ripigochi-ticket-ask", "skip"); } catch {} showToast("次からは確認せずに読みます。チケット画面で戻せます。"); }
+    ticketAsk = null; render(); run?.(); return true;
+  }
+  if (action === "tickets-ask-no") { ticketAsk = null; render(); return true; }
+  if (action === "tickets-ask-toggle") { try { ticketSkipAsk() ? localStorage.removeItem("ripigochi-ticket-ask") : localStorage.setItem("ripigochi-ticket-ask", "skip"); } catch {} render(); return true; }
   if (action === "tickets-close") { ticketSheet = null; ticketCode = ""; ticketCodeWrong = false; render(); return true; }
   if (action === "tickets-party-close") { const party = ticketParties.shift(); if (party?.welcome) openTicketSheet(); else render(); return true; }
   if (action === "tickets-key") { ticketCode = data.key === "⌫" ? ticketCode.slice(0, -1) : (ticketCode + data.key).slice(0, 6); render(); return true; }
@@ -242,6 +251,24 @@ function handleTicketAction(action, data) {
     return true;
   }
   return false;
+}
+// チケットを使う前の確認。「次から確認しない」を選んだ端末では省く（チケット画面で戻せる）。
+const ticketSkipAsk = () => { try { return localStorage.getItem("ripigochi-ticket-ask") === "skip"; } catch { return false; } };
+function askTicket(run) {
+  if (!ticketState || ticketState.unlimited || ticketSkipAsk()) return run();
+  if (ticketState.balance < 1) return openTicketSheet({ need: true, retry: run });
+  ticketAsk = { run }; render();
+}
+function renderTicketAsk() {
+  if (!ticketAsk || !ticketState) return "";
+  return `<div class="quota-sheet ticket-ask" role="dialog" aria-modal="true" aria-label="チケットを使う確認"><div class="quota-card">
+    <p class="quota-title">🎬 動画から作り方を読みますか？</p>
+    <div class="tk-cost"><span class="tk-ticket" aria-hidden="true">🎟</span><p><span><b>チケットを1枚</b>使います</span><small>のこり ${fmtTickets(ticketState.balance)}枚 → ${fmtTickets(ticketState.balance - 1)}枚</small></p></div>
+    <p class="small tk-what">だれかが読んだ動画なら0枚。読めなかった時は戻ります。</p>
+    <label class="tk-skip"><input id="ticket-skip" type="checkbox"> 次から確認しない</label>
+    <button type="button" class="primary-button full-button" data-action="tickets-ask-yes">🎟1枚で読む</button>
+    <button type="button" class="text-button full-button" data-action="tickets-ask-no">やめる</button>
+  </div></div>`;
 }
 // 動画を読んだあとのひとこと。
 function ticketNote(result) {
