@@ -898,7 +898,7 @@ function handleRhythmAction(action, data) {
     const decidedAhead = Object.values(state.mealSlots || {}).some((x) => x.date >= today() && ["confirmed", "cooked"].includes(x.status));
     state.rhythm.startFrom = decidedAhead ? "" : firstFullBlock()?.start || "";
     // During the first-run questions, picking a rhythm moves on to the next question.
-    if ((profileEditing || !state.onboarded) && state.onboardingDraft?.quickSetupIndex === 1) state.onboardingDraft.quickSetupIndex = 2;
+    if ((profileEditing || !state.onboarded) && FUNNEL[state.onboardingDraft?.quickSetupIndex] === 1) state.onboardingDraft.quickSetupIndex++;
     state.planOverrides = {};
     showToast(`献立のリズムを「${RHYTHMS[data.preset].label}」にしました。`);
   } else if (action === "life-rhythm-off" && !isViewer()) state.rhythm = { preset: "", shopTime: state.rhythm.shopTime, updatedAt: nowIso(), dismissed: true };

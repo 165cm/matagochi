@@ -2911,3 +2911,45 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .login-row .input { flex: 1; min-width: 0; }
 .tk-login { text-align: left; font-size: 13px; }
 .google-login { font-size: 12px; color: var(--muted); }
+/* はじめの献立づくり（課金につながるオンボーディング） */
+.funnel-picks { display: grid; gap: 8px; }
+.funnel-picks.is-grid { grid-template-columns: 1fr 1fr; }
+.funnel-pick { min-height: 52px; padding: 10px 14px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); font: inherit; font-weight: 700; color: var(--ink); text-align: left; cursor: pointer; }
+.funnel-pick[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; }
+.funnel-graph { display: grid; gap: 8px; padding: 14px; border-radius: 18px; background: var(--surface-soft); }
+.funnel-graph-title { margin: 0; font-size: 13px; font-weight: 800; }
+.fg-row { display: grid; grid-template-columns: 4.5em 1fr 2.6em; align-items: center; gap: 8px; font-size: 13px; }
+.fg-row i { height: 14px; width: var(--w); border-radius: 99px; background: #d9cbbb; animation: fg-grow .9s ease-out both; }
+.fg-row.is-us i { background: var(--tomato); animation-delay: .35s; }
+.fg-row b { font-size: 15px; text-align: right; }
+.fg-row.is-us b { color: var(--tomato); }
+@keyframes fg-grow { from { width: 0; } }
+.funnel-points { margin: 4px 0 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 14px; }
+.funnel-result { padding: 14px; border-radius: 18px; background: #f3faf1; border: 1.5px solid #cfe5c7; text-align: center; animation: tk-pop .4s ease-out; }
+.funnel-result p { margin: 0; }
+.funnel-big b { font-size: 34px; font-weight: 900; color: #2f7d4f; }
+.funnel-demo { display: grid; gap: 8px; justify-items: center; padding: 14px; border-radius: 18px; background: var(--surface-soft); }
+.fd-link { padding: 6px 12px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; animation: fd-in .4s ease-out both; }
+.fd-arrow { font-size: 12px; font-weight: 800; color: var(--muted); animation: fd-in .4s .5s ease-out both; }
+.fd-card { width: 100%; display: grid; gap: 2px; padding: 12px 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 6px 18px rgba(40, 25, 15, .12); animation: fd-in .5s 1s ease-out both; }
+.fd-card span { font-size: 12px; color: var(--muted); }
+.fd-tags { color: var(--tomato) !important; font-weight: 700; }
+@keyframes fd-in { from { opacity: 0; transform: translateY(8px); } }
+.funnel-hold { position: relative; justify-self: center; width: 150px; height: 150px; border-radius: 50%; border: 0; background: var(--tomato); color: #fff; font: inherit; font-weight: 900; font-size: 16px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: 0 10px 26px rgba(238, 106, 76, .35); }
+.fh-ring { position: absolute; inset: -8px; border-radius: 50%; background: conic-gradient(var(--ink) 0deg, transparent 0deg); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); }
+.funnel-hold.is-holding { transform: scale(.96); }
+.funnel-hold.is-holding .fh-ring { animation: fh-fill 1.2s linear forwards; }
+@property --fh { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.fh-ring { background: conic-gradient(var(--ink) var(--fh), transparent var(--fh)); }
+@keyframes fh-fill { to { --fh: 360deg; } }
+.funnel-building { display: grid; gap: 10px; }
+.fb-pct { margin: 0; font-size: 40px; font-weight: 900; text-align: center; font-variant-numeric: tabular-nums; }
+.funnel-building progress { width: 100%; height: 10px; }
+.fb-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+.fb-list li::before { content: "○ "; }
+.fb-list li.is-done { color: var(--ink); }
+.fb-list li.is-done::before { content: "✓ "; color: #2f7d4f; font-weight: 900; }
+.funnel-step .wizard-footer { justify-content: space-between; }
+@media (prefers-reduced-motion: reduce) { .fg-row i, .fd-link, .fd-arrow, .fd-card, .funnel-result { animation: none; } }
+.funnel-hold { display: block; margin: 10px auto; }
+.funnel-building .fb-pct { font-size: 40px; line-height: 1.1; }
