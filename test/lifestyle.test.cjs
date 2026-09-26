@@ -506,6 +506,16 @@ test("request replies: the requester hears it was planned or passed, the planner
   run('state.requests["req-2"]={id:"req-2",recipeId:"x",recipeTitle:"餃子",from:"むすめ",status:"dismissed",createdAt:nowIso(),updatedAt:nowIso()};state.me="むすめ"');
   assert.ok(run('requestNews().some(n=>n.kind==="passed")'));
 });
+test("joining under a new name renames the invitee instead of adding a third person",()=>{
+  const run=app();
+  run('state.family=["パパ","むすめ"];state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()};state.memberPrefs={"むすめ":{restrictions:[],likes:[],done:true,updatedAt:nowIso()}};state.evaluations=[{id:"e1",recipeId:"x",recipeTitle:"丼",cookedAt:today(),familyRepeatCycles:{"むすめ":"weekly"}}]');
+  run('renameHouseholdMember("むすめ","ゆい")');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.family)')),["パパ","ゆい"]);
+  assert.equal(run('state.roles.members["ゆい"]'),"viewer");assert.equal(run('"むすめ" in state.roles.members'),false);
+  assert.equal(run('state.memberPrefs["ゆい"].done'),true);assert.equal(run('state.evaluations[0].familyRepeatCycles["ゆい"]'),"weekly");
+  run('joinInvite={code:"x",from:"パパ",to:"ゆい"};joinPick=""');
+  const html=run('renderJoin()');assert.ok(html.includes('data-name="ゆい"'));assert.ok(html.includes('data-name="パパ"'));
+});
 test("seasoning with soy sauce or mentsuyu is not mistaken for boiling in a pot", () => {
   const eq = (step) => L.suggestPlanning({ ingredients: [], steps: [step] }).equipment;
   assert.ok(!eq("しょうゆで味を整える").includes("鍋"));

@@ -283,14 +283,32 @@ function renderShareInvite() {
   if (!shareAvailable() || syncEnabled() || dailyProfile().servings < 2) return "";
   return `<section class="share-invite"><p class="hand">＼ ふたりで使うと、もっと楽しい ／</p><p class="small">相手のスマホから「これ食べたい」をリクエストできます。</p>${dailyButton("life-share-open", "招待リンクをつくる")}</section>`;
 }
+const PLACEHOLDER_NAMES = ["自分", "いっしょに食べた人"];
+let joinPick = "";
+// 招待リンクの2人の名前から選ぶ。自分の2台目（iPadなど）は招待した人の名前で参加する。
 function renderJoin() {
   const q = joinInvite;
+  const names = [q.to, q.from].filter((n, i, all) => n && !PLACEHOLDER_NAMES.includes(n) && all.indexOf(n) === i);
+  const pick = joinPick || (names.length ? "" : "custom");
+  const choice = (name, note) => `<button type="button" class="join-choice" data-action="life-join-pick" data-name="${escapeAttr(name)}" aria-pressed="${pick === name}"><b>${escapeHtml(name)}</b><small>${note}</small></button>`;
   return `<section class="hero-card join-card"><p class="hand">ようこそ！</p><h2>${q.from ? `${escapeHtml(q.from)}から、<br />` : ""}<span class="marker nobr">ふたりの食卓</span>への<br />招待です。</h2>
     <p>参加すると、レシピ・献立・買い物リストを共有して、「これ食べたい」をリクエストできます。</p>
-    <label class="field">あなたの呼び名<input id="join-name" class="input" maxlength="12" value="${escapeAttr(q.to)}" placeholder="例：むすめ"></label>
+    ${names.length ? `<p class="join-q">あなたはどっち？</p><div class="join-choices">${q.to && names.includes(q.to) ? choice(q.to, "招待された人") : ""}${q.from && names.includes(q.from) ? choice(q.from, "自分の別のスマホ・iPad") : ""}</div>` : ""}
+    ${pick === "custom" || !names.length ? `<label class="field">${names.length ? `呼び名を変えて参加（${escapeHtml(q.to || "招待された人")}の名前が変わります）` : "あなたの呼び名"}<input id="join-name" class="input" maxlength="12" value="${escapeAttr(names.length ? "" : q.to)}" placeholder="例：むすめ"></label>` : `<input id="join-name" type="hidden" value="${escapeAttr(pick)}">`}
+    ${names.length && pick !== "custom" ? '<button type="button" class="text-button join-custom" data-action="life-join-pick" data-name="custom">呼び名を変えて参加する</button>' : ""}
     ${state.recipes.length || state.evaluations.length ? '<p class="muted small">この端末のレシピと記録も、ふたりのデータに加わります。</p>' : ""}
-    <button type="button" class="primary-button full-button" data-action="life-join" ${shareBusy ? "disabled" : ""}>${shareBusy ? "つないでいます…" : "参加する"}</button>
+    <button type="button" class="primary-button full-button" data-action="life-join" ${shareBusy || !pick ? "disabled" : ""}>${shareBusy ? "つないでいます…" : pick && pick !== "custom" ? `${escapeHtml(pick)}として参加する` : "参加する"}</button>
     <button type="button" class="text-button full-button" data-action="life-join-cancel">今はやめておく</button></section>`;
+}
+// 2人の家族に3人目の名前を足さない：名前を変える時は、招待された人の名前を置き換える。
+function renameHouseholdMember(from, to) {
+  if (!from || !to || from === to) return;
+  renameRatings(from, to);
+  state.family = state.family.map((n) => (n === from ? to : n));
+  const members = { ...(state.roles?.members || {}) };
+  if (from in members) { members[to] = members[from]; delete members[from]; state.roles = { members, updatedAt: nowIso() }; }
+  if (state.memberPrefs?.[from]) { state.memberPrefs = { ...state.memberPrefs, [to]: { ...state.memberPrefs[from], updatedAt: nowIso() } }; delete state.memberPrefs[from]; }
+  state.settingsUpdatedAt = nowIso();
 }
 
 // ----- actions (called first from handleDailyAction) -----
@@ -385,7 +403,8 @@ function handleHouseholdAction(action, data) {
     });
     return true;
   }
-  if (action === "life-join-cancel") { joinInvite = null; render(); return true; }
+  if (action === "life-join-cancel") { joinInvite = null; joinPick = ""; render(); return true; }
+  if (action === "life-join-pick") { joinPick = data.name || ""; render(); if (joinPick === "custom") setTimeout(() => document.querySelector("#join-name")?.focus(), 30); return true; }
   if (action === "life-join") {
     const name = document.querySelector("#join-name")?.value.trim().slice(0, 12);
     if (!name) { showToast("呼び名を入れてください。"); return true; }
@@ -396,18 +415,22 @@ function handleHouseholdAction(action, data) {
       state.onboarded = true;
       state.foodProfile = Lifestyle.profile({ servings: 2 });
     }
-    renameRatings("自分", name);
+    if (name !== invite.from) renameRatings("自分", name);
     connectRoom(invite.code).then((ok) => {
       shareBusy = false;
       if (!ok) { showToast("つなげませんでした。通信を確認して、もう一度リンクを開いてください。"); render(); return; }
       joinInvite = null;
-      const partner = state.family.find((n) => n !== name && n !== "自分") || invite.from;
+      joinPick = "";
+      const real = state.family.filter((n) => !PLACEHOLDER_NAMES.includes(n));
+      if (!real.includes(name) && real.length >= 2 && invite.to && real.includes(invite.to)) renameHouseholdMember(invite.to, name);
+      const sameDevicePerson = name === invite.from;
+      const partner = state.family.find((n) => n !== name && !PLACEHOLDER_NAMES.includes(n)) || (sameDevicePerson ? invite.to : invite.from);
       setMembers(name, partner);
       if (state.servingCount < 2) state.servingCount = 2;
       state.view = "today";
       saveState();
       syncNow({ silent: true });
-      showToast(`${invite.from || "相手"}とつながりました！`);
+      showToast(sameDevicePerson ? `この端末も${name}としてつながりました！` : `${invite.from || "相手"}とつながりました！`);
       render();
     });
     return true;
