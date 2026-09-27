@@ -3280,41 +3280,70 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .pj-tech { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
 .pj-tech i { font-style: normal; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #fff1ec; color: #8a4a36; }
 .pj-comment { font-size: 14px; }
-/* 晩ごはんタイプのカード：属性の色で光るレアカード＋パワプロ風のS〜Gランク */
-.cook-type-card { position: relative; overflow: hidden; margin-top: 4px; padding: 16px 16px 18px; border-radius: 26px; background: radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--el) 45%, #1a1330), #0f0b18 72%); color: #fff; text-align: center; display: grid; justify-items: center; gap: 6px; border: 2px solid color-mix(in srgb, var(--el) 70%, #fff); box-shadow: 0 0 0 4px #0f0b18, 0 0 36px color-mix(in srgb, var(--el) 60%, transparent), 0 14px 30px rgba(10, 5, 25, .45); animation: ct-in .7s cubic-bezier(.2, 1.3, .4, 1) both; }
-@keyframes ct-in { from { transform: rotateY(90deg) scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
-.ct-holo { position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.35) 46%, rgba(255,230,160,.25) 50%, transparent 58%); animation: ct-holo 3.2s ease-in-out infinite; pointer-events: none; mix-blend-mode: screen; }
-@keyframes ct-holo { 0% { transform: translateX(-30%); } 60%, 100% { transform: translateX(30%); } }
-.ct-top { width: 100%; display: flex; justify-content: space-between; align-items: center; position: relative; }
-.ct-kicker { margin: 0; font-size: 11px; letter-spacing: .18em; color: #e3d8ff; }
-.ct-overall { margin: 0; display: grid; justify-items: end; line-height: 1; }
-.ct-overall small { font-size: 10px; color: #e3d8ff; }
-.ct-overall b { font-size: 38px; font-weight: 900; color: var(--el); text-shadow: 0 0 14px color-mix(in srgb, var(--el) 70%, transparent); }
-.ct-art { position: relative; width: min(230px, 66%); height: auto; border-radius: 20px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--el) 60%, #fff), 0 0 26px color-mix(in srgb, var(--el) 55%, transparent); }
-.ct-element { margin: 4px 0 0; padding: 2px 12px; border-radius: 999px; background: color-mix(in srgb, var(--el) 30%, transparent); border: 1px solid color-mix(in srgb, var(--el) 70%, transparent); font-size: 12px; font-weight: 800; }
-.ct-name { margin: 0; font-size: 23px; line-height: 1.3; font-weight: 900; background: linear-gradient(90deg, #fff 0%, color-mix(in srgb, var(--el) 60%, #fff) 50%, #fff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.ct-catch { margin: 0 0 4px; font-size: 14px; color: #ece4ff; }
-.ct-stats { list-style: none; margin: 4px 0; padding: 12px; width: 100%; display: grid; gap: 7px; border-radius: 16px; background: rgba(255, 255, 255, .06); }
-.ct-stats li { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) 1.9em 1.9em; align-items: center; gap: 8px; font-size: 13px; }
-.cs-name { text-align: left; font-weight: 800; color: #ece4ff; }
-.cs-bar { height: 10px; border-radius: 5px; background: rgba(255, 255, 255, .12); overflow: hidden; }
-.cs-bar i { display: block; height: 100%; width: var(--v); border-radius: 5px; transform-origin: left; animation: cs-fill .9s var(--d) cubic-bezier(.2, .9, .3, 1) both; }
+/* 晩ごはんタイプのカード：生成りのメニューカード（アプリの色に合わせる） */
+.cook-type-card { position: relative; margin-top: 4px; padding: 18px 18px 20px; border-radius: 22px; background: #fffaf3; color: var(--ink); text-align: center; display: grid; justify-items: center; gap: 4px; border: 1px solid #ead9c4; box-shadow: inset 0 0 0 6px #fffaf3, inset 0 0 0 7px #e2c2ad, 0 10px 26px rgba(80, 50, 30, .12); animation: ct-in .6s ease-out both; }
+@keyframes ct-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ct-kicker { width: 100%; margin: 0 0 6px; display: flex; justify-content: space-between; white-space: nowrap; font-size: 10px; letter-spacing: .16em; color: #a88f78; font-weight: 700; }
+.ct-portrait { position: relative; margin: 2px 0 6px; width: min(230px, 68%); aspect-ratio: 4 / 5; border-radius: 999px 999px 18px 18px; overflow: hidden; background: color-mix(in srgb, var(--el) 22%, #f6ead9); box-shadow: 0 0 0 4px #fffaf3, 0 0 0 5px #e2c2ad; }
+.ct-art { width: 100%; height: 100%; object-fit: cover; }
+.ct-stamp { position: absolute; right: 8px; bottom: 10px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; border: 2.5px solid #c8412c; color: #c8412c; background: rgba(255, 250, 243, .85); font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", serif; font-weight: 800; font-size: 15px; transform: rotate(-12deg); }
+.ct-element { margin: 0; font-size: 11px; letter-spacing: .15em; color: #a88f78; font-weight: 700; }
+.ct-name { margin: 0; font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif; font-weight: 800; font-size: 24px; line-height: 1.35; letter-spacing: .04em; color: #2a2420; }
+.ct-catch { margin: 0 0 8px; font-size: 13px; color: #7a6e64; }
+.ct-sheet { position: relative; width: 100%; padding: 12px 14px; border-radius: 16px; background: #fff; border: 1px solid #efe2d2; }
+.ct-overall { position: absolute; top: 12px; left: 10px; margin: 0; width: 56px; height: 56px; display: grid; place-content: center; border-radius: 50%; background: #d4533a; color: #fff; box-shadow: 0 4px 10px rgba(212, 83, 58, .35); line-height: 1; }
+.ct-overall span { font-size: 9px; letter-spacing: .2em; }
+.ct-overall b { font-family: "Shippori Mincho B1", serif; font-size: 22px; }
+.ct-stats { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ct-stats li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr) 1.8em; align-items: center; gap: 10px; font-size: 13px; }
+.cs-name { text-align: left; font-weight: 700; color: #5b5048; }
+.cs-bar { height: 6px; border-radius: 3px; background: #f3e9dc; overflow: hidden; }
+.cs-bar i { display: block; height: 100%; width: var(--v); border-radius: 3px; transform-origin: left; animation: cs-fill .9s var(--d) cubic-bezier(.2, .9, .3, 1) both; }
 @keyframes cs-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.cs-grade { font-size: 18px; font-weight: 900; font-style: italic; animation: cs-pop .4s calc(var(--d) + .7s) cubic-bezier(.2, 1.6, .4, 1) both; }
-@keyframes cs-pop { from { transform: scale(0); } to { transform: scale(1); } }
-.ct-stats small { font-size: 11px; color: #bfb3dc; text-align: right; }
-.g-S { color: transparent; background: linear-gradient(90deg, #ffe66d, #ff8bd1, #7fd8ff); -webkit-background-clip: text; background-clip: text; } .cs-bar .g-S { background: linear-gradient(90deg, #ffe66d, #ff8bd1, #7fd8ff); }
-.g-A { color: #ff5fa2; } .cs-bar .g-A { background: #ff5fa2; }
-.g-B { color: #ff5252; } .cs-bar .g-B { background: #ff5252; }
-.g-C { color: #ff9b3d; } .cs-bar .g-C { background: #ff9b3d; }
-.g-D { color: #ffd23f; } .cs-bar .g-D { background: #ffd23f; }
-.g-E { color: #7ee06a; } .cs-bar .g-E { background: #7ee06a; }
-.g-F { color: #5cb8ff; } .cs-bar .g-F { background: #5cb8ff; }
-.g-G { color: #a8a8b8; } .cs-bar .g-G { background: #a8a8b8; }
-.ct-move { margin: 2px 0 0; display: grid; gap: 0; }
-.ct-move small { font-size: 11px; color: #bfb3dc; letter-spacing: .2em; }
-.ct-move b { font-size: 18px; color: var(--el); }
-.ct-share { margin-top: 6px; padding: 8px 18px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .1); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
-@media (prefers-reduced-motion: reduce) { .cook-type-card, .ct-holo, .cs-bar i, .cs-grade { animation: none; } }
+.cs-grade { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-size: 18px; font-weight: 700; animation: fd-in .4s calc(var(--d) + .6s) ease-out both; }
+.g-S { color: #b8862b; } .cs-bar .g-S { background: linear-gradient(90deg, #e4b75a, #b8862b); }
+.g-A { color: #d4533a; } .cs-bar .g-A { background: #d4533a; }
+.g-B { color: #e0784f; } .cs-bar .g-B { background: #e0784f; }
+.g-C { color: #d99a45; } .cs-bar .g-C { background: #e6ac5c; }
+.g-D { color: #a99a52; } .cs-bar .g-D { background: #c7b86a; }
+.g-E { color: #7f9a6c; } .cs-bar .g-E { background: #9db78a; }
+.g-F { color: #7f98ab; } .cs-bar .g-F { background: #a3b8c7; }
+.g-G { color: #a89a8c; } .cs-bar .g-G { background: #cdbfb1; }
+.ct-move { width: 100%; margin: 10px 0 2px; display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 8px; font-size: 13px; }
+.ct-move span { color: #a88f78; font-weight: 700; letter-spacing: .1em; }
+.ct-move i { border-bottom: 2px dotted #d9c4ad; transform: translateY(-3px); }
+.ct-move b { font-family: "Shippori Mincho B1", serif; font-size: 16px; color: #2a2420; }
+.ct-share { margin-top: 8px; padding: 9px 22px; border-radius: 999px; border: 0; background: var(--tomato); color: #fff; font: inherit; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(238, 106, 76, .3); }
+@media (prefers-reduced-motion: reduce) { .cook-type-card, .cs-bar i, .cs-grade { animation: none; } }
 .profile-wizard .photo-drop small, .photo-drop small { color: #fff; opacity: .95; }
 .profile-wizard .photo-drop b { color: #fff; }
+
+/* 料理スキル：写真＋テスト */
+.skill-parts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; }
+.skill-part { display: grid; justify-items: center; align-content: center; gap: 3px; min-height: 132px; padding: 12px 8px; border-radius: 18px; text-align: center; font: inherit; cursor: pointer; }
+.skill-part.photo-drop { background: var(--tomato); color: #fff; box-shadow: 0 6px 16px rgba(238, 106, 76, .3); }
+.skill-part.quiz-start { border: 1.5px solid var(--tomato); background: #fff; color: var(--ink); }
+.skill-part span { font-size: 30px; }
+.skill-part b { font-size: 15px; }
+.skill-part small { font-size: 11px; line-height: 1.4; }
+.skill-part.is-done { background: #fff; border: 1.5px solid #e2d3c0; cursor: default; }
+.skill-part.is-done p { margin: 0; }
+.sp-head { font-size: 13px; font-weight: 800; }
+.sp-head b { color: var(--sage-dark); font-size: 13px; }
+.skill-part .pj-dish { font-size: 14px; font-weight: 800; }
+.skill-part .pj-comment { font-size: 11px; color: var(--muted); }
+.skill-total { display: grid; justify-items: center; gap: 2px; margin: 6px 0; padding: 12px; border-radius: 18px; background: #fff7ec; text-align: center; }
+.skill-total p { margin: 0; }
+.st-label { font-size: 11px; color: var(--muted); font-weight: 700; }
+.st-name { font-weight: 800; }
+.ratio-part { margin-bottom: 10px; }
+.ratio-part .quick-sub small { color: var(--muted); font-weight: 700; margin-left: 4px; }
+
+.ratio-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ratio-cell { display: grid; justify-items: center; gap: 2px; padding: 8px 2px 6px; border-radius: 14px; background: #fff; border: 1.5px solid color-mix(in srgb, var(--c) 40%, #efe2d2); }
+.rc-label { display: grid; justify-items: center; font-size: 11px; font-weight: 700; line-height: 1.25; text-align: center; min-height: 3.1em; }
+.rc-label span { font-size: 20px; }
+.ratio-cell .rr-count { font-size: 22px; color: var(--c); line-height: 1.1; }
+.rc-btns { display: flex; gap: 4px; }
+.rc-btns button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: #fffaf3; font: inherit; font-size: 16px; font-weight: 800; color: var(--ink); cursor: pointer; }
+.rc-btns button:disabled { opacity: .35; }

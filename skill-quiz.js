@@ -86,13 +86,13 @@ function handleSkillQuizAction(action, data) {
     shareMessage(`料理スキル診断の結果は「${SKILL_TYPES[level].name}」${Skills.stars(level)} でした。作れる料理だけで献立が決まる「リピごち」`, `${location.origin}${location.pathname}?skill=1`);
     return true;
   } else if (action === "life-quiz-save") {
-    const level = skillQuizLevel(skillQuiz.answers);
-    state.skillProfile = { level, growth: skillQuiz.growth, diagnosed: true, updatedAt: nowIso() };
+    const quizLevel = skillQuizLevel(skillQuiz.answers);
+    const photoLevel = state.skillProfile?.photoLevel || null;
+    const level = combinedSkill(quizLevel, photoLevel);
+    state.skillProfile = { level, quizLevel, ...(photoLevel ? { photoLevel } : {}), growth: skillQuiz.growth, diagnosed: true, updatedAt: nowIso() };
     state.planOverrides = {};
     skillQuiz = null;
-    // 初回設定の途中で診断した時は、次の質問へ。
-    const draft = state.onboardingDraft;
-    if (!state.onboarded && draft && FUNNEL[draft.quickSetupIndex] === 2) draft.quickSetupIndex = FUNNEL.indexOf(2) + 1;
+    // 初回設定の途中なら、スキルの画面に戻って「写真＋テスト」の総合を見せる。
     saveState();
     if (state.onboarded) showToast(`「${SKILL_TYPES[level].name}」を献立に反映しました。`);
   }
@@ -100,8 +100,14 @@ function handleSkillQuizAction(action, data) {
   globalThis.scrollTo?.({ top: 0 });
   return true;
 }
+// 料理スキルは、写真の判定とテストの両方があれば平均（小数は切り上げ）。片方だけならその値。
+function combinedSkill(quizLevel, photoLevel) {
+  const parts = [quizLevel, photoLevel].filter((x) => [1, 2, 3, 4, 5].includes(x));
+  return parts.length ? Math.ceil(parts.reduce((a, b) => a + b, 0) / parts.length) : 1;
+}
 function normalizeSkillProfile(raw) {
-  return [1, 2, 3, 4, 5].includes(Number(raw?.level)) ? { level: Number(raw.level), growth: raw.growth === "grow" ? "grow" : "steady", diagnosed: raw.diagnosed === true, updatedAt: normalizeTimestamp(raw.updatedAt) } : null;
+  const lvl = (x) => ([1, 2, 3, 4, 5].includes(Number(x)) ? Number(x) : null);
+  return lvl(raw?.level) ? { level: lvl(raw.level), ...(lvl(raw.quizLevel) ? { quizLevel: lvl(raw.quizLevel) } : {}), ...(lvl(raw.photoLevel) ? { photoLevel: lvl(raw.photoLevel) } : {}), growth: raw.growth === "grow" ? "grow" : "steady", diagnosed: raw.diagnosed === true, updatedAt: normalizeTimestamp(raw.updatedAt) } : null;
 }
 function renderSkillSettings() {
   if (isViewer()) return "";

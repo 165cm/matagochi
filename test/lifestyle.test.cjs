@@ -915,8 +915,10 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   run(`state.onboardingDraft.equipment = Lifestyle.equipmentDefaults(state.onboardingDraft.equipment); handleDailyAction("life-equipment-toggle",{name:"オーブン"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(run("state.onboardingDraft.equipment.オーブン"), "have");
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "ratio", "then how the week's dinners split");
-  run(`handleDailyAction("life-ratio",{kind:"out",delta:"1"}); handleDailyAction("life-ratio",{kind:"deli",delta:"-1"})`);
-  assert.equal(run("JSON.stringify(ratioOf(state.onboardingDraft))"), JSON.stringify({ self: 4, out: 2, take: 1, deli: 0 }), "always 7 nights: more eating out comes from cooking, less delivery goes back to it");
+  run(`handleDailyAction("life-ratio",{part:"wd",kind:"out",delta:"1"}); handleDailyAction("life-ratio",{part:"we",kind:"deli",delta:"1"})`);
+  assert.equal(run("JSON.stringify(partOf(state.onboardingDraft,'wd'))"), JSON.stringify({ self: 2, out: 2, take: 1, deli: 0 }), "weekdays stay 5: more eating out comes from cooking");
+  assert.equal(run("JSON.stringify(partOf(state.onboardingDraft,'we'))"), JSON.stringify({ self: 0, out: 1, take: 0, deli: 1 }), "the weekend stays 2");
+  assert.equal(run("JSON.stringify(ratioOf(state.onboardingDraft))"), JSON.stringify({ self: 2, out: 3, take: 1, deli: 1 }), "together, 7 nights");
   run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-staple",{value:"rice"}); handleDailyAction("life-staple",{value:"noodle"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(run("state.onboardingDraft.staples.join()"), "rice,noodle");
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "chains");
@@ -928,6 +930,7 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /assets\/types\/CKQ\.webp/);
   assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /cs-grade g-[SABCDEFG]/, "stats show S to G grades");
   assert.equal(run("chainTastes(state.onboardingDraft).join()"), "中華風,和風");
+  assert.equal(run("[combinedSkill(3, 4), combinedSkill(2, null), combinedSkill(null, 5)].join()"), "4,2,5", "photo and test together: the average, rounded up");
   run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-quick-skill",{level:"3"})`);
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "type", "a picked skill shows the dinner type");
   run(`handleDailyAction("life-quick-next",{})`);
@@ -950,7 +953,7 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "building");
   assert.match(run("buildingLines(state.onboardingDraft).join('|')"), /4人分に、分量をそろえています\|.*オーブンも使える料理.*★3までの.*平日45分以内/, "the building screen shows the answers being used");
   assert.equal(run("state.onboardingDraft.eaters.join()"), "partner,kids", "who eats survives a reload");
-  assert.equal(run("state.onboardingDraft.ratio.out + ':' + state.onboardingDraft.chains.length + ':' + state.onboardingDraft.priority"), "2:3:fast", "the diagnosis answers survive a reload");
+  assert.equal(run("state.onboardingDraft.ratio.wd.out + ':' + state.onboardingDraft.chains.length + ':' + state.onboardingDraft.priority"), "2:3:fast", "the diagnosis answers survive a reload");
   assert.equal(run("state.onboardingDraft.goal + state.onboardingDraft.pain + state.onboardingDraft.weekdayMinutes"), "savetired45");
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded && state.view"), "plan");

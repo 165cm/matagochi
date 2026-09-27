@@ -1769,14 +1769,18 @@ function funnelProgress(i) {
 }
 // 自分で選ぶ時のスキル（診断しない人向け）。
 const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒める・煮るならOK", 3: "照り焼きやガパオも作れる", 4: "ハンバーグや揚げ焼きも", 5: "揚げ物も魚をおろすのも" };
+// 料理スキル：写真のAI判定と1分テストの両方で、総合的に判断する（片方だけでも進める）。
 function renderSkillStep() {
   const sp = state.skillProfile;
-  const levels = [1, 2, 3, 4, 5].map((l) => `<button type="button" class="rhythm-option" data-action="life-quick-skill" data-level="${l}" aria-pressed="${sp?.level === l}"><strong><span class="skill-stars">${Skills.stars(l)}</span> ${SKILL_TYPES[l].name}</strong><small>${SKILL_PICK_HINT[l]}</small></button>`).join("");
-  const quizDone = sp?.diagnosed && sp.via !== "photo" ? `<div class="skill-result"><p class="quiz-stars">${Skills.stars(sp.level)}</p><p><b>${SKILL_TYPES[sp.level].name}</b></p><p class="cc-badge">✓ 診断ずみ・ぴったり度 高</p></div>` : "";
-  return `${quizDone}${renderPhotoJudge()}
-    <p class="small skill-why">判定すると、<b>作れない料理が献立に入らない</b>ので、「これなら作れる」献立になります。</p>
-    ${skillPhoto.status === "done" ? "" : `<button type="button" class="secondary-button full-button" data-action="life-quiz-start">📝 写真がない → 1分テストで判定</button>`}
-    <details class="skill-self" ${sp && !sp.diagnosed ? "open" : ""}><summary>自分で選ぶ</summary><div class="skill-picks">${levels}</div></details>`;
+  const levels = [1, 2, 3, 4, 5].map((l) => `<button type="button" class="rhythm-option" data-action="life-quick-skill" data-level="${l}" aria-pressed="${sp?.level === l && !sp?.diagnosed}"><strong><span class="skill-stars">${Skills.stars(l)}</span> ${SKILL_TYPES[l].name}</strong><small>${SKILL_PICK_HINT[l]}</small></button>`).join("");
+  const quiz = sp?.quizLevel
+    ? `<div class="skill-part is-done"><p class="sp-head">📝 テスト <b>${Skills.stars(sp.quizLevel)}</b></p><p class="small">9問の診断ずみ</p><button type="button" class="link-inline" data-action="life-quiz-start">もう一度</button></div>`
+    : `<button type="button" class="skill-part quiz-start" data-action="life-quiz-start"><span aria-hidden="true">📝</span><b>1分テスト</b><small>9問・できる？に答えるだけ</small></button>`;
+  const both = sp?.quizLevel && sp?.photoLevel;
+  const total = sp?.diagnosed ? `<div class="skill-total"><p class="st-label">${both ? "写真 ＋ テストの総合" : "いまの判定（もう片方もやると、より正確に）"}</p><p class="quiz-stars">${Skills.stars(sp.level)}</p><p class="st-name">${SKILL_TYPES[sp.level].name}</p>${both ? '<p class="cc-badge">✓ 写真とテストで診断ずみ・ぴったり度 高</p>' : ""}</div>` : "";
+  return `<p class="small">写真とテスト、<b>両方やるとぴったり度が上がります</b>。作れない料理は献立に入りません。</p>
+    <div class="skill-parts">${renderPhotoJudge()}${quiz}</div>${total}
+    <details class="skill-self" ${sp && !sp.diagnosed ? "open" : ""}><summary>どちらもしないで、自分で選ぶ</summary><div class="skill-picks">${levels}</div></details>`;
 }
 function renderQuickSetup() {
   const p = profileDraft(), i = p.quickSetupIndex;

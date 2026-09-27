@@ -100,7 +100,7 @@
       // はじめの質問（悩み・保存した動画・食費）。献立には使わず、案内の言葉と目安に使う。
       ...(raw.remindAdded === true ? { remindAdded: true } : {}),
       // 晩ごはんタイプ診断：1週間の割合・主食・外食のお店・いちばん大事なこと。
-      ...(raw.ratio && typeof raw.ratio === "object" ? { ratio: Object.fromEntries(["self", "out", "take", "deli"].map((k) => [k, Math.max(0, Math.min(7, Math.round(Number(raw.ratio[k]) || 0)))])) } : {}),
+      ...(raw.ratio && typeof raw.ratio === "object" ? { ratio: Object.fromEntries(["wd", "we"].filter((part) => raw.ratio[part] && typeof raw.ratio[part] === "object").map((part) => [part, Object.fromEntries(["self", "out", "take", "deli"].map((k) => [k, Math.max(0, Math.min(part === "wd" ? 5 : 2, Math.round(Number(raw.ratio[part][k]) || 0)))]))])) } : {}),
       ...(raw.ratioSet === true ? { ratioSet: true } : {}),
       ...(Array.isArray(raw.staples) ? { staples: raw.staples.filter((x) => ["rice", "noodle", "bread", "other"].includes(x)) } : {}),
       ...(Array.isArray(raw.chains) ? { chains: raw.chains.filter((x) => /^[a-z]{2,12}$/.test(x)).slice(0, 3) } : {}),

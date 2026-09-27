@@ -48,24 +48,30 @@ const STAT_NAMES = [["fire", "火力"], ["speed", "時短"], ["thrift", "節約"
 const GRADES = [[90, "S"], [80, "A"], [70, "B"], [60, "C"], [50, "D"], [40, "E"], [30, "F"], [0, "G"]];
 const gradeOf = (v) => GRADES.find(([min]) => v >= min)[1];
 
-const ratioOf = (p) => ({ self: 4, out: 1, take: 1, deli: 1, ...(p.ratio && typeof p.ratio === "object" ? p.ratio : {}) });
+// 平日（5回）と休日（2回）に分けて振り分ける。ratioOf は合計（7回）。
+const RATIO_PARTS = [{ id: "wd", label: "平日（月〜金）", total: 5, base: { self: 3, out: 1, take: 1, deli: 0 } }, { id: "we", label: "休日（土日）", total: 2, base: { self: 1, out: 1, take: 0, deli: 0 } }];
+const partOf = (p, part) => { const def = RATIO_PARTS.find((x) => x.id === part); return { ...def.base, ...(p.ratio?.[part] && typeof p.ratio[part] === "object" ? p.ratio[part] : {}) }; };
+const ratioOf = (p) => Object.fromEntries(RATIO_KINDS.map((k) => [k.id, RATIO_PARTS.reduce((s, part) => s + (Number(partOf(p, part.id)[k.id]) || 0), 0)]));
 const ratioTotal = (r) => RATIO_KINDS.reduce((s, k) => s + (Number(r[k.id]) || 0), 0);
 
-// ① 1週間（7回）の晩ごはん：自炊・外食・テイクアウト・デリバリーに振り分ける。
+// ① いまの1週間：平日5回・休日2回の晩ごはんを、自炊・外食・テイクアウト・デリバリーに振り分ける。
 function renderRatioStep(p) {
-  const r = ratioOf(p);
-  const plates = RATIO_KINDS.flatMap((k) => Array.from({ length: r[k.id] }, () => `<i style="--c:${k.color}" title="${k.label}">${k.icon}</i>`)).join("");
-  return `<p class="small">だいたいでOK。<b>7回</b>の晩ごはんを振り分けてください。</p><div class="ratio-plates" aria-hidden="true">${plates}</div>
-    <div class="ratio-rows">${RATIO_KINDS.map((k) => `<div class="ratio-row"><span class="rr-label"><span aria-hidden="true">${k.icon}</span>${k.label}</span><button type="button" class="plan-icon" data-action="life-ratio" data-kind="${k.id}" data-delta="-1" aria-label="${k.label}を1回減らす" ${r[k.id] <= 0 ? "disabled" : ""}>−</button><b class="rr-count" aria-live="polite">${r[k.id]}回</b><button type="button" class="plan-icon" data-action="life-ratio" data-kind="${k.id}" data-delta="1" aria-label="${k.label}を1回増やす" ${k.id !== "self" && r.self <= 0 && ratioTotal(r) >= 7 ? "disabled" : ""}>＋</button></div>`).join("")}</div>`;
+  return `<p class="small">だいたいでOK。平日と休日に分けて、振り分けてください。</p>${RATIO_PARTS.map((part) => {
+    const r = partOf(p, part.id);
+    const plates = RATIO_KINDS.flatMap((k) => Array.from({ length: r[k.id] }, () => `<i style="--c:${k.color}" title="${k.label}">${k.icon}</i>`)).join("");
+    return `<section class="ratio-part"><h3 class="quick-sub">${part.label} <small>${part.total}回</small></h3><div class="ratio-plates" style="--n:${part.total}" aria-hidden="true">${plates}</div>
+      <div class="ratio-grid">${RATIO_KINDS.map((k) => `<div class="ratio-cell" style="--c:${k.color}"><span class="rc-label"><span aria-hidden="true">${k.icon}</span>${k.label.replace("・惣菜", "")}</span><b class="rr-count" aria-live="polite">${r[k.id]}</b><span class="rc-btns"><button type="button" data-action="life-ratio" data-part="${part.id}" data-kind="${k.id}" data-delta="-1" aria-label="${part.label}の${k.label}を1回減らす" ${r[k.id] <= 0 ? "disabled" : ""}>−</button><button type="button" data-action="life-ratio" data-part="${part.id}" data-kind="${k.id}" data-delta="1" aria-label="${part.label}の${k.label}を1回増やす" ${r[k.id] >= part.total ? "disabled" : ""}>＋</button></span></div>`).join("")}</div></section>`;
+  }).join("")}`;
 }
-function changeRatio(p, kind, delta) {
-  const r = ratioOf(p);
-  if (!RATIO_KINDS.some((k) => k.id === kind)) return;
-  r[kind] = Math.max(0, Math.min(7, r[kind] + delta));
-  // 合計は7回：増やしたぶんは自炊から（自炊を増やした時は、多いものから）減らす。
-  while (ratioTotal(r) > 7) { const from = kind !== "self" && r.self > 0 ? "self" : RATIO_KINDS.map((k) => k.id).filter((id) => id !== kind).sort((a, b) => r[b] - r[a])[0]; r[from] -= 1; }
-  while (ratioTotal(r) < 7) r.self += 1;
-  p.ratio = r;
+function changeRatio(p, partId, kind, delta) {
+  const part = RATIO_PARTS.find((x) => x.id === partId);
+  if (!part || !RATIO_KINDS.some((k) => k.id === kind)) return;
+  const r = partOf(p, partId);
+  r[kind] = Math.max(0, Math.min(part.total, r[kind] + delta));
+  // 回数は平日5・休日2のまま：増やしたぶんは自炊から（自炊を増やした時は、多いものから）減らす。減らしたぶんは自炊へ。
+  while (ratioTotal(r) > part.total) { const from = kind !== "self" && r.self > 0 ? "self" : RATIO_KINDS.map((k) => k.id).filter((id) => id !== kind).sort((a, b) => r[b] - r[a])[0]; r[from] -= 1; }
+  while (ratioTotal(r) < part.total) r.self += 1;
+  p.ratio = { ...(p.ratio || {}), [partId]: r };
 }
 // ② よく食べる主食（複数OK）
 function renderStapleStep(p) {
@@ -87,8 +93,8 @@ let skillPhoto = { status: "idle", result: null, message: "" };
 function renderPhotoJudge() {
   const s = skillPhoto;
   if (s.status === "loading") return `<div class="demo-wait"><p class="dw-stage" aria-live="polite">${WAIT_STAGES_PHOTO[0]}</p><div class="dw-bar"><i></i></div><div class="dw-tip" aria-live="polite"><small>待っている間に、ひとこと</small><p>${WAIT_TIPS[3]}</p></div></div>`;
-  if (s.status === "done") { const r = s.result; return `<div class="photo-judge"><p class="pj-kicker">AI判定</p><p class="pj-dish">${escapeHtml(r.dish)}</p><p class="quiz-stars">${Skills.stars(r.level)}</p><p class="pj-type"><b>${escapeHtml(SKILL_TYPES[r.level].name)}</b></p>${r.techniques.length ? `<p class="pj-tech">${r.techniques.map((t) => `<i>${escapeHtml(t)}</i>`).join("")}</p>` : ""}${r.comment ? `<p class="pj-comment">💬 ${escapeHtml(r.comment)}</p>` : ""}<button type="button" class="text-button" data-action="life-photo-retry">別の写真で試す</button></div>`; }
-  return `<label class="photo-drop"><input type="file" accept="image/*" id="skill-photo" hidden><span aria-hidden="true">📸</span><b>作った料理の写真で判定</b><small>カメラロールから1枚。AIが腕前を見ます（写真は保存しません）</small></label>${s.status === "error" ? `<p class="form-error small">${escapeHtml(s.message)}</p>` : ""}`;
+  if (s.status === "done") { const r = s.result; return `<div class="skill-part is-done"><p class="sp-head">📸 写真 <b>${Skills.stars(r.level)}</b></p><p class="pj-dish">${escapeHtml(r.dish)}</p>${r.techniques.length ? `<p class="pj-tech">${r.techniques.map((t) => `<i>${escapeHtml(t)}</i>`).join("")}</p>` : ""}${r.comment ? `<p class="pj-comment">${escapeHtml(r.comment)}</p>` : ""}<button type="button" class="link-inline" data-action="life-photo-retry">別の写真で</button></div>`; }
+  return `<label class="skill-part photo-drop"><input type="file" accept="image/*" id="skill-photo" hidden><span aria-hidden="true">📸</span><b>作った料理の写真</b><small>AIが腕前を見ます。写真は保存しません</small></label>${s.status === "error" ? `<p class="form-error small">${escapeHtml(s.message)}</p>` : ""}`;
 }
 const WAIT_STAGES_PHOTO = ["写真を見ています", "焼き色と切り方を見ています", "腕前を計算しています"];
 function bindPhotoJudge() {
@@ -104,7 +110,8 @@ function bindPhotoJudge() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error?.message || "判定できませんでした。");
       skillPhoto = { status: "done", result: data, message: "" };
-      state.skillProfile = { level: data.level, growth: state.skillProfile?.growth || "steady", diagnosed: true, via: "photo", updatedAt: nowIso() };
+      const quizLevel = state.skillProfile?.quizLevel || null;
+      state.skillProfile = { level: combinedSkill(quizLevel, data.level), photoLevel: data.level, ...(quizLevel ? { quizLevel } : {}), growth: state.skillProfile?.growth || "steady", diagnosed: true, updatedAt: nowIso() };
       trackDaily("skill_photo_judged", { level: data.level });
       saveState({ scheduleSync: false });
     } catch (error) {
@@ -155,22 +162,24 @@ function chainTastes(p) {
   (p.chains || []).forEach((id) => { const t = map[CHAIN_OF[id]?.genre]; if (t) counts[t] = (counts[t] || 0) + 1; });
   return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t]) => t);
 }
-// 結果のカード：キャラクター・総合力・S〜Gランクのステータス・必殺技。属性の色で光る。
+// 結果のカード：アプリの色（生成り・テラコッタ）に合わせた、メニューカード風。アーチ窓の絵・判子の属性・明朝体の名前・S〜Gの成績表。
+const TYPE_NO = { RKQ: 1, RKS: 2, RAQ: 3, RAS: 4, CKQ: 5, CKS: 6, CAQ: 7, CAS: 8 };
 function renderCookTypeCard(r) {
   return `<div class="cook-type-card" style="--el:${r.color}" data-code="${r.code}">
-    <div class="ct-holo" aria-hidden="true"></div>
-    <div class="ct-top"><p class="ct-kicker">あなたの 晩ごはんタイプ</p><p class="ct-overall"><small>総合力</small><b data-overall="${r.overall}">${r.overall}</b></p></div>
-    <img class="ct-art" src="assets/types/${r.code}.webp" alt="${escapeAttr(r.name)}のキャラクター" width="640" height="640">
+    <p class="ct-kicker"><span>YOUR DINNER TYPE</span><span>No.${String(TYPE_NO[r.code]).padStart(2, "0")}</span></p>
+    <figure class="ct-portrait"><img class="ct-art" src="assets/types/${r.code}.webp" alt="${escapeAttr(r.name)}のキャラクター" width="640" height="640"><span class="ct-stamp" aria-label="${escapeAttr(r.element)}属性">${escapeHtml(r.element)}</span><span class="ct-overall"><span>総合</span><b>${r.overall}</b></span></figure>
     <p class="ct-element">${r.el} ${escapeHtml(r.element)}属性</p>
     <h3 class="ct-name">${escapeHtml(r.name)}</h3>
     <p class="ct-catch">${escapeHtml(r.catch)}</p>
-    <ul class="ct-stats">${STAT_NAMES.map(([id, name], i) => { const v = r.stats[id], g = gradeOf(v); return `<li style="--v:${v}%;--d:${i * 0.12 + 0.3}s"><span class="cs-name">${name}</span><span class="cs-bar"><i class="g-${g}"></i></span><b class="cs-grade g-${g}">${g}</b><small>${v}</small></li>`; }).join("")}</ul>
-    <p class="ct-move"><small>必殺技</small><b>「${escapeHtml(r.move)}」</b></p>
-    <button type="button" class="ct-share" data-action="life-type-share">結果をシェア ↗</button></div>`;
+    <div class="ct-sheet">
+      <ul class="ct-stats">${STAT_NAMES.map(([id, name], i) => { const v = r.stats[id], g = gradeOf(v); return `<li style="--v:${v}%;--d:${i * 0.1 + 0.2}s"><span class="cs-name">${name}</span><span class="cs-bar"><i class="g-${g}"></i></span><b class="cs-grade g-${g}">${g}</b></li>`; }).join("")}</ul>
+    </div>
+    <p class="ct-move"><span>得意技</span><i aria-hidden="true"></i><b>${escapeHtml(r.move)}</b></p>
+    <button type="button" class="ct-share" data-action="life-type-share">結果をシェア</button></div>`;
 }
 function handleCookTypeAction(action, data) {
   const p = profileDraft();
-  if (action === "life-ratio") { changeRatio(p, data.kind, Number(data.delta) || 0); p.ratioSet = true; return false; }
+  if (action === "life-ratio") { changeRatio(p, data.part, data.kind, Number(data.delta) || 0); p.ratioSet = true; return false; }
   if (action === "life-staple") { const on = new Set(p.staples || []); on.has(data.value) ? on.delete(data.value) : on.add(data.value); p.staples = STAPLES.map(([id]) => id).filter((id) => on.has(id)); return false; }
   if (action === "life-chain") { const on = new Set(p.chains || []); if (on.has(data.value)) on.delete(data.value); else if (on.size < 3 && CHAIN_OF[data.value]) on.add(data.value); p.chains = [...on]; return false; }
   if (action === "life-priority") { p.priority = PRIORITIES.some(([id]) => id === data.value) ? data.value : ""; p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1); return false; }
