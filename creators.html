@@ -40,14 +40,14 @@
       <li><b>レシピの画面では、投稿者名と「チャンネル登録」ボタンを目立つ位置に出しています。</b></li>
       <li><b>作り方は要点だけの短い要約です。</b>コツや火加減は動画で見ていただくように案内し、手順ごとに「▶」でその場面から再生できるようにしています。</li>
       <li><b>材料の分量は、献立と買い物リストに使うための情報です。</b>元の動画へのリンクと出典を必ず添えます。</li>
-      <li><b>「今週の人気」:</b> 公開されている日本の料理動画から、毎週10品を紹介しています。取得した動画の情報は28日で自動的に入れ替わり、消えます。</li>
+      <li><b>「新着」:</b> 公開されている日本の料理動画から、毎週10品を紹介しています。取得した動画の情報は28日で自動的に入れ替わり、消えます。</li>
       <li><b>YouTubeの利用規約とAPIの規約に沿うよう運営しています。</b>非公開・限定公開の動画は取り込みません。</li>
     </ul>
   </section>
 
   <section>
     <h2>掲載を止めたい場合</h2>
-    <p>下のフォームから、チャンネルのURL（または動画のURL）をお送りください。<b>その場で「今週の人気」「みんなの定番」から外します</b>（10分ほどで反映されます）。</p>
+    <p>下のフォームから、チャンネルのURL（または動画のURL）をお送りください。<b>その場で「新着」「みんなの定番」から外します</b>（10分ほどで反映されます）。</p>
     <form id="optout">
       <label>チャンネルのURL、@ハンドル、または動画のURL<input id="channel" required placeholder="https://www.youtube.com/@..." autocomplete="off"></label>
       <label>メッセージ（任意）<textarea id="message" maxlength="1000"></textarea></label>
@@ -77,7 +77,7 @@
     try {
       const response = await fetch(`${API}/api/creators/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: document.getElementById("channel").value, message: document.getElementById("message").value, contact: document.getElementById("contact").value }) });
       const data = await response.json().catch(() => ({}));
-      result.textContent = response.ok ? `「${data.title || data.channelId}」を、今週の人気・みんなの定番から外しました。10分ほどで反映されます。` : (data.error?.message || "送れませんでした。時間をおいてお試しください。");
+      result.textContent = response.ok ? `「${data.title || data.channelId}」を、新着・みんなの定番から外しました。10分ほどで反映されます。` : (data.error?.message || "送れませんでした。時間をおいてお試しください。");
     } catch { result.textContent = "送れませんでした。通信環境を確かめてください。"; }
     finally { send.disabled = false; }
   });

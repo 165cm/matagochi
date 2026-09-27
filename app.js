@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-chapters";
+const APP_VERSION = "20260927-onboarding";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2128,7 +2128,7 @@ function renderSettings() {
   return `
     ${renderAccountPanel()}
     <section class="settings-list" aria-label="設定">
-    ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 2 ? "disabled" : ""}>＋</button></div></div>
+    ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 12 ? "disabled" : ""}>＋</button></div></div>
       ${(() => { const p = dailyProfile(); return `<dl class="planning-summary"><div><dt>平日の時間</dt><dd>${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"}</dd></div><div><dt>食べられない</dt><dd>${escapeHtml(p.restrictions.join("・") || "未指定")}</dd></div><div><dt>苦手</dt><dd>${escapeHtml(p.dislikes.join("・") || "未指定")}</dd></div></dl>`; })()}
       <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><button class="secondary-button full-button" data-action="life-pantry-open">🫙 常備品だけ変える</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p>`)}
     ${settingRow("rhythm", "🗓", "献立のリズム", rhythmOn() ? `${RHYTHMS[state.rhythm.preset].label}・買い物${state.rhythm.shopTime}` : "未設定", renderRhythmSettings())}

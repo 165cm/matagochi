@@ -900,19 +900,26 @@ test("hidden starter recipes leave the list and the planner; bulk delete removes
   assert.ok(run("!!state.tombstones.recipes.own1 && !!state.tombstones.evaluations.e1"));
 });
 
-test("the first-run funnel: questions before and after the five, answers kept across a reload", () => {
+test("the first-run funnel: goal first, then the five, answers kept across a reload", () => {
   const run = app();
-  run(`handleDailyAction("life-quick",{}); handleDailyAction("life-funnel-pick",{field:"pain",value:"tired"}); handleDailyAction("life-funnel-pick",{field:"savedVideos",value:"few"})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "value");
+  run(`handleDailyAction("life-quick",{}); handleDailyAction("life-funnel-pick",{field:"goal",value:"save"}); handleDailyAction("life-funnel-pick",{field:"pain",value:"tired"})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 0, "goal and pain move on by themselves, then how many people");
+  run(`handleDailyAction("life-servings",{count:"4"})`);
+  assert.equal(run("state.onboardingDraft.servings"), 4, "three or more people can be chosen");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 1);
   run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 0, "then the five questions");
-  run(`state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("budget"); handleDailyAction("life-funnel-pick",{field:"foodBudget",value:"50000"})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "budget", "the budget answer shows its estimate before moving on");
+  assert.equal(run("state.rhythm.preset"), "weekday", "the rhythm starts on weekdays");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "value");
+  assert.equal(run("yearlyChange(state.onboardingDraft).kg"), 76, "19kg a person a year");
+  assert.ok(run("yearlyChange(state.onboardingDraft).hours") > 50);
+  run(`state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf(3); handleDailyAction("life-minutes",{minutes:"45"})`);
+  assert.equal(run("state.onboardingDraft.weekdayMinutes"), 45);
   run(`handleDailyAction("life-funnel-commit",{}); state = normalizeState(JSON.parse(JSON.stringify(state)))`);
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "building");
-  assert.equal(run("state.onboardingDraft.pain + state.onboardingDraft.foodBudget"), "tired50000");
+  assert.equal(run("state.onboardingDraft.goal + state.onboardingDraft.pain + state.onboardingDraft.weekdayMinutes"), "savetired45");
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded && state.view"), "plan");
+  assert.equal(run("state.servingCount"), 4);
 });
 
 test("trend recipes: ranked by chosen dishes, saved when planned, removed after their 28 days", () => {
