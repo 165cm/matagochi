@@ -650,7 +650,7 @@ function renderCooking() {
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
   <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま・" : ""}そろえたらタップ</small></h3><ul class="cooking-ingredients cooking-check">${recipe.ingredients.map((i, index) => `<li><label>${cookingCheck("ingredient", index, recipe, servings)}<span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></label></li>`).join("")}</ul>
-  <h3>作り方 <small class="muted">終わったらタップ${timecodesLoading(recipe) ? "・▶ の場面を探しています…" : ""}</small></h3><ol class="cooking-steps cooking-check">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${escapeHtml(st)}</span></label>${stepTimeButton(recipe, index)}</li>`).join("")}</ol>
+  <h3>作り方 <small class="muted">終わったらタップ${timecodeHint(recipe) ? `・${escapeHtml(timecodeHint(recipe))}` : ""}</small></h3><ol class="cooking-steps cooking-check">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${escapeHtml(st)}</span></label>${stepTimeButton(recipe, index)}</li>`).join("")}</ol>
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
 // ----- 記録の編集（食べた日・次に食べたい頃・写真・メモ） -----
@@ -1558,7 +1558,7 @@ function renderRecipeDetail() {
     ${servingsUnknownBanner(r, saved && edit)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
     ${r.ingredients?.length ? `<ul class="detail-ingredients">${r.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</span></li>`).join("")}</ul>` : '<p class="muted small">材料が登録されていません。</p>'}
-    <h3 class="detail-h">作り方${timecodesLoading(r) ? ' <small class="muted">▶ の場面を探しています…</small>' : ""}</h3>
+    <h3 class="detail-h">作り方${timecodeHint(r) ? ` <small class="muted">${escapeHtml(timecodeHint(r))}</small>` : ""}</h3>
     ${r.steps?.length ? `<ol class="detail-steps">${r.steps.map((s, i) => `<li>${escapeHtml(s)}${stepTimeButton(r, i)}</li>`).join("")}</ol>` : '<p class="muted small">作り方が登録されていません。</p>'}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
     ${edit && saved ? `<div class="detail-foot">${dailyButton("life-new-record", "作った記録をつける", `data-recipe="${escapeAttr(r.id)}"`)}<button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button></div>` : ""}

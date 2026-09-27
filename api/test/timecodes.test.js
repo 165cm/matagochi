@@ -16,3 +16,13 @@ test('step times for older recipes: found once, shared from the cache, limited p
   for (let i = 0; i < TIMECODES_PER_DAY - 1; i++) await book.find({ url, steps: ['焼く', `手順${i}`] }, 'home-0001');
   await assert.rejects(book.find({ url, steps: ['焼く', 'もう一つ'] }, 'home-0001'), { code: 'timecode_quota' });
 });
+
+test('step times keep the recipe order: long recipes and empty steps still line up', async () => {
+  let asked = null;
+  const book = createTimecodeBook(createMemorySyncStore(), { reserveBudget: async () => {}, snippetSeconds: async () => 300,
+    analyze: async (url, steps) => { asked = steps; return { stepTimes: steps.map((_, i) => i * 10) }; } });
+  const steps = ['切る', '', ...Array.from({ length: 10 }, (_, i) => `手順${i}`)];
+  const { stepTimes } = await book.find({ url: 'https://www.youtube.com/watch?v=abcdefghijk', steps }, 'home-0002');
+  assert.equal(stepTimes.length, 12); assert.equal(asked.length, 12);
+  assert.equal(stepTimes[0], 0); assert.equal(stepTimes[1], null); assert.equal(stepTimes[11], 110);
+});

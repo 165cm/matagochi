@@ -112,7 +112,8 @@ function finishFunnelPicks() {
 /* ---- 投稿者へのリスペクト：公式プレーヤーで見ながら作る・出典を主役に・チャンネル登録へ ---- */
 // 手順ごとの動画の時刻は、手順の数と合う時だけ使う。
 function stepTimesFor(steps, times) {
-  return Array.isArray(times) && Array.isArray(steps) && times.length === steps.length && times.some((t) => Number.isFinite(t)) ? times.map((t) => (Number.isFinite(t) ? t : null)) : [];
+  // 時刻が手順より少ない時（長いレシピの後ろの方など）は、足りない分を「なし」に。
+  return Array.isArray(times) && Array.isArray(steps) && times.length <= steps.length && times.some((t) => Number.isFinite(t)) ? steps.map((_, i) => (Number.isFinite(times[i]) ? times[i] : null)) : [];
 }
 let videoStartAt = { key: "", seconds: 0 };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -124,16 +125,24 @@ function recipeStepTimes(recipe) {
   return timecodes.get(timecodeKey(recipe))?.times || [];
 }
 function timecodesLoading(recipe) { return timecodes.get(timecodeKey(recipe))?.status === "loading"; }
+// 見出しの横の小さな案内：探している間と、見つからなかった時（理由つき）。
+function timecodeHint(recipe) {
+  const entry = timecodes.get(timecodeKey(recipe));
+  if (entry?.status === "loading") return "▶ の場面を探しています…";
+  if (entry?.status === "none") return `▶ の場面は付けられませんでした（${entry.reason}）`;
+  return "";
+}
 function ensureTimecodes(recipe) {
   if (!API_BASE_URL || !recipe || !youtubeVideoId(recipe.videoUrl) || (recipe.steps || []).length < 2 || recipeStepTimes(recipe).length) return;
   const key = timecodeKey(recipe);
   if (timecodes.has(key)) return;
   timecodes.set(key, { status: "loading" });
   globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, { method: "POST", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps }) })
-    .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then(async (r) => { const data = await r.json().catch(() => ({})); return r.ok ? data : { error: data.error?.message || `エラー ${r.status}` }; })
+    .catch(() => ({ error: "通信できませんでした" }))
     .then((data) => {
       const times = stepTimesFor(recipe.steps, data?.stepTimes);
-      timecodes.set(key, { status: times.length ? "done" : "none", times });
+      timecodes.set(key, { status: times.length ? "done" : "none", times, reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
       // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
       const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
       if (own && times.length) { own.stepTimes = times; saveState(); }
