@@ -263,7 +263,7 @@ function allDinnerRecipes() {
   const originals = new Set(personal.map((r) => r.starterId));
   return [
     ...personal,
-    ...(showStarters() ? Lifestyle.curated.filter((r) => !originals.has(r.id) && !starterHidden().has(r.id)) : []),
+    ...(showStarters() ? [...discoverRecipes(), ...Lifestyle.curated.filter((r) => !originals.has(r.id) && !starterHidden().has(r.id))] : []),
   ];
 }
 // Meals actually eaten (or confirmed and past) in the last two weeks, newest first.
@@ -725,6 +725,7 @@ function saveOwnRecipe(recipe) {
     id: generateId("r"),
     starterId: recipe.curated ? recipe.id : recipe.starterId,
     curated: undefined,
+    discover: undefined,
     savedAt: today(),
     updatedAt: nowIso(),
     catalog: null,
@@ -734,6 +735,9 @@ function saveOwnRecipe(recipe) {
 }
 function confirmDaily(day, recipe = day.candidate?.recipe) {
   if (!recipe) return;
+  // 今週の人気・みんなの定番は、献立に入れた時点で自分のレシピとして保存する（28日で消えても献立は残る）。
+  if (recipe.discover) recipe = saveOwnRecipe(recipe);
+  sharePopular(recipe, "planned");
   state.mealSlots[day.date] = {
     date: day.date,
     mealType: "dinner",
@@ -774,6 +778,7 @@ function dailyRecord(slot) {
     });
   }
   completeRequests(slot.recipe);
+  sharePopular(slot.recipe, "cooked");
   state.mealSlots[slot.date] = {
     ...slot,
     status: "cooked",
@@ -882,6 +887,12 @@ function handleDailyAction(action, data) {
     // 食費は、選ぶとその場で目安を見せる（次へは自分で）。それ以外はすぐ次へ。
     if (data.field !== "foodBudget") p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1);
   }
+  if (action === "life-funnel-dish") {
+    const p = profileDraft();
+    const picks = new Set(p.picks || []);
+    picks.has(data.recipe) ? picks.delete(data.recipe) : picks.add(data.recipe);
+    p.picks = [...picks].slice(0, 12);
+  }
   if (action === "life-funnel-commit") profileDraft().quickSetupIndex = FUNNEL.indexOf("building");
   if (action === "life-quick-back") profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1);
   if (action === "life-preview" && !state.onboarded) {
@@ -929,6 +940,7 @@ function handleDailyAction(action, data) {
     if (name) { profileDraft()[data.field][name] = "have"; if (data.field === "equipment") equipmentGroupIndex = 2; }
   }
   if (action === "life-finish") {
+    finishFunnelPicks();
     trackDaily("profile_completed");
     const p = Lifestyle.profile(profileDraft());
     p.completed = p.quickSetupIndex === null || p.completed;
@@ -1013,7 +1025,7 @@ function handleDailyAction(action, data) {
     creatorEditing = "";
   }
   if (action === "life-save-starter") {
-    const r = Lifestyle.curated.find((x) => x.id === data.recipe);
+    const r = findDiscover(data.recipe) || Lifestyle.curated.find((x) => x.id === data.recipe);
     if (r) {
       const own = saveOwnRecipe(r);
       if (state.view === "recipe") recipeDetailId = own.id;
@@ -1117,6 +1129,7 @@ function handleDailyAction(action, data) {
     state.starterPref = { show: data.show === "true", asked: true, updatedAt: nowIso() };
     showToast(data.show === "true" ? "おすすめレシピを表示します。" : "おすすめを隠しました。自分のレシピだけで献立を作ります。");
   }
+  if (action === "life-share-stats") { try { localStorage.setItem("ripigochi-share-stats", shareStatsOn() ? "off" : "on"); } catch {} }
   if (action === "life-starters-unhide" && !isViewer()) { state.starterPref = { ...normalizeStarterPref(state.starterPref), hidden: [], updatedAt: nowIso() }; showToast("非表示にしたおすすめを戻しました。"); }
   if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
   if (action === "life-skill-growth" && state.skillProfile) { state.skillProfile = { ...state.skillProfile, growth: data.value === "grow" ? "grow" : "steady", updatedAt: nowIso() }; state.planOverrides = {}; }
@@ -1309,7 +1322,7 @@ function slotHasUpdates(slot) {
 const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", "しいたけ", "トマト", "納豆", "レバー", "さば", "ゴーヤ"];
 // 課金につながるオンボーディング：悩みに気づく → 変化を見る → 5問 → 食費の目安 → 読み取りの実演 → 長押しで決める → 作成中 → 最初の献立。
 // 数字（0〜4）はこれまでの5問。
-const FUNNEL = ["pain", "videos", "value", 0, 1, 2, 3, 4, "budget", "demo", "commit", "building"];
+const FUNNEL = ["pain", "videos", "value", 0, 1, 2, 3, 4, "picks", "budget", "demo", "commit", "building"];
 const QUICK_STEPS = FUNNEL.length;
 const PAINS = [["fridge", "その日に冷蔵庫を見て考える"], ["same", "いつも同じ料理になりがち"], ["tired", "考えるのが一番しんどい"], ["ok", "わりと決められている"]];
 const VIDEOS = [["few", "ほとんど作っていない"], ["some", "たまに作る"], ["many", "よく作る"], ["none", "動画は保存しない"]];
@@ -1324,6 +1337,7 @@ function renderFunnelStep(key) {
     const saved = p.savedVideos === "few" || p.savedVideos === "some" ? `<li><b>保存しただけの動画</b>が、献立の候補に入る</li>` : "";
     return [`✨ ${lead}`, `<div class="funnel-graph" role="img" aria-label="献立を決める回数：いま週7回、リピごちは週2回"><p class="funnel-graph-title">献立を決める回数（1週間）</p><div class="fg-row"><span>いま</span><i style="--w:100%"></i><b>7回</b></div><div class="fg-row is-us"><span>リピごち</span><i style="--w:29%"></i><b>2回</b></div><p class="muted small">3日ずつまとめて決めるリズムの場合</p></div><ul class="funnel-points">${saved}<li>ふたりの「また食べたい」を覚えて、<b>かぶらない</b></li><li>決めたら<b>買い物リスト</b>まで自動</li></ul>`];
   }
+  if (key === "picks") return renderFunnelPicks();
   if (key === "budget") {
     const yen = Number(p.foodBudget) || 0;
     const result = p.foodBudget === undefined ? "" : yen
@@ -1493,7 +1507,7 @@ function starterRecipeList() {
   const saved = new Set(state.recipes.map((r) => r.starterId).filter(Boolean));
   const query = (state.searchText || "").trim().toLowerCase();
   const hidden = starterHidden();
-  return Lifestyle.curated
+  return [...rankByTaste(discoverRecipes()), ...Lifestyle.curated]
     .filter((r) => !saved.has(r.id) && !hidden.has(r.id))
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok)
@@ -1503,7 +1517,7 @@ function starterRecipeList() {
 // ----- レシピの詳細（閲覧が基本。編集は「編集する」から） -----
 let recipeDetailId = "";
 function detailRecipe() {
-  return recipeById(recipeDetailId) || Lifestyle.curated.find((r) => r.id === recipeDetailId) || null;
+  return recipeById(recipeDetailId) || findDiscover(recipeDetailId) || Lifestyle.curated.find((r) => r.id === recipeDetailId) || null;
 }
 function tagLabels(recipe) {
   const labels = new Map(Lifestyle.FACETS.flatMap((f) => f.options));
@@ -1567,6 +1581,7 @@ function renderStarterSettings() {
   const n = ownDinnerCount();
   return `<section class="panel starter-settings"><h3>🍳 おすすめレシピ</h3>
     <button type="button" class="role-toggle" data-action="life-starters" data-show="${!showStarters()}" aria-pressed="${showStarters()}"><span>最初から入っている料理を使う<small>${showStarters() ? "レシピ一覧と献立に、おすすめも出します" : "自分のレシピだけで献立を作ります"}</small></span><i aria-hidden="true"></i></button>
+    <button type="button" class="role-toggle" data-action="life-share-stats" aria-pressed="${shareStatsOn()}"><span>みんなの定番づくりに協力する<small>献立に入れた・作ったYouTubeレシピを、名前を伏せて数えます。写真・メモ・手入力のレシピは送りません。</small></span><i aria-hidden="true"></i></button>
     ${state.starterPref?.hidden?.length ? `<p class="small starter-hidden">非表示にしたおすすめ <b>${state.starterPref.hidden.length}品</b> <button type="button" class="text-button" data-action="life-starters-unhide">すべて戻す</button></p>` : ""}
     ${!showStarters() && n < 6 ? `<p class="notice">自分の夜ごはんのレシピが${n}品です。少ないと、献立が組めない日があります。</p>` : ""}</section>`;
 }

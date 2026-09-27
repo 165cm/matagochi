@@ -1,0 +1,29 @@
+name: Weekly trend recipes
+
+# サーバーは呼ばれた時しか動かないので、毎日1回ノックする（日本時間 朝5:17）。
+# 月曜はその週の10品がそろうまで続けて呼ぶ。そろっている日は「何もしない」がすぐ返る。
+# サーバー側は何回呼ばれても週10品分しか動かないので、費用は増えない。
+# 手動で試す時は Actions → Weekly trend recipes → Run workflow。
+on:
+  schedule:
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  knock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Collect this week's trend recipes (until 10 are ready)
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            out=$(curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \
+              https://matagochi-api-292190013809.us-central1.run.app/api/trends/refresh || echo '{}')
+            echo "Round $i: $out"
+            echo "$out" | grep -q '"done":true' && exit 0
+            echo "$out" | grep -q '"busy":true' && sleep 60
+          done
+          echo "Not finished yet; the next run continues."

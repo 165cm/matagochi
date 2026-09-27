@@ -3,6 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createTicketBook } from "./tickets.js";
 import { createAuth } from "./auth.js";
+import { createTrendBook } from "./trends.js";
+import { createPopularBook } from "./popular.js";
 import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
@@ -12,7 +14,7 @@ import { getSyncPhoto, getSyncRoom, putSyncPhoto, putSyncRoom } from "./sync.js"
 import { gzipSync } from "node:zlib";
 import { createPhotoStore, createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
-import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet } from "./youtube.js";
+import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes } from "./youtube.js";
 
 export function createApp(env = process.env, deps = {}) {
   const app = express();
@@ -30,6 +32,8 @@ export function createApp(env = process.env, deps = {}) {
       enabled: env.AI_IMPORT_ENABLED !== "false",
       tickets,
       refreshSnippet: async (videoId) => { const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env); return { caption: buildCaption(snippet), channelTitle: snippet.channelTitle }; } });
+  const trendBook = createTrendBook(recipeStore, { catalog, search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), now: deps.now || Date.now });
+  const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
@@ -94,6 +98,11 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/auth/email/verify", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, auth.emailVerify(req.body?.email, req.body?.code)); });
   app.get("/api/auth/me", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => auth.me(uid))); });
   app.put("/api/auth/me", (req, res) => send(res, signedIn(req).then((uid) => auth.link(uid, req.body))));
+  // 今週の人気レシピ（GitHubの定期実行がノックする。何回呼ばれても、週10品分しか動かない）と、みんなの定番。
+  app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, trendBook.list()); });
+  app.post("/api/trends/refresh", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.step()); });
+  app.get("/api/popular", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, popularBook.top(String(req.query?.segment || "any-0"))); });
+  app.post("/api/popular/event", (req, res) => send(res, popularBook.record(req.body || {}, req.ip)));
   app.get("/api/tickets", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     try {
