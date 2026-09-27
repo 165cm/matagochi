@@ -3178,38 +3178,13 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .beta-line { margin-top: -4px; }
 /* 損の場面：太陽が回る空・ちゃぶ台返し */
 .loss-scenes { display: grid; gap: 8px; }
-.loss-scene { position: relative; margin: 0; height: 170px; border-radius: 20px; overflow: hidden; }
-.loss-scene.is-sky { background: #8fd0ff; animation: ls-daynight 2.4s linear infinite; }
-@keyframes ls-daynight { 0%, 100% { background: #f7a86b; } 12%, 38% { background: #8fd0ff; } 50% { background: #e8735a; } 62%, 88% { background: #1d2451; } }
-.ls-sky { position: absolute; inset: 0; }
-.ls-orbit { position: absolute; left: 50%; top: 150px; width: 0; height: 0; animation: ls-orbit 2.4s linear infinite; }
-.ls-sun, .ls-moon { position: absolute; left: -16px; font-size: 32px; line-height: 1; }
-.ls-sun { top: -126px; }
-.ls-moon { top: 94px; transform: rotate(180deg); }
-@keyframes ls-orbit { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
-.ls-stars { position: absolute; top: 14px; left: 20px; right: 20px; color: #fff; font-size: 14px; letter-spacing: 30px; opacity: 0; animation: ls-stars 2.4s linear infinite; }
-@keyframes ls-stars { 0%, 55%, 95%, 100% { opacity: 0; } 65%, 85% { opacity: .9; } }
-.ls-ground { position: absolute; left: 0; right: 0; bottom: 0; height: 58px; background: #e9dccb; display: flex; align-items: flex-end; gap: 6px; padding: 0 18px 8px; }
-.ls-fridge { position: relative; width: 38px; height: 74px; margin-bottom: -2px; border-radius: 6px; background: #f4f7fa; border: 2px solid #b9c3cc; }
-.ls-fridge::after { content: ""; position: absolute; left: 0; right: 0; top: 26px; border-top: 2px solid #b9c3cc; }
-.ls-fridge i { position: absolute; right: 4px; top: 8px; width: 3px; height: 12px; background: #9aa7b3; border-radius: 2px; box-shadow: 0 30px 0 #9aa7b3; }
-.ls-person { font-size: 38px; line-height: 1; }
-.ls-think { align-self: center; margin-bottom: 36px; padding: 4px 10px; border-radius: 12px; background: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
-.ls-count { position: absolute; right: 12px; top: 10px; margin: 0; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 13px; font-weight: 800; }
-.ls-count b { font-size: 18px; }
-.loss-line { margin: 0 0 8px; font-size: 15px; line-height: 1.6; }
-.loss-line b { color: var(--sage-dark); font-size: 17px; }
-.loss-line small { display: block; color: var(--muted); font-size: 12px; }
-.loss-scene.is-table { background: linear-gradient(#c89b6d 0 62%, #8a5a35 62%); }
-.lt-room { position: absolute; inset: 0; display: grid; place-items: end center; padding-bottom: 22px; }
-.lt-dad { position: absolute; left: 22px; bottom: 30px; font-size: 44px; animation: lt-dad 1s ease-in-out infinite; }
-@keyframes lt-dad { 0%, 40% { transform: translateY(0); } 55% { transform: translateY(-6px) rotate(-8deg); } 100% { transform: translateY(0); } }
-.lt-table { position: relative; width: 170px; height: 34px; border-radius: 50%; background: #6b3f22; box-shadow: 0 6px 0 #4a2a15; display: flex; justify-content: center; gap: 4px; transform-origin: 20% 100%; animation: lt-flip 1s ease-in-out infinite; }
-.lt-table span { font-size: 26px; margin-top: -22px; animation: lt-fly 1s ease-in infinite; }
-.lt-table span:nth-child(2) { animation-delay: .04s; } .lt-table span:nth-child(3) { animation-delay: .08s; } .lt-table span:nth-child(4) { animation-delay: .12s; }
-@keyframes lt-flip { 0%, 45% { transform: rotate(0); } 60% { transform: rotate(-70deg) translateY(-20px); } 80%, 100% { transform: rotate(0); opacity: 1; } }
-@keyframes lt-fly { 0%, 50% { transform: translate(0, 0) rotate(0); opacity: 1; } 75% { transform: translate(60px, -70px) rotate(200deg); opacity: .9; } 79% { opacity: 0; } 80%, 100% { transform: translate(0, 0); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .loss-scene, .ls-orbit, .ls-stars, .lt-dad, .lt-table, .lt-table span { animation: none !important; } }
+.loss-video { position: relative; margin: 0; aspect-ratio: 640 / 358; border-radius: 20px; overflow: hidden; background: #2a2420; }
+.lv-media { display: block; width: 100%; height: 100%; object-fit: cover; }
+.lv-over { position: absolute; left: 0; right: 0; bottom: 0; display: grid; justify-items: end; gap: 0; padding: 36px 14px 10px; background: linear-gradient(transparent, rgba(20, 14, 10, .78)); color: #fff; text-align: right; text-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+.lv-label { font-size: 12px; font-weight: 800; opacity: .9; }
+.lv-num { font-size: 20px; font-weight: 900; line-height: 1.2; }
+.lv-num span { font-size: 38px; color: var(--egg); font-variant-numeric: tabular-nums; }
+.lv-sub { font-size: 11px; font-weight: 700; opacity: .85; }
 /* AIの読み取り：待ち時間・結果 */
 .demo-wait { display: grid; gap: 12px; padding: 16px; border-radius: 20px; background: var(--surface); }
 .dw-stage { margin: 0; font-weight: 800; }

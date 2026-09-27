@@ -1586,6 +1586,11 @@ function addChip(field) {
   render();
   document.querySelector(`[data-chip-input="${field}"]`)?.focus();
 }
+// 損の場面の動画（音なし・くり返し）。動きを減らす設定の人には止まった絵だけ。
+function lossVideo(name) {
+  const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  return reduce ? `<img class="lv-media" src="assets/loss/${name}.webp" alt="">` : `<video class="lv-media" poster="assets/loss/${name}.webp" autoplay muted loop playsinline preload="auto" aria-hidden="true"><source src="assets/loss/${name}.mp4" type="video/mp4"><source src="assets/loss/${name}.webm" type="video/webm"></video>`;
+}
 function renderFunnelStep(key) {
   const p = profileDraft();
   if (key === "goal") return [`🎯 これから、何を叶えたい？`, `<div class="funnel-picks is-goals">${GOALS.map(([id, icon, label]) => funnelPick("goal", [id, label], p.goal, icon)).join("")}</div>`];
@@ -1593,18 +1598,16 @@ function renderFunnelStep(key) {
   if (key === "loss") {
     const c = nowCost(p);
     const flips = Math.round(c.kg / (DINNER_KG * c.people));
+    const kgLine = `${c.people >= 5 ? "5人以上" : `${c.people}人`}の家庭`;
     return [`⏳ いまのままだと、1年で…`, `<div class="loss-scenes">
-      <figure class="loss-scene is-sky" aria-label="冷蔵庫の前で迷っている間に、太陽が${Math.round(c.days)}回のぼって沈みます">
-        <div class="ls-sky" aria-hidden="true"><span class="ls-orbit"><span class="ls-sun">☀️</span><span class="ls-moon">🌙</span></span><span class="ls-stars">✦ ✧ ✦</span></div>
-        <div class="ls-ground" aria-hidden="true"><span class="ls-fridge"><i></i></span><span class="ls-person">🧍</span><span class="ls-think">💭 なに作ろう…</span></div>
-        <p class="ls-count"><b data-days="${Math.round(c.days)}">1</b>日目</p>
+      <figure class="loss-video is-fridge" aria-label="冷蔵庫の前で迷う時間は、年${c.hours}時間。丸${c.days}日です">
+        ${lossVideo("fridge")}
+        <figcaption class="lv-over" aria-hidden="true"><span class="lv-label">冷蔵庫の前で迷う時間</span><b class="lv-num">年<span data-count="${c.hours}">${c.hours}</span>時間</b><span class="lv-sub">＝ 丸${c.days}日</span></figcaption>
       </figure>
-      <p class="loss-line">冷蔵庫の前で迷っているうちに、<b>太陽が${Math.round(c.days)}回</b>のぼって沈む。<small>年${c.hours}時間 ＝ 丸${c.days}日</small></p>
-      <figure class="loss-scene is-table" aria-label="食卓${flips}回分の料理が、ムダになります">
-        <div class="lt-room" aria-hidden="true"><span class="lt-dad">👴💢</span><div class="lt-table"><span>🍚</span><span>🍲</span><span>🐟</span><span>🥗</span></div></div>
-        <p class="ls-count">ちゃぶ台返し <b data-flips="${flips}">1</b>回分</p>
+      <figure class="loss-video is-table" aria-label="${kgLine}が捨てる食材は年${c.kg}kg。食卓${flips}回分をひっくり返すのと同じです">
+        ${lossVideo("table")}
+        <figcaption class="lv-over" aria-hidden="true"><span class="lv-label">捨てる食材 年${c.kg}kg</span><b class="lv-num">ちゃぶ台返し <span data-count="${flips}">${flips}</span>回分</b><span class="lv-sub">${kgLine}・3割は「傷んだ・期限切れ」</span></figcaption>
       </figure>
-      <p class="loss-line">${c.people >= 5 ? "5人以上" : `${c.people}人`}の家庭で捨てる食材は年${c.kg}kg。<b>食卓${flips}回分</b>を、まるごとひっくり返すのと同じ。<small>理由の3割以上は「傷んだ・期限切れ」</small></p>
     </div><p class="funnel-turn">ここから、<b>これからのこと</b>を決めましょう →</p>${funnelSource}`];
   }
   if (key === "remind") {
@@ -1671,18 +1674,14 @@ function bindFunnel() {
   document.querySelector("#demo-url")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) document.querySelector('[data-action="life-demo-read"]')?.click(); });
   document.querySelectorAll("[data-chip-input]").forEach((el) => el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); addChip(el.dataset.chipInput); } }));
   bindTimeDial();
-  // 損の場面：太陽が1周するごとに「◯日目」、ちゃぶ台が返るごとに回数を増やす（動きを減らす設定なら最後の数だけ）。
+  // 損の場面：動画の上の数字を、0から一度だけ数え上げる（動きを減らす設定ならそのまま）。
   const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  const loop = (el, max, every, step = 1) => {
-    if (!el) return;
-    if (reduce) { el.textContent = String(max); return; }
-    let n = 1;
-    const tick = () => { if (!document.body.contains(el)) return; n = n >= max ? 1 : Math.min(max, n + step); el.textContent = String(n); setTimeout(tick, n >= max ? every * 2 : every); };
-    setTimeout(tick, every);
-  };
-  loop(document.querySelector("[data-days]"), Number(document.querySelector("[data-days]")?.dataset.days), 2400);
-  const flips = Number(document.querySelector("[data-flips]")?.dataset.flips) || 1;
-  loop(document.querySelector("[data-flips]"), flips, 1000, Math.max(1, Math.ceil(flips / 12)));
+  if (!reduce) document.querySelectorAll(".loss-video [data-count]").forEach((el, i) => {
+    const max = Number(el.dataset.count) || 0, t0 = performance.now() + 400 + i * 500, ms = 1400;
+    el.textContent = "0";
+    const tick = (t) => { if (!document.body.contains(el)) return; const k = Math.max(0, Math.min(1, (t - t0) / ms)); el.textContent = String(Math.round(max * (1 - (1 - k) ** 3))); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  });
   const building = document.querySelector(".funnel-building");
   if (building) {
     const pct = building.querySelector(".fb-pct"), bar = building.querySelector("progress"), items = building.querySelectorAll("li");

@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v76";
-const APP_VERSION = "20260927-eatout1";
+const CACHE_NAME = "ripigochi-v77";
+const APP_VERSION = "20260927-lossvideo1";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -29,12 +29,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260927-eatout1",
-  "./icons/favicon-32.png?v=20260927-eatout1",
-  "./icons/icon-192.png?v=20260927-eatout1",
-  "./icons/icon-512.png?v=20260927-eatout1",
-  "./icons/icon-maskable-512.png?v=20260927-eatout1",
-  "./icons/apple-touch-icon.png?v=20260927-eatout1"
+  "./manifest.webmanifest?v=20260927-lossvideo1",
+  "./icons/favicon-32.png?v=20260927-lossvideo1",
+  "./icons/icon-192.png?v=20260927-lossvideo1",
+  "./icons/icon-512.png?v=20260927-lossvideo1",
+  "./icons/icon-maskable-512.png?v=20260927-lossvideo1",
+  "./icons/apple-touch-icon.png?v=20260927-lossvideo1"
 ];
 
 self.addEventListener("install", (event) => {
@@ -60,6 +60,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.includes("/api/")) return;
+  // 動画は部分取得（Range）で読むので、ブラウザにまかせてキャッシュしない。
+  if (request.destination === "video" || request.headers.has("range")) return;
 
   // 共有シート経由(?url=...)を含むページ遷移はネットワーク優先、オフライン時はキャッシュのシェルを返す
   if (request.mode === "navigate") {
