@@ -126,7 +126,7 @@ function finishFunnelPicks() {
   const ids = profileDraft().picks || [];
   const chosen = ids.map((id) => findDiscover(id) || Lifestyle.curated.find((r) => r.id === id)).filter(Boolean);
   state.tasteSeeds = chosen.map((r) => Lifestyle.traits(r)).slice(0, 12);
-  chosen.forEach((r) => saveOwnRecipe(r));
+  return chosen.map((r) => saveOwnRecipe(r));
 }
 
 /* ---- 投稿者へのリスペクト：公式プレーヤーで見ながら作る・出典を主役に・チャンネル登録へ ---- */

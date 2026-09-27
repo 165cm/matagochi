@@ -3125,3 +3125,47 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .cc-plan li span { color: var(--muted); font-size: 12px; font-weight: 700; }
 .cc-plan li small, .cc-plan li .cc-badge { grid-column: 2; font-size: 11px; color: var(--muted); }
 .cc-plan li .cc-badge { color: #3f7a1f; justify-self: start; }
+/* 価値を先に見せる「ようこそ」 */
+.welcome-card h2 { font-size: 24px; line-height: 1.45; }
+.welcome-flow { list-style: none; margin: 14px 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; counter-reset: wf; }
+.welcome-flow li { position: relative; display: grid; justify-items: center; gap: 2px; padding: 10px 2px; border-radius: 16px; background: var(--surface); box-shadow: 0 3px 10px rgba(40, 25, 15, .07); text-align: center; animation: fd-in .45s ease-out both; }
+.welcome-flow li:nth-child(2) { animation-delay: .15s; } .welcome-flow li:nth-child(3) { animation-delay: .3s; } .welcome-flow li:nth-child(4) { animation-delay: .45s; }
+.welcome-flow span { font-size: 26px; }
+.welcome-flow b { font-size: 12px; }
+.welcome-flow small { font-size: 10px; color: var(--muted); line-height: 1.3; }
+/* 一緒に食べる人・調理器具 */
+.funnel-picks.is-grid2 { grid-template-columns: 1fr 1fr; }
+.funnel-picks.is-grid2 .funnel-pick { font-size: 13px; min-height: 58px; }
+.tool-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.tool-chip { min-height: 40px; padding: 6px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); font: inherit; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.tool-chip[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--ink); }
+.tool-chip[aria-pressed="true"]::before { content: "✓ "; color: var(--sage-dark); }
+/* 宣言：指紋を長押し */
+.cc-declare { margin: 6px 0 4px; text-align: center; font-size: 17px; font-weight: 800; line-height: 1.6; }
+.funnel-hold.is-print { width: 120px; height: 120px; display: grid; place-items: center; }
+.fh-print { width: 64px; height: 64px; color: #fff; position: relative; z-index: 1; }
+.funnel-hold.is-print.is-holding .fh-ring { animation-duration: 1.5s; }
+.fh-hint { text-align: center; }
+/* 課金の案内（プレビュー） */
+.paywall { position: fixed; inset: 0; z-index: 40; display: grid; align-items: end; justify-items: center; background: rgba(30, 22, 16, .45); backdrop-filter: blur(3px); animation: fd-in .3s ease-out both; }
+.pw-card { position: relative; width: min(100%, 430px); max-height: 92vh; overflow: auto; padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; background: #fffaf3; display: grid; gap: 12px; }
+.pw-card h2 { margin: 0; font-size: 22px; line-height: 1.45; }
+.pw-kicker { margin: 0; font-size: 13px; font-weight: 800; color: var(--sage-dark); }
+.pw-close { position: absolute; top: 10px; right: 12px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; font-size: 22px; color: #b3a596; cursor: pointer; }
+.pw-timeline { list-style: none; margin: 0; padding: 0 0 0 18px; display: grid; gap: 10px; border-left: 3px solid #f3d3c8; }
+.pw-timeline li { position: relative; display: grid; font-size: 13px; }
+.pw-timeline li::before { content: ""; position: absolute; left: -26px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; border: 3px solid var(--tomato); }
+.pw-timeline li:first-child::before { background: var(--tomato); }
+.pw-timeline b { font-size: 14px; }
+.pw-timeline span { color: var(--muted); }
+.pw-plans { display: grid; gap: 8px; }
+.pw-plan { position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 8px; padding: 14px 14px; border-radius: 16px; border: 2px solid var(--line); background: #fff; font: inherit; text-align: left; cursor: pointer; }
+.pw-plan[aria-pressed="true"] { border-color: var(--tomato); background: #fff4ef; }
+.pw-plan b { font-size: 15px; }
+.pw-plan small { grid-column: 1; font-size: 11px; color: var(--muted); }
+.pw-price { grid-row: 1 / span 2; grid-column: 2; font-size: 18px; font-weight: 900; }
+.pw-price small { font-size: 11px; font-weight: 700; }
+.pw-badge { position: absolute; top: -10px; left: 12px; padding: 1px 8px; border-radius: 999px; background: var(--tomato); color: #fff; font-size: 11px; font-weight: 800; }
+.pw-start { min-height: 54px; font-size: 17px; }
+.pw-fine { margin: 0; text-align: center; }
+.pw-card.is-exit { text-align: center; justify-items: center; }

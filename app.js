@@ -1029,7 +1029,7 @@ function render() {
     pantry: renderPantryPage
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = views[state.view]() + renderTicketSheet() + renderTicketAsk() + renderTicketParty();
+  document.querySelector("#app").innerHTML = views[state.view]() + renderTicketSheet() + renderTicketAsk() + (paywall ? renderPaywall() : renderTicketParty());
   placePageChrome();
   renderTicketChip();
   bindEvents();

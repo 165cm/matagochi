@@ -95,10 +95,11 @@
   function profile(raw = {}) {
     return {
       detailedSetup: raw.detailedSetup === true,
-      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 13 ? raw.quickSetupIndex : null,
+      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 16 ? raw.quickSetupIndex : null,
       picks: Array.isArray(raw.picks) ? raw.picks.filter((x) => typeof x === "string" && x.length < 40).slice(0, 12) : [],
       // はじめの質問（悩み・保存した動画・食費）。献立には使わず、案内の言葉と目安に使う。
       ...(raw.remindAdded === true ? { remindAdded: true } : {}),
+      ...(Array.isArray(raw.eaters) ? { eaters: raw.eaters.filter((x) => ["me", "partner", "kids", "teens", "parents", "friends"].includes(x)) } : {}),
       ...Object.fromEntries(["goal", "pain", "savedVideos", "foodBudget"].filter((k) => typeof raw[k] === "string" && raw[k].length < 20).map((k) => [k, raw[k]])),
       version: 1,
       completed: raw.completed === true,
