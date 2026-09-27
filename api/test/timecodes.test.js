@@ -26,3 +26,16 @@ test('step times keep the recipe order: long recipes and empty steps still line 
   assert.equal(stepTimes.length, 12); assert.equal(asked.length, 12);
   assert.equal(stepTimes[0], 0); assert.equal(stepTimes[1], null); assert.equal(stepTimes[11], 110);
 });
+
+test('step times: a miss is not kept, so the next open tries again; only finds count toward the day', async () => {
+  let calls = 0, answer = { stepTimes: [null, null] };
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, { reserveBudget: async () => {}, snippetSeconds: async () => 300, analyze: async () => { calls++; return answer; } });
+  const ask = { url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['焼く', '煮る'] };
+  await assert.rejects(book.find(ask, 'home-0003'), { code: 'timecodes_not_found' });
+  answer = { stepTimes: [12, 40] };
+  assert.deepEqual((await book.find(ask, 'home-0003')).stepTimes, [12, 40]);
+  assert.equal((await book.find(ask, 'home-0003')).cacheHit, true); assert.equal(calls, 2);
+  const day = await store.get(`timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-0003`);
+  assert.equal(day.envelope.used, 1); assert.equal(day.envelope.tries, 2);
+});

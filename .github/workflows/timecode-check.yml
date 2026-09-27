@@ -1,0 +1,33 @@
+name: Check step times (timecodes)
+
+# 本番のAPIで「▶ の場面」探しを試す。Actions → Check step times → Run workflow。
+# 今週の人気レシピから数本を選んで、手順ごとの時刻を探してもらい、結果をそのまま表示する。
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "試すレシピの数"
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Ask the API for step times
+        env:
+          API: https://matagochi-api-292190013809.us-central1.run.app
+          COUNT: ${{ inputs.count }}
+        run: |
+          curl -sS --max-time 120 "$API/api/trends" > trends.json
+          echo "trend recipes: $(jq '.items | length' trends.json)"
+          jq -c --argjson n "${COUNT:-2}" '[.items[] | select((.steps | length) >= 2)][:$n][] | {title, url: .videoUrl, steps, had: .stepTimes}' trends.json | while read -r row; do
+            echo "== $(echo "$row" | jq -r .title) ($(echo "$row" | jq -r .url)) steps=$(echo "$row" | jq '.steps | length') had=$(echo "$row" | jq -c .had)"
+            start=$(date +%s)
+            code=$(curl -sS --max-time 290 -o out.json -w '%{http_code}' -X POST -H "Content-Type: application/json" -H "X-Household: ci-timecode-check" \
+              -d "$(echo "$row" | jq -c '{url, steps}')" "$API/api/import/youtube/timecodes" || echo 000)
+            echo "HTTP $code in $(( $(date +%s) - start ))s: $(cat out.json 2>/dev/null)"
+          done

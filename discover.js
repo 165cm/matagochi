@@ -135,14 +135,15 @@ function timecodeHint(recipe) {
 function ensureTimecodes(recipe) {
   if (!API_BASE_URL || !recipe || !youtubeVideoId(recipe.videoUrl) || (recipe.steps || []).length < 2 || recipeStepTimes(recipe).length) return;
   const key = timecodeKey(recipe);
-  if (timecodes.has(key)) return;
+  const prev = timecodes.get(key);
+  if (prev && (prev.status !== "none" || Date.now() - prev.at < 60_000)) return; // 失敗は1分たてば、開き直した時にもう一度
   timecodes.set(key, { status: "loading" });
   globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, { method: "POST", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps }) })
     .then(async (r) => { const data = await r.json().catch(() => ({})); return r.ok ? data : { error: data.error?.message || `エラー ${r.status}` }; })
     .catch(() => ({ error: "通信できませんでした" }))
     .then((data) => {
       const times = stepTimesFor(recipe.steps, data?.stepTimes);
-      timecodes.set(key, { status: times.length ? "done" : "none", times, reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
+      timecodes.set(key, { status: times.length ? "done" : "none", at: Date.now(), times, reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
       // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
       const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
       if (own && times.length) { own.stepTimes = times; saveState(); }
