@@ -363,3 +363,8 @@ body.is-registered .sticky-cta { display: none; }
 .quiz-skill .quiz-card { background: #fff1dc; }
 .skill-row img { border-radius: 50%; object-fit: cover; }
 .promise.together { background: #fff1e6; }
+/* 夜ごはんタイプの絵（縦長） */
+.type-row img { aspect-ratio: 3 / 4; border-radius: 18px; width: min(30%, 130px); }
+/* 続けられる工夫（4枚） */
+@media (min-width: 720px) { .promise-grid-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1040px) { .promise-grid-4 { grid-template-columns: repeat(4, 1fr); } }
