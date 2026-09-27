@@ -3548,3 +3548,14 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .rc-label span { font-size: 16px; line-height: 1.1; }
 @media (max-width: 374px) { .rc-label { font-size: 9.5px; } .rc-label span { font-size: 14px; } }
 .plan-controls .plan-more-btn { flex: none; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0; border-radius: 50%; aspect-ratio: 1; }
+
+/* ── 通知の設定 ── */
+.push-types { display: grid; gap: 6px; }
+.push-type { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.push-type input { width: 20px; height: 20px; accent-color: var(--tomato); flex: none; }
+.push-type span { display: grid; flex: 1; min-width: 0; font-size: 14px; }
+.push-type small { color: var(--muted); font-size: 12px; }
+.push-type .push-time { width: auto; min-height: 36px; padding: 0 8px; flex: none; }
+.push-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.remind-button.is-push { border-color: var(--tomato); background: #fff1dc; }
+.remind-done { margin: 0; font-weight: 800; color: var(--sage-dark); }

@@ -1,0 +1,22 @@
+name: Push reminders
+
+# 通知の送り役。サーバーは呼ばれた時しか動かないので、15分ごとにノックする。
+# サーバー側は、時間になったお知らせを1回だけ送る（4分以内の連続ノックは何もしない）。
+# GitHubの定期実行は混んでいると数分〜十数分遅れることがある。
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  knock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send due reminders
+        run: |
+          curl -sS --max-time 120 -X POST -H "Content-Type: application/json" \
+            https://matagochi-api-292190013809.us-central1.run.app/api/push/tick || true

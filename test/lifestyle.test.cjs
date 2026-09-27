@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "plan-moves.js", "folders.js", "install.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "plan-moves.js", "folders.js", "install.js", "push.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -963,6 +963,32 @@ test("ホーム画面に追加: after the first plan, again after the first cook
   assert.match(run("renderInstallSettings()"), /life-install-prompt/, "Android: one button");
   run(`saveInstall({...installInfo(),installed:true})`);
   assert.match(run("renderSettings()"), /ホーム画面に追加[\s\S]*追加ずみ/);
+});
+
+test("通知: the next two weeks of reminders come from the plan and change as it does", () => {
+  const run = app();
+  run(`globalThis.__store={};globalThis.localStorage={getItem:(k)=>__store[k]??null,setItem:(k,v)=>{__store[k]=String(v)},removeItem:(k)=>{delete __store[k]}};state.onboarded=true;handleDailyAction("life-rhythm",{preset:"weekday"});globalThis.B=currentBlocks().find(b=>blockStatus(b)==="open")`);
+  const ids = () => JSON.parse(run("JSON.stringify(pushSchedule().map(x=>x.id))"));
+  const key = run("B?.key||''");
+  let list = ids();
+  if (key) {
+    const [decideAhead, shopAhead] = JSON.parse(run("JSON.stringify([new Date(B.shopAt)-3*3600e3>Date.now(),new Date(B.shopAt)-30*60e3>Date.now()])"));
+    assert.equal(list.includes(`decide-${key}`), decideAhead, "decide 3 hours before shopping, while still ahead");
+    assert.equal(list.includes(`shop-${key}`), shopAhead, "shop 30 minutes before");
+    run('handleDailyAction("life-confirm",{block:B.key})');
+    list = ids();
+    assert.ok(!list.includes(`decide-${key}`), "once decided, no decide reminder");
+    assert.equal(list.includes(`shop-${key}`), shopAhead, "the shopping reminder stays");
+    run('state.shopDone={...(state.shopDone||{}),[B.key]:nowIso()}');
+    assert.ok(!ids().includes(`shop-${key}`), "after shopping, no shopping reminder");
+  }
+  assert.ok(ids().some((id) => id.startsWith("tonight-")), "tonight reminders for planned days");
+  assert.ok(!ids().some((id) => id.startsWith("record-")), "the record reminder is off by default");
+  run(`savePush({...pushInfo(),record:true,tonight:false})`);
+  assert.ok(!ids().some((id) => id.startsWith("tonight-")));
+  const item = JSON.parse(run("JSON.stringify(pushSchedule()[0]||null)"));
+  if (item) assert.ok(Date.parse(item.at) > Date.now() && /^\?view=/.test(item.url || "?view=today"));
+  assert.match(run("renderSettings()"), /🔔[\s\S]*通知/);
 });
 
 test("定番フォルダ: one dish, many ways; once a week, pinned weekdays, a top-5 ranking", () => {

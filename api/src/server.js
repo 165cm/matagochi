@@ -11,6 +11,7 @@ import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawIllustration } from "./analyzer.js";
 import { createIllustrator, createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
+import { createPushDesk } from "./push.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { ApiError, toErrorResponse } from "./errors.js";
 import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
@@ -47,6 +48,7 @@ export function createApp(env = process.env, deps = {}) {
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const illustrator = createIllustrator(recipeStore, { draw: deps.drawIllustration || ((image, dish) => drawIllustration(image, dish, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
+  const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
@@ -115,6 +117,12 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, trendBook.list()); });
   app.post("/api/trends/refresh", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.step()); });
   app.post("/api/skill/photo", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, skillJudge.judge(req.body || {}, householdOf(req))); });
+  // 通知：鍵・登録（この先のお知らせも一緒に）・解除・テスト・定期実行（GitHub Actions が15分ごとに呼ぶ）
+  app.get("/api/push/key", (req, res) => { res.setHeader("Cache-Control", "public, max-age=3600"); send(res, pushDesk.publicKey()); });
+  app.post("/api/push/subscribe", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, pushDesk.subscribe(req.body || {}, householdOf(req))); });
+  app.post("/api/push/unsubscribe", (req, res) => send(res, pushDesk.unsubscribe(req.body || {})));
+  app.post("/api/push/test", (req, res) => send(res, pushDesk.test(req.body || {})));
+  app.post("/api/push/tick", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, pushDesk.tick()); });
   app.post("/api/search/variants", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, variantSearch.find(req.body || {}, householdOf(req))); });
   app.post("/api/skill/illustrate", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");

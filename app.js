@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-lp1";
+const APP_VERSION = "20260928-push1";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -499,6 +499,8 @@ function saveState({ scheduleSync = true } = {}) {
   let recoverySaved = false;
   try { localStorage.setItem(STORAGE_KEY, serialized); recoverySaved = true; } catch {}
   if (scheduleSync) scheduleAutoSync();
+  // 通知がオンなら、この先のお知らせを送り直す（中身が同じなら送らない）。
+  if (typeof queuePushSync === "function") queuePushSync();
   if (idbAvailable) {
     stateWriteQueue = stateWriteQueue.catch(()=>{}).then(()=>idbWrite(serialized)).then(()=> {
       if (localStorage.getItem(STORAGE_KEY) === serialized) localStorage.removeItem(STORAGE_KEY);
@@ -2152,6 +2154,7 @@ function renderSettings() {
         `).join("")}
       </div>
       <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>`)}
+    ${settingRow("push", "🔔", "通知", { on: "オン", off: "オフ", install: "ホーム画面に追加すると使えます", denied: "ブロックされています", unsupported: "このブラウザは非対応" }[pushState()], renderPushSettings())}
     ${settingRow("install", "📲", "ホーム画面に追加", isInstalledApp() || installInfo().installed ? "追加ずみ" : "記録が消えにくく、すぐ開ける", renderInstallSettings())}
     ${settingRow("backup", "💾", "バックアップ", `前回の書き出し：${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}`, `<p class="notice">この端末のブラウザにだけ保存されています。書き出したファイルを保管しておくと、別の端末や再インストール後に読み込んで復元できます。</p>
       <p class="muted small">前回の書き出し: ${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}</p>
@@ -2183,6 +2186,7 @@ function renderSyncPanel() {
 }
 
 function bindEvents() {
+  bindPushSettings();
   document.querySelectorAll("details.setting-row").forEach((el) => el.addEventListener("toggle", () => {
     const id = el.id.replace("setting-", "");
     if (el.open) {
@@ -3950,6 +3954,12 @@ document.addEventListener("visibilitychange", () => {
     profileDraft().period=3;
     history.replaceState(null,"",location.pathname);
     saveState({scheduleSync:false});
+  }
+  // 通知から開いた時：?view=plan など
+  const viewParam = new URLSearchParams(location.search).get("view");
+  if (!hasSharedUrl && state.onboarded && ["today", "plan", "shopping"].includes(viewParam)) {
+    state.view = viewParam;
+    history.replaceState(null, "", location.pathname);
   }
   if (!hasSharedUrl && new URLSearchParams(location.search).get("start") === "preview") {
     state.onboarded=true;state.planLength=3;state.view="plan";
