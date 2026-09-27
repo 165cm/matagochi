@@ -6,8 +6,9 @@ import { createAuth } from "./auth.js";
 import { createTrendBook } from "./trends.js";
 import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
+import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes } from "./analyzer.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { ApiError, toErrorResponse } from "./errors.js";
 import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
@@ -33,6 +34,8 @@ export function createApp(env = process.env, deps = {}) {
       enabled: env.AI_IMPORT_ENABLED !== "false",
       tickets,
       refreshSnippet: async (videoId) => { const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env); return { caption: buildCaption(snippet), channelTitle: snippet.channelTitle }; } });
+  const timecodeBook = createTimecodeBook(recipeStore, { analyze: deps.analyzeStepTimes || ((url, steps, o) => analyzeStepTimes(url, steps, env, o)), reserveBudget: () => catalog.reserveAnalysisBudget(),
+    snippetSeconds: async (id) => (await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env)).durationSeconds, maxSeconds: Number(env.VIDEO_MAX_SECONDS || 600), now: deps.now || Date.now });
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now });
   const trendBook = createTrendBook(recipeStore, { catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100) });
@@ -104,6 +107,7 @@ export function createApp(env = process.env, deps = {}) {
   // 今週の人気レシピ（GitHubの定期実行がノックする。何回呼ばれても、週10品分しか動かない）と、みんなの定番。
   app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, trendBook.list()); });
   app.post("/api/trends/refresh", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.step()); });
+  app.post("/api/import/youtube/timecodes", (req, res) => send(res, timecodeBook.find(req.body || {}, householdOf(req))));
   app.post("/api/creators/request", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, creatorDesk.request(req.body || {})); });
   app.get("/api/popular", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, popularBook.top(String(req.query?.segment || "any-0"))); });
   app.post("/api/popular/event", (req, res) => send(res, popularBook.record(req.body || {}, req.ip)));

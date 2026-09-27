@@ -553,7 +553,7 @@ function renderPreferencePrompt() {
   if (!e) return "";
   const names = raterNames();
   const rows = names.map((name) => renderCyclePicker(name, e.familyRepeatCycles?.[name], (cycle) => `data-action="life-rate" data-id="${escapeAttr(e.id)}" data-member="${escapeAttr(name)}" data-cycle="${cycle}"`)).join("");
-  return `<section class="panel rate-card" role="region" aria-label="次に食べたい頃"><p class="hand rate-note">おつかれさま！</p><h3>${escapeHtml(e.recipeTitle)}、次はいつ食べたい？</h3><p class="muted small">${names.length > 1 ? "ひとりずつタップ。ふたりが食べたくなる頃に、また献立に入ります。" : "えらんだ頃に、また献立に入ります。"}</p>${rows}${dailyButton("life-frequency-close","あとで")}</section>`;
+  return `<section class="panel rate-card" role="region" aria-label="次に食べたい頃"><p class="hand rate-note">おつかれさま！</p><h3>${escapeHtml(e.recipeTitle)}、次はいつ食べたい？</h3><p class="muted small">${names.length > 1 ? "ひとりずつタップ。ふたりが食べたくなる頃に、また献立に入ります。" : "えらんだ頃に、また献立に入ります。"}</p>${rows}${renderCreatorThanks(recipeById(e.recipeId), e)}${dailyButton("life-frequency-close","あとで")}</section>`;
 }
 // Latest rating per person for a recipe (own copy or starter).
 function recipeRatings(recipe) {
@@ -638,6 +638,7 @@ function renderCooking() {
   const day = dailyPlan().find((d) => d.date === cookingDate);
   const slot = state.mealSlots?.[cookingDate];
   const recipe = slot?.recipe || day?.candidate?.recipe;
+  ensureTimecodes(recipe);
   if (!recipe)
     return `<section class="panel"><h2>料理を選び直してください</h2>${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</section>`;
   const servings = slot?.servings || dailyProfile().servings;
@@ -649,7 +650,7 @@ function renderCooking() {
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
   <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま・" : ""}そろえたらタップ</small></h3><ul class="cooking-ingredients cooking-check">${recipe.ingredients.map((i, index) => `<li><label>${cookingCheck("ingredient", index, recipe, servings)}<span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></label></li>`).join("")}</ul>
-  <h3>作り方 <small class="muted">終わったらタップ</small></h3><ol class="cooking-steps cooking-check">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${escapeHtml(st)}</span></label>${stepTimeButton(recipe, index)}</li>`).join("")}</ol>
+  <h3>作り方 <small class="muted">終わったらタップ${timecodesLoading(recipe) ? "・▶ の場面を探しています…" : ""}</small></h3><ol class="cooking-steps cooking-check">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${escapeHtml(st)}</span></label>${stepTimeButton(recipe, index)}</li>`).join("")}</ol>
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
 // ----- 記録の編集（食べた日・次に食べたい頃・写真・メモ） -----
@@ -677,6 +678,7 @@ function renderRecordEditor() {
     ${raterNames().map((name) => renderCyclePicker(name, d.familyRepeatCycles[name], (cycle) => `data-action="life-record-cycle" data-member="${escapeAttr(name)}" data-cycle="${cycle}"`)).join("")}
     <label class="record-field">メモ<textarea id="record-memo" class="textarea" maxlength="400" placeholder="例：次は具を多めに">${escapeHtml(d.memo || "")}</textarea></label>
     <div class="record-photo-actions"><label class="secondary-button" for="record-photo">📷 写真を${d.photo ? "変える" : "追加"}</label><input id="record-photo" type="file" accept="image/*" hidden>${d.photo ? '<button type="button" class="text-button" data-action="life-record-photo-remove">写真を外す</button>' : ""}</div>
+    ${d.isNew ? "" : renderCreatorThanks(r, d)}
     ${dailyButton("life-record-save", "記録を保存", "", true)}
     ${d.isNew ? "" : '<button type="button" class="text-button danger full-button" data-action="life-record-delete">この記録を削除</button>'}
   </section>`;
@@ -1049,6 +1051,7 @@ function handleDailyAction(action, data) {
     state.view = "cooking";
   }
   if (action === "life-analyze") { analyzeCookingRecipe(data.date); return true; }
+  if (action === "life-share-cooked") { shareCooked(data.id); return true; }
   if (action === "life-video-at") { videoStartAt = { key: data.recipe, seconds: Number(data.seconds) || 0 }; globalThis.setTimeout?.(() => document.querySelector(".video-frame")?.scrollIntoView?.({ behavior: "smooth", block: "start" }), 30); }
   if (action === "life-reread") { askTicket(() => rereadRecipe(data.recipe), recipeById(data.recipe)?.videoUrl); return true; }
   if (action === "life-fill-video") { askTicket(() => fillRecipeFromVideo(data.recipe), recipeById(data.recipe)?.videoUrl); return true; }
@@ -1533,6 +1536,7 @@ function servingsUnknownBanner(recipe, canEdit) {
 }
 function renderRecipeDetail() {
   const r = detailRecipe();
+  ensureTimecodes(r);
   if (!r) return `<section class="panel"><p>レシピが見つかりません。</p>${dailyButton("go-view", "レシピ一覧へ", 'data-view="collection"')}</section>`;
   const saved = !r.curated;
   const servings = dailyProfile().servings;
@@ -1554,7 +1558,7 @@ function renderRecipeDetail() {
     ${servingsUnknownBanner(r, saved && edit)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
     ${r.ingredients?.length ? `<ul class="detail-ingredients">${r.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</span></li>`).join("")}</ul>` : '<p class="muted small">材料が登録されていません。</p>'}
-    <h3 class="detail-h">作り方</h3>
+    <h3 class="detail-h">作り方${timecodesLoading(r) ? ' <small class="muted">▶ の場面を探しています…</small>' : ""}</h3>
     ${r.steps?.length ? `<ol class="detail-steps">${r.steps.map((s, i) => `<li>${escapeHtml(s)}${stepTimeButton(r, i)}</li>`).join("")}</ol>` : '<p class="muted small">作り方が登録されていません。</p>'}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
     ${edit && saved ? `<div class="detail-foot">${dailyButton("life-new-record", "作った記録をつける", `data-recipe="${escapeAttr(r.id)}"`)}<button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button></div>` : ""}
