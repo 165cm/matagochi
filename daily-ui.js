@@ -133,7 +133,7 @@ function profileSummary(p) {
 }
 function renderWelcome() {
   document.body.classList.add("is-onboarding");
-  document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard welcome-card"><h2 tabindex="-1">🍽️ 今夜の一品を、すぐ決めよう</h2><p>人数・献立のリズム・料理スキル・平日の時間・食べられないものの5つに答えると、最初の献立ができます。</p><div class="welcome-actions">${dailyButton("life-quick", "5問ではじめる（約1分）", "", true)}${dailyButton("life-preview", "設定せずに見てみる")}</div><button type="button" class="text-button" data-action="life-detailed">好み・器具・常備品まで詳しく設定する</button></section>`;
+  document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard welcome-card"><h2 tabindex="-1">🍽️ 今夜の一品を、すぐ決めよう</h2><p>かんたんな質問に答えると、あなたの家に合った最初の献立ができます。</p><div class="welcome-actions">${dailyButton("life-quick", "はじめる（約2分）", "", true)}${dailyButton("life-preview", "設定せずに見てみる")}</div><button type="button" class="text-button" data-action="life-detailed">好み・器具・常備品まで詳しく設定する</button></section>`;
   document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
 }
 function renderProfileWizard() {
@@ -230,7 +230,7 @@ function cancelAutoAdvance() {
 }
 function bindAutoAdvance() {
   const p = profileDraft();
-  const single = p.quickSetupIndex !== null ? [0, 3].includes(p.quickSetupIndex) : p.step === 0;
+  const single = p.quickSetupIndex !== null ? [0, 3].includes(FUNNEL[p.quickSetupIndex]) : p.step === 0;
   if (!single) return;
   document.querySelectorAll('.profile-wizard input[type="radio"][data-profile]').forEach((el) =>
     el.addEventListener("click", () => {
@@ -866,7 +866,7 @@ function handleDailyAction(action, data) {
   if (action === "life-quick") {profileDraft().quickSetupIndex=0;profileDraft().period=3;profileEditing=true;}
   if (action === "life-quick-next") {
     // The rhythm step starts on the recommended 3-day rhythm if nothing was picked.
-    if (profileDraft().quickSetupIndex === 1 && !rhythmOn()) {
+    if (FUNNEL[profileDraft().quickSetupIndex] === 1 && !rhythmOn()) {
       state.rhythm = { preset: "3day", shopTime: document.querySelector("#rhythm-time")?.value || "17:00", updatedAt: nowIso() };
       state.rhythm.startFrom = firstFullBlock()?.start || "";
     }
@@ -874,8 +874,15 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-quick-skill") {
     state.skillProfile = { level: Number(data.level), growth: state.skillProfile?.growth || "steady", updatedAt: nowIso() };
-    profileDraft().quickSetupIndex = 3;
+    profileDraft().quickSetupIndex = FUNNEL.indexOf(3);
   }
+  if (action === "life-funnel-pick") {
+    const p = profileDraft();
+    if (["pain", "savedVideos", "foodBudget"].includes(data.field)) p[data.field] = data.value;
+    // 食費は、選ぶとその場で目安を見せる（次へは自分で）。それ以外はすぐ次へ。
+    if (data.field !== "foodBudget") p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1);
+  }
+  if (action === "life-funnel-commit") profileDraft().quickSetupIndex = FUNNEL.indexOf("building");
   if (action === "life-quick-back") profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1);
   if (action === "life-preview" && !state.onboarded) {
     state.onboarded=true;state.planLength=3;state.view="plan";profileEditing=false;
@@ -1300,9 +1307,73 @@ function slotHasUpdates(slot) {
 
 // 初回のかんたん設定（5問・約1分）：人数 → 献立のリズム → 料理スキル → 平日の時間 → 食べられないもの・苦手
 const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", "しいたけ", "トマト", "納豆", "レバー", "さば", "ゴーヤ"];
-const QUICK_STEPS = 5;
+// 課金につながるオンボーディング：悩みに気づく → 変化を見る → 5問 → 食費の目安 → 読み取りの実演 → 長押しで決める → 作成中 → 最初の献立。
+// 数字（0〜4）はこれまでの5問。
+const FUNNEL = ["pain", "videos", "value", 0, 1, 2, 3, 4, "budget", "demo", "commit", "building"];
+const QUICK_STEPS = FUNNEL.length;
+const PAINS = [["fridge", "その日に冷蔵庫を見て考える"], ["same", "いつも同じ料理になりがち"], ["tired", "考えるのが一番しんどい"], ["ok", "わりと決められている"]];
+const VIDEOS = [["few", "ほとんど作っていない"], ["some", "たまに作る"], ["many", "よく作る"], ["none", "動画は保存しない"]];
+const BUDGETS = [["15000", "2万円未満"], ["30000", "2〜4万円"], ["50000", "4〜6万円"], ["70000", "6万円以上"], ["", "答えない"]];
+const funnelPick = (field, [value, label], current) => `<button type="button" class="funnel-pick" data-action="life-funnel-pick" data-field="${field}" data-value="${value}" aria-pressed="${current === value}">${escapeHtml(label)}</button>`;
+function renderFunnelStep(key) {
+  const p = profileDraft();
+  if (key === "pain") return [`🤔 毎日の献立、どうしてる？`, `<div class="funnel-picks">${PAINS.map((x) => funnelPick("pain", x, p.pain)).join("")}</div>`];
+  if (key === "videos") return [`📱 保存したレシピ動画、実際に作ったのは？`, `<div class="funnel-picks">${VIDEOS.map((x) => funnelPick("savedVideos", x, p.savedVideos)).join("")}</div><p class="muted small">インスタ・YouTube・TikTokで「保存」したままの料理、ありませんか？</p>`];
+  if (key === "value") {
+    const lead = { tired: "考える回数を、ぐっと少なく", same: "かぶらない献立を、自動で", fridge: "冷蔵庫の前で悩む時間を、なくす" }[p.pain] || "献立づくりを、もっと気楽に";
+    const saved = p.savedVideos === "few" || p.savedVideos === "some" ? `<li><b>保存しただけの動画</b>が、献立の候補に入る</li>` : "";
+    return [`✨ ${lead}`, `<div class="funnel-graph" role="img" aria-label="献立を決める回数：いま週7回、リピごちは週2回"><p class="funnel-graph-title">献立を決める回数（1週間）</p><div class="fg-row"><span>いま</span><i style="--w:100%"></i><b>7回</b></div><div class="fg-row is-us"><span>リピごち</span><i style="--w:29%"></i><b>2回</b></div><p class="muted small">3日ずつまとめて決めるリズムの場合</p></div><ul class="funnel-points">${saved}<li>ふたりの「また食べたい」を覚えて、<b>かぶらない</b></li><li>決めたら<b>買い物リスト</b>まで自動</li></ul>`];
+  }
+  if (key === "budget") {
+    const yen = Number(p.foodBudget) || 0;
+    const result = p.foodBudget === undefined ? "" : yen
+      ? `<div class="funnel-result"><p>使い切り献立で、年間およそ</p><p class="funnel-big"><b>${(Math.round((yen * 12 * 0.05) / 1000) * 1000).toLocaleString()}</b>円分</p><p>の食材を、むだにしない目安です。</p><p class="muted small">目安：食費の5%を、使い切りで減らせた場合の計算です。</p></div>`
+      : `<p class="muted small">あとから設定で変えられます。</p>`;
+    return [`💴 1か月の食費は、どのくらい？`, `<div class="funnel-picks is-grid">${BUDGETS.map((x) => funnelPick("foodBudget", x, p.foodBudget)).join("")}</div>${result}`];
+  }
+  if (key === "demo") return [`🎬 保存した動画が、こうなります`, `<div class="funnel-demo" aria-hidden="true"><div class="fd-link">▶ youtube.com/shorts/…</div><div class="fd-arrow">↓ リピごちに共有</div><div class="fd-card"><b>豚こまキャベツ丼</b><span>材料 6品 ・ 作り方 4ステップ ・ ⏱ 20分</span><span class="fd-tags">ごはん ・ 豚肉 ・ がっつり</span></div></div><p class="small">SNSで「共有」→「リピごち」でOK。材料・作り方・かかる時間をAIが読み取って、献立の候補に入れます。</p>`];
+  if (key === "commit") return [`🤝 今週の献立は、リピごちで決める`, `<p>できる範囲で大丈夫。気軽に、はじめましょう。</p><button type="button" class="funnel-hold" data-hold="1200"><span class="fh-ring" aria-hidden="true"></span><span class="fh-label">長押しで決める</span></button><p class="muted small">押し続けると、次に進みます。</p>`];
+  if (key === "building") return [`🍳 あなたの献立をつくっています`, `<div class="funnel-building"><p class="fb-pct" aria-live="polite">0%</p><progress max="100" value="0" aria-label="作成中"></progress><ul class="fb-list">${["食べられないものを外しています", "作れる料理だけに絞っています", "時間に合う料理を選んでいます", "かぶらない組み合わせを考えています"].map((t) => `<li>${t}</li>`).join("")}</ul></div>`];
+  return ["", ""];
+}
+function bindFunnel() {
+  const hold = document.querySelector(".funnel-hold");
+  if (hold) {
+    let timer = null;
+    const start = (ev) => { ev.preventDefault(); hold.classList.add("is-holding"); timer = setTimeout(() => { hold.classList.remove("is-holding"); globalThis.navigator?.vibrate?.(30); handleDailyAction("life-funnel-commit", {}); saveState({ scheduleSync: false }); render(); }, Number(hold.dataset.hold) || 1200); };
+    const stop = () => { clearTimeout(timer); hold.classList.remove("is-holding"); };
+    hold.addEventListener("pointerdown", start);
+    ["pointerup", "pointerleave", "pointercancel"].forEach((e) => hold.addEventListener(e, stop));
+    // キーボードで押した時は、長押しなしで進める。
+    hold.addEventListener("click", (ev) => { if (ev.detail === 0) { handleDailyAction("life-funnel-commit", {}); saveState({ scheduleSync: false }); render(); } });
+  }
+  const building = document.querySelector(".funnel-building");
+  if (building) {
+    const pct = building.querySelector(".fb-pct"), bar = building.querySelector("progress"), items = building.querySelectorAll("li");
+    const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    let n = reduce ? 100 : 0;
+    const tick = () => {
+      n = Math.min(100, n + 4);
+      pct.textContent = `${n}%`; bar.value = n;
+      items.forEach((li, k) => li.classList.toggle("is-done", n >= (k + 1) * 25));
+      if (n < 100) setTimeout(tick, 90);
+      else setTimeout(() => { if (FUNNEL[profileDraft().quickSetupIndex] === "building") { handleDailyAction("life-finish", {}); saveState(); render(); } }, 450);
+    };
+    tick();
+  }
+}
 function renderQuickSetup() {
   const p = profileDraft(), i = p.quickSetupIndex;
+  const key = FUNNEL[i];
+  if (typeof key === "string") {
+    const [title, body] = renderFunnelStep(key);
+    const next = key === "commit" || key === "building" || key === "pain" || key === "videos" ? "" : `<button class="primary-button" data-action="life-quick-next">次へ</button>`;
+    document.body.classList.toggle("is-onboarding", !state.onboarded);
+    document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard funnel-step" data-funnel="${key}"><div class="wizard-progress"><span>あなた用の献立づくり</span><span>${i + 1} / ${QUICK_STEPS}</span></div><progress max="${QUICK_STEPS}" value="${i + 1}" aria-label="初回設定の進捗"></progress><h2 tabindex="-1">${title}</h2>${body}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i === 0 || key === "building" ? "disabled" : ""}>戻る</button>${next}</div></section>`;
+    document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
+    bindFunnel();
+    return;
+  }
   const rhythmNow = state.rhythm?.preset || "3day";
   const skillNow = state.skillProfile?.level || 0;
   const content = [
@@ -1313,10 +1384,10 @@ function renderQuickSetup() {
     `<h3 class="quick-sub">アレルギー・食べられないもの</h3><div class="profile-options">${Lifestyle.restrictionOptions.map((n) => optionInput("restrictions", n, n, true)).join("")}</div>${textInput("restrictions", "一覧にない食材", "例：キウイ、山いも")}
      <h3 class="quick-sub">苦手なもの</h3><div class="profile-options">${COMMON_DISLIKES.map((n) => optionInput("dislikes", n, n, true)).join("")}</div>${textInput("dislikes", "ほかの苦手", "例：セロリ、らっきょう")}
      <p class="muted small">選んだものは献立に入りません。市販品の原材料と、調理器具を確認してから作ってください。</p>`,
-  ][i];
+  ][key];
   const titles = ["🍽️ 何人分つくる？", "🗓 献立は、どのリズムで決める？", "🔪 料理は、どのくらいする？", "⏱️ 平日は何分くらい？", "🔎 食べられないもの・苦手なものは？"];
   document.body.classList.toggle("is-onboarding", !state.onboarded);
-  document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard"><div class="wizard-progress"><span>はじめの5問</span><span>${i + 1} / ${QUICK_STEPS}</span></div><progress max="${QUICK_STEPS}" value="${i + 1}" aria-label="初回設定の進捗"></progress><h2>${titles[i]}</h2>${content}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i === 0 ? "disabled" : ""}>戻る</button><button class="primary-button" data-action="${i === QUICK_STEPS - 1 ? "life-finish" : "life-quick-next"}">${i === QUICK_STEPS - 1 ? "最初の献立を見る" : "次へ"}</button></div><p class="muted small">好み・器具・常備品はあとで調整できます。</p></section>`;
+  document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard"><div class="wizard-progress"><span>あなた用の献立づくり</span><span>${i + 1} / ${QUICK_STEPS}</span></div><progress max="${QUICK_STEPS}" value="${i + 1}" aria-label="初回設定の進捗"></progress><h2>${titles[key]}</h2>${content}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i === 0 ? "disabled" : ""}>戻る</button><button class="primary-button" data-action="life-quick-next">次へ</button></div><p class="muted small">好み・器具・常備品はあとで調整できます。</p></section>`;
   document.querySelectorAll("[data-profile]").forEach((el) => el.addEventListener("input", () => captureProfile(el)));
   bindAutoAdvance();
   document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));

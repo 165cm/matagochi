@@ -95,7 +95,9 @@
   function profile(raw = {}) {
     return {
       detailedSetup: raw.detailedSetup === true,
-      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 4 ? raw.quickSetupIndex : null,
+      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 11 ? raw.quickSetupIndex : null,
+      // はじめの質問（悩み・保存した動画・食費）。献立には使わず、案内の言葉と目安に使う。
+      ...Object.fromEntries(["pain", "savedVideos", "foodBudget"].filter((k) => typeof raw[k] === "string" && raw[k].length < 20).map((k) => [k, raw[k]])),
       version: 1,
       completed: raw.completed === true,
       step: Math.min(15, Math.max(0, Number(raw.step) || 0)),
