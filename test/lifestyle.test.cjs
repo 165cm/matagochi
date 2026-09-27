@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "plan-moves.js", "folders.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "plan-moves.js", "folders.js", "install.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -935,6 +935,34 @@ test("eating out on a weekday rhythm: cook the extra dinner on Saturday (recomme
   assert.equal(run(`dailyShopping().filter(i=>i.status==="buy"&&(i.uses||[]).includes("${fri}")).length`), 0, "not on any shopping list again");
   run(`handleDailyAction("life-skip-kind",{date:"${b[0][2]}",kind:"deli",mode:"carry"})`);
   assert.equal(run(`[0,1].map(i=>state.mealSlots[${JSON.stringify(b[1])}[i]]?.bought?"c":"-").join("")`), "cc", "a second night out carries one more");
+});
+
+test("ホーム画面に追加: after the first plan, again after the first cook, then weekly up to 3 times", () => {
+  const run = app();
+  run(`globalThis.__store={};globalThis.localStorage={getItem:(k)=>__store[k]??null,setItem:(k,v)=>{__store[k]=String(v)},removeItem:(k)=>{delete __store[k]}};installPlatform=()=>"ios";state.onboarded=true`);
+  assert.equal(run("installDue()"), false, "not before a plan is decided");
+  run(`confirmDaily({date:today()},allDinnerRecipes()[0])`);
+  assert.equal(run("installDue()"), true, "after the first plan");
+  const card = run("renderInstallCard()");
+  assert.match(card, /共有ボタン[\s\S]*ホーム画面に追加[\s\S]*「追加」/, "iPhone: the three steps");
+  assert.match(card, /通知[\s\S]*消えにくく/, "why it matters");
+  run('handleDailyAction("life-install-later",{})');
+  assert.equal(run("installDue()"), false, "closed: quiet for now");
+  run("noteInstallCook()");
+  assert.equal(run("installDue()"), true, "the first cooked dinner brings it back once");
+  run('handleDailyAction("life-install-later",{})');
+  assert.equal(run("installDue()"), false);
+  run(`const i=installInfo();i.lastAt=new Date(Date.now()-8*86400000).toISOString();saveInstall(i)`);
+  assert.equal(run("installDue()"), true, "a week later");
+  run('handleDailyAction("life-install-later",{})');
+  run(`const j=installInfo();j.lastAt=new Date(Date.now()-30*86400000).toISOString();saveInstall(j)`);
+  assert.equal(run("installDue()"), false, "never more than three times");
+  run(`installPlatform=()=>"inapp"`);
+  assert.match(run("renderInstallSettings()"), /ブラウザで開く[\s\S]*life-install-copy/, "in LINE: open in the browser first");
+  run(`installPlatform=()=>"android";installPrompt={prompt(){},userChoice:Promise.resolve({outcome:"dismissed"})}`);
+  assert.match(run("renderInstallSettings()"), /life-install-prompt/, "Android: one button");
+  run(`saveInstall({...installInfo(),installed:true})`);
+  assert.match(run("renderSettings()"), /ホーム画面に追加[\s\S]*追加ずみ/);
 });
 
 test("定番フォルダ: one dish, many ways; once a week, pinned weekdays, a top-5 ranking", () => {
