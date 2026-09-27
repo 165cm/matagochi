@@ -120,33 +120,47 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart
 // 以前に読み取ったレシピには時刻がないので、開いた時にサーバーに探してもらう（一度探した動画は全員で使い回し）。
 const timecodes = new Map();
 const timecodeKey = (recipe) => `${youtubeVideoId(recipe?.videoUrl)}|${(recipe?.steps || []).join("\n")}`;
+// 確かさの順：だれかが直した時刻・説明欄のタイムスタンプ（サーバーから）→ レシピに入っている時刻 → AIが動画から探した時刻。
+const TRUSTED_TIMES = new Set(["fix", "chapters"]);
+let timeFix = null; // 時刻を直している間：{ key, recipeId, times }
 function recipeStepTimes(recipe) {
+  const key = timecodeKey(recipe);
+  if (timeFix?.key === key) return timeFix.times;
+  const entry = timecodes.get(key);
+  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.times;
   if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return recipe.stepTimes;
-  return timecodes.get(timecodeKey(recipe))?.times || [];
+  return entry?.times || [];
 }
 function timecodesLoading(recipe) { return timecodes.get(timecodeKey(recipe))?.status === "loading"; }
 // 見出しの横の小さな案内：探している間と、見つからなかった時（理由つき）。
 function timecodeHint(recipe) {
   const entry = timecodes.get(timecodeKey(recipe));
+  if (timeFix?.key === timecodeKey(recipe)) return "";
   if (entry?.status === "loading") return "▶ の場面を探しています…";
   if (entry?.status === "none") return `▶ の場面は付けられませんでした（${entry.reason}）`;
+  if (entry?.source === "fix") return "▶ はみんなで直した時刻です";
+  if (entry?.source === "chapters") return "▶ は投稿者のタイムスタンプです";
   return "";
 }
+const hasOwnTimes = (recipe) => recipe?.stepTimes?.some((t) => Number.isFinite(t));
 function ensureTimecodes(recipe) {
-  if (!API_BASE_URL || !recipe || !youtubeVideoId(recipe.videoUrl) || (recipe.steps || []).length < 2 || recipeStepTimes(recipe).length) return;
+  if (!API_BASE_URL || !recipe || !youtubeVideoId(recipe.videoUrl) || (recipe.steps || []).length < 2) return;
   const key = timecodeKey(recipe);
   const prev = timecodes.get(key);
   if (prev && (prev.status !== "none" || Date.now() - prev.at < 60_000)) return; // 失敗は1分たてば、開き直した時にもう一度
-  timecodes.set(key, { status: "loading" });
-  globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, { method: "POST", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps }) })
+  // 時刻がもうあるレシピは、説明欄のタイムスタンプや、だれかが直した時刻だけを確かめる（動画はAIに見せない）。
+  const peek = hasOwnTimes(recipe);
+  timecodes.set(key, { status: peek ? "peek" : "loading" });
+  globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, { method: "POST", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, ...(peek ? { peek: true } : {}) }) })
     .then(async (r) => { const data = await r.json().catch(() => ({})); return r.ok ? data : { error: data.error?.message || `エラー ${r.status}` }; })
     .catch(() => ({ error: "通信できませんでした" }))
     .then((data) => {
       const times = stepTimesFor(recipe.steps, data?.stepTimes);
-      timecodes.set(key, { status: times.length ? "done" : "none", at: Date.now(), times, reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
+      if (peek) timecodes.set(key, { status: "done", at: Date.now(), times, source: times.length ? data.source : "" });
+      else timecodes.set(key, { status: times.length ? "done" : "none", at: Date.now(), times, source: data?.source || "", reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
       // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
       const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
-      if (own && times.length) { own.stepTimes = times; saveState(); }
+      if (own && times.length && (!peek || TRUSTED_TIMES.has(data.source))) { own.stepTimes = times; saveState(); }
       // 画面全体は描き直さない（再生中の動画が最初に戻らないように）。▶ と案内だけ差し替える。
       if (["recipe", "cooking"].includes(state.view)) patchStepTimes(recipe);
     });
@@ -154,15 +168,63 @@ function ensureTimecodes(recipe) {
 function patchStepTimes(recipe) {
   const list = [...document.querySelectorAll("[data-steps-of]")].find((el) => el.dataset.stepsOf === recipe.id);
   if (!list) return;
-  list.querySelectorAll("[data-step-slot]").forEach((el) => { el.innerHTML = stepTimeButton(recipe, Number(el.dataset.stepSlot)); el.querySelector("[data-action]")?.addEventListener("click", handleAction); });
+  const bind = (root) => root.querySelectorAll("[data-action]").forEach((b) => b.addEventListener("click", handleAction));
+  list.querySelectorAll("[data-step-slot]").forEach((el) => { el.innerHTML = stepTimeSlotInner(recipe, Number(el.dataset.stepSlot)); bind(el); });
   document.querySelectorAll(".timecode-hint").forEach((el) => { const hint = timecodeHint(recipe); el.textContent = hint ? `${el.dataset.sep || ""}${hint}` : ""; });
+  document.querySelectorAll("[data-timefix-for]").forEach((el) => { el.outerHTML = timeFixBar(recipe); });
+  document.querySelectorAll("[data-timefix-for]").forEach((el) => bind(el));
 }
-// 手順の番号のすぐ後ろに置く「▶ m:ss」の入れ物。
-const stepTimeSlot = (recipe, index) => `<span class="step-time-slot" data-step-slot="${index}">${stepTimeButton(recipe, index)}</span>`;
+// 手順の番号のすぐ後ろに置く「▶ m:ss」の入れ物。直している間は「📍今の場面」も出す。
+function stepTimeSlotInner(recipe, index) {
+  if (timeFix?.key !== timecodeKey(recipe)) return stepTimeButton(recipe, index);
+  const t = timeFix.times[index];
+  return `${Number.isFinite(t) ? stepTimeButton(recipe, index) : '<span class="step-time is-empty">--:--</span>'}<button type="button" class="step-here" data-action="life-time-here" data-index="${index}" aria-label="この手順の時刻を、いま再生している場面にする">📍今の場面</button>`;
+}
+const stepTimeSlot = (recipe, index) => `<span class="step-time-slot" data-step-slot="${index}">${stepTimeSlotInner(recipe, index)}</span>`;
 const timecodeHintHtml = (recipe, sep = "") => { const hint = timecodeHint(recipe); return `<span class="timecode-hint" data-sep="${escapeAttr(sep)}">${hint ? escapeHtml(sep + hint) : ""}</span>`; };
-
+// 「時刻を直す」の帯。直している間は、使い方と「保存してみんなと共有」。
+function timeFixBar(recipe) {
+  const canFix = youtubeVideoId(recipe?.videoUrl) && (recipe?.steps || []).length >= 2 && API_BASE_URL;
+  const open = timeFix?.key === timecodeKey(recipe);
+  const body = !canFix ? "" : open
+    ? `<div class="timefix-open"><p class="small">動画を再生して、手順が始まったところで <b>📍今の場面</b> を押してください。</p><div class="timefix-actions"><button type="button" class="primary-button" data-action="life-time-save">保存してみんなと共有</button><button type="button" class="text-button" data-action="life-time-cancel">やめる</button></div></div>`
+    : `<button type="button" class="text-button timefix-start" data-action="life-time-fix" data-recipe="${escapeAttr(recipe.id)}">⏱ ▶ の時刻がずれている？直す</button>`;
+  return `<div class="timefix" data-timefix-for="${escapeAttr(recipe?.id || "")}">${body}</div>`;
+}
+function currentTimeRecipe() {
+  const id = document.querySelector("[data-timefix-for]")?.dataset.timefixFor;
+  return state.view === "cooking" ? (state.mealSlots?.[cookingDate]?.recipe || dailyPlan().find((d) => d.date === cookingDate)?.candidate?.recipe) : (typeof detailRecipe === "function" ? detailRecipe() : null) || recipeById(id);
+}
+function handleTimeFixAction(action, data) {
+  const recipe = currentTimeRecipe();
+  if (!recipe) return false;
+  if (action === "life-time-fix") { const times = recipeStepTimes(recipe); timeFix = { key: timecodeKey(recipe), times: recipe.steps.map((_, i) => (Number.isFinite(times[i]) ? times[i] : null)) }; patchStepTimes(recipe); return true; }
+  if (action === "life-time-cancel") { timeFix = null; patchStepTimes(recipe); return true; }
+  if (action === "life-time-here") {
+    if (!Number.isFinite(videoPlayer.currentTime)) { showToast("先に動画を再生してから押してください。"); return true; }
+    // 押すのが少し遅れがちなので、1秒だけ前に。
+    timeFix.times[Number(data.index)] = Math.max(0, Math.floor(videoPlayer.currentTime) - 1);
+    patchStepTimes(recipe); return true;
+  }
+  if (action === "life-time-save") {
+    const times = timeFix.times;
+    globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, stepTimes: times }) })
+      .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error?.message || "保存できませんでした。"); return d; })
+      .then((d) => {
+        const saved = stepTimesFor(recipe.steps, d.stepTimes);
+        timecodes.set(timeFix.key, { status: "done", at: Date.now(), times: saved, source: "fix" });
+        const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === timeFix.key);
+        if (own) { own.stepTimes = saved; saveState(); }
+        timeFix = null; patchStepTimes(recipe);
+        showToast("直した時刻を保存しました。同じ動画を見るみんなにも使われます。");
+      })
+      .catch((error) => showToast(error.message));
+    return true;
+  }
+  return false;
+}
 /* ---- 動画プレーヤーの操作：ページを動かさずにその場面へ。縦持ちは画面上に小さく残し、横持ちは左に動画・右に手順 ---- */
-const videoPlayer = { ready: false, playing: false, closed: false };
+const videoPlayer = { ready: false, playing: false, closed: false, currentTime: null };
 const landscapeSplit = () => !!globalThis.matchMedia?.("(orientation: landscape) and (max-height: 520px)").matches;
 function playerFrame() { return document.querySelector(".creator-credit .video-frame"); }
 function playerCommand(func, args = []) { playerFrame()?.querySelector("iframe")?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*"); }
@@ -176,7 +238,7 @@ function playVideoAt(seconds) {
     url.searchParams.set("start", String(Math.floor(seconds))); url.searchParams.set("autoplay", "1");
     iframe.src = url.toString();
   }
-  videoPlayer.playing = true; videoPlayer.closed = false;
+  videoPlayer.playing = true; videoPlayer.closed = false; videoPlayer.currentTime = seconds;
   dockVideo();
   return true;
 }
@@ -191,7 +253,7 @@ function dockVideo() {
 }
 function bindVideoPlayer() {
   const iframe = playerFrame()?.querySelector("iframe");
-  videoPlayer.ready = false; videoPlayer.playing = false; videoPlayer.closed = false;
+  videoPlayer.ready = false; videoPlayer.playing = false; videoPlayer.closed = false; videoPlayer.currentTime = null;
   // 動画の再生・一時停止を知らせてもらう（YouTube の埋め込みプレーヤーの取り決め）。
   iframe?.addEventListener("load", () => { videoPlayer.ready = false; iframe.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "ripigochi", channel: "widget" }), "*"); });
 }
@@ -201,6 +263,7 @@ if (globalThis.addEventListener && !globalThis.__videoPlayerBound) {
     if (!/youtube(-nocookie)?\.com$/.test(new URL(event.origin || "http://x").hostname)) return;
     let data; try { data = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch { return; }
     if (["onReady", "initialDelivery", "infoDelivery"].includes(data?.event)) videoPlayer.ready = true;
+    if (Number.isFinite(data?.info?.currentTime)) videoPlayer.currentTime = data.info.currentTime;
     const st = data?.info?.playerState;
     if (st !== undefined) { videoPlayer.playing = st === 1 || st === 3; if (videoPlayer.playing) videoPlayer.closed = false; dockVideo(); }
   });

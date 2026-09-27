@@ -1,6 +1,7 @@
 import { localizeAmount, localizeStep } from "./units.js";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from "./youtube.js";
+import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
 
 const DEFAULT_CATEGORY = "その他";
 const NUTRITION = /kcal|キロカロリー|カロリー|糖質|たんぱく質|タンパク質|脂質|炭水化物|食物繊維|塩分|PFC|1人前あたり|1人分あたり/i;
@@ -15,6 +16,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const hasDescription = !!String(snippet.description || "").trim();
   let analysis = hasDescription ? await deps.analyzeRecipeDescription(snippet) : {};
   let analyzedFrom = "description";
+  let analyzedTimes = "";
   // 説明文に本当の手順がない（AIの判定・手順が1つ以下）なら、説明文の「手順」は使わず動画を読む。
   if (analysis.stepsInDescription === false || normalizeSteps(analysis.steps).length < 2) analysis = { ...analysis, steps: [] };
   const weak = options.forceVideo || !normalizeSteps(analysis.steps).length || !normalizeIngredients(analysis.ingredients).length;
@@ -47,6 +49,14 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     }
   }
   if (!hasDescription && !analyzedFrom.startsWith("video")) throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
+  // 説明欄に投稿者のタイムスタンプがあれば、手順の時刻はそれに合わせる（AIが動画から探した時刻より正確）。
+  const chapters = parseChapters(snippet.description);
+  const finalSteps = normalizeSteps(analysis.steps);
+  if (chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function") {
+    const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
+    const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);
+    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: times }; analyzedTimes = "chapters"; }
+  }
 
   return {
     ...normalizeImportResult({
@@ -60,6 +70,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       channelId: snippet.channelId
     }),
     analyzedFrom,
+    ...(analyzedTimes ? { stepTimesFrom: analyzedTimes } : {}),
     videoSkipped
   };
 }

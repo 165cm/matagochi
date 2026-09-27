@@ -3005,3 +3005,13 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
   body:has(.creator-credit .video-frame) .screen { padding-bottom: 24px; }
   .creator-credit .video-frame, .creator-credit .video-frame.is-shorts { position: fixed; z-index: 5; left: 0; top: 0; width: 50vw; height: 100vh; height: 100dvh; max-height: none; aspect-ratio: auto; margin: 0; border-radius: 0; }
 }
+
+/* ▶ の時刻を直す：再生しながら「📍今の場面」。 */
+.timefix { margin: 0 0 6px; }
+.timefix-start { font-size: 12px; padding: 2px 0; min-height: 28px; color: var(--muted); }
+.timefix-open { padding: 10px 12px; border-radius: 14px; background: #fff7e8; border: 1px solid #f1dcb4; display: grid; gap: 8px; }
+.timefix-open p { margin: 0; }
+.timefix-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.timefix-actions .primary-button { min-height: 40px; padding: 8px 14px; }
+.step-here { margin: 0 6px 0 0; padding: 2px 8px; min-height: 26px; border-radius: 999px; border: 1px solid #e0a53a; background: #fff3d6; font: inherit; font-size: 12px; font-weight: 800; color: #8a5a00; cursor: pointer; white-space: nowrap; }
+.step-time.is-empty { color: var(--muted); cursor: default; }

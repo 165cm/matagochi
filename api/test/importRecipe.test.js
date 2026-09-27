@@ -72,3 +72,15 @@ test("rejects unlisted videos before their contents can enter shared catalog", a
     ok:true, json:async () => ({items:[{status:{privacyStatus:"unlisted"},snippet:{title:"private",description:"private recipe"}}]})
   })), {code:"non_public_video"});
 });
+
+test("description timestamps set the step times, even after a video read", async () => {
+  const snippet = { title: "照り焼き", description: "材料 鶏肉\n0:00 はじめに\n0:35 下ごしらえ\n2:10 焼く\n4:02 タレ", channelTitle: "c", durationSeconds: 300 };
+  const result = await importYouTubeRecipe("https://youtu.be/abcdefghijk", {
+    fetchYouTubeSnippet: async () => snippet,
+    analyzeRecipeDescription: async () => ({ stepsInDescription: false, ingredients: [{ name: "鶏肉", amount: "1枚", category: "肉" }] }),
+    analyzeRecipeVideo: async () => ({ steps: ["鶏肉に下味をつける", "焼く", "タレを絡める"], stepTimes: [5, 60, 100], ingredients: [] }),
+    matchStepsToChapters: async () => ({ chapterIndex: [2, 3, 4] })
+  }, { forceVideo: true });
+  assert.deepEqual(result.stepTimes, [35, 130, 242]);
+  assert.equal(result.stepTimesFrom, "chapters");
+});
