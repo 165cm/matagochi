@@ -227,7 +227,7 @@ export async function searchYouTubeRecipes(query, { publishedAfter, maxResults =
   const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/search?${params}`, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new ApiError(502, "youtube_api_error", "YouTubeを検索できませんでした。");
   const data = await response.json();
-  return (data.items || []).map((item) => ({ videoId: item.id?.videoId, channelId: item.snippet?.channelId || "", title: item.snippet?.title || "" })).filter((x) => YOUTUBE_ID_PATTERN.test(x.videoId || ""));
+  return (data.items || []).map((item) => ({ videoId: item.id?.videoId, channelId: item.snippet?.channelId || "", channelTitle: item.snippet?.channelTitle || "", title: item.snippet?.title || "" })).filter((x) => YOUTUBE_ID_PATTERN.test(x.videoId || ""));
 }
 
 // チャンネル名からチャンネルを探す（最初に1回だけ。検索は1回100単位なので、結果は保存して使い回す）。

@@ -353,7 +353,7 @@
     return stapleLabel[traits(recipe).staple];
   }
   const dayWord = (gap) => (gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `${gap}日前`);
-  const sameDish = (a, b) => !!a && !!b && (a.id === b.id || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id) || (!!a.starterId && a.starterId === b.starterId) || (!!a.title && a.title === b.title));
+  const sameDish = (a, b) => !!a && !!b && (a.id === b.id || (!!a.folder && a.folder === b.folder) || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id) || (!!a.starterId && a.starterId === b.starterId) || (!!a.title && a.title === b.title));
   // timeline: [{date, recipe}] of meals already eaten or already picked, any order.
   // Penalises the same staple / protein / cuisine within three days. Repeating the same
   // dish is handled by the repeat cycle (repeatFit), not here.
@@ -453,6 +453,8 @@
     requestOf = () => null,
     offUntil = "",
     rounds = null,
+    // 曜日のピン留め：{ "2": recipeId }（毎週火曜はこのフォルダの作り方）。
+    pins = {},
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -472,6 +474,19 @@
       if (slot.date >= start && slot.date < addDays(start, length) && slot.status !== "removed" && slot.recipe)
         usage.set(slot.recipe.id, (usage.get(slot.recipe.id) || 0) + 1);
     }
+    // 定番フォルダは、同じ献立（週）に1回まで。ピン留め・日付を指定した料理のフォルダは、その日のためにとっておく。
+    const folderOf = (r) => r?.folder || "";
+    const byId = new Map(recipes.map((r) => [r.id, r]));
+    const usedFolders = new Set(Object.values(slots).filter((x) => x.date >= start && x.date < addDays(start, length) && x.status !== "removed" && folderOf(x.recipe)).map((x) => folderOf(x.recipe)));
+    const reserved = new Map();
+    for (let i = 0; i < length; i += 1) {
+      const date = addDays(start, i);
+      if (slots[date] && slots[date].status !== "removed") continue;
+      const id = overrides[date] || pins[String(new Date(date + "T12:00:00").getDay())];
+      const f = folderOf(byId.get(id));
+      if (f && !reserved.has(f)) reserved.set(f, date);
+    }
+    const WD = "日月火水木金土";
     const ingredients = new Set();
     let newCount = 0;
     const need = (r) => SkillDB()?.rate(r).level || 1;
@@ -525,23 +540,28 @@
         .sort(
           (a, b) => b.score - a.score || a.recipe.id.localeCompare(b.recipe.id),
         );
-      const unused = candidates.filter(x => !used.has(x.recipe.id));
+      const free = (x) => { const f = folderOf(x.recipe); return !f || (!usedFolders.has(f) && (!reserved.has(f) || reserved.get(f) === date)); };
+      const unused = candidates.filter(x => !used.has(x.recipe.id) && free(x));
       // Only reuse when every eligible recipe has already appeared in this plan.
       const eligible = unused.length ? unused : candidates.sort((a, b) => (usage.get(a.recipe.id) || 0) - (usage.get(b.recipe.id) || 0));
       // At most one first-time dish per plan while known dishes are due (or requested).
       const favourites = eligible.filter((x) => x.request || (x.repeat.known && x.repeat.due));
       const pool = newCount >= MAX_NEW_PER_PLAN && favourites.length ? favourites : eligible;
+      const dow = String(new Date(date + "T12:00:00").getDay());
+      const pinned = !overrides[date] && pins[dow] ? candidates.find((x) => x.recipe.id === pins[dow] && free(x)) : null;
       const selected =
-        pool.find((x) => x.recipe.id === overrides[date]) || pool[0];
+        pool.find((x) => x.recipe.id === overrides[date]) || candidates.find((x) => x.recipe.id === overrides[date]) || pinned || pool[0];
       if (selected) {
         [selected.request ? `${selected.request.from}のリクエスト` : "", selected.rotation.reason, selected.repeat.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : ""]
           .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
+        if (pinned && selected === pinned) selected.reasons.unshift(`📌 毎週${WD[Number(dow)]}曜`);
         timeline.push({ date, recipe: selected.recipe });
         if (used.has(selected.recipe.id)) {
           selected.repeated = true;
           selected.reasons.push("候補が少ないため、もう一度登場");
         }
         used.add(selected.recipe.id);
+        if (folderOf(selected.recipe)) usedFolders.add(folderOf(selected.recipe));
         usage.set(selected.recipe.id, (usage.get(selected.recipe.id) || 0) + 1);
         if (!selected.repeat.known) newCount++;
         if (selected.challenge) {

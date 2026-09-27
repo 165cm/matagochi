@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-lossvideo1";
+const APP_VERSION = "20260927-folders1";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -68,6 +68,7 @@ const demoState = {
   shopDone: {},
   aisleOverrides: {},
   creatorNames: {},
+  folders: {},
   starterPref: { show: true, asked: false, updatedAt: "" },
   skillProfile: null,
   skillPhoto: null,
@@ -306,6 +307,7 @@ function normalizeState(saved) {
     shopDone: normalizeShopDone(saved.shopDone),
     aisleOverrides: normalizeAisleOverrides(saved.aisleOverrides),
     creatorNames: normalizeCreatorNames(saved.creatorNames),
+    folders: normalizeFolders(saved.folders),
     tasteSeeds: Array.isArray(saved.tasteSeeds) ? saved.tasteSeeds.filter((t) => t && typeof t.staple === "string").slice(0, 12).map(({ staple, protein, cuisine }) => ({ staple, protein, cuisine })) : [],
     starterPref: normalizeStarterPref(saved.starterPref),
     skillProfile: normalizeSkillProfile(saved.skillProfile),
@@ -555,6 +557,7 @@ function buildSyncPayload() {
     shopDone: state.shopDone || {},
     aisleOverrides: state.aisleOverrides || {},
     creatorNames: state.creatorNames || {},
+    folders: state.folders || {},
     starterPref: state.starterPref || {}
   };
 }
@@ -595,6 +598,7 @@ function mergeSyncPayloads(local, remote) {
     shopDone: { ...(remote.shopDone || {}), ...(local.shopDone || {}) },
     aisleOverrides: Lifestyle.mergeMap(local.aisleOverrides, remote.aisleOverrides),
     creatorNames: Lifestyle.mergeMap(local.creatorNames, remote.creatorNames),
+    folders: Lifestyle.mergeMap(local.folders, remote.folders),
     starterPref: (remote.starterPref?.updatedAt || "") > (local.starterPref?.updatedAt || "") ? remote.starterPref : local.starterPref
   };
 }
@@ -647,6 +651,7 @@ function applySyncPayload(payload) {
   state.shopDone = normalizeShopDone(payload.shopDone || state.shopDone);
   state.aisleOverrides = normalizeAisleOverrides(payload.aisleOverrides || state.aisleOverrides);
   state.creatorNames = normalizeCreatorNames(payload.creatorNames || state.creatorNames);
+  state.folders = normalizeFolders(payload.folders || state.folders);
   state.starterPref = normalizeStarterPref(payload.starterPref || state.starterPref);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
@@ -1275,8 +1280,8 @@ function renderCollection() {
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderSaveGuide()}
     ${renderStarterHint()}
-    ${isViewer() ? "" : `<div class="tabs-row"><div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>${recipeTab === "creators" ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>`}
-    ${recipeTab === "creators" ? renderCreators(allSaved) : `${renderFacets(pool)}
+    ${isViewer() ? "" : `<div class="tabs-row"><div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("folders", "📁 定番", folderList().length || null)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>${recipeTab === "creators" || recipeTab === "folders" ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>`}
+    ${recipeTab === "folders" ? renderFolders() : recipeTab === "creators" ? renderCreators(allSaved) : `${renderFacets(pool)}
     <section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>
     ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}`}
     ${playlistAvailable && !isViewer() ? `<section class="add-card">
@@ -2727,8 +2732,12 @@ async function handleAction(event) {
         updatedAt: nowIso(),
         note: state.draft.note,
         planning: state.draft.planning || undefined,
-        thumbnailUrl: state.draftThumbnailUrl || ""
+        thumbnailUrl: state.draftThumbnailUrl || "",
+        // 定番フォルダの「ほかの作り方を探す」から取り込んだ時は、そのフォルダに入れる。
+        ...(pendingFolder && state.folders?.[pendingFolder] ? { folder: pendingFolder } : {})
       };
+      const intoFolder = recipe.folder ? state.folders[recipe.folder] : null;
+      pendingFolder = "";
       state.recipes.unshift(recipe);
       state.selectedRecipeId = recipe.id;
       // 見るだけの家族が保存したレシピは、そのまま「食べたい」リクエストになる。
@@ -2745,10 +2754,11 @@ async function handleAction(event) {
       state.extractedSteps = [];
       state.fetchStatus = "";
       state.view = "collection";
+      if (intoFolder) { recipeTab = "folders"; folderOpen = intoFolder.key; }
       imageSession?.clear();
       imageFeedback = null;
       saveState();
-      showToast(asRequest ? `保存して、${deciderName()}に🙋リクエストしました。` : "レシピを保存しました。");
+      showToast(intoFolder ? `「${intoFolder.name}」フォルダに入れました。` : asRequest ? `保存して、${deciderName()}に🙋リクエストしました。` : "レシピを保存しました。");
       render();
     }
   }

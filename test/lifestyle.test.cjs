@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "plan-moves.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "plan-moves.js", "folders.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -903,6 +903,52 @@ test("eating out moves the bought dinners back a day; neighbours can swap", () =
   assert.deepEqual(JSON.parse(run("JSON.stringify([1,2].map(i=>state.mealSlots[addDays(today(),i)].recipe.title))")), [titles[1], titles[0]], "swapped with the next day");
   run('handleDailyAction("life-skip-kind",{date:addDays(today(),3),kind:"deli",shift:"false"})');
   assert.equal(run("state.mealSlots[addDays(today(),3)].status+state.mealSlots[addDays(today(),3)].kind+(state.mealSlots[addDays(today(),4)]?.status||'none')"), "offdelinone", "without shifting, the dinner is dropped");
+});
+
+test("定番フォルダ: one dish, many ways; once a week, pinned weekdays, a top-5 ranking", () => {
+  const run = app();
+  assert.equal(run('dishNameOf("【悪魔の】レンジで明太子パスタ｜リュウジのバズレシピ")'), "明太子パスタ");
+  assert.equal(run('dishNameOf("簡単！やみつき 鶏むね肉の照り焼き #shorts")'), "鶏むね肉の照り焼き");
+  run(`state.onboarded=true;state.rhythm=null;const b=Lifestyle.curated.find(r=>r.id==="starter-03");
+    state.recipes=["A","B","C","D","E","F"].map((x,i)=>({...JSON.parse(JSON.stringify(b)),id:"v"+x,curated:undefined,starterId:undefined,title:(i%2?"たらこ":"明太子")+"パスタ "+x,author:"作者"+x,videoUrl:"https://www.youtube.com/watch?v=aaaaaaaaaa"+x,savedAt:"2026-01-0"+(i+1)}));
+    handleDailyAction("life-folder-add",{recipe:"vA",folder:"new"})`);
+  const key = run("Object.keys(state.folders)[0]");
+  assert.equal(run(`state.folders["${key}"].name`), "明太子パスタ");
+  assert.equal(run('suggestFolder("たらこパスタ B")?.name'), "明太子パスタ", "たらこ counts as 明太子");
+  run(`["vB","vC","vD","vE","vF"].forEach(id=>handleDailyAction("life-folder-add",{recipe:id,folder:"${key}"}))`);
+  assert.equal(run('childText(recipeById("vA"))'), "▶作者A流", "a short child name: icon + poster + 流");
+  const plan = JSON.parse(run("JSON.stringify(dailyPlan().map(d=>d.candidate?.recipe.folder||''))"));
+  assert.ok(plan.filter(Boolean).length <= 1, `the folder appears once in the plan: ${plan}`);
+  assert.equal(run("planRecipes().filter(r=>r.folder).length"), 1, "one way per folder goes to the planner");
+  const tue = run('(()=>{for(let i=0;i<7;i++){const d=addDays(today(),i);if(new Date(d+"T12:00:00").getDay()===2)return d}})()');
+  run(`setFolderPin("${key}","2");state.planLength=7`);
+  const pinned = JSON.parse(run(`JSON.stringify(dailyPlan().filter(d=>d.candidate?.recipe.folder).map(d=>[d.date,d.candidate.reasons[0]]))`));
+  assert.deepEqual(pinned, [[tue, "📌 毎週火曜"]], "pinned to Tuesday, and only there");
+  assert.match(run("renderDailyPlan()"), /明太子パスタ<span class="child-name">/);
+  // ランキング：5位までに入れると、5位は圏外へ
+  run(`["vA","vB","vC","vD","vE"].forEach((id,i)=>handleDailyAction("life-rank",{folder:"${key}",recipe:id,pos:String(i+1)}))`);
+  run(`handleDailyAction("life-rank",{folder:"${key}",recipe:"vF",pos:"2"})`);
+  assert.equal(run(`state.folders["${key}"].ranking.join()`), "vA,vF,vB,vC,vD", "vE drops out of the top 5");
+  run(`handleDailyAction("life-rank",{folder:"${key}",recipe:"vA",pos:"out"})`);
+  assert.equal(run(`state.folders["${key}"].ranking.join()`), "vF,vB,vC,vD");
+  // 作ったあと：何位？を聞く
+  run(`const d=today();confirmDaily({date:d},recipeById("vE"));dailyRecord(state.mealSlots[d]);preferencePromptId=""`);
+  assert.match(run("renderRankPrompt()"), /明太子パスタ[\s\S]*作者E[\s\S]*5位[\s\S]*圏外/);
+  // 選択：まだ作っていない作り方 → ランキング → ほかの作り方を探す
+  run(`swapDate=addDays(today(),1);state.mealSlots[swapDate]=undefined;delete state.mealSlots[swapDate];state.planOverrides[swapDate]="vA"`);
+  assert.match(run("renderSwapChoices()"), /明太子パスタ<\/b>の作り方[\s\S]*まだ作っていない[\s\S]*ランキング[\s\S]*🥇[\s\S]*ほかの作り方を探す/);
+  assert.match(run('recipeTab="folders";folderOpen="' + key + '";renderFolders()'), /毎週[\s\S]*ランキング[\s\S]*ほかの「明太子パスタ」の作り方を探す/);
+  run(`handleDailyAction("life-folder-delete",{folder:"${key}"})`);
+  assert.equal(run("state.recipes.filter(r=>r.folder).length+':'+folderList().length"), "0:0", "deleting the folder keeps the recipes");
+});
+
+test("選択: new recipes first, then the best three by rating", () => {
+  const run = app();
+  run(`state.onboarded=true;state.rhythm=null;const r=Lifestyle.curated.find(x=>x.id==="starter-12");state.evaluations.unshift({id:"meal-x",recipeId:r.id,recipeTitle:r.title,cookedAt:addDays(today(),-20),mealType:"dinner",familyRepeatCycles:{自分:"tomorrow"},memo:"",photo:"",updatedAt:nowIso()});swapDate=addDays(today(),1)`);
+  const html = run("renderSwapChoices()");
+  assert.match(html, /🆕 まだ作っていない[\s\S]*⭐ 評価順ベスト3[\s\S]*starter-12/);
+  assert.equal((html.match(/life-choose/g) || []).length, 4, "three new and one rated (collapsed rest)");
+  assert.match(html, /ほかの候補を見る/);
 });
 
 test("cooking XP, levels, badges, the skill list and the promotion exam", () => {
