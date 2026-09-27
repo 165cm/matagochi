@@ -1935,7 +1935,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 .cooking-check input { width: 22px; height: 22px; accent-color: var(--sage-dark); }
 .cooking-steps.cooking-check { counter-reset: step; }
 .cooking-steps.cooking-check label { grid-template-columns: 24px minmax(0, 1fr); font-size: 17px; line-height: 1.6; }
-.cooking-steps.cooking-check label span::before { counter-increment: step; content: counter(step) ". "; font-weight: 800; color: var(--sage-dark); }
+.cooking-steps.cooking-check label > span::before { counter-increment: step; content: counter(step) ". "; font-weight: 800; color: var(--sage-dark); }
 .cooking-check label:has(input:checked) span { text-decoration: line-through; opacity: 0.55; }
 .cooking-primary { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); padding-top: 10px; background: linear-gradient(transparent, var(--surface-soft) 35%); }
 .cooking-primary .primary-button { width: 100%; min-height: 54px; font-size: 17px; }
@@ -2976,9 +2976,32 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .subscribe-button { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; background: #cc0000; color: #fff; font-weight: 800; font-size: 13px; text-decoration: none; }
 .credit-note { margin: 0; color: var(--muted); }
 .credit-note a { color: var(--muted); }
-.step-time { margin-left: 4px; padding: 2px 8px; min-height: 26px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font: inherit; font-size: 12px; font-weight: 800; color: #cc0000; cursor: pointer; white-space: nowrap; }
+.step-time { margin: 0 6px 0 0; vertical-align: 1px; padding: 2px 8px; min-height: 26px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font: inherit; font-size: 12px; font-weight: 800; color: #cc0000; cursor: pointer; white-space: nowrap; }
 .cooking-steps li { display: flex; align-items: flex-start; gap: 4px; flex-wrap: wrap; }
 .creator-thanks { display: grid; gap: 6px; margin: 10px 0; padding: 12px; border-radius: 16px; background: var(--surface-soft); }
 .creator-thanks p { margin: 0; }
 .thanks-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .thanks-actions .secondary-button { min-height: 44px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+
+/* 手順の「▶」は番号のすぐ後ろ。 */
+.step-time-slot:empty { display: none; }
+.cooking-steps.cooking-check label > span::before { margin-right: 2px; }
+
+/* 縦持ち：再生中に動画が上に隠れたら、画面の上に小さく残す（ページは動かさない）。 */
+.video-undock { display: none; }
+@media (orientation: portrait), (min-height: 521px) {
+  .video-frame.is-docked iframe { position: fixed; z-index: 20; top: 0; left: 50%; transform: translateX(-50%); width: min(100vw, 430px); height: auto; aspect-ratio: 16 / 9; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+  .video-frame.is-docked.is-shorts iframe { left: auto; right: max(8px, calc(50vw - 207px)); top: 8px; transform: none; width: min(34vw, 150px); aspect-ratio: 9 / 16; border-radius: 12px; }
+  .video-frame.is-docked .video-undock { display: grid; place-items: center; position: fixed; z-index: 21; top: calc(min(100vw, 430px) * 9 / 16 + 6px); right: max(8px, calc(50vw - 207px)); width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(0,0,0,.72); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; }
+  .video-frame.is-docked.is-shorts .video-undock { top: calc(min(34vw, 150px) * 16 / 9 + 14px); }
+}
+
+/* 横持ちのスマホ：左に動画、右にレシピ（材料・手順）を並べる。 */
+@media (orientation: landscape) and (max-height: 520px) {
+  body:has(.creator-credit .video-frame) { background: #000; }
+  body:has(.creator-credit .video-frame) .app-shell { width: 50vw; min-height: 100vh; margin: 0 0 0 50vw; border-radius: 0; }
+  body:has(.creator-credit .video-frame) .topbar { position: static; }
+  body:has(.creator-credit .video-frame) .bottom-tabs { display: none; }
+  body:has(.creator-credit .video-frame) .screen { padding-bottom: 24px; }
+  .creator-credit .video-frame, .creator-credit .video-frame.is-shorts { position: fixed; z-index: 5; left: 0; top: 0; width: 50vw; height: 100vh; height: 100dvh; max-height: none; aspect-ratio: auto; margin: 0; border-radius: 0; }
+}

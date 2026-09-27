@@ -147,13 +147,70 @@ function ensureTimecodes(recipe) {
       // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
       const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
       if (own && times.length) { own.stepTimes = times; saveState(); }
-      if (["recipe", "cooking"].includes(state.view)) render();
+      // 画面全体は描き直さない（再生中の動画が最初に戻らないように）。▶ と案内だけ差し替える。
+      if (["recipe", "cooking"].includes(state.view)) patchStepTimes(recipe);
     });
+}
+function patchStepTimes(recipe) {
+  const list = [...document.querySelectorAll("[data-steps-of]")].find((el) => el.dataset.stepsOf === recipe.id);
+  if (!list) return;
+  list.querySelectorAll("[data-step-slot]").forEach((el) => { el.innerHTML = stepTimeButton(recipe, Number(el.dataset.stepSlot)); el.querySelector("[data-action]")?.addEventListener("click", handleAction); });
+  document.querySelectorAll(".timecode-hint").forEach((el) => { const hint = timecodeHint(recipe); el.textContent = hint ? `${el.dataset.sep || ""}${hint}` : ""; });
+}
+// 手順の番号のすぐ後ろに置く「▶ m:ss」の入れ物。
+const stepTimeSlot = (recipe, index) => `<span class="step-time-slot" data-step-slot="${index}">${stepTimeButton(recipe, index)}</span>`;
+const timecodeHintHtml = (recipe, sep = "") => { const hint = timecodeHint(recipe); return `<span class="timecode-hint" data-sep="${escapeAttr(sep)}">${hint ? escapeHtml(sep + hint) : ""}</span>`; };
+
+/* ---- 動画プレーヤーの操作：ページを動かさずにその場面へ。縦持ちは画面上に小さく残し、横持ちは左に動画・右に手順 ---- */
+const videoPlayer = { ready: false, playing: false, closed: false };
+const landscapeSplit = () => !!globalThis.matchMedia?.("(orientation: landscape) and (max-height: 520px)").matches;
+function playerFrame() { return document.querySelector(".creator-credit .video-frame"); }
+function playerCommand(func, args = []) { playerFrame()?.querySelector("iframe")?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*"); }
+function playVideoAt(seconds) {
+  const iframe = playerFrame()?.querySelector("iframe");
+  if (!iframe) return false;
+  if (videoPlayer.ready) { playerCommand("seekTo", [seconds, true]); playerCommand("playVideo"); }
+  else {
+    // まだ動画の準備ができていない時は、その場面から始まる動画に差し替える（ページはそのまま）。
+    const url = new URL(iframe.src);
+    url.searchParams.set("start", String(Math.floor(seconds))); url.searchParams.set("autoplay", "1");
+    iframe.src = url.toString();
+  }
+  videoPlayer.playing = true; videoPlayer.closed = false;
+  dockVideo();
+  return true;
+}
+function closeVideoDock() { playerCommand("pauseVideo"); videoPlayer.playing = false; videoPlayer.closed = true; dockVideo(); }
+// 縦持ちで動画が画面の上に隠れたら、再生中のあいだは画面の上に小さく残す。
+function dockVideo() {
+  const frame = playerFrame();
+  if (!frame) return;
+  const top = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+  const hidden = frame.getBoundingClientRect().bottom < top + 40;
+  frame.classList.toggle("is-docked", !landscapeSplit() && videoPlayer.playing && !videoPlayer.closed && hidden);
+}
+function bindVideoPlayer() {
+  const iframe = playerFrame()?.querySelector("iframe");
+  videoPlayer.ready = false; videoPlayer.playing = false; videoPlayer.closed = false;
+  // 動画の再生・一時停止を知らせてもらう（YouTube の埋め込みプレーヤーの取り決め）。
+  iframe?.addEventListener("load", () => { videoPlayer.ready = false; iframe.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "ripigochi", channel: "widget" }), "*"); });
+}
+if (globalThis.addEventListener && !globalThis.__videoPlayerBound) {
+  globalThis.__videoPlayerBound = true;
+  globalThis.addEventListener("message", (event) => {
+    if (!/youtube(-nocookie)?\.com$/.test(new URL(event.origin || "http://x").hostname)) return;
+    let data; try { data = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch { return; }
+    if (["onReady", "initialDelivery", "infoDelivery"].includes(data?.event)) videoPlayer.ready = true;
+    const st = data?.info?.playerState;
+    if (st !== undefined) { videoPlayer.playing = st === 1 || st === 3; if (videoPlayer.playing) videoPlayer.closed = false; dockVideo(); }
+  });
+  globalThis.addEventListener("scroll", () => dockVideo(), { passive: true });
+  globalThis.addEventListener("resize", () => dockVideo());
 }
 function stepTimeButton(recipe, index) {
   const t = recipeStepTimes(recipe)[index];
   if (!Number.isFinite(t) || !youtubeVideoId(recipe.videoUrl)) return "";
-  return ` <button type="button" class="step-time" data-action="life-video-at" data-recipe="${escapeAttr(recipe.id)}" data-seconds="${t}" aria-label="この手順を動画の${mmss(t)}から見る">▶ ${mmss(t)}</button>`;
+  return `<button type="button" class="step-time" data-action="life-video-at" data-recipe="${escapeAttr(recipe.id)}" data-seconds="${t}" aria-label="この手順を動画の${mmss(t)}から見る">▶ ${mmss(t)}</button>`;
 }
 function creatorLink(recipe) {
   if (recipe.channelId) return `https://www.youtube.com/channel/${encodeURIComponent(recipe.channelId)}?sub_confirmation=1`;
@@ -167,7 +224,7 @@ function renderCreatorCredit(recipe) {
   const start = videoStartAt.key === recipe.id ? videoStartAt.seconds : 0;
   // 公式の埋め込みプレーヤー（再生は投稿者の再生回数・広告収益になる）。
   const shorts = /youtube\.com\/shorts\//i.test(recipe.videoUrl);
-  const player = id ? `<div class="video-frame${shorts ? " is-shorts" : ""}"><iframe src="https://www.youtube.com/embed/${id}?playsinline=1&rel=0${start ? `&start=${start}&autoplay=1` : ""}" title="${escapeAttr(recipe.title)}の動画" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>` : "";
+  const player = id ? `<div class="video-frame${shorts ? " is-shorts" : ""}"><iframe src="https://www.youtube.com/embed/${id}?playsinline=1&rel=0&enablejsapi=1${globalThis.location?.origin ? `&origin=${encodeURIComponent(globalThis.location.origin)}` : ""}${start ? `&start=${start}&autoplay=1` : ""}" title="${escapeAttr(recipe.title)}の動画" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><button type="button" class="video-undock" data-action="life-video-close" aria-label="小さな動画を閉じる">×</button></div>` : "";
   const name = recipe.author || (id ? "YouTubeの投稿者" : "投稿者");
   const link = creatorLink(recipe);
   const isYouTube = !!id;
