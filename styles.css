@@ -3254,50 +3254,67 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .pick-facts { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px; }
 .pick-facts i { font-style: normal; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #fff1ec; color: #8a4a36; }
 .pick-tile.is-mag .pick-blurb { font-size: 12px; color: #5b5048; -webkit-line-clamp: 2; }
-/* ① 先週のごはん日記 */
-.diary-week { list-style: none; margin: 4px 0 12px; padding: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.diary-week li { display: grid; justify-items: center; gap: 2px; padding: 6px 0; border-radius: 12px; background: #f5ede2; }
-.diary-week li small { font-size: 11px; font-weight: 800; color: var(--muted); }
-.diary-week li span { font-size: 20px; min-height: 24px; line-height: 24px; }
-.diary-week li.is-now { background: #fff1ec; outline: 2px solid var(--tomato); }
-.diary-week li.is-done { background: #fff; }
-.diary-q { margin: 0 0 8px; font-size: 17px; }
-.diary-q small { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 11px; vertical-align: 2px; }
-.diary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
-.diary-tile { display: grid; justify-items: center; gap: 2px; min-height: 76px; padding: 8px 4px; border-radius: 16px; border: 1.5px solid var(--line); background: #fff; font: inherit; font-size: 12px; font-weight: 700; color: var(--ink); cursor: pointer; line-height: 1.3; }
-.diary-tile span { font-size: 26px; }
-.diary-tile:active { transform: scale(.96); background: #fff1ec; }
-.diary-tile.is-skip { color: var(--muted); }
-.diary-summary { font-size: 15px; margin: 6px 0; }
-/* ② 仕上がりが変わるチャーハン */
-.dish-art { position: relative; width: 210px; height: 150px; margin: 4px auto 0; }
-.da-plate { position: absolute; inset: 22px 0 0; border-radius: 50%; background: radial-gradient(#fff 55%, #e9e2d8 57%, #fff 62%); box-shadow: 0 8px 18px rgba(40, 25, 15, .15); }
-.da-rice { position: absolute; left: 28%; right: 28%; top: 14%; bottom: 26%; border-radius: 50% 50% 45% 45%; background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--rice) 70%, #fff), var(--rice)); box-shadow: inset 0 -6px 0 rgba(0,0,0,.08); transition: background .5s; }
-.da-rice::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background-image: radial-gradient(#fff9 1.5px, transparent 2px); background-size: 9px 9px; }
-.da-top { position: absolute; font-size: 22px; animation: fd-in .4s ease-out both; }
-.da-top.t0 { left: 36%; top: 18%; } .da-top.t1 { left: 52%; top: 26%; } .da-top.t2 { left: 44%; top: 40%; }
-.da-egg { position: absolute; left: 42%; top: 6%; font-size: 34px; animation: fd-in .4s ease-out both; }
-.da-herb { position: absolute; left: 58%; top: 10%; font-size: 26px; animation: fd-in .4s ease-out both; }
-.da-fx { position: absolute; right: 6px; top: 0; font-size: 26px; animation: da-fx 1s ease-in-out infinite alternate; }
-@keyframes da-fx { from { transform: translateY(0) scale(1); } to { transform: translateY(-6px) scale(1.15); } }
-.dish-name { text-align: center; margin: 6px 0; font-size: 14px; color: var(--muted); }
-.dish-name b { color: var(--ink); font-size: 16px; }
-.dish-q { margin: 8px 0 6px; font-size: 16px; }
-.dish-q b { color: var(--sage-dark); margin-right: 6px; font-size: 13px; }
-.dish-options { display: grid; gap: 8px; }
-.dish-options .funnel-pick span { display: grid; gap: 2px; }
-.dish-options small { font-size: 12px; color: var(--muted); font-weight: 600; }
-/* ごはんタイプのカード */
-.cook-type-card { margin-top: 10px; padding: 18px 16px; border-radius: 24px; background: radial-gradient(circle at 50% 0%, #2b2140, #120e1c 70%); color: #fff; text-align: center; display: grid; justify-items: center; gap: 6px; box-shadow: 0 10px 30px rgba(20, 10, 40, .35); animation: fd-in .5s ease-out both; }
-.ct-kicker { margin: 0; font-size: 12px; letter-spacing: .2em; color: #c9b8ff; }
-.ct-art { width: min(240px, 70%); height: auto; border-radius: 20px; box-shadow: 0 0 0 3px #ffffff22, 0 0 30px #ffd76a55; }
-.ct-element { margin: 2px 0 0; padding: 2px 12px; border-radius: 999px; background: #ffffff1a; font-size: 12px; font-weight: 800; }
-.ct-name { margin: 0; font-size: 22px; line-height: 1.3; background: linear-gradient(90deg, #ffe7a3, #fff, #ffd1f0); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.ct-catch { margin: 0; font-size: 14px; color: #e7dcff; }
-.ct-radar { width: min(250px, 80%); height: auto; }
-.ct-radar .r-ring { fill: none; stroke: #ffffff33; stroke-width: 1; }
-.ct-radar .r-shape { fill: #ffd76a66; stroke: #ffd76a; stroke-width: 2; }
-.ct-radar text { fill: #e7dcff; font-size: 11px; font-weight: 700; }
-.ct-move { margin: 0; font-size: 14px; }
-.ct-move b { color: #ffd76a; }
-.cook-type-card .secondary-button { margin-top: 4px; background: #ffffff1a; color: #fff; border-color: #ffffff33; }
+/* 晩ごはんタイプ診断 */
+.ratio-plates { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 6px 0 12px; }
+.ratio-plates i { display: grid; place-items: center; aspect-ratio: 1; border-radius: 50%; background: var(--c); font-style: normal; font-size: 18px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.12); animation: fd-in .25s ease-out both; }
+.ratio-rows { display: grid; gap: 6px; }
+.ratio-row { display: grid; grid-template-columns: minmax(0, 1fr) 40px 48px 40px; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 14px; background: var(--surface); }
+.rr-label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+.rr-label span { font-size: 20px; }
+.rr-count { text-align: center; font-size: 16px; }
+.chain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; }
+.chain-tile { display: grid; justify-items: center; gap: 1px; min-height: 72px; padding: 8px 2px; border-radius: 14px; border: 1.5px solid var(--line); background: #fff; font: inherit; cursor: pointer; line-height: 1.25; }
+.chain-tile span { font-size: 20px; }
+.chain-tile b { font-size: 12px; }
+.chain-tile small { font-size: 10px; color: var(--muted); }
+.chain-tile[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; box-shadow: 0 0 0 2px #ffd8cc; }
+.chain-tile:disabled { opacity: .4; }
+.photo-drop { display: grid; justify-items: center; gap: 4px; padding: 20px 16px; border-radius: 20px; background: var(--tomato); color: #fff; text-align: center; cursor: pointer; box-shadow: 0 8px 22px rgba(238, 106, 76, .35); }
+.photo-drop span { font-size: 34px; }
+.photo-drop b { font-size: 18px; }
+.photo-drop small { font-size: 12px; opacity: .95; }
+.photo-judge { display: grid; justify-items: center; gap: 4px; padding: 16px; border-radius: 20px; background: var(--surface); text-align: center; }
+.photo-judge p { margin: 0; }
+.pj-kicker { font-size: 11px; letter-spacing: .2em; color: var(--muted); }
+.pj-dish { font-size: 18px; font-weight: 800; }
+.pj-tech { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.pj-tech i { font-style: normal; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #fff1ec; color: #8a4a36; }
+.pj-comment { font-size: 14px; }
+/* 晩ごはんタイプのカード：属性の色で光るレアカード＋パワプロ風のS〜Gランク */
+.cook-type-card { position: relative; overflow: hidden; margin-top: 4px; padding: 16px 16px 18px; border-radius: 26px; background: radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--el) 45%, #1a1330), #0f0b18 72%); color: #fff; text-align: center; display: grid; justify-items: center; gap: 6px; border: 2px solid color-mix(in srgb, var(--el) 70%, #fff); box-shadow: 0 0 0 4px #0f0b18, 0 0 36px color-mix(in srgb, var(--el) 60%, transparent), 0 14px 30px rgba(10, 5, 25, .45); animation: ct-in .7s cubic-bezier(.2, 1.3, .4, 1) both; }
+@keyframes ct-in { from { transform: rotateY(90deg) scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
+.ct-holo { position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.35) 46%, rgba(255,230,160,.25) 50%, transparent 58%); animation: ct-holo 3.2s ease-in-out infinite; pointer-events: none; mix-blend-mode: screen; }
+@keyframes ct-holo { 0% { transform: translateX(-30%); } 60%, 100% { transform: translateX(30%); } }
+.ct-top { width: 100%; display: flex; justify-content: space-between; align-items: center; position: relative; }
+.ct-kicker { margin: 0; font-size: 11px; letter-spacing: .18em; color: #e3d8ff; }
+.ct-overall { margin: 0; display: grid; justify-items: end; line-height: 1; }
+.ct-overall small { font-size: 10px; color: #e3d8ff; }
+.ct-overall b { font-size: 38px; font-weight: 900; color: var(--el); text-shadow: 0 0 14px color-mix(in srgb, var(--el) 70%, transparent); }
+.ct-art { position: relative; width: min(230px, 66%); height: auto; border-radius: 20px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--el) 60%, #fff), 0 0 26px color-mix(in srgb, var(--el) 55%, transparent); }
+.ct-element { margin: 4px 0 0; padding: 2px 12px; border-radius: 999px; background: color-mix(in srgb, var(--el) 30%, transparent); border: 1px solid color-mix(in srgb, var(--el) 70%, transparent); font-size: 12px; font-weight: 800; }
+.ct-name { margin: 0; font-size: 23px; line-height: 1.3; font-weight: 900; background: linear-gradient(90deg, #fff 0%, color-mix(in srgb, var(--el) 60%, #fff) 50%, #fff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ct-catch { margin: 0 0 4px; font-size: 14px; color: #ece4ff; }
+.ct-stats { list-style: none; margin: 4px 0; padding: 12px; width: 100%; display: grid; gap: 7px; border-radius: 16px; background: rgba(255, 255, 255, .06); }
+.ct-stats li { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) 1.9em 1.9em; align-items: center; gap: 8px; font-size: 13px; }
+.cs-name { text-align: left; font-weight: 800; color: #ece4ff; }
+.cs-bar { height: 10px; border-radius: 5px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.cs-bar i { display: block; height: 100%; width: var(--v); border-radius: 5px; transform-origin: left; animation: cs-fill .9s var(--d) cubic-bezier(.2, .9, .3, 1) both; }
+@keyframes cs-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.cs-grade { font-size: 18px; font-weight: 900; font-style: italic; animation: cs-pop .4s calc(var(--d) + .7s) cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes cs-pop { from { transform: scale(0); } to { transform: scale(1); } }
+.ct-stats small { font-size: 11px; color: #bfb3dc; text-align: right; }
+.g-S { color: transparent; background: linear-gradient(90deg, #ffe66d, #ff8bd1, #7fd8ff); -webkit-background-clip: text; background-clip: text; } .cs-bar .g-S { background: linear-gradient(90deg, #ffe66d, #ff8bd1, #7fd8ff); }
+.g-A { color: #ff5fa2; } .cs-bar .g-A { background: #ff5fa2; }
+.g-B { color: #ff5252; } .cs-bar .g-B { background: #ff5252; }
+.g-C { color: #ff9b3d; } .cs-bar .g-C { background: #ff9b3d; }
+.g-D { color: #ffd23f; } .cs-bar .g-D { background: #ffd23f; }
+.g-E { color: #7ee06a; } .cs-bar .g-E { background: #7ee06a; }
+.g-F { color: #5cb8ff; } .cs-bar .g-F { background: #5cb8ff; }
+.g-G { color: #a8a8b8; } .cs-bar .g-G { background: #a8a8b8; }
+.ct-move { margin: 2px 0 0; display: grid; gap: 0; }
+.ct-move small { font-size: 11px; color: #bfb3dc; letter-spacing: .2em; }
+.ct-move b { font-size: 18px; color: var(--el); }
+.ct-share { margin-top: 6px; padding: 8px 18px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .1); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .cook-type-card, .ct-holo, .cs-bar i, .cs-grade { animation: none; } }
+.profile-wizard .photo-drop small, .photo-drop small { color: #fff; opacity: .95; }
+.profile-wizard .photo-drop b { color: #fff; }

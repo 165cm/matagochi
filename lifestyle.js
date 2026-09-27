@@ -95,13 +95,16 @@
   function profile(raw = {}) {
     return {
       detailedSetup: raw.detailedSetup === true,
-      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 17 ? raw.quickSetupIndex : null,
+      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 20 ? raw.quickSetupIndex : null,
       picks: Array.isArray(raw.picks) ? raw.picks.filter((x) => typeof x === "string" && x.length < 40).slice(0, 12) : [],
       // はじめの質問（悩み・保存した動画・食費）。献立には使わず、案内の言葉と目安に使う。
       ...(raw.remindAdded === true ? { remindAdded: true } : {}),
-      // ごはんタイプ診断：先週の日記（日付 → ジャンル）と、チャーハンの答え。
-      ...(raw.diary && typeof raw.diary === "object" ? { diary: Object.fromEntries(Object.entries(raw.diary).filter(([d, g]) => /^\d{4}-\d{2}-\d{2}$/.test(d) && /^[a-z]{2,10}$/.test(g)).slice(0, 7)) } : {}),
-      ...(raw.dish && typeof raw.dish === "object" ? { dish: Object.fromEntries(Object.entries(raw.dish).filter(([q, v]) => ["flavor", "topping", "time", "finish"].includes(q) && /^[a-z]$/.test(v))) } : {}),
+      // 晩ごはんタイプ診断：1週間の割合・主食・外食のお店・いちばん大事なこと。
+      ...(raw.ratio && typeof raw.ratio === "object" ? { ratio: Object.fromEntries(["self", "out", "take", "deli"].map((k) => [k, Math.max(0, Math.min(7, Math.round(Number(raw.ratio[k]) || 0)))])) } : {}),
+      ...(raw.ratioSet === true ? { ratioSet: true } : {}),
+      ...(Array.isArray(raw.staples) ? { staples: raw.staples.filter((x) => ["rice", "noodle", "bread", "other"].includes(x)) } : {}),
+      ...(Array.isArray(raw.chains) ? { chains: raw.chains.filter((x) => /^[a-z]{2,12}$/.test(x)).slice(0, 3) } : {}),
+      ...(typeof raw.priority === "string" && /^[a-z]{3,8}$/.test(raw.priority) ? { priority: raw.priority } : {}),
       ...(Array.isArray(raw.eaters) ? { eaters: raw.eaters.filter((x) => ["me", "partner", "kids", "teens", "parents", "friends"].includes(x)) } : {}),
       ...Object.fromEntries(["goal", "pain", "savedVideos", "foodBudget"].filter((k) => typeof raw[k] === "string" && raw[k].length < 20).map((k) => [k, raw[k]])),
       version: 1,

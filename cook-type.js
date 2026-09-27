@@ -1,148 +1,183 @@
-/* ごはんタイプ診断（自炊の傾向）：① 先週のごはん日記（7日を1タップずつ）＋ ② 仕上がりが変わる一皿（チャーハンを作る4問）。
-   3つの軸（定番/挑戦・こってり/あっさり・時短/じっくり）で8タイプ。結果は属性×職業のキャラクターカード。 */
-const DIARY_GENRES = [
-  { id: "don", icon: "🍚", label: "丼もの", k: 1, q: 1, taste: "和風" },
-  { id: "noodle", icon: "🍜", label: "麺類", k: 0, q: 1, taste: "" },
-  { id: "stirfry", icon: "🍳", label: "炒めもの", k: 1, q: 1, taste: "中華風" },
-  { id: "washoku", icon: "🐟", label: "焼き魚・和食", k: -1, q: 0, taste: "和風" },
-  { id: "nimono", icon: "🍲", label: "煮もの・鍋", k: -1, q: -1, taste: "和風" },
-  { id: "fry", icon: "🍤", label: "揚げもの", k: 2, q: -1, taste: "" },
-  { id: "western", icon: "🍝", label: "パスタ・洋食", k: 1, q: 0, taste: "洋風" },
-  { id: "chinese", icon: "🥟", label: "中華・エスニック", k: 1, q: 0, taste: "中華風" },
-  { id: "eatout", icon: "🍽", label: "外食", k: 0, q: 1, out: true },
-  { id: "deli", icon: "🍱", label: "お惣菜・お弁当", k: 0, q: 2, out: true },
-  { id: "unknown", icon: "❓", label: "覚えていない", k: 0, q: 0, skip: true },
+/* 晩ごはんタイプ診断：① 1週間の晩ごはんの割合 → ② よく食べる主食 → ③ 外食するならどの店？ → ④ いちばん大事なこと
+   → ⑤ 作った料理の写真で腕前（AI判定）。3つの軸（定番/挑戦・こってり/あっさり・時短/じっくり）で8タイプ。
+   結果は、属性×職業のキャラクターと、パワプロ風のS〜Gランクで見せるステータスカード。 */
+const RATIO_KINDS = [
+  { id: "self", icon: "🍳", label: "自炊", color: "#ee6a4c" },
+  { id: "out", icon: "🍽", label: "外食", color: "#f2a93b" },
+  { id: "take", icon: "🥡", label: "テイクアウト・惣菜", color: "#6aa84f" },
+  { id: "deli", icon: "🛵", label: "デリバリー", color: "#4f8fd6" },
 ];
-const GENRE_OF = Object.fromEntries(DIARY_GENRES.map((g) => [g.id, g]));
-const DIARY_DAYS = [1, 2, 3, 4, 5, 6, 0]; // 月〜日
-// 仕上がりが変わる一皿：答えるたびにチャーハンが変わる。
-const DISH_QUESTIONS = [
-  { id: "flavor", q: "味つけは？", options: [["k", "🧄 こってり", "ラード・オイスターソース"], ["a", "🧂 あっさり", "塩・だし"]] },
-  { id: "topping", q: "具は？", options: [["r", "🥚 いつもの", "卵・ねぎ・チャーシュー"], ["c", "🧀 意外な組み合わせ", "キムチ・チーズ・パクチー"]] },
-  { id: "time", q: "作り方は？", options: [["q", "⚡ 5分で一気に", "強火でまとめて炒める"], ["s", "🕰 20分じっくり", "具を別に炒めて、パラパラに"]] },
-  { id: "finish", q: "仕上げは？", options: [["k", "🍳 目玉焼きのせ", "黄身をからめて"], ["a", "🌿 ねぎとごま", "香りでさっぱり"]] },
+const STAPLES = [["rice", "🍚", "ごはん"], ["noodle", "🍜", "麺類"], ["bread", "🍞", "パン"], ["other", "🥣", "その他"]];
+// 駅前によくあるお店（名前は選びやすさのため。店の評価ではありません）。k はこってり度。
+const CHAINS = [
+  { id: "yoshinoya", name: "吉野家", icon: "🐂", genre: "牛丼", k: 1 },
+  { id: "sukiya", name: "すき家", icon: "🐂", genre: "牛丼", k: 1 },
+  { id: "matsuya", name: "松屋", icon: "🐂", genre: "牛丼", k: 1 },
+  { id: "marugame", name: "丸亀製麺", icon: "🍲", genre: "うどん", k: -1 },
+  { id: "hanamaru", name: "はなまるうどん", icon: "🍲", genre: "うどん", k: -1 },
+  { id: "ichiran", name: "一蘭", icon: "🍜", genre: "ラーメン", k: 2 },
+  { id: "tenkaippin", name: "天下一品", icon: "🍜", genre: "ラーメン", k: 2 },
+  { id: "hidakaya", name: "日高屋", icon: "🥟", genre: "中華", k: 1.5 },
+  { id: "ohsho", name: "餃子の王将", icon: "🥟", genre: "中華", k: 1.5 },
+  { id: "ootoya", name: "大戸屋", icon: "🍱", genre: "定食", k: -1 },
+  { id: "yayoiken", name: "やよい軒", icon: "🍱", genre: "定食", k: -0.5 },
+  { id: "coco", name: "CoCo壱番屋", icon: "🍛", genre: "カレー", k: 1 },
+  { id: "sushiro", name: "スシロー", icon: "🍣", genre: "寿司", k: -1.5 },
+  { id: "kura", name: "くら寿司", icon: "🍣", genre: "寿司", k: -1.5 },
+  { id: "saizeriya", name: "サイゼリヤ", icon: "🍝", genre: "洋食", k: 0.5 },
+  { id: "gusto", name: "ガスト", icon: "🍝", genre: "洋食", k: 0.5 },
+  { id: "mcd", name: "マクドナルド", icon: "🍔", genre: "バーガー", k: 1.5 },
+  { id: "mos", name: "モスバーガー", icon: "🍔", genre: "バーガー", k: 1 },
+  { id: "katsuya", name: "かつや", icon: "🍖", genre: "とんかつ", k: 2 },
+  { id: "torikizoku", name: "鳥貴族", icon: "🍢", genre: "焼き鳥", k: 1 },
 ];
+const CHAIN_OF = Object.fromEntries(CHAINS.map((c) => [c.id, c]));
+const PRIORITIES = [["cheap", "💴", "安さ"], ["fast", "⚡", "早さ"], ["volume", "🍖", "ボリューム"], ["healthy", "🥗", "からだにいい"], ["variety", "🌈", "いろいろ食べたい"]];
+const MOVES = { 牛丼: "特盛いっき食い", うどん: "コシの見極め", ラーメン: "替え玉コンボ", 中華: "強火の鍋振り", 定食: "一汁三菜の構え", カレー: "辛さ10倍チャレンジ", 寿司: "回転レーン見切り", 洋食: "ドリンクバー無限回廊", バーガー: "片手メシ", とんかつ: "衣サクサク斬り", 焼き鳥: "串打ち百本" };
 const COOK_TYPES = {
-  RKQ: { el: "⚡", element: "雷", name: "雷速の丼ソードマン", catch: "迷わず斬る、いつもの一杯。", move: "丼もの" },
-  RKS: { el: "🔥", element: "炎", name: "炎の煮込みナイト", catch: "鍋を守る、こってりの騎士。", move: "煮込み" },
-  RAQ: { el: "💧", element: "水", name: "水流の和食シーフ", catch: "さっと仕上げる、やさしい定番。", move: "焼き魚・和食" },
-  RAS: { el: "🌿", element: "森", name: "出汁の森ヒーラー", catch: "滋味で、みんなを回復させる。", move: "煮もの・汁もの" },
-  CKQ: { el: "🌪", element: "風", name: "疾風のスパイスハンター", catch: "新しい辛さを、狩りにいく。", move: "スパイス炒め" },
-  CKS: { el: "🌋", element: "溶岩", name: "灼熱の中華バーサーカー", catch: "強火と油で、暴れまくる。", move: "中華" },
-  CAQ: { el: "❄️", element: "氷", name: "氷刃のレンジ魔導士", catch: "レンジ一閃、未知の一皿。", move: "サラダ・エスニック" },
-  CAS: { el: "✨", element: "光", name: "光の彩り錬金術師", catch: "素材を、輝きに変える。", move: "彩りプレート" },
+  RKQ: { el: "⚡", element: "雷", color: "#ffd23f", name: "雷速の丼ソードマン", catch: "迷わず斬る、いつもの一杯。", move: "特盛いっき食い" },
+  RKS: { el: "🔥", element: "炎", color: "#ff5a3c", name: "炎の煮込みナイト", catch: "鍋を守る、こってりの騎士。", move: "とろとろ煮込み" },
+  RAQ: { el: "💧", element: "水", color: "#3ec5ff", name: "水流の和食シーフ", catch: "さっと仕上げる、やさしい定番。", move: "一汁一菜の早業" },
+  RAS: { el: "🌿", element: "森", color: "#5fcf6b", name: "出汁の森ヒーラー", catch: "滋味で、みんなを回復させる。", move: "黄金の出汁" },
+  CKQ: { el: "🌪", element: "風", color: "#2fe0c8", name: "疾風のスパイスハンター", catch: "新しい辛さを、狩りにいく。", move: "スパイス乱れ撃ち" },
+  CKS: { el: "🌋", element: "溶岩", color: "#ff7b1f", name: "灼熱の中華バーサーカー", catch: "強火と油で、暴れまくる。", move: "強火の鍋振り" },
+  CAQ: { el: "❄️", element: "氷", color: "#9fe3ff", name: "氷刃のレンジ魔導士", catch: "レンジ一閃、未知の一皿。", move: "レンジ一閃" },
+  CAS: { el: "✨", element: "光", color: "#ffb8ec", name: "光の彩り錬金術師", catch: "素材を、輝きに変える。", move: "七色の盛り付け" },
 };
-const STAT_NAMES = [["fire", "火力"], ["speed", "時短"], ["thrift", "節約"], ["health", "健康"], ["adventure", "冒険心"]];
+const STAT_NAMES = [["fire", "火力"], ["speed", "時短"], ["thrift", "節約"], ["health", "健康"], ["adventure", "冒険心"], ["craft", "腕前"]];
+const GRADES = [[90, "S"], [80, "A"], [70, "B"], [60, "C"], [50, "D"], [40, "E"], [30, "F"], [0, "G"]];
+const gradeOf = (v) => GRADES.find(([min]) => v >= min)[1];
 
-function lastWeekDates(from = today()) {
-  let mon = addDays(from, -7);
-  while (dow(mon) !== 1) mon = addDays(mon, -1);
-  return DIARY_DAYS.map((_, k) => addDays(mon, k));
+const ratioOf = (p) => ({ self: 4, out: 1, take: 1, deli: 1, ...(p.ratio && typeof p.ratio === "object" ? p.ratio : {}) });
+const ratioTotal = (r) => RATIO_KINDS.reduce((s, k) => s + (Number(r[k.id]) || 0), 0);
+
+// ① 1週間（7回）の晩ごはん：自炊・外食・テイクアウト・デリバリーに振り分ける。
+function renderRatioStep(p) {
+  const r = ratioOf(p);
+  const plates = RATIO_KINDS.flatMap((k) => Array.from({ length: r[k.id] }, () => `<i style="--c:${k.color}" title="${k.label}">${k.icon}</i>`)).join("");
+  return `<p class="small">だいたいでOK。<b>7回</b>の晩ごはんを振り分けてください。</p><div class="ratio-plates" aria-hidden="true">${plates}</div>
+    <div class="ratio-rows">${RATIO_KINDS.map((k) => `<div class="ratio-row"><span class="rr-label"><span aria-hidden="true">${k.icon}</span>${k.label}</span><button type="button" class="plan-icon" data-action="life-ratio" data-kind="${k.id}" data-delta="-1" aria-label="${k.label}を1回減らす" ${r[k.id] <= 0 ? "disabled" : ""}>−</button><b class="rr-count" aria-live="polite">${r[k.id]}回</b><button type="button" class="plan-icon" data-action="life-ratio" data-kind="${k.id}" data-delta="1" aria-label="${k.label}を1回増やす" ${k.id !== "self" && r.self <= 0 && ratioTotal(r) >= 7 ? "disabled" : ""}>＋</button></div>`).join("")}</div>`;
 }
-const diaryOf = (p) => (p.diary && typeof p.diary === "object" ? p.diary : {});
-const dishOf = (p) => (p.dish && typeof p.dish === "object" ? p.dish : {});
-const diaryDone = (p) => lastWeekDates().every((d) => diaryOf(p)[d]) || Object.keys(diaryOf(p)).length >= 7;
-const dishDone = (p) => DISH_QUESTIONS.every((q) => dishOf(p)[q.id]);
+function changeRatio(p, kind, delta) {
+  const r = ratioOf(p);
+  if (!RATIO_KINDS.some((k) => k.id === kind)) return;
+  r[kind] = Math.max(0, Math.min(7, r[kind] + delta));
+  // 合計は7回：増やしたぶんは自炊から（自炊を増やした時は、多いものから）減らす。
+  while (ratioTotal(r) > 7) { const from = kind !== "self" && r.self > 0 ? "self" : RATIO_KINDS.map((k) => k.id).filter((id) => id !== kind).sort((a, b) => r[b] - r[a])[0]; r[from] -= 1; }
+  while (ratioTotal(r) < 7) r.self += 1;
+  p.ratio = r;
+}
+// ② よく食べる主食（複数OK）
+function renderStapleStep(p) {
+  const on = new Set(p.staples || []);
+  return `<p class="small">あてはまるものを、ぜんぶ。</p><div class="funnel-picks is-grid2 staple-picks">${STAPLES.map(([id, icon, label]) => `<button type="button" class="funnel-pick" data-action="life-staple" data-value="${id}" aria-pressed="${on.has(id)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${label}</button>`).join("")}</div>`;
+}
+// ③ 外食するなら？（駅前のお店をタップ・3つまで）
+function renderChainStep(p) {
+  const on = new Set(p.chains || []);
+  return `<p class="small">入りたいお店を、<b>3つまで</b>タップ。</p><div class="chain-grid">${CHAINS.map((c) => `<button type="button" class="chain-tile" data-action="life-chain" data-value="${c.id}" aria-pressed="${on.has(c.id)}" ${!on.has(c.id) && on.size >= 3 ? "disabled" : ""}><span aria-hidden="true">${c.icon}</span><b>${escapeHtml(c.name)}</b><small>${escapeHtml(c.genre)}</small></button>`).join("")}</div><p class="muted small">お店の名前は、選びやすさのためだけに使っています。</p>`;
+}
+// ④ いちばん大事なこと
+function renderPriorityStep(p) {
+  return `<div class="funnel-picks">${PRIORITIES.map(([id, icon, label]) => `<button type="button" class="funnel-pick" data-action="life-priority" data-value="${id}" aria-pressed="${p.priority === id}"><span class="fp-icon" aria-hidden="true">${icon}</span>${label}</button>`).join("")}</div>`;
+}
 
-// ① 先週のごはん日記：1日ずつ、1タップで。
-function renderDiaryStep(p) {
-  const dates = lastWeekDates();
-  const diary = diaryOf(p);
-  const current = dates.find((d) => !diary[d]);
-  const strip = `<ol class="diary-week">${dates.map((d) => `<li class="${d === current ? "is-now" : diary[d] ? "is-done" : ""}"><small>${WD[dow(d)]}</small><span>${diary[d] ? GENRE_OF[diary[d]]?.icon || "・" : d === current ? "？" : ""}</span></li>`).join("")}</ol>`;
-  if (!current) {
-    const cooked = dates.map((d) => GENRE_OF[diary[d]]).filter((g) => g && !g.out && !g.skip);
-    return `${strip}<p class="diary-summary">先週は <b>${cooked.length}日</b> 自炊。${cooked.length ? `いちばん多かったのは <b>${escapeHtml(topGenre(p)?.label || "")}</b>。` : ""}</p><button type="button" class="text-button" data-action="life-diary-reset">やりなおす</button>`;
+// ⑤ 作った料理の写真で腕前を判定（AI）。写真は判定したら捨てる。
+let skillPhoto = { status: "idle", result: null, message: "" };
+function renderPhotoJudge() {
+  const s = skillPhoto;
+  if (s.status === "loading") return `<div class="demo-wait"><p class="dw-stage" aria-live="polite">${WAIT_STAGES_PHOTO[0]}</p><div class="dw-bar"><i></i></div><div class="dw-tip" aria-live="polite"><small>待っている間に、ひとこと</small><p>${WAIT_TIPS[3]}</p></div></div>`;
+  if (s.status === "done") { const r = s.result; return `<div class="photo-judge"><p class="pj-kicker">AI判定</p><p class="pj-dish">${escapeHtml(r.dish)}</p><p class="quiz-stars">${Skills.stars(r.level)}</p><p class="pj-type"><b>${escapeHtml(SKILL_TYPES[r.level].name)}</b></p>${r.techniques.length ? `<p class="pj-tech">${r.techniques.map((t) => `<i>${escapeHtml(t)}</i>`).join("")}</p>` : ""}${r.comment ? `<p class="pj-comment">💬 ${escapeHtml(r.comment)}</p>` : ""}<button type="button" class="text-button" data-action="life-photo-retry">別の写真で試す</button></div>`; }
+  return `<label class="photo-drop"><input type="file" accept="image/*" id="skill-photo" hidden><span aria-hidden="true">📸</span><b>作った料理の写真で判定</b><small>カメラロールから1枚。AIが腕前を見ます（写真は保存しません）</small></label>${s.status === "error" ? `<p class="form-error small">${escapeHtml(s.message)}</p>` : ""}`;
+}
+const WAIT_STAGES_PHOTO = ["写真を見ています", "焼き色と切り方を見ています", "腕前を計算しています"];
+function bindPhotoJudge() {
+  const input = document.querySelector("#skill-photo");
+  if (input) input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { skillPhoto = { status: "error", result: null, message: "画像を選んでください。" }; render(); return; }
+    skillPhoto = { status: "loading", result: null, message: "" }; render();
+    try {
+      const url = await resizeImage(file, 960, 0.75);
+      const response = await fetchWithTimeout(`${API_BASE_URL}/api/skill/photo`, { method: "POST", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ image: { mimeType: "image/jpeg", data: url.split(",")[1] } }) }, 90_000);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error?.message || "判定できませんでした。");
+      skillPhoto = { status: "done", result: data, message: "" };
+      state.skillProfile = { level: data.level, growth: state.skillProfile?.growth || "steady", diagnosed: true, via: "photo", updatedAt: nowIso() };
+      trackDaily("skill_photo_judged", { level: data.level });
+      saveState({ scheduleSync: false });
+    } catch (error) {
+      skillPhoto = { status: "error", result: null, message: error.message || "判定できませんでした。" };
+    }
+    render();
+  });
+  const wait = document.querySelector(".demo-wait");
+  if (wait && skillPhoto.status === "loading") {
+    let n = 0;
+    const timer = setInterval(() => { if (!document.body.contains(wait)) { clearInterval(timer); return; } n += 1; wait.querySelector(".dw-stage").textContent = WAIT_STAGES_PHOTO[Math.min(WAIT_STAGES_PHOTO.length - 1, n)]; const tip = wait.querySelector(".dw-tip p"); tip.textContent = WAIT_TIPS[(n + 3) % WAIT_TIPS.length]; tip.classList.remove("is-in"); void tip.offsetWidth; tip.classList.add("is-in"); }, 2800);
   }
-  const m = Number(current.slice(5, 7)), d = Number(current.slice(8, 10));
-  return `${strip}<p class="diary-q"><small>${m}/${d}</small> 先週の<b>${WD[dow(current)]}曜の夜</b>は、何を食べた？</p>
-    <div class="diary-grid">${DIARY_GENRES.map((g) => `<button type="button" class="diary-tile${g.skip ? " is-skip" : ""}" data-action="life-diary" data-date="${current}" data-genre="${g.id}"><span aria-hidden="true">${g.icon}</span>${escapeHtml(g.label)}</button>`).join("")}</div>
-    <p class="muted small">📸 スマホの写真アプリで、先週の写真を見ると思い出しやすいですよ。${Object.keys(diary).length ? ' <button type="button" class="link-inline" data-action="life-diary-undo">ひとつ戻す</button>' : ""}</p>`;
-}
-function topGenre(p) {
-  const counts = {};
-  Object.values(diaryOf(p)).forEach((id) => { const g = GENRE_OF[id]; if (g && !g.out && !g.skip) counts[id] = (counts[id] || 0) + 1; });
-  const [id] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || [];
-  return id ? GENRE_OF[id] : null;
 }
 
-// ② 仕上がりが変わる一皿（チャーハン）。
-function dishName(dish) {
-  return `${dish.time === "s" ? "じっくりパラパラ" : dish.time === "q" ? "強火一気の" : ""}${dish.flavor === "k" ? "こってり" : dish.flavor === "a" ? "塩だし" : ""}${dish.topping === "c" ? "キムチーズ" : dish.topping === "r" ? "王道" : ""}チャーハン${dish.finish === "k" ? "・目玉焼きのせ" : dish.finish === "a" ? "・ねぎごま" : ""}`;
-}
-function renderDishArt(dish) {
-  const rice = dish.flavor === "k" ? "#c98a45" : dish.flavor === "a" ? "#f2dc92" : "#ecd7a6";
-  const tops = dish.topping === "c" ? ["🧀", "🌶️", "🌿"] : dish.topping === "r" ? ["🥚", "🧅", "🥓"] : [];
-  return `<div class="dish-art${dish.time ? ` is-${dish.time}` : ""}" aria-hidden="true">
-    <div class="da-plate"><div class="da-rice" style="--rice:${rice}"></div>${tops.map((t, k) => `<span class="da-top t${k}">${t}</span>`).join("")}${dish.finish === "k" ? '<span class="da-egg">🍳</span>' : dish.finish === "a" ? '<span class="da-herb">🌿</span>' : ""}</div>
-    ${dish.time === "q" ? '<span class="da-fx">🔥</span>' : dish.time === "s" ? '<span class="da-fx">✨</span>' : ""}</div>`;
-}
-function renderDishStep(p) {
-  const dish = dishOf(p);
-  const q = DISH_QUESTIONS.find((x) => !dish[x.id]);
-  const name = dishName(dish);
-  if (!q) {
-    const r = cookTypeOf(p);
-    return `${renderDishArt(dish)}<p class="dish-name">完成！<b>${escapeHtml(name)}</b></p>${r ? renderCookTypeCard(r) : ""}`;
-  }
-  return `${renderDishArt(dish)}<p class="dish-name">${Object.keys(dish).length ? escapeHtml(name) : "まだ、ただのごはん…"}</p><p class="dish-q"><b>${DISH_QUESTIONS.indexOf(q) + 1} / ${DISH_QUESTIONS.length}</b> ${escapeHtml(q.q)}</p>
-    <div class="dish-options">${q.options.map(([v, label, hint]) => `<button type="button" class="funnel-pick" data-action="life-dish" data-q="${q.id}" data-value="${v}"><span>${escapeHtml(label)}<small>${escapeHtml(hint)}</small></span></button>`).join("")}</div>`;
-}
-
-// 答えから3つの軸と能力値を出す。
+// 答えから3つの軸と、6つのステータス（0〜100）を出す。
 function cookTypeOf(p) {
-  const diary = diaryOf(p), dish = dishOf(p);
-  if (!dishDone(p)) return null;
-  const days = Object.values(diary).map((id) => GENRE_OF[id]).filter((g) => g && !g.skip);
-  const cooked = days.filter((g) => !g.out);
-  let k = days.reduce((s, g) => s + g.k, 0) / Math.max(1, days.length) * 2 + (dish.flavor === "k" ? 2 : -2) + (dish.finish === "k" ? 1 : -1);
-  let q = days.reduce((s, g) => s + g.q, 0) / Math.max(1, days.length) * 2 + (dish.time === "q" ? 2 : -2);
-  const variety = new Set(cooked.map((g) => g.id)).size;
-  let c = (variety >= 4 ? 2 : variety <= 2 && cooked.length >= 3 ? -2 : 0) + (dish.topping === "c" ? 2 : -2);
+  const r = ratioOf(p);
+  const chains = (p.chains || []).map((id) => CHAIN_OF[id]).filter(Boolean);
+  if (!p.ratioSet && !chains.length && !p.priority) return null;
+  const outShare = (r.out + r.take + r.deli) / 7;
+  const pr = p.priority || "";
+  const avgK = chains.length ? chains.reduce((s, c) => s + c.k, 0) / chains.length : 0;
+  const k = avgK * 1.2 + (pr === "volume" ? 1 : 0) + (pr === "healthy" ? -1.5 : 0) + ((p.staples || []).includes("noodle") ? 0.3 : 0);
+  const q = outShare * 4 - 2 + (pr === "fast" ? 2 : 0) + (pr === "healthy" ? -0.5 : 0);
+  const genres = new Set(chains.map((c) => c.genre)).size;
+  const c = (genres >= 3 ? 2 : genres <= 1 && chains.length ? -1.5 : 0) + (pr === "variety" ? 2 : 0) + ((p.staples || []).length >= 3 ? 1 : 0) - (pr === "cheap" ? 0.5 : 0);
   const code = `${c > 0 ? "C" : "R"}${k > 0 ? "K" : "A"}${q >= 0 ? "Q" : "S"}`;
-  const clamp = (x) => Math.max(1, Math.min(5, Math.round(x)));
-  const out = days.filter((g) => g.out).length;
-  const light = cooked.filter((g) => ["washoku", "nimono"].includes(g.id)).length;
-  const fried = cooked.filter((g) => ["fry", "stirfry", "chinese"].includes(g.id)).length;
-  const stats = { fire: clamp(3 + k / 2 + fried / 3), speed: clamp(3 + q / 2), thrift: clamp(1 + (days.length ? ((days.length - out) / days.length) * 4 : 2)), health: clamp(3 - k / 3 + light / 2), adventure: clamp(3 + c / 1.5) };
-  const top = topGenre(p);
-  return { code, ...COOK_TYPES[code], stats, move: top ? top.label : COOK_TYPES[code].move, dish: dishName(dish) };
-}
-// 献立に使う好みの味（先週よく食べたジャンルから）。
-function diaryTastes(p) {
+  const lvl = state.skillProfile?.level || 2;
+  const clamp = (x) => Math.max(8, Math.min(100, Math.round(x)));
+  const stats = {
+    fire: clamp(52 + k * 12 + (lvl - 3) * 6),
+    speed: clamp(50 + q * 11),
+    thrift: clamp(30 + (r.self / 7) * 50 + (pr === "cheap" ? 20 : 0)),
+    health: clamp(55 - k * 10 + (pr === "healthy" ? 22 : 0) + (r.self / 7) * 10 - (r.deli / 7) * 12),
+    adventure: clamp(48 + c * 11),
+    craft: clamp(12 + lvl * 17),
+  };
+  const overall = Math.round(Object.values(stats).reduce((a, b) => a + b, 0) / STAT_NAMES.length);
   const counts = {};
-  Object.values(diaryOf(p)).forEach((id) => { const t = GENRE_OF[id]?.taste; if (t) counts[t] = (counts[t] || 0) + 1; });
-  return Object.entries(counts).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t]) => t);
+  chains.forEach((x) => { counts[x.genre] = (counts[x.genre] || 0) + 1; });
+  const fav = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  return { code, ...COOK_TYPES[code], stats, overall, move: (fav && MOVES[fav]) || COOK_TYPES[code].move, fav: fav || "" };
 }
-function radar(stats) {
-  const cx = 90, cy = 90, R = 70;
-  const pt = (i, v) => { const a = (-90 + i * 72) * (Math.PI / 180); return [cx + R * (v / 5) * Math.cos(a), cy + R * (v / 5) * Math.sin(a)]; };
-  const ring = (v) => STAT_NAMES.map((_, i) => pt(i, v).map((n) => n.toFixed(1)).join(",")).join(" ");
-  const shape = STAT_NAMES.map(([id], i) => pt(i, stats[id]).map((n) => n.toFixed(1)).join(",")).join(" ");
-  const labels = STAT_NAMES.map(([id, name], i) => { const [x, y] = pt(i, 6.3); return `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle">${name} ${stats[id]}</text>`; }).join("");
-  return `<svg class="ct-radar" viewBox="-20 -8 220 200" role="img" aria-label="能力値：${STAT_NAMES.map(([id, n]) => `${n}${stats[id]}`).join("、")}"><polygon class="r-ring" points="${ring(5)}"/><polygon class="r-ring" points="${ring(2.5)}"/><polygon class="r-shape" points="${shape}"/>${labels}</svg>`;
+// 献立に使う好みの味：選んだお店のジャンルから（和風・洋風・中華風）。
+function chainTastes(p) {
+  const map = { 牛丼: "和風", うどん: "和風", 定食: "和風", 寿司: "和風", とんかつ: "和風", 焼き鳥: "和風", 中華: "中華風", ラーメン: "中華風", 洋食: "洋風", バーガー: "洋風", カレー: "洋風" };
+  const counts = {};
+  (p.chains || []).forEach((id) => { const t = map[CHAIN_OF[id]?.genre]; if (t) counts[t] = (counts[t] || 0) + 1; });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t]) => t);
 }
+// 結果のカード：キャラクター・総合力・S〜Gランクのステータス・必殺技。属性の色で光る。
 function renderCookTypeCard(r) {
-  return `<div class="cook-type-card" data-code="${r.code}">
-    <p class="ct-kicker">あなたの ごはんタイプは…</p>
+  return `<div class="cook-type-card" style="--el:${r.color}" data-code="${r.code}">
+    <div class="ct-holo" aria-hidden="true"></div>
+    <div class="ct-top"><p class="ct-kicker">あなたの 晩ごはんタイプ</p><p class="ct-overall"><small>総合力</small><b data-overall="${r.overall}">${r.overall}</b></p></div>
     <img class="ct-art" src="assets/types/${r.code}.webp" alt="${escapeAttr(r.name)}のキャラクター" width="640" height="640">
     <p class="ct-element">${r.el} ${escapeHtml(r.element)}属性</p>
     <h3 class="ct-name">${escapeHtml(r.name)}</h3>
-    <p class="ct-catch">「${escapeHtml(r.catch)}」</p>
-    ${radar(r.stats)}
-    <p class="ct-move">必殺技：<b>${escapeHtml(r.move)}</b></p>
-    <button type="button" class="secondary-button" data-action="life-type-share">結果をシェア ↗</button></div>`;
+    <p class="ct-catch">${escapeHtml(r.catch)}</p>
+    <ul class="ct-stats">${STAT_NAMES.map(([id, name], i) => { const v = r.stats[id], g = gradeOf(v); return `<li style="--v:${v}%;--d:${i * 0.12 + 0.3}s"><span class="cs-name">${name}</span><span class="cs-bar"><i class="g-${g}"></i></span><b class="cs-grade g-${g}">${g}</b><small>${v}</small></li>`; }).join("")}</ul>
+    <p class="ct-move"><small>必殺技</small><b>「${escapeHtml(r.move)}」</b></p>
+    <button type="button" class="ct-share" data-action="life-type-share">結果をシェア ↗</button></div>`;
 }
 function handleCookTypeAction(action, data) {
   const p = profileDraft();
-  if (action === "life-diary") { p.diary = { ...diaryOf(p), [data.date]: GENRE_OF[data.genre] ? data.genre : "unknown" }; return false; }
-  if (action === "life-diary-undo") { const dates = lastWeekDates().filter((d) => diaryOf(p)[d]); const last = dates[dates.length - 1]; if (last) { const next = { ...diaryOf(p) }; delete next[last]; p.diary = next; } return false; }
-  if (action === "life-diary-reset") { p.diary = {}; return false; }
-  if (action === "life-dish") { if (DISH_QUESTIONS.some((q) => q.id === data.q)) p.dish = { ...dishOf(p), [data.q]: data.value }; return false; }
-  if (action === "life-dish-reset") { p.dish = {}; return false; }
+  if (action === "life-ratio") { changeRatio(p, data.kind, Number(data.delta) || 0); p.ratioSet = true; return false; }
+  if (action === "life-staple") { const on = new Set(p.staples || []); on.has(data.value) ? on.delete(data.value) : on.add(data.value); p.staples = STAPLES.map(([id]) => id).filter((id) => on.has(id)); return false; }
+  if (action === "life-chain") { const on = new Set(p.chains || []); if (on.has(data.value)) on.delete(data.value); else if (on.size < 3 && CHAIN_OF[data.value]) on.add(data.value); p.chains = [...on]; return false; }
+  if (action === "life-priority") { p.priority = PRIORITIES.some(([id]) => id === data.value) ? data.value : ""; p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1); return false; }
+  if (action === "life-photo-retry") { skillPhoto = { status: "idle", result: null, message: "" }; return false; }
   if (action === "life-type-share") {
-    const r = cookTypeOf(p);
-    if (r) shareMessage(`わたしのごはんタイプは「${r.el}${r.name}」！ 必殺技は${r.move}。#リピごち`, `${location.origin}${location.pathname}`);
+    const r = cookTypeOf(p) || cookTypeOf(state.foodProfile || {});
+    if (r) shareMessage(`わたしの晩ごはんタイプは「${r.el}${r.name}」総合力${r.overall}！ 必殺技は「${r.move}」。#リピごち`, `${location.origin}${location.pathname}`);
     return true;
   }
   return false;

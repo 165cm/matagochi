@@ -868,7 +868,7 @@ function handleDailyAction(action, data) {
   if (handleHouseholdAction(action, data)) return true;
   if (handleSkillQuizAction(action, data)) return true;
   if (handlePaywallAction(action, data)) return true;
-  if (action.startsWith("life-diary") || action.startsWith("life-dish") || action === "life-type-share") { if (handleCookTypeAction(action, data)) return true; saveState({ scheduleSync: false }); render(); return true; }
+  if (["life-ratio", "life-staple", "life-chain", "life-priority", "life-photo-retry", "life-type-share"].includes(action)) { if (handleCookTypeAction(action, data)) return true; saveState({ scheduleSync: false }); render(); return true; }
   if (viewerBlocked(action)) return true;
   const before = dailyShopping();
   if (action === "life-review-saved") {
@@ -968,8 +968,8 @@ function handleDailyAction(action, data) {
     const chosen = [...finishFunnelPicks(), ...(funnelDemo.result ? [funnelDemo.result] : [])];
     trackDaily("profile_completed");
     const p = Lifestyle.profile(profileDraft());
-    // 先週よく食べた味（和風・洋風・中華風）を、献立の好みに入れる。
-    const liked = diaryTastes(p);
+    // 外食で選んだお店の味（和風・洋風・中華風）を、献立の好みに入れる。
+    const liked = chainTastes(p);
     if (liked.length) p.tastes = [...new Set([...liked, ...(p.tastes || [])])];
     p.completed = p.quickSetupIndex === null || p.completed;
     p.quickSetupIndex = null;
@@ -1364,7 +1364,7 @@ const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", 
 // → 料理スキル（診断がおすすめ）→ 平日の夜の時間（ダイヤル）→ 食べられないもの → 新着から選ぶ → 目標を決める → 作成中。
 // 数字（0〜4）は献立に使う5問（0 人数・1 リズム・2 スキル・3 時間・4 食べられないもの）。
 // 2部構成。第1部「いまのあなた」（現状）→ いまのままだと…（損の見える化）→ 第2部「これからのあなた」（希望と設定）→ 約束。
-const FUNNEL = ["pain", 0, "eaters", 4, "equipment", "diary", "dish", 2, "videos", "demo", "loss", "goal", 1, "remind", 3, "picks", "commit", "building"];
+const FUNNEL = ["pain", 0, "eaters", 4, "equipment", "ratio", "staple", "chains", "priority", 2, "type", "videos", "demo", "loss", "goal", 1, "remind", 3, "picks", "commit", "building"];
 const EATERS = [["me", "🧑", "自分"], ["partner", "💑", "パートナー"], ["kids", "🧒", "子ども（小学生まで）"], ["teens", "🧑‍🎓", "子ども（中学生から）"], ["parents", "👵", "親"], ["friends", "🏠", "同居の友人など"]];
 const EATER_OF = Object.fromEntries(EATERS.map(([id, , label]) => [id, label.replace(/（.*$/, "")]));
 const OPTIONAL_TOOLS = ["炊飯器", "トースター", "オーブン", "電気ケトル", "圧力鍋", "ホットプレート", "ミキサー", "はかり"];
@@ -1377,7 +1377,10 @@ const FUNNEL_ECHO = {
   demo: (p) => ({ few: "保存したまま、もったいない！1本、試してみましょう。", some: "たまに作れるなら、あと一歩です。", many: "よく作る人ほど、献立にまとめると一気にラクに。", none: "YouTubeで気になった料理を、1本だけ探して貼ってみてください。" })[p.savedVideos] || "",
   eaters: (p) => (p.servings >= 3 ? `${p.servings >= 5 ? "5人以上" : `${p.servings}人分`}ですね。まとめ買いが効く人数です。` : p.servings === 2 ? "2人分ですね。食材を使い切りやすい人数です。" : "1人分ですね。少量でもムダなく回します。"),
   4: (p) => ((p.eaters || []).includes("kids") ? "お子さんと一緒の食卓ですね。みんなの「また食べたい」を覚えていきます。" : (p.eaters || []).includes("partner") ? "ふたりの「また食べたい」を覚えていきます。" : ""),
-  2: (p) => { const r = personaOf(p); return r ? `「${r.title}」タイプですね。好きそうな料理から並べます。` : ""; },
+  staple: (p) => { const r = ratioOf(p); return r.self >= 5 ? `自炊が週${r.self}回。しっかり作っていますね。` : r.self >= 3 ? `自炊は週${r.self}回。ちょうどいいバランスです。` : `自炊は週${r.self}回。まずは週1回ふやすところから。`; },
+  chains: (p) => ((p.staples || []).includes("noodle") && !(p.staples || []).includes("rice") ? "麺派なんですね。" : (p.staples || []).length >= 3 ? "主食はいろいろ派ですね。" : ""),
+  priority: (p) => { const g = [...new Set((p.chains || []).map((id) => CHAIN_OF[id]?.genre).filter(Boolean))]; return g.length ? `${g.slice(0, 2).join("と")}が好きなんですね。` : ""; },
+  type: () => (skillPhoto.status === "done" ? `「${skillPhoto.result.dish}」、おいしそう！` : ""),
 };
 const GOALS = [["smile", "😊", "一緒に食べる人を、笑顔にしたい"], ["save", "💴", "食費と食材のムダを、減らしたい"], ["time", "⏰", "自分の時間を、つくりたい"], ["grow", "🌱", "料理のレパートリーを、広げたい"]];
 const GOAL_OF = Object.fromEntries(GOALS.map(([id, icon, label]) => [id, { icon, label }]));
@@ -1617,8 +1620,11 @@ function renderFunnelStep(key) {
     const chip = (name) => `<button type="button" class="tool-chip" data-action="life-equipment-toggle" data-name="${escapeAttr(name)}" aria-pressed="${eq[name] === "have"}">${escapeHtml(name)}</button>`;
     return [`🍳 いま、キッチンにあるものは？`, `<p class="small">持っている道具だけで作れる料理を選びます。</p><h3 class="quick-sub">基本（ない物だけ外す）</h3><div class="tool-chips">${["コンロ", "電子レンジ", "フライパン", "鍋"].map(chip).join("")}</div><h3 class="quick-sub">あると使う（ある物をタップ）</h3><div class="tool-chips">${OPTIONAL_TOOLS.map(chip).join("")}</div>`];
   }
-  if (key === "diary") return [`📖 先週の晩ごはん、思い出せる？`, renderDiaryStep(p)];
-  if (key === "dish") return [`🍳 あなたのチャーハンを、作ってみて`, `<p class="small">答えるたびに、チャーハンが変わります。最後に<b>ごはんタイプ</b>がわかります。</p>${renderDishStep(p)}`];
+  if (key === "ratio") return [`🗓 いまの1週間、晩ごはんはどうしてる？`, renderRatioStep(p)];
+  if (key === "staple") return [`🍚 晩ごはんで、よく食べる主食は？`, renderStapleStep(p)];
+  if (key === "chains") return [`🏪 晩ごはんを外で食べるなら、どこ？`, renderChainStep(p)];
+  if (key === "priority") return [`🎯 晩ごはんで、いちばん大事なのは？`, renderPriorityStep(p)];
+  if (key === "type") { const r = cookTypeOf(p); return [`🎴 あなたの晩ごはんタイプ`, r ? renderCookTypeCard(r) : `<p>答えが足りないので、タイプはあとで診断できます。</p>`]; }
   if (key === "videos") return [`📱 保存したレシピ動画、実際に作ったのは？`, `<div class="funnel-picks">${VIDEOS.map((x) => funnelPick("savedVideos", x, p.savedVideos)).join("")}</div><p class="muted small">YouTube・インスタ・TikTokで「保存」したままの料理、ありませんか？</p>`];
   if (key === "demo") return renderFunnelDemo();
   if (key === "picks") return renderFunnelPicks();
@@ -1766,10 +1772,11 @@ const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒め�
 function renderSkillStep() {
   const sp = state.skillProfile;
   const levels = [1, 2, 3, 4, 5].map((l) => `<button type="button" class="rhythm-option" data-action="life-quick-skill" data-level="${l}" aria-pressed="${sp?.level === l}"><strong><span class="skill-stars">${Skills.stars(l)}</span> ${SKILL_TYPES[l].name}</strong><small>${SKILL_PICK_HINT[l]}</small></button>`).join("");
-  const done = sp?.diagnosed ? `<div class="skill-result"><p class="quiz-stars">${Skills.stars(sp.level)}</p><p><b>${SKILL_TYPES[sp.level].name}</b></p><p class="cc-badge">✓ 診断ずみ・ぴったり度 高</p></div>` : "";
-  return `${done}<button type="button" class="skill-diagnose" data-action="life-quiz-start"><span class="sd-icon" aria-hidden="true">🔍</span><span><b>${sp?.diagnosed ? "もう一度診断する" : "1分で診断する"}</b><small>9つの質問に答えるだけ・おすすめ</small></span></button>
-    <p class="small skill-why">診断すると、<b>作れない料理が献立に入らない</b>ので、「これなら作れる」献立になります。</p>
-    <details class="skill-self" ${sp && !sp.diagnosed ? "open" : ""}><summary>診断せずに、自分で選ぶ</summary><div class="skill-picks">${levels}</div></details>`;
+  const quizDone = sp?.diagnosed && sp.via !== "photo" ? `<div class="skill-result"><p class="quiz-stars">${Skills.stars(sp.level)}</p><p><b>${SKILL_TYPES[sp.level].name}</b></p><p class="cc-badge">✓ 診断ずみ・ぴったり度 高</p></div>` : "";
+  return `${quizDone}${renderPhotoJudge()}
+    <p class="small skill-why">判定すると、<b>作れない料理が献立に入らない</b>ので、「これなら作れる」献立になります。</p>
+    ${skillPhoto.status === "done" ? "" : `<button type="button" class="secondary-button full-button" data-action="life-quiz-start">📝 写真がない → 1分テストで判定</button>`}
+    <details class="skill-self" ${sp && !sp.diagnosed ? "open" : ""}><summary>自分で選ぶ</summary><div class="skill-picks">${levels}</div></details>`;
 }
 function renderQuickSetup() {
   const p = profileDraft(), i = p.quickSetupIndex;
@@ -1784,14 +1791,15 @@ function renderQuickSetup() {
     document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
     bindFunnel();
     if (key === "demo") { bindDemoWait(); bindVideoPlayer(); }
+    if (key === 2) bindPhotoJudge();
   };
   const nextButton = `<button class="primary-button" data-action="life-quick-next">次へ</button>`;
   if (key === "equipment") p.equipment = Lifestyle.equipmentDefaults(p.equipment);
   if (typeof key === "string") {
     const [title, body] = renderFunnelStep(key);
-    // ごはん日記・チャーハンは、終わるまで「次へ」の代わりに「スキップ」。
-    if ((key === "diary" && !diaryDone(p)) || (key === "dish" && !dishDone(p))) return shell(title, body, `<button class="text-button" data-action="life-quick-next">スキップ</button>`);
-    const next = ["commit", "building", "goal", "pain", "videos"].includes(key) ? "" : key === "remind" ? `<button class="primary-button is-quiet" data-action="life-quick-next">${p.remindAdded ? "次へ" : "あとで"}</button>` : nextButton;
+    // 主食・お店は、選ぶまで「次へ」の代わりに「スキップ」。
+    if ((key === "staple" && !(p.staples || []).length) || (key === "chains" && !(p.chains || []).length)) return shell(title, body, `<button class="text-button" data-action="life-quick-next">スキップ</button>`);
+    const next = ["commit", "building", "goal", "pain", "videos", "priority"].includes(key) ? "" : key === "remind" ? `<button class="primary-button is-quiet" data-action="life-quick-next">${p.remindAdded ? "次へ" : "あとで"}</button>` : nextButton;
     return shell(title, body, next);
   }
   if (key === 3 && !p.weekdayMinutes) p.weekdayMinutes = 20;
