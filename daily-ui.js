@@ -1510,7 +1510,7 @@ function starterRecipeList() {
   return [...rankByTaste(discoverRecipes()), ...Lifestyle.curated]
     .filter((r) => !saved.has(r.id) && !hidden.has(r.id))
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
-    .filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok)
+    .filter((r) => (r.discover ? discoverSafe(r) : Lifestyle.fit(r, dailyProfile(), today()).ok))
     .filter((r) => !query || [r.title, ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
 }
 

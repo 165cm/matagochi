@@ -928,3 +928,11 @@ test("trend recipes: ranked by chosen dishes, saved when planned, removed after 
   assert.equal(run("state.recipes.length"), 1);
   assert.equal(run("discoverRecipes().length"), 1, "and leaves the suggestions");
 });
+
+test("trend recipes are listed unless they contain avoided foods, even when time or checks would keep them out of the plan", () => {
+  const run = app();
+  run(`state.onboarded = true; state.foodProfile = Lifestyle.profile({ servings: 2, completed: true, restrictions: ["卵"], weekdayMinutes: 10 });
+    const item = (id, title, ing) => ({ videoId: id, title, videoUrl: "https://www.youtube.com/watch?v=" + id, expiresAt: new Date(Date.now() + 86400000 * 5).toISOString(), ingredients: ing.map((name) => ({ name, amount: "適量" })), steps: ["切る", "焼く"], planning: { minutes: 30, equipment: ["フライパン"], tastes: ["和風"] } });
+    discover = { trends: [item("aaaaaaaaaaa", "豚の生姜焼き", ["豚こま", "しょうが", "しょうゆ"]), item("bbbbbbbbbbb", "ふわとろ卵丼", ["卵", "ごはん", "だし"])], popular: [], savedAt: new Date().toISOString() };`);
+  assert.equal(run("starterRecipeList().filter((r) => r.discover).map((r) => r.title).join()"), "豚の生姜焼き");
+});
