@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-trends";
+const APP_VERSION = "20260927-trends2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1250,6 +1250,7 @@ function renderIngredientEditorRow(item, index) {
 }
 
 function renderCollection() {
+  loadDiscover();
   const allSaved = getFilteredRecipes({ allMeals: true });
   // Photographed dishes first, so the grid opens with pictures.
   // 今週の人気・みんなの定番（好みの順）を先に、写真のある定番を次に。

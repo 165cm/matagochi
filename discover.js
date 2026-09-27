@@ -19,7 +19,8 @@ function tasteSegment() {
 async function loadDiscover({ force = false } = {}) {
   if (!API_BASE_URL || discoverLoading) return;
   pruneDiscover();
-  if (!force && discover.savedAt && Date.now() - Date.parse(discover.savedAt) < 6 * 3_600_000) return;
+  // 取り直しは1時間ごと。まだ1品もない時は覚えずに、次に開いた時また取りに行く。
+  if (!force && discover.savedAt && discover.trends.length && Date.now() - Date.parse(discover.savedAt) < 3_600_000) return;
   discoverLoading = true;
   try {
     const [t, p] = await Promise.all([
@@ -28,7 +29,7 @@ async function loadDiscover({ force = false } = {}) {
     ]);
     if (t?.items) discover.trends = t.items.filter(liveItem).slice(0, 40);
     if (p?.items) discover.popular = p.items.slice(0, 20);
-    if (t || p) { discover.savedAt = new Date().toISOString(); saveDiscover(); }
+    if (t || p) { discover.savedAt = discover.trends.length ? new Date().toISOString() : ""; saveDiscover(); }
   } finally { discoverLoading = false; }
   if (["collection", "plan"].includes(state.view) || FUNNEL[state.onboardingDraft?.quickSetupIndex] === "picks") render();
 }
@@ -60,6 +61,8 @@ function discoverRecipes() {
   const hidden = starterHidden();
   return discoverCache.list.filter((r) => !saved.has(r.id) && !hidden.has(r.id) && !savedVideos.has(youtubeVideoId(r.videoUrl)));
 }
+// 一覧に出すかは「避けたい食材を含むか」だけで決める（時間・器具などは、献立に入れる時に確かめる）。
+const discoverSafe = (r, profile = dailyProfile()) => Lifestyle.fit(r, profile, today()).reason !== "避けたい食材を含みます";
 const findDiscover = (id) => discoverCache.list.find((r) => r.id === id) || null;
 // 好みの近さ：選んだ料理・好きな料理と、主食・メインの素材・味の方向が近いほど上に。
 function tasteSeeds() {
@@ -91,7 +94,7 @@ function sharePopular(recipe, kind) {
 function funnelPickCandidates() {
   const profile = Lifestyle.profile(profileDraft());
   const curated = Lifestyle.curated.filter((r) => STARTER_PHOTOS[r.id]);
-  return [...discoverRecipes(), ...curated].filter((r) => Lifestyle.fit(r, profile, today()).ok || r.discover).slice(0, 12);
+  return [...discoverRecipes().filter((r) => discoverSafe(r, profile)), ...curated.filter((r) => Lifestyle.fit(r, profile, today()).ok)].slice(0, 12);
 }
 function renderFunnelPicks() {
   const picks = new Set(profileDraft().picks || []);
