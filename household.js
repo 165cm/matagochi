@@ -731,8 +731,26 @@ function normalizeRhythm(raw) {
     dismissed: !!raw?.dismissed,
     // First block of the rhythm: starting mid-block would skip the first full "decide → shop" round.
     startFrom: /^\d{4}-\d{2}-\d{2}$/.test(raw?.startFrom || "") ? raw.startFrom : "",
+    // 週の途中で始めた時の「今週の残り」の回（買い物は始めた1時間後）。
+    ...(raw?.kickoff && /^\d{4}-\d{2}-\d{2}$/.test(raw.kickoff.start) && Array.isArray(raw.kickoff.dates) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw.kickoff.shopAt || "")
+      ? { kickoff: { start: raw.kickoff.start, dates: raw.kickoff.dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 7), shopAt: raw.kickoff.shopAt } } : {}),
     updatedAt: normalizeTimestamp(raw?.updatedAt),
   };
+}
+// 始める時の最初の回：次の丸ごとの回まで間があけば、明日から次の回の前日までのリズムの日を「今週の残り」の回にする。
+function startRhythm(nowDate = new Date()) {
+  const full = firstFullBlock();
+  const days = rhythmDays();
+  const tomorrow = addDays(today(), 1);
+  const gap = [];
+  for (let d = tomorrow; full && d < full.start && gap.length < 7; d = addDays(d, 1)) if (days.includes(String(dow(d)))) gap.push(d);
+  delete state.rhythm.kickoff;
+  if (gap.length) {
+    const at = new Date(nowDate.getTime() + 60 * 60 * 1000);
+    at.setMinutes(Math.ceil(at.getMinutes() / 30) * 30, 0, 0);
+    state.rhythm.kickoff = { start: gap[0], dates: gap, shopAt: localStamp(at).slice(0, 16) };
+    state.rhythm.startFrom = gap[0];
+  } else state.rhythm.startFrom = full?.start || "";
 }
 function rhythmOn() {
   return !!RHYTHMS[state.rhythm?.preset];
@@ -749,15 +767,17 @@ function blockRange(b) {
 function blocksFrom(from, horizon = 21) {
   if (!rhythmOn()) return [];
   const out = [];
+  const k = state.rhythm.kickoff;
+  if (k && k.dates[k.dates.length - 1] >= from) out.push({ key: k.start, start: k.start, end: k.dates[k.dates.length - 1], dates: k.dates, shopAt: k.shopAt, kickoff: true });
   for (let i = -7; i < horizon; i += 1) {
     const date = addDays(from, i);
     const shape = RHYTHMS[state.rhythm.preset].blocks.find((b) => b[0] === dow(date));
     if (!shape) continue;
     const dates = shape.map((_, k) => addDays(date, k));
     const b = { key: date, start: date, end: dates[dates.length - 1], dates, shopAt: `${addDays(date, -1)}T${state.rhythm.shopTime}` };
-    if (b.end >= from) out.push(b);
+    if (b.end >= from && !(k && b.dates.some((d) => k.dates.includes(d)))) out.push(b);
   }
-  return out;
+  return out.sort((a, b) => (a.start < b.start ? -1 : 1));
 }
 function currentBlocks() {
   const from = state.rhythm?.startFrom || "";
@@ -897,7 +917,7 @@ function handleRhythmAction(action, data) {
     state.rhythm = { preset: data.preset, shopTime: document.querySelector("#rhythm-time")?.value || state.rhythm?.shopTime || "17:00", updatedAt: nowIso() };
     // With nothing decided from today on, begin at the next whole block.
     const decidedAhead = Object.values(state.mealSlots || {}).some((x) => x.date >= today() && ["confirmed", "cooked"].includes(x.status));
-    state.rhythm.startFrom = decidedAhead ? "" : firstFullBlock()?.start || "";
+    if (decidedAhead) state.rhythm.startFrom = ""; else startRhythm();
     // During the first-run questions, picking a rhythm moves on to the next question.
     if ((profileEditing || !state.onboarded) && FUNNEL[state.onboardingDraft?.quickSetupIndex] === 1) state.onboardingDraft.quickSetupIndex++;
     state.planOverrides = {};

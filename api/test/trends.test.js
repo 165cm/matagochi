@@ -126,3 +126,19 @@ test('a creator who asks to be left out disappears from trends and popular at on
   const fresh = createTrendBook(store, { catalog, optedOut: () => desk.optedOut(), now: () => Date.parse('2026-09-28T01:00:00Z'), search: async () => [] });
   assert.equal((await fresh.list()).items.some((i) => i.channelId === ch), false);
 });
+
+test('trend items without a catch line get one from a single batched call, saved and reused', async () => {
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog({ [ids[3]]: { catch: 'もとからある一言' } });
+  let calls = 0, budget = 0;
+  const writeCatches = async (items) => { calls++; return Object.fromEntries(items.map((i) => [i.videoId, `${i.title}の一言`])); };
+  const book = createTrendBook(store, { catalog, now: () => now, reserveBudget: async () => { budget++; }, writeCatches, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
+  await book.step();
+  const list = await book.list();
+  assert.equal(calls, 1); assert.equal(budget, 1);
+  assert.ok(list.items.every((i) => i.catch));
+  assert.equal(list.items.find((i) => i.videoId === ids[3]).catch, 'もとからある一言', 'a catch from the reading is kept');
+  const again = createTrendBook(store, { catalog, now: () => now, writeCatches, search: async () => [] });
+  assert.ok((await again.list()).items.every((i) => i.catch)); assert.equal(calls, 1, 'saved catches are reused');
+});
