@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v75";
-const APP_VERSION = "20260927-skill1";
+const CACHE_NAME = "ripigochi-v76";
+const APP_VERSION = "20260927-eatout1";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -23,17 +23,18 @@ const CORE_ASSETS = [
   `./skill-quiz.js?v=${APP_VERSION}`,
   `./cook-level.js?v=${APP_VERSION}`,
   `./cook-type.js?v=${APP_VERSION}`,
+  `./plan-moves.js?v=${APP_VERSION}`,
   `./tickets.js?v=${APP_VERSION}`,
   `./account.js?v=${APP_VERSION}`,
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260927-skill1",
-  "./icons/favicon-32.png?v=20260927-skill1",
-  "./icons/icon-192.png?v=20260927-skill1",
-  "./icons/icon-512.png?v=20260927-skill1",
-  "./icons/icon-maskable-512.png?v=20260927-skill1",
-  "./icons/apple-touch-icon.png?v=20260927-skill1"
+  "./manifest.webmanifest?v=20260927-eatout1",
+  "./icons/favicon-32.png?v=20260927-eatout1",
+  "./icons/icon-192.png?v=20260927-eatout1",
+  "./icons/icon-512.png?v=20260927-eatout1",
+  "./icons/icon-maskable-512.png?v=20260927-eatout1",
+  "./icons/apple-touch-icon.png?v=20260927-eatout1"
 ];
 
 self.addEventListener("install", (event) => {

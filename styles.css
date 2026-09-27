@@ -3452,3 +3452,16 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .skill-photo:has(.illust-pair) { grid-template-columns: minmax(0, 1fr); }
 .skill-photo .illust-pair img:first-child { width: 100%; height: auto; aspect-ratio: 1; }
 .skill-photo .illust-pair img.is-small { width: 28%; height: auto; aspect-ratio: 1; }
+
+/* ── 外食・中食にする（作れない日の逃げ道） ── */
+.skip-panel { display: grid; gap: 10px; margin: -4px 0 12px; padding: 14px; border: 1.5px solid var(--egg); border-radius: 20px; background: #fffaf0; }
+.skip-q { margin: 0; font-weight: 800; }
+.skip-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.skip-kind { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 6px 8px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font-weight: 800; font-size: 14px; cursor: pointer; }
+.skip-kind span { font-size: 20px; }
+.skip-kind:active { border-color: var(--tomato); background: #fff1dc; }
+.skip-shops { margin: 0; font-size: 12px; color: var(--muted); }
+.skip-shift { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; font-weight: 700; line-height: 1.5; }
+.skip-shift input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--tomato); }
+.skip-shift small { display: block; font-weight: 500; color: var(--muted); }
+.skip-panel .text-button { justify-self: center; }

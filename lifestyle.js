@@ -407,6 +407,38 @@
   }
   const SCORE = { request: 80, saved: 5 };
   const MAX_NEW_PER_PLAN = 1;
+  // 日持ち：傷みやすく、冷凍しにくい食材ほど急ぐ（5がいちばん急ぐ）。買い物のあと、急ぐ料理から先に作る。
+  // [食材名の正規表現, 急ぎ度, 表示名]。冷凍できる肉は低め、生で食べる葉物・もやし・刺身は高め。
+  const FRESHNESS = [
+    [/刺身|さしみ|生食用|まぐろ|サーモン/, 5, "刺身"],
+    [/もやし|豆苗|かいわれ|スプラウト/, 5, "もやし・豆苗"],
+    [/レタス|水菜|春菊|ほうれん草|ほうれんそう|小松菜|ニラ|にら|大葉|青じそ|三つ葉|パクチー|ベビーリーフ|サラダ菜/, 4, "葉もの野菜"],
+    [/あじ|いわし|さば|さんま|鮭|さけ|たら|ぶり|かじき|えび|いか|たこ|あさり|しじみ|白身魚|切り身/, 4, "魚介"],
+    [/ひき肉|挽き肉|ミンチ/, 3, "ひき肉"],
+    [/豆腐|とうふ/, 3, "豆腐"],
+    [/鶏|ささみ|手羽/, 2, "鶏肉"],
+    [/きゅうり|トマト|なす|ピーマン|ズッキーニ|オクラ|ブロッコリー|アスパラ|とうもろこし/, 2, "夏野菜・ブロッコリー"],
+    [/豚|牛|薄切り肉|こま切れ/, 1, "肉"],
+    [/しめじ|えのき|しいたけ|まいたけ|エリンギ|きのこ|マッシュルーム/, 1, "きのこ"],
+    [/生クリーム|牛乳/, 1, "乳製品"],
+  ];
+  // 冷凍品・乾物・缶詰・加工品は急がない（「冷凍えび」「ツナ缶」など）。
+  const KEEPS = /冷凍|缶|乾燥|干し|ツナ|ベーコン|ハム|ソーセージ|ウインナー|ちくわ|かまぼこ|カニカマ|練り物/;
+  function freshness(recipe = {}) {
+    let urgency = 0, total = 0, label = "";
+    for (const i of recipe.ingredients || []) {
+      const name = String(i?.name || "");
+      if (KEEPS.test(name)) continue;
+      const hit = FRESHNESS.find(([re]) => re.test(name));
+      if (!hit) continue;
+      total += hit[1];
+      if (hit[1] > urgency) { urgency = hit[1]; label = hit[2]; }
+    }
+    return { urgency, total, label };
+  }
+  // 買い物からの日数（その回の何日目か）で、急ぐ食材の料理を前へ・後ろの日には出にくくする。
+  // 0日目 +1.5×急ぎ度、1日目 +0.5×、2日目 −0.5×、3日目 −1.5×、そのあと1日ごとに −0.5×（下限 −3×）。
+  function freshScore(f, k) { return f.urgency * Math.max(-3, k >= 3 ? -1.5 - (k - 3) * 0.5 : 1.5 - k); }
   function propose({
     recipes,
     profile: p,
@@ -420,6 +452,7 @@
     cyclesOf = () => ({}),
     requestOf = () => null,
     offUntil = "",
+    rounds = null,
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -443,7 +476,8 @@
     let newCount = 0;
     const need = (r) => SkillDB()?.rate(r).level || 1;
     let challenges = p.skillLevel ? timeline.filter((m) => between(m.date, start) <= 6 && need(m.recipe) > p.skillLevel).length : 0;
-    return Array.from({ length }, (_, i) => {
+    const dayInRound = (date, i) => { const r = (rounds || []).find((x) => x.includes(date)); return r ? r.indexOf(date) : i; };
+    const days = Array.from({ length }, (_, i) => {
       const date = addDays(start, i);
       const slot = slots[date];
       if (slot && slot.status !== "removed") {
@@ -469,6 +503,7 @@
           rotation: rotation(x.recipe, date, timeline, between),
           repeat: repeatFit(x.recipe, date, timeline, between, cyclesOf(x.recipe)),
           request: requestOf(x.recipe),
+          fresh: freshness(x.recipe),
         }))
         .filter((x) => !x.repeat.exclude)
         .map((x) => ({
@@ -480,6 +515,7 @@
             (x.request ? SCORE.request : 0) +
             (x.recipe.curated ? 0 : SCORE.saved) -
             x.rotation.penalty +
+            freshScore(x.fresh, dayInRound(date, i)) +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
                   ingredients.has(key(n.name)),
@@ -498,7 +534,7 @@
       const selected =
         pool.find((x) => x.recipe.id === overrides[date]) || pool[0];
       if (selected) {
-        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.rotation.reason, selected.repeat.reason]
+        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.rotation.reason, selected.repeat.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : ""]
           .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
         timeline.push({ date, recipe: selected.recipe });
         if (used.has(selected.recipe.id)) {
@@ -518,6 +554,7 @@
       }
       return { date, candidate: selected || null };
     });
+    return days;
   }
   function normalizeSlots(raw = {}) {
     return Object.fromEntries(
@@ -931,6 +968,7 @@
     restrictionOptions,
     key,
     fit,
+    freshness,
     propose,
     normalizeSlots,
     mergeMap,
