@@ -713,10 +713,11 @@ function renderFlow() {
 // ----- 献立のリズム：決める→買う→作る（作りながら次を考える）を曜日で固定する -----
 // 定着の目安：3日ずつなら週2回の決定。好きな料理が「次に食べたい頃」でまた出てくるのは
 // 2〜4週目なので、はじめの4週間を「ループが回り始めるまで」として見せる（週カウンター）。
+// 並びはおすすめ順（習慣にしやすい「平日5日」がいちばん上）。
 const RHYTHMS = {
-  "3day": { label: "3日ずつ", note: "月火水／木金土・日曜お休み", blocks: [[1, 2, 3], [4, 5, 6]] },
+  weekday: { label: "平日5日", note: "月〜金・土日はお休み", blocks: [[1, 2, 3, 4, 5]] },
   week: { label: "1週間まとめて", note: "月〜土・日曜お休み", blocks: [[1, 2, 3, 4, 5, 6]] },
-  weekday: { label: "平日だけ", note: "月〜金・土日お休み", blocks: [[1, 2, 3, 4, 5]] },
+  "3day": { label: "3日ずつ", note: "月火水／木金土・日曜お休み", blocks: [[1, 2, 3], [4, 5, 6]] },
 };
 const SHOP_TIMES = ["10:00", "12:00", "17:00", "19:00"];
 const LOOP_WEEKS = 4;
@@ -878,7 +879,7 @@ function renderBlockShoppingDone(items) {
   return dailyButton("life-block-shopped", "買い物完了", `data-key="${b.key}"`, all);
 }
 function renderRhythmSettings(first = false) {
-  const cur = state.rhythm?.preset || "3day";
+  const cur = state.rhythm?.preset || "weekday";
   return `<section class="panel rhythm-panel" id="rhythm"><h3>🗓 献立のリズム</h3>
     <p class="muted small">決める日・買い物の日が曜日で決まり、「作りながら次を考える」が自然に回ります。</p>
     <div class="rhythm-options">${Object.entries(RHYTHMS).map(([id, r]) => `<button type="button" class="rhythm-option" data-action="life-rhythm" data-preset="${id}" aria-pressed="${rhythmOn() ? state.rhythm.preset === id : !first ? false : id === cur}"><strong>${r.label}</strong><small>${r.note}</small></button>`).join("")}</div>
@@ -887,7 +888,7 @@ function renderRhythmSettings(first = false) {
 }
 function renderRhythmInvite() {
   if (rhythmOn() || isViewer() || state.rhythm?.dismissed) return "";
-  return `<section class="rhythm-invite"><p><b>献立のリズムを決めよう</b><br><small>おすすめ：3日ずつ（月火水／木金土・日曜お休み）、買い物は前日17:00</small></p><div class="actions">${dailyButton("life-rhythm", "これではじめる", 'data-preset="3day"', true)}${dailyButton("life-rhythm-open", "ほかを選ぶ")}</div></section>`;
+  return `<section class="rhythm-invite"><p><b>献立のリズムを決めよう</b><br><small>おすすめ：平日5日（月〜金・土日はお休み）、買い物は前日17:00</small></p><div class="actions">${dailyButton("life-rhythm", "これではじめる", 'data-preset="weekday"', true)}${dailyButton("life-rhythm-open", "ほかを選ぶ")}</div></section>`;
 }
 function handleRhythmAction(action, data) {
   if (action === "life-week") { boardWeek = Math.max(-2, Math.min(1, boardWeek + (Number(data.delta) || 0))); calPick = ""; }

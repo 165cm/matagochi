@@ -37,7 +37,7 @@ async function loadDiscover({ force = false } = {}) {
 function discoverRecipe(item, kind) {
   const ingredients = normalizeImportedIngredients(item.ingredients || []);
   const steps = (item.steps || []).map((s) => String(s || "").trim()).filter(Boolean);
-  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", sourceServings: item.sourceServings ?? null, mealType: "dinner", tags: item.tags || [], curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
+  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", ...(/^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(item.channelThumb || "") ? { channelThumb: item.channelThumb } : {}), sourceServings: item.sourceServings ?? null, mealType: "dinner", tags: item.tags || [], curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
   recipe.planning = aiPlanning(item.planning, { ingredients, steps }) || Lifestyle.suggestPlanning({ ingredients, steps });
   return recipe;
 }
@@ -81,7 +81,7 @@ function rankByTaste(list) {
   return list.map((r, i) => ({ r, s: tasteScore(r, seeds) + (kindBonus[r.discover?.kind] || 0), i })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.r);
 }
 function discoverLabel(recipe) {
-  return recipe.discover?.kind === "trend" ? "🔥 今週の人気" : recipe.discover?.kind === "pop" ? "👨‍👩‍👧 みんなの定番" : "定番";
+  return recipe.discover?.kind === "trend" ? "🆕 新着" : recipe.discover?.kind === "pop" ? "👨‍👩‍👧 みんなの定番" : "定番";
 }
 // みんなの定番づくり：献立に入れた・作ったYouTubeレシピを、名前を伏せて送る（設定で止められる）。
 const shareStatsOn = () => { try { return localStorage.getItem("ripigochi-share-stats") !== "off"; } catch { return true; } };
@@ -96,17 +96,37 @@ function funnelPickCandidates() {
   const curated = Lifestyle.curated.filter((r) => STARTER_PHOTOS[r.id]);
   return [...discoverRecipes().filter((r) => discoverSafe(r, profile)), ...curated.filter((r) => Lifestyle.fit(r, profile, today()).ok)].slice(0, 12);
 }
+// 雑誌のように選べる一覧：写真の上に小さく「新着」、投稿者のアイコンと名前をはっきり、ひとことの解説つき。
+const MAIN_CATEGORIES = new Set(["肉", "魚", "卵・乳製品", "大豆・加工品"]);
+function dishBlurb(r) {
+  const mains = (r.ingredients || []).filter((i) => MAIN_CATEGORIES.has(i.category)).map((i) => String(i.name || "").replace(/[（(].*$/, "").trim()).filter(Boolean);
+  const veg = (r.ingredients || []).find((i) => i.category === "野菜")?.name;
+  const stars = [...new Set([...mains.slice(0, 1), veg].filter(Boolean))].slice(0, 2);
+  const eq = r.planning?.equipment || [];
+  const tool = eq.includes("電子レンジ") && !eq.includes("コンロ") ? "レンジだけ" : eq.length && eq.every((e) => ["フライパン", "コンロ", "包丁", "まな板", "計量スプーン"].includes(e)) ? "フライパンひとつ" : "";
+  const how = [tool, r.planning?.minutes ? `${r.planning.minutes}分` : ""].filter(Boolean).join("・");
+  const taste = (r.planning?.tastes || [])[0] || "";
+  // 例：「豚こま × キャベツを、フライパンひとつ・15分で。甘辛味」
+  const line = stars.length ? `${stars.join(" × ")}${how ? `を、${how}で。` : "で。"}` : how ? `${how}で。` : "";
+  return [line, taste ? `${taste}味` : "", r.planning?.easy ? "はじめてでも◎" : ""].filter(Boolean).join(" ").slice(0, 60);
+}
+function creatorAvatar(r) {
+  const name = shortCreatorName(r.author || "");
+  if (r.channelThumb) return `<img class="pick-avatar" src="${escapeAttr(r.channelThumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">`;
+  const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 17);
+  return `<span class="pick-avatar is-letter" style="--h:${hue}" aria-hidden="true">${escapeHtml(name.slice(0, 1) || "🍳")}</span>`;
+}
 function renderFunnelPicks() {
   const picks = new Set(profileDraft().picks || []);
   const list = funnelPickCandidates();
-  const tiles = list.map((r) => `<button type="button" class="pick-tile" data-action="life-funnel-dish" data-recipe="${escapeAttr(r.id)}" aria-pressed="${picks.has(r.id)}">${dishTile(r)}<span class="pick-title">${escapeHtml(r.title)}</span>${r.discover ? `<small>${discoverLabel(r)}${r.author ? ` · ${escapeHtml(shortCreatorName(r.author))}` : ""}</small>` : "<small>定番</small>"}<i class="pick-check" aria-hidden="true"></i></button>`).join("");
-  return [`😋 気になる料理を選んで`, `<p class="small">選んだ料理は保存して、最初の献立に入れます。似た料理も上に出します。</p><div class="pick-grid">${tiles || '<p class="muted small">読み込んでいます…</p>'}</div>`];
+  const tiles = list.map((r) => `<button type="button" class="pick-tile is-mag" data-action="life-funnel-dish" data-recipe="${escapeAttr(r.id)}" aria-pressed="${picks.has(r.id)}"><span class="pick-photo">${dishTile(r)}${r.discover?.kind === "trend" ? '<span class="pick-badge">新着</span>' : ""}<i class="pick-check" aria-hidden="true"></i></span><span class="pick-title">${escapeHtml(r.title)}</span><span class="pick-blurb">${escapeHtml(dishBlurb(r))}</span>${r.author ? `<span class="pick-creator">${creatorAvatar(r)}<span>${escapeHtml(shortCreatorName(r.author))}</span></span>` : '<span class="pick-creator is-starter">リピごちの定番</span>'}</button>`).join("");
+  return [`😋 気になる料理を、選んで`, `<p class="small">選んだ料理は保存して、最初の献立に入れます。</p><div class="pick-grid is-mag">${tiles || '<p class="muted small">読み込んでいます…</p>'}</div>`];
 }
 function finishFunnelPicks() {
   const ids = profileDraft().picks || [];
   const chosen = ids.map((id) => findDiscover(id) || Lifestyle.curated.find((r) => r.id === id)).filter(Boolean);
   state.tasteSeeds = chosen.map((r) => Lifestyle.traits(r)).slice(0, 12);
-  chosen.forEach((r) => saveOwnRecipe(r));
+  return chosen.map((r) => saveOwnRecipe(r));
 }
 
 /* ---- 投稿者へのリスペクト：公式プレーヤーで見ながら作る・出典を主役に・チャンネル登録へ ---- */
@@ -188,7 +208,7 @@ function timeFixBar(recipe) {
   const open = timeFix?.key === timecodeKey(recipe);
   const body = !canFix ? "" : open
     ? `<div class="timefix-open"><p class="small">動画を再生して、手順が始まったところで <b>📍今の場面</b> を押してください。</p><div class="timefix-actions"><button type="button" class="primary-button" data-action="life-time-save">保存してみんなと共有</button><button type="button" class="text-button" data-action="life-time-cancel">やめる</button></div></div>`
-    : `<button type="button" class="text-button timefix-start" data-action="life-time-fix" data-recipe="${escapeAttr(recipe.id)}">⏱ ▶ の時刻がずれている？直す</button>`;
+    : recipeStepTimes(recipe).some((t) => Number.isFinite(t)) ? `<p class="timefix-note">※ ▶ の時刻がずれていたら、<button type="button" class="link-inline timefix-start" data-action="life-time-fix" data-recipe="${escapeAttr(recipe.id)}">直せます</button>（みんなと共有されます）</p>` : "";
   return `<div class="timefix" data-timefix-for="${escapeAttr(recipe?.id || "")}">${body}</div>`;
 }
 function currentTimeRecipe() {

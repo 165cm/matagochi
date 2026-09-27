@@ -259,3 +259,11 @@ export async function resolveYouTubeChannel(input, env = process.env, fetchImpl 
   } catch {}
   return null;
 }
+
+// 新着の一覧に出す投稿者のアイコン（チャンネルの小さな画像）。50件まで1回で。
+export async function fetchChannelIcons(channelIds, env = process.env, fetchImpl = fetch) {
+  const ids = [...new Set(channelIds.filter((id) => /^UC[\w-]{22}$/.test(id)))].slice(0, 50);
+  if (!ids.length) return {};
+  const data = await youtubeGet("channels", { part: "snippet", id: ids.join(","), maxResults: "50" }, env, fetchImpl, AbortSignal.timeout(10_000));
+  return Object.fromEntries((data.items || []).map((item) => [item.id, item.snippet?.thumbnails?.default?.url || ""]).filter(([, url]) => /^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(url)));
+}

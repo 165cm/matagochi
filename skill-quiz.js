@@ -1,15 +1,16 @@
 /* 料理スキル診断（1分）。スキルをちりばめた料理を「作れる？」で答えて、★1〜5のランクを出す。
    オンボーディングとは別のコンテンツ：?skill=1 で誰でも開ける（集客用）、アプリ内からもいつでも。 */
+// 「作れる？」ではなく、実際の作業ができるかで判断する（料理名だけだと自己評価がぶれるため）。
 const SKILL_QUIZ = [
-  { level: 1, dish: "starter-04", title: "レンジで作る さば豆腐丼", how: "混ぜてチンするだけ" },
-  { level: 2, dish: "starter-03", title: "豚こまキャベツ炒め", how: "包丁で切って、フライパンで炒める" },
-  { level: 2, dish: "starter-12", title: "トマト卵うどん", how: "鍋で煮て、卵に火を通す" },
-  { level: 3, dish: "starter-38", title: "ガパオライス", how: "みじん切りして、手早く炒める" },
-  { level: 3, dish: "starter-13", title: "鶏の照り焼き", how: "肉を中まで焼いて、たれを煮からめる" },
-  { level: 4, dish: "starter-33", title: "チーズインハンバーグ", how: "こねて、チーズを包んで成形する" },
-  { level: 4, dish: "starter-26", title: "鶏の揚げ焼き", how: "少なめの油で揚げ焼きにする" },
-  { level: 5, dish: "", title: "からあげ", how: "たっぷりの油で揚げる" },
-  { level: 5, dish: "", title: "あじの三枚おろし", how: "魚を丸ごと買って、おろす" },
+  { level: 1, dish: "starter-04", title: "レンジだけで、一品つくれる？", can: "レンジで一品", how: "材料を耐熱ボウルで混ぜて、電子レンジで加熱する" },
+  { level: 2, dish: "starter-03", title: "野菜を、同じ大きさに切れる？", can: "野菜の切りそろえ", how: "火の通りがそろうように、キャベツやにんじんを切る" },
+  { level: 2, dish: "starter-12", title: "味見して、味を整えられる？", can: "味の調整", how: "しょうゆや塩を少しずつ足して、ちょうどいい味にする" },
+  { level: 3, dish: "starter-13", title: "鶏肉の火の通り、見分けられる？", can: "火の通りの見極め", how: "切り口や肉汁の色で、中まで焼けたか確かめる" },
+  { level: 3, dish: "starter-38", title: "玉ねぎを、みじん切りにできる？", can: "みじん切り", how: "包丁で細かく、同じ大きさに刻む" },
+  { level: 4, dish: "starter-33", title: "ハンバーグを、形を作って焼ける？", can: "ハンバーグの成形", how: "こねて成形し、割れずに中まで焼く" },
+  { level: 4, dish: "starter-26", title: "2品を、同時進行で作れる？", can: "2品の同時進行", how: "煮ている間にもう一品を焼く、など段取りを組む" },
+  { level: 5, dish: "", title: "からあげを、油で揚げられる？", can: "揚げ物", how: "油の温度を見ながら、たっぷりの油で揚げる" },
+  { level: 5, dish: "", title: "魚を、三枚におろせる？", can: "魚をおろす", how: "丸ごとの魚を、骨から身を切り離す" },
 ];
 const SKILL_TYPES = {
   1: { name: "レンジ名人", text: "混ぜてチン、が得意。包丁いらずの一皿から、無理なく回します。" },
@@ -43,9 +44,9 @@ function renderSkillQuiz() {
     return `<section class="skill-quiz"><p class="quiz-progress">料理スキル診断 <b>${q.step + 1}</b> / ${n}</p>
       <div class="quiz-bar"><i style="width:${Math.round((q.step / n) * 100)}%"></i></div>
       ${dishTile(r, "quiz-photo")}
-      <h2>${escapeHtml(item.title)}、<br><span class="marker nobr">作れる？</span></h2>
+      <h2><span class="marker">${escapeHtml(item.title)}</span></h2>
       <p class="quiz-how">${escapeHtml(item.how)}</p>
-      <div class="quiz-answers">${[[2, "作れる！"], [1, "たぶん"], [0, "むり…"]].map(([v, label]) => `<button type="button" class="${v === 2 ? "primary-button" : "secondary-button"}" data-action="life-quiz-answer" data-value="${v}">${label}</button>`).join("")}</div>
+      <div class="quiz-answers">${[[2, "できる！"], [1, "たぶん"], [0, "できない"]].map(([v, label]) => `<button type="button" class="${v === 2 ? "primary-button" : "secondary-button"}" data-action="life-quiz-answer" data-value="${v}">${label}</button>`).join("")}</div>
       ${q.step ? '<button type="button" class="text-button" data-action="life-quiz-back">‹ ひとつ戻る</button>' : '<button type="button" class="text-button" data-action="life-quiz-close">あとで</button>'}</section>`;
   }
   if (!q.growth) {
@@ -58,14 +59,14 @@ function renderSkillQuiz() {
   }
   const level = skillQuizLevel(q.answers);
   const type = SKILL_TYPES[level];
-  const can = [...new Set(SKILL_QUIZ.filter((x) => x.level <= level).map((x) => x.title))].slice(-3);
+  const can = [...new Set(SKILL_QUIZ.filter((x) => x.level <= level).map((x) => x.can))].slice(-3);
   return `<section class="skill-quiz is-result"><p class="quiz-progress">あなたの料理スキルは…</p>
     <p class="quiz-stars" aria-label="5段階中${level}">${Skills.stars(level)}</p>
     <h2><span class="marker nobr">${type.name}</span></h2>
     <p>${type.text}</p>
-    <p class="muted small">作れる料理の例：${can.map(escapeHtml).join("・")}</p>
+    <p class="muted small">できること：${can.map(escapeHtml).join("・")}</p>
     <p class="quiz-style">${q.growth === "grow" ? "🌱 少しずつレベルアップ：1週間に1回くらい、★がひとつ上の料理を入れます。" : "🔁 今のレパートリーで：★" + level + "までの料理で献立を作ります。"}</p>
-    <div class="quiz-actions">${q.fromLp && !state.onboarded ? `<a class="primary-button link-button" href="lp/#waitlist">公開のお知らせを受け取る</a>${dailyButton("life-quiz-save", "この結果でアプリを試す")}` : dailyButton("life-quiz-save", state.onboarded ? "献立に反映する" : "この結果ではじめる", "", true)}${dailyButton("life-quiz-share", "結果をシェア")}<button type="button" class="text-button" data-action="life-quiz-restart">もう一度</button></div></section>`;
+    <div class="quiz-actions">${q.fromLp && !state.onboarded ? `<a class="primary-button link-button" href="lp/#waitlist">公開のお知らせを受け取る</a>${dailyButton("life-quiz-save", "この結果でアプリを試す")}` : dailyButton("life-quiz-save", state.onboarded ? "献立に反映する" : "この結果で次へ", "", true)}${dailyButton("life-quiz-share", "結果をシェア")}<button type="button" class="text-button" data-action="life-quiz-restart">もう一度</button></div></section>`;
 }
 function handleSkillQuizAction(action, data) {
   if (!action.startsWith("life-quiz")) return false;
@@ -86,18 +87,21 @@ function handleSkillQuizAction(action, data) {
     return true;
   } else if (action === "life-quiz-save") {
     const level = skillQuizLevel(skillQuiz.answers);
-    state.skillProfile = { level, growth: skillQuiz.growth, updatedAt: nowIso() };
+    state.skillProfile = { level, growth: skillQuiz.growth, diagnosed: true, updatedAt: nowIso() };
     state.planOverrides = {};
     skillQuiz = null;
+    // 初回設定の途中で診断した時は、次の質問へ。
+    const draft = state.onboardingDraft;
+    if (!state.onboarded && draft && FUNNEL[draft.quickSetupIndex] === 2) draft.quickSetupIndex = FUNNEL.indexOf(2) + 1;
     saveState();
-    showToast(`「${SKILL_TYPES[level].name}」を献立に反映しました。`);
+    if (state.onboarded) showToast(`「${SKILL_TYPES[level].name}」を献立に反映しました。`);
   }
   render();
   globalThis.scrollTo?.({ top: 0 });
   return true;
 }
 function normalizeSkillProfile(raw) {
-  return [1, 2, 3, 4, 5].includes(Number(raw?.level)) ? { level: Number(raw.level), growth: raw.growth === "grow" ? "grow" : "steady", updatedAt: normalizeTimestamp(raw.updatedAt) } : null;
+  return [1, 2, 3, 4, 5].includes(Number(raw?.level)) ? { level: Number(raw.level), growth: raw.growth === "grow" ? "grow" : "steady", diagnosed: raw.diagnosed === true, updatedAt: normalizeTimestamp(raw.updatedAt) } : null;
 }
 function renderSkillSettings() {
   if (isViewer()) return "";

@@ -95,14 +95,17 @@
   function profile(raw = {}) {
     return {
       detailedSetup: raw.detailedSetup === true,
-      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 12 ? raw.quickSetupIndex : null,
+      quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 16 ? raw.quickSetupIndex : null,
       picks: Array.isArray(raw.picks) ? raw.picks.filter((x) => typeof x === "string" && x.length < 40).slice(0, 12) : [],
       // はじめの質問（悩み・保存した動画・食費）。献立には使わず、案内の言葉と目安に使う。
-      ...Object.fromEntries(["pain", "savedVideos", "foodBudget"].filter((k) => typeof raw[k] === "string" && raw[k].length < 20).map((k) => [k, raw[k]])),
+      ...(raw.remindAdded === true ? { remindAdded: true } : {}),
+      ...(Array.isArray(raw.eaters) ? { eaters: raw.eaters.filter((x) => ["me", "partner", "kids", "teens", "parents", "friends"].includes(x)) } : {}),
+      ...Object.fromEntries(["goal", "pain", "savedVideos", "foodBudget"].filter((k) => typeof raw[k] === "string" && raw[k].length < 20).map((k) => [k, raw[k]])),
       version: 1,
       completed: raw.completed === true,
       step: Math.min(15, Math.max(0, Number(raw.step) || 0)),
-      servings: [1, 2].includes(Number(raw.servings))
+      // 5 は「5人以上」。
+      servings: [1, 2, 3, 4, 5].includes(Number(raw.servings))
         ? Number(raw.servings)
         : 1,
       days: list(raw.days),
@@ -113,7 +116,8 @@
       tasteVotes: Taste.normalize(raw.tasteVotes),
       dinnerPriorities: Persona.normalize(raw.dinnerPriorities),
       tasteReturnStep: Number.isInteger(raw.tasteReturnStep) && raw.tasteReturnStep >= 0 && raw.tasteReturnStep <= 15 ? raw.tasteReturnStep : null,
-      weekdayMinutes: [10, 20, 30, 60].includes(Number(raw.weekdayMinutes))
+      // 時計のダイヤルで5分きざみ（5〜60分）。
+      weekdayMinutes: Number.isInteger(Number(raw.weekdayMinutes)) && Number(raw.weekdayMinutes) >= 5 && Number(raw.weekdayMinutes) <= 60 && Number(raw.weekdayMinutes) % 5 === 0
         ? Number(raw.weekdayMinutes)
         : null,
       weekendMinutes: [10, 20, 30, 60].includes(Number(raw.weekendMinutes))
@@ -528,7 +532,7 @@
             ...copy(s),
             date,
             mealType: "dinner",
-            servings: [1, 2].includes(Number(s.servings))
+            servings: [1, 2, 3, 4, 5].includes(Number(s.servings))
               ? Number(s.servings)
               : 1,
           },

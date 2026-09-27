@@ -39,9 +39,10 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
+  const icons = { at: 0, map: {} };
   async function readIndex() { return (await store.get("trends/index")) || null; }
   // 同じ保存先へ1秒以内に続けて書くと断られるので、断られたら1秒あけて1回だけやり直す。
   async function writeIndex(index) {
@@ -187,6 +188,10 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           } catch {}
         }
       }
+      // 投稿者のアイコン（1日に1回まとめて取る。取れなくても一覧は出す）。
+      const missing = items.map((i) => i.channelId).filter((id) => id && !(id in icons.map));
+      if (missing.length && icons.at < now() - DAY) { icons.at = now(); Object.assign(icons.map, await channelIcons(missing).catch(() => ({}))); }
+      items.forEach((i) => { if (icons.map[i.channelId]) i.channelThumb = icons.map[i.channelId]; });
       const value = { items, updatedAt: new Date(now()).toISOString() };
       cache = { value, until: now() + 10 * 60_000 };
       return value;

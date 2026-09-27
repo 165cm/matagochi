@@ -900,19 +900,58 @@ test("hidden starter recipes leave the list and the planner; bulk delete removes
   assert.ok(run("!!state.tombstones.recipes.own1 && !!state.tombstones.evaluations.e1"));
 });
 
-test("the first-run funnel: questions before and after the five, answers kept across a reload", () => {
+test("the first-run funnel: part 1 is today, part 2 is what comes next, answers kept across a reload", () => {
   const run = app();
-  run(`handleDailyAction("life-quick",{}); handleDailyAction("life-funnel-pick",{field:"pain",value:"tired"}); handleDailyAction("life-funnel-pick",{field:"savedVideos",value:"few"})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "value");
+  run(`handleDailyAction("life-quick",{}); handleDailyAction("life-funnel-pick",{field:"pain",value:"tired"})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 0, "pain moves on by itself, then how many people");
+  run(`handleDailyAction("life-servings",{count:"4"})`);
+  assert.equal(run("state.onboardingDraft.servings"), 4, "three or more people can be chosen");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "eaters", "then who eats");
+  run(`handleDailyAction("life-eater",{value:"partner"}); handleDailyAction("life-eater",{value:"kids"}); handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("state.onboardingDraft.eaters.join()"), "partner,kids");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 4, "then foods to avoid");
   run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 0, "then the five questions");
-  run(`state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("budget"); handleDailyAction("life-funnel-pick",{field:"foodBudget",value:"50000"})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "budget", "the budget answer shows its estimate before moving on");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "equipment");
+  run(`state.onboardingDraft.equipment = Lifestyle.equipmentDefaults(state.onboardingDraft.equipment); handleDailyAction("life-equipment-toggle",{name:"オーブン"}); handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("state.onboardingDraft.equipment.オーブン"), "have");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "taste", "the taste quiz can be skipped");
+  run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-quick-skill",{level:"3"})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "videos", "a picked skill moves on to saved videos");
+  run(`handleDailyAction("life-funnel-pick",{field:"savedVideos",value:"few"})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "demo");
+  run(`handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "loss", "part 1 ends with what staying the same costs");
+  assert.equal(run("nowCost(state.onboardingDraft).kg"), 76, "19kg a person a year");
+  assert.equal(run("nowCost(state.onboardingDraft).hours"), 122, "20 minutes a dinner");
+  run(`handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("state.onboardingDraft.quickSetupIndex"), run("FUNNEL_PART2"), "part 2 starts with the goal");
+  run(`handleDailyAction("life-funnel-pick",{field:"goal",value:"save"}); handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("state.rhythm.preset"), "weekday", "the rhythm starts on weekdays");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "remind");
+  assert.equal(run("rhythmReminder().label"), "日曜 16:00", "decide the day before the weekday block, an hour before shopping");
+  run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-minutes",{minutes:"45"})`);
+  assert.equal(run("state.onboardingDraft.weekdayMinutes"), 45);
   run(`handleDailyAction("life-funnel-commit",{}); state = normalizeState(JSON.parse(JSON.stringify(state)))`);
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "building");
-  assert.equal(run("state.onboardingDraft.pain + state.onboardingDraft.foodBudget"), "tired50000");
+  assert.match(run("buildingLines(state.onboardingDraft).join('|')"), /4人分に、分量をそろえています\|.*オーブンも使える料理.*★3までの.*平日45分以内/, "the building screen shows the answers being used");
+  assert.equal(run("state.onboardingDraft.eaters.join()"), "partner,kids", "who eats survives a reload");
+  assert.equal(run("state.onboardingDraft.goal + state.onboardingDraft.pain + state.onboardingDraft.weekdayMinutes"), "savetired45");
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded && state.view"), "plan");
+  assert.equal(run("state.servingCount"), 4);
+});
+
+test("the paywall offers more free time, not a discount, when someone tries to leave", () => {
+  const run = app();
+  run(`state.onboarded = true; state.foodProfile = Lifestyle.profile({ servings: 2, completed: true, goal: "time" }); openPaywall()`);
+  assert.equal(run("paywall.plan"), "year", "the yearly plan is chosen by default");
+  assert.match(run("renderPaywall()"), /4週間 無料ではじめる/);
+  run(`handleDailyAction("life-pay-close",{})`);
+  assert.equal(run("paywall.stage"), "exit", "closing first shows the extension offer");
+  run(`handleDailyAction("life-pay-extend",{})`);
+  assert.match(run("renderPaywall()"), /6週間 無料ではじめる/, "4 weeks become 6");
+  run(`handleDailyAction("life-pay-close",{})`);
+  assert.equal(run("paywall"), null, "after the extension, closing closes");
 });
 
 test("trend recipes: ranked by chosen dishes, saved when planned, removed after their 28 days", () => {
