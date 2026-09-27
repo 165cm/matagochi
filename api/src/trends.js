@@ -39,10 +39,11 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const icons = { at: 0, map: {} };
+  const catches = { at: 0 };
   async function readIndex() { return (await store.get("trends/index")) || null; }
   // 同じ保存先へ1秒以内に続けて書くと断られるので、断られたら1秒あけて1回だけやり直す。
   async function writeIndex(index) {
@@ -184,7 +185,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             if (r.channelId && excluded.has(r.channelId)) continue; // 掲載停止を申し込んだ投稿者
             items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
               title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
+              ...(r.catch ? { catch: r.catch } : {}), sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
           } catch {}
         }
       }
@@ -192,6 +193,18 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const missing = items.map((i) => i.channelId).filter((id) => id && !(id in icons.map));
       if (missing.length && icons.at < now() - DAY) { icons.at = now(); Object.assign(icons.map, await channelIcons(missing).catch(() => ({}))); }
       items.forEach((i) => { if (icons.map[i.channelId]) i.channelThumb = icons.map[i.channelId]; });
+      // 一言キャッチがない料理は、まとめて1回だけ書いてもらい、保存して使い回す。
+      const saved = (await store.get("trends/catches"))?.envelope || {};
+      const need = items.filter((i) => !i.catch && !saved[i.videoId]);
+      if (need.length && catches.at < now() - 60 * 60_000) {
+        catches.at = now();
+        try {
+          await reserveBudget();
+          const fresh = await writeCatches(need);
+          if (Object.keys(fresh).length) { const cur = await store.get("trends/catches"); await store.put("trends/catches", { ...(cur?.envelope || {}), ...fresh }, { ifGeneration: cur?.generation ?? 0 }).catch(() => {}); Object.assign(saved, fresh); }
+        } catch {}
+      }
+      items.forEach((i) => { if (!i.catch && saved[i.videoId]) i.catch = saved[i.videoId]; });
       const value = { items, updatedAt: new Date(now()).toISOString() };
       cache = { value, until: now() + 10 * 60_000 };
       return value;

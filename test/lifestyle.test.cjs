@@ -941,17 +941,15 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.equal(run("state.servingCount"), 4);
 });
 
-test("the paywall offers more free time, not a discount, when someone tries to leave", () => {
+test("the paywall: yearly by default, a free trial of the odd days plus two weeks from Monday, closing just closes", () => {
   const run = app();
   run(`state.onboarded = true; state.foodProfile = Lifestyle.profile({ servings: 2, completed: true, goal: "time" }); openPaywall()`);
   assert.equal(run("paywall.plan"), "year", "the yearly plan is chosen by default");
-  assert.match(run("renderPaywall()"), /4週間 無料ではじめる/);
+  assert.equal(run("JSON.stringify(trialPlan('2026-09-30'))"), JSON.stringify({ start: "2026-10-05", end: "2026-10-18", notify: "2026-10-16", charge: "2026-10-19" }), "Wednesday: the rest of the week, then Mon 10/5 for two weeks");
+  assert.equal(run("trialPlan('2026-10-05').start"), "2026-10-05", "a Monday starts the two weeks that day");
+  assert.match(run("renderPaywall()"), /まるごと2週間/);
   run(`handleDailyAction("life-pay-close",{})`);
-  assert.equal(run("paywall.stage"), "exit", "closing first shows the extension offer");
-  run(`handleDailyAction("life-pay-extend",{})`);
-  assert.match(run("renderPaywall()"), /6週間 無料ではじめる/, "4 weeks become 6");
-  run(`handleDailyAction("life-pay-close",{})`);
-  assert.equal(run("paywall"), null, "after the extension, closing closes");
+  assert.equal(run("paywall"), null);
 });
 
 test("trend recipes: ranked by chosen dishes, saved when planned, removed after their 28 days", () => {

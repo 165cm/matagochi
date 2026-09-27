@@ -37,7 +37,7 @@ async function loadDiscover({ force = false } = {}) {
 function discoverRecipe(item, kind) {
   const ingredients = normalizeImportedIngredients(item.ingredients || []);
   const steps = (item.steps || []).map((s) => String(s || "").trim()).filter(Boolean);
-  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", ...(/^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(item.channelThumb || "") ? { channelThumb: item.channelThumb } : {}), sourceServings: item.sourceServings ?? null, mealType: "dinner", tags: item.tags || [], curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
+  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", ...(/^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(item.channelThumb || "") ? { channelThumb: item.channelThumb } : {}), ...(typeof item.catch === "string" && item.catch ? { catch: item.catch.slice(0, 40) } : {}), sourceServings: item.sourceServings ?? null, mealType: "dinner", tags: item.tags || [], curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
   recipe.planning = aiPlanning(item.planning, { ingredients, steps }) || Lifestyle.suggestPlanning({ ingredients, steps });
   return recipe;
 }
@@ -97,18 +97,11 @@ function funnelPickCandidates() {
   return [...discoverRecipes().filter((r) => discoverSafe(r, profile)), ...curated.filter((r) => Lifestyle.fit(r, profile, today()).ok)].slice(0, 12);
 }
 // 雑誌のように選べる一覧：写真の上に小さく「新着」、投稿者のアイコンと名前をはっきり、ひとことの解説つき。
-const MAIN_CATEGORIES = new Set(["肉", "魚", "卵・乳製品", "大豆・加工品"]);
-function dishBlurb(r) {
-  const mains = (r.ingredients || []).filter((i) => MAIN_CATEGORIES.has(i.category)).map((i) => String(i.name || "").replace(/[（(].*$/, "").trim()).filter(Boolean);
-  const veg = (r.ingredients || []).find((i) => i.category === "野菜")?.name;
-  const stars = [...new Set([...mains.slice(0, 1), veg].filter(Boolean))].slice(0, 2);
+// 一言キャッチがない料理は、ひと目でわかる事実を小さなタグで（⏱15分・フライパンひとつ・甘辛）。
+function dishFacts(r) {
   const eq = r.planning?.equipment || [];
   const tool = eq.includes("電子レンジ") && !eq.includes("コンロ") ? "レンジだけ" : eq.length && eq.every((e) => ["フライパン", "コンロ", "包丁", "まな板", "計量スプーン"].includes(e)) ? "フライパンひとつ" : "";
-  const how = [tool, r.planning?.minutes ? `${r.planning.minutes}分` : ""].filter(Boolean).join("・");
-  const taste = (r.planning?.tastes || [])[0] || "";
-  // 例：「豚こま × キャベツを、フライパンひとつ・15分で。甘辛味」
-  const line = stars.length ? `${stars.join(" × ")}${how ? `を、${how}で。` : "で。"}` : how ? `${how}で。` : "";
-  return [line, taste ? `${taste}味` : "", r.planning?.easy ? "はじめてでも◎" : ""].filter(Boolean).join(" ").slice(0, 60);
+  return [r.planning?.minutes ? `⏱${r.planning.minutes}分` : "", tool, (r.planning?.tastes || [])[0] || "", r.planning?.easy ? "かんたん" : ""].filter(Boolean).slice(0, 3);
 }
 function creatorAvatar(r) {
   const name = shortCreatorName(r.author || "");
@@ -119,7 +112,7 @@ function creatorAvatar(r) {
 function renderFunnelPicks() {
   const picks = new Set(profileDraft().picks || []);
   const list = funnelPickCandidates();
-  const tiles = list.map((r) => `<button type="button" class="pick-tile is-mag" data-action="life-funnel-dish" data-recipe="${escapeAttr(r.id)}" aria-pressed="${picks.has(r.id)}"><span class="pick-photo">${dishTile(r)}${r.discover?.kind === "trend" ? '<span class="pick-badge">新着</span>' : ""}<i class="pick-check" aria-hidden="true"></i></span><span class="pick-title">${escapeHtml(r.title)}</span><span class="pick-blurb">${escapeHtml(dishBlurb(r))}</span>${r.author ? `<span class="pick-creator">${creatorAvatar(r)}<span>${escapeHtml(shortCreatorName(r.author))}</span></span>` : '<span class="pick-creator is-starter">リピごちの定番</span>'}</button>`).join("");
+  const tiles = list.map((r) => `<button type="button" class="pick-tile is-mag" data-action="life-funnel-dish" data-recipe="${escapeAttr(r.id)}" aria-pressed="${picks.has(r.id)}"><span class="pick-photo">${dishTile(r)}${r.discover?.kind === "trend" ? '<span class="pick-badge">新着</span>' : ""}<i class="pick-check" aria-hidden="true"></i></span><span class="pick-title">${escapeHtml(r.title)}</span>${r.author ? `<span class="pick-creator">${creatorAvatar(r)}<span>${escapeHtml(shortCreatorName(r.author))}</span></span>` : '<span class="pick-creator is-starter">リピごちの定番</span>'}${r.catch ? `<span class="pick-blurb">${escapeHtml(r.catch)}</span>` : `<span class="pick-facts">${dishFacts(r).map((x) => `<i>${escapeHtml(x)}</i>`).join("")}</span>`}</button>`).join("");
   return [`😋 気になる料理を、選んで`, `<p class="small">選んだ料理は保存して、最初の献立に入れます。</p><div class="pick-grid is-mag">${tiles || '<p class="muted small">読み込んでいます…</p>'}</div>`];
 }
 function finishFunnelPicks() {

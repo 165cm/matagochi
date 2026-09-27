@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-onboarding";
+const APP_VERSION = "20260927-onboarding3";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2126,6 +2126,7 @@ function renderSettings() {
   const sp = skillProfile();
   const leave = [...p.restrictions, ...p.dislikes];
   return `
+    ${betaNote()}
     ${renderAccountPanel()}
     <section class="settings-list" aria-label="設定">
     ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 12 ? "disabled" : ""}>＋</button></div></div>

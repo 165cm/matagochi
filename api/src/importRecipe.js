@@ -92,7 +92,8 @@ export function normalizeImportResult(result) {
     channelTitle: cleanText(result.channelTitle),
     // チャンネルIDは投稿者をまとめる鍵。名前が変わっても同じ人として扱える。
     channelId: /^[\w-]{10,40}$/.test(cleanText(result.channelId)) ? cleanText(result.channelId) : "",
-    planning: normalizePlanning(result.planning)
+    planning: normalizePlanning(result.planning),
+    ...(cleanText(result.catch) ? { catch: cleanText(result.catch).slice(0, 40) } : {})
   };
 }
 
