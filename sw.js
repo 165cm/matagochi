@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v84";
-const APP_VERSION = "20260927-lp1";
+const CACHE_NAME = "ripigochi-v85";
+const APP_VERSION = "20260928-push1";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -26,17 +26,18 @@ const CORE_ASSETS = [
   `./plan-moves.js?v=${APP_VERSION}`,
   `./folders.js?v=${APP_VERSION}`,
   `./install.js?v=${APP_VERSION}`,
+  `./push.js?v=${APP_VERSION}`,
   `./tickets.js?v=${APP_VERSION}`,
   `./account.js?v=${APP_VERSION}`,
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260927-lp1",
-  "./icons/favicon-32.png?v=20260927-lp1",
-  "./icons/icon-192.png?v=20260927-lp1",
-  "./icons/icon-512.png?v=20260927-lp1",
-  "./icons/icon-maskable-512.png?v=20260927-lp1",
-  "./icons/apple-touch-icon.png?v=20260927-lp1"
+  "./manifest.webmanifest?v=20260928-push1",
+  "./icons/favicon-32.png?v=20260928-push1",
+  "./icons/icon-192.png?v=20260928-push1",
+  "./icons/icon-512.png?v=20260928-push1",
+  "./icons/icon-maskable-512.png?v=20260928-push1",
+  "./icons/apple-touch-icon.png?v=20260928-push1"
 ];
 
 self.addEventListener("install", (event) => {
@@ -90,4 +91,26 @@ self.addEventListener("fetch", (event) => {
       })
       .catch(() => caches.match(request))
   );
+});
+
+// 通知：届いたら表示し、押したらアプリの該当の画面を開く。
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: "リピごち", body: event.data?.text() || "" }; }
+  event.waitUntil(self.registration.showNotification(data.title || "リピごち", {
+    body: data.body || "",
+    icon: "./icons/icon-192.png",
+    badge: "./icons/favicon-32.png",
+    tag: data.tag || "ripigochi",
+    data: { url: data.url || "" }
+  }));
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(`./${event.notification.data?.url || ""}`, self.registration.scope).href;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.url.startsWith(self.registration.scope));
+    if (open) return open.navigate(target).then((c) => (c || open).focus()).catch(() => open.focus());
+    return self.clients.openWindow(target);
+  }));
 });

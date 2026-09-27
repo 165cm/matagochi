@@ -912,6 +912,7 @@ function handleDailyAction(action, data) {
   if (handlePlanMoveAction(action, data)) return true;
   if (handleFolderAction(action, data)) return true;
   if (handleInstallAction(action)) return true;
+  if (handlePushAction(action)) return true;
   if (handlePaywallAction(action, data)) return true;
   if (["life-ratio", "life-staple", "life-chain", "life-priority", "life-photo-retry", "life-type-share"].includes(action)) { if (handleCookTypeAction(action, data)) return true; saveState({ scheduleSync: false }); render(); return true; }
   if (viewerBlocked(action)) return true;
@@ -1652,6 +1653,7 @@ function renderFunnelStep(key) {
     const r = rhythmReminder();
     return [`🔔 決める日を、忘れないように`, `<div class="remind-card"><p class="rc-when">毎週 <b>${escapeHtml(r.label)}</b></p><p class="small">「献立を決めて、買い物へ」を、くり返しの予定として入れておきましょう。</p></div>
       <div class="remind-options">
+        ${pushState() === "off" ? `<button type="button" class="remind-button is-push" data-action="life-push-on" ${pushBusy ? "disabled" : ""}><span aria-hidden="true">🔔</span>${pushBusy ? "準備しています…" : "通知でお知らせ（おすすめ）"}</button>` : pushState() === "on" ? '<p class="remind-done">🔔 通知はオンです</p>' : ""}
         <button type="button" class="remind-button" data-action="life-remind-google"><span aria-hidden="true">🗓</span>Googleカレンダーに追加</button>
         <details class="remind-how"><summary>追加のしかた</summary><ol class="small"><li>ボタンを押すと、Googleカレンダーの「予定の作成」画面が開きます（Googleにログインしていない時はログイン）。</li><li>毎週のくり返しは入力済み。右上の<b>「保存」</b>を押せば完了です。</li><li>通知は、Googleカレンダーのいつもの設定（例：10分前）で届きます。</li></ol></details>
         <button type="button" class="remind-button" data-action="life-remind-calendar"><span aria-hidden="true">📱</span>iPhoneのカレンダーに追加</button>

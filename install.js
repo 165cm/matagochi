@@ -51,7 +51,7 @@ function installSteps(platform = installPlatform()) {
   if (installPrompt) return `<p class="small">ボタンを押して「インストール」を選ぶだけです。</p>${dailyButton("life-install-prompt", "📲 ホーム画面に追加する", "", true)}`;
   return `<ol class="install-steps"><li>右上のメニュー <b>⋮</b> を押す</li><li><b>「ホーム画面に追加」</b>または<b>「アプリをインストール」</b>を押す</li></ol>`;
 }
-const INSTALL_WHY = '<ul class="install-why"><li>🔔 献立を決める日・買い物の時間の<b>通知</b>（準備中）が受け取れる</li><li>💾 記録が<b>消えにくく</b>なる</li><li>📱 ホーム画面から<b>1タップ</b>で開ける</li></ul>';
+const INSTALL_WHY = '<ul class="install-why"><li>🔔 献立を決める日・買い物の時間を<b>通知</b>でお知らせ</li><li>💾 記録が<b>消えにくく</b>なる</li><li>📱 ホーム画面から<b>1タップ</b>で開ける</li></ul>';
 function renderInstallCard() {
   if (!installOpen && !installDue()) return "";
   return `<section class="panel install-card" aria-label="ホーム画面に追加">
