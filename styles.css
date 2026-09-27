@@ -3505,3 +3505,15 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .skip-mode input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--tomato); flex: none; }
 .skip-mode small { display: block; color: var(--muted); }
 .skip-mode u { text-decoration-color: var(--egg); text-decoration-thickness: 3px; }
+
+/* ── ホーム画面に追加の案内 ── */
+.install-card { display: grid; gap: 10px; border: 1.5px solid var(--egg); background: #fffaf0; }
+.install-head { display: flex; align-items: center; gap: 10px; }
+.install-head img { border-radius: 12px; box-shadow: 0 2px 6px rgba(90, 60, 30, .15); }
+.install-head p { display: grid; margin: 0; }
+.install-head small { color: var(--muted); font-size: 12px; }
+.install-why { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.install-steps { display: grid; gap: 6px; margin: 0; padding-left: 22px; font-size: 14px; line-height: 1.6; }
+.install-steps b { color: var(--sage-dark); }
+.ios-share { display: inline-block; width: 20px; height: 20px; vertical-align: -4px; color: #1a73e8; }
+.install-card .text-button { justify-self: center; }

@@ -531,6 +531,7 @@ function renderToday() {
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
     ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-skip" data-date="${today()}">🍽 今日は外食・中食にする</button>` : ""}</div>` : ""}</section>
   ${renderSkipPanel(today())}
+  ${renderInstallCard()}
   ${renderTicketNudge("cook")}
   ${renderTodayTodos()}
   ${tomorrow ? `<button type="button" class="tomorrow-line" data-action="go-view" data-view="plan"><span>明日は</span><b>${tomorrow.prestart ? "いつもどおり（献立の前）" : tomorrowOff ? "お休み 🌙" : tr ? escapeHtml(tr.title) : "未定"}</b><i aria-hidden="true">›</i></button>` : ""}`;
@@ -817,6 +818,7 @@ function dailyRecord(slot) {
       updatedAt: nowIso(),
     });
     celebrateCook(before);
+    noteInstallCook();
     // 定番フォルダの作り方なら、ランキングの何位かを聞く。
     if (folderOfRecipe(own)) rankPromptId = own.id;
   }
@@ -909,6 +911,7 @@ function handleDailyAction(action, data) {
   if (handleSkillQuizAction(action, data)) return true;
   if (handlePlanMoveAction(action, data)) return true;
   if (handleFolderAction(action, data)) return true;
+  if (handleInstallAction(action)) return true;
   if (handlePaywallAction(action, data)) return true;
   if (["life-ratio", "life-staple", "life-chain", "life-priority", "life-photo-retry", "life-type-share"].includes(action)) { if (handleCookTypeAction(action, data)) return true; saveState({ scheduleSync: false }); render(); return true; }
   if (viewerBlocked(action)) return true;

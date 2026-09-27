@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-carry2";
+const APP_VERSION = "20260927-install1";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2152,6 +2152,7 @@ function renderSettings() {
         `).join("")}
       </div>
       <button class="secondary-button full-button" type="button" data-action="add-member">メンバーを追加</button>`)}
+    ${settingRow("install", "📲", "ホーム画面に追加", isInstalledApp() || installInfo().installed ? "追加ずみ" : "記録が消えにくく、すぐ開ける", renderInstallSettings())}
     ${settingRow("backup", "💾", "バックアップ", `前回の書き出し：${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}`, `<p class="notice">この端末のブラウザにだけ保存されています。書き出したファイルを保管しておくと、別の端末や再インストール後に読み込んで復元できます。</p>
       <p class="muted small">前回の書き出し: ${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}</p>
       <div class="actions">
