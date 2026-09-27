@@ -90,7 +90,7 @@ test('registered channels are found by name once; their new uploads come first; 
   const r = await book.step();
   assert.equal(channelSearches.length, 5, 'five names are looked up per call');
   assert.equal(r.items, 2, "two new uploads per channel; the other channel's two failed");
-  assert.equal(keyword, 3, 'then keyword search');
+  assert.equal(keyword, 9, 'then every set of keyword searches (3 × 3)');
   const doc = (await store.get('trends/channels')).envelope;
   assert.equal(doc.seeds['DELISH KITCHEN'], 'none', 'a channel whose name does not match is not used');
   assert.equal(doc.channels[chA].hits, 2); assert.equal(doc.channels[chB].tries, 2); assert.equal(doc.channels[chB].hits, 0);
