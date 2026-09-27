@@ -220,10 +220,10 @@ export async function fetchYouTubePlaylist(playlistId, env = process.env, fetchI
 }
 
 // 今週の人気レシピ探し：日本の料理動画を、直近の再生数が多い順に。
-export async function searchYouTubeRecipes(query, { publishedAfter, maxResults = 25 } = {}, env = process.env, fetchImpl = fetch) {
+export async function searchYouTubeRecipes(query, { publishedAfter, maxResults = 25, videoDuration = "" } = {}, env = process.env, fetchImpl = fetch) {
   const apiKey = env.YOUTUBE_API_KEY;
   if (!apiKey) throw new ApiError(500, "missing_youtube_api_key", "YouTube APIキーが設定されていません。");
-  const params = new URLSearchParams({ part: "snippet", type: "video", q: query, regionCode: "JP", relevanceLanguage: "ja", order: "viewCount", maxResults: String(maxResults), key: apiKey, ...(publishedAfter ? { publishedAfter } : {}) });
+  const params = new URLSearchParams({ part: "snippet", type: "video", q: query, regionCode: "JP", relevanceLanguage: "ja", order: "viewCount", maxResults: String(maxResults), key: apiKey, ...(publishedAfter ? { publishedAfter } : {}), ...(videoDuration ? { videoDuration } : {}) });
   const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/search?${params}`, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new ApiError(502, "youtube_api_error", "YouTubeを検索できませんでした。");
   const data = await response.json();

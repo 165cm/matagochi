@@ -67,7 +67,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     // A claim older than STALE_PENDING_MS cannot still be waiting on the AI (timeout is 60s), so it may be retried.
     const stale = current?.envelope.status === "pending" && now() - Date.parse(current.envelope.startedAt || 0) > STALE_PENDING_MS;
     if (current?.envelope.status === "pending" && !stale) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
-    if (current?.envelope.retryAt > now()) { await refund(); throw new ApiError(429, "analysis_cooldown", "分析に失敗したため、1分ほど待ってから再試行してください。"); }
+    // 説明文で失敗した直後でも、動画から読むのは待たせない（チケットを使う操作なので連打にはならない）。
+    if (!forceVideo && current?.envelope.retryAt > now()) { await refund(); throw new ApiError(429, "analysis_cooldown", "分析に失敗したため、1分ほど待ってから再試行してください。"); }
     const claim = await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
     if (!claim) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
     try {
