@@ -116,8 +116,32 @@ function stepTimesFor(steps, times) {
 }
 let videoStartAt = { key: "", seconds: 0 };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+// 以前に読み取ったレシピには時刻がないので、開いた時にサーバーに探してもらう（一度探した動画は全員で使い回し）。
+const timecodes = new Map();
+const timecodeKey = (recipe) => `${youtubeVideoId(recipe?.videoUrl)}|${(recipe?.steps || []).join("\n")}`;
+function recipeStepTimes(recipe) {
+  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return recipe.stepTimes;
+  return timecodes.get(timecodeKey(recipe))?.times || [];
+}
+function timecodesLoading(recipe) { return timecodes.get(timecodeKey(recipe))?.status === "loading"; }
+function ensureTimecodes(recipe) {
+  if (!API_BASE_URL || !recipe || !youtubeVideoId(recipe.videoUrl) || (recipe.steps || []).length < 2 || recipeStepTimes(recipe).length) return;
+  const key = timecodeKey(recipe);
+  if (timecodes.has(key)) return;
+  timecodes.set(key, { status: "loading" });
+  globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, { method: "POST", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps }) })
+    .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then((data) => {
+      const times = stepTimesFor(recipe.steps, data?.stepTimes);
+      timecodes.set(key, { status: times.length ? "done" : "none", times });
+      // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
+      const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
+      if (own && times.length) { own.stepTimes = times; saveState(); }
+      if (["recipe", "cooking"].includes(state.view)) render();
+    });
+}
 function stepTimeButton(recipe, index) {
-  const t = recipe?.stepTimes?.[index];
+  const t = recipeStepTimes(recipe)[index];
   if (!Number.isFinite(t) || !youtubeVideoId(recipe.videoUrl)) return "";
   return ` <button type="button" class="step-time" data-action="life-video-at" data-recipe="${escapeAttr(recipe.id)}" data-seconds="${t}" aria-label="この手順を動画の${mmss(t)}から見る">▶ ${mmss(t)}</button>`;
 }
