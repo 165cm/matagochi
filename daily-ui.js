@@ -553,7 +553,7 @@ function renderPreferencePrompt() {
   if (!e) return "";
   const names = raterNames();
   const rows = names.map((name) => renderCyclePicker(name, e.familyRepeatCycles?.[name], (cycle) => `data-action="life-rate" data-id="${escapeAttr(e.id)}" data-member="${escapeAttr(name)}" data-cycle="${cycle}"`)).join("");
-  return `<section class="panel rate-card" role="region" aria-label="次に食べたい頃"><p class="hand rate-note">おつかれさま！</p><h3>${escapeHtml(e.recipeTitle)}、次はいつ食べたい？</h3><p class="muted small">${names.length > 1 ? "ひとりずつタップ。ふたりが食べたくなる頃に、また献立に入ります。" : "えらんだ頃に、また献立に入ります。"}</p>${rows}${dailyButton("life-frequency-close","あとで")}</section>`;
+  return `<section class="panel rate-card" role="region" aria-label="次に食べたい頃"><p class="hand rate-note">おつかれさま！</p><h3>${escapeHtml(e.recipeTitle)}、次はいつ食べたい？</h3><p class="muted small">${names.length > 1 ? "ひとりずつタップ。ふたりが食べたくなる頃に、また献立に入ります。" : "えらんだ頃に、また献立に入ります。"}</p>${rows}${renderCreatorThanks(recipeById(e.recipeId), e)}${dailyButton("life-frequency-close","あとで")}</section>`;
 }
 // Latest rating per person for a recipe (own copy or starter).
 function recipeRatings(recipe) {
@@ -677,6 +677,7 @@ function renderRecordEditor() {
     ${raterNames().map((name) => renderCyclePicker(name, d.familyRepeatCycles[name], (cycle) => `data-action="life-record-cycle" data-member="${escapeAttr(name)}" data-cycle="${cycle}"`)).join("")}
     <label class="record-field">メモ<textarea id="record-memo" class="textarea" maxlength="400" placeholder="例：次は具を多めに">${escapeHtml(d.memo || "")}</textarea></label>
     <div class="record-photo-actions"><label class="secondary-button" for="record-photo">📷 写真を${d.photo ? "変える" : "追加"}</label><input id="record-photo" type="file" accept="image/*" hidden>${d.photo ? '<button type="button" class="text-button" data-action="life-record-photo-remove">写真を外す</button>' : ""}</div>
+    ${d.isNew ? "" : renderCreatorThanks(r, d)}
     ${dailyButton("life-record-save", "記録を保存", "", true)}
     ${d.isNew ? "" : '<button type="button" class="text-button danger full-button" data-action="life-record-delete">この記録を削除</button>'}
   </section>`;
@@ -1049,6 +1050,7 @@ function handleDailyAction(action, data) {
     state.view = "cooking";
   }
   if (action === "life-analyze") { analyzeCookingRecipe(data.date); return true; }
+  if (action === "life-share-cooked") { shareCooked(data.id); return true; }
   if (action === "life-video-at") { videoStartAt = { key: data.recipe, seconds: Number(data.seconds) || 0 }; globalThis.setTimeout?.(() => document.querySelector(".video-frame")?.scrollIntoView?.({ behavior: "smooth", block: "start" }), 30); }
   if (action === "life-reread") { askTicket(() => rereadRecipe(data.recipe), recipeById(data.recipe)?.videoUrl); return true; }
   if (action === "life-fill-video") { askTicket(() => fillRecipeFromVideo(data.recipe), recipeById(data.recipe)?.videoUrl); return true; }

@@ -139,3 +139,45 @@ function renderCreatorCredit(recipe) {
   const isYouTube = !!id;
   return `<section class="creator-credit" aria-label="レシピの出典">${player}<div class="credit-row"><p class="credit-name"><small>レシピ・動画</small><b>${escapeHtml(name)}</b></p>${link ? `<a class="subscribe-button" href="${escapeAttr(link)}" target="_blank" rel="noopener">${isYouTube && recipe.channelId ? "チャンネル登録" : "投稿者を見る"}</a>` : ""}</div><p class="credit-note small">${isYouTube ? "コツや火加減は動画で。手順の「▶」から、その場面を再生できます。" : "元の動画で、コツや火加減も確かめてください。"} <a href="creators.html" target="_blank" rel="noopener">投稿者の方へ</a></p></section>`;
 }
+
+/* ---- 作った人の声を投稿者に届ける（つくれぽ型）：コメントで伝える・作ってみたをシェア ---- */
+const hashtagOf = (name) => String(name || "").replace(/[\s【】\[\]（）()・|｜:：!！?？#＃"'「」]/g, "").slice(0, 30);
+function renderCreatorThanks(recipe, evaluation) {
+  if (!recipe?.videoUrl || !evaluation) return "";
+  const name = recipe.author || "投稿者";
+  return `<div class="creator-thanks"><p class="small">🙏 <b>${escapeHtml(name)}</b>さんのレシピでした</p><div class="thanks-actions"><a class="secondary-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noopener">💬 「作ったよ」を伝える</a><button type="button" class="secondary-button" data-action="life-share-cooked" data-id="${escapeAttr(evaluation.id)}">📣 作ってみたをシェア</button></div><p class="muted small">動画のコメントは、投稿者のいちばんの励みになります。</p></div>`;
+}
+// 写真があれば、写真に料理名と出典を入れた画像にして共有（端末の中だけで作る）。なければ文章とリンクだけ。
+async function cookedCard(photo, title, credit) {
+  const img = new Image();
+  img.src = photo;
+  await img.decode();
+  const w = 1080, h = 1350, canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const g = canvas.getContext("2d");
+  const scale = Math.max(w / img.width, h / img.height);
+  g.drawImage(img, (w - img.width * scale) / 2, (h - img.height * scale) / 2, img.width * scale, img.height * scale);
+  const grad = g.createLinearGradient(0, h * 0.6, 0, h);
+  grad.addColorStop(0, "rgba(0,0,0,0)"); grad.addColorStop(1, "rgba(0,0,0,.7)");
+  g.fillStyle = grad; g.fillRect(0, h * 0.6, w, h * 0.4);
+  g.fillStyle = "#fff";
+  g.font = "bold 64px sans-serif"; g.fillText(title.slice(0, 16), 60, h - 170);
+  g.font = "bold 40px sans-serif"; g.fillText(`レシピ：${credit}`.slice(0, 26), 60, h - 100);
+  g.font = "32px sans-serif"; g.fillText("作ってみた！ #リピごち", 60, h - 48);
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
+  return new File([blob], "ripigochi.jpg", { type: "image/jpeg" });
+}
+async function shareCooked(evaluationId) {
+  const e = state.evaluations.find((x) => x.id === evaluationId);
+  const recipe = e && (recipeById(e.recipeId) || findDiscover(e.recipeId));
+  if (!recipe?.videoUrl) return;
+  const credit = recipe.author || "投稿者";
+  const text = `${credit}さんの「${recipe.title}」を作ってみました！\n#${hashtagOf(credit)} #リピごち`;
+  try {
+    const files = isDataPhoto(e.photo) ? [await cookedCard(e.photo, recipe.title, credit)] : [];
+    const data = files.length && navigator.canShare?.({ files }) ? { files, text: `${text}\n${recipe.videoUrl}` } : { text, url: recipe.videoUrl };
+    if (navigator.share) { await navigator.share(data); return; }
+  } catch (error) { if (error?.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(`${text}\n${recipe.videoUrl}`); showToast("シェアする文章をコピーしました。SNSに貼ってください。"); }
+  catch { showToast("この端末ではシェアできませんでした。"); }
+}

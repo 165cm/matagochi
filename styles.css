@@ -2978,3 +2978,7 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .credit-note a { color: var(--muted); }
 .step-time { margin-left: 4px; padding: 2px 8px; min-height: 26px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font: inherit; font-size: 12px; font-weight: 800; color: #cc0000; cursor: pointer; white-space: nowrap; }
 .cooking-steps li { display: flex; align-items: flex-start; gap: 4px; flex-wrap: wrap; }
+.creator-thanks { display: grid; gap: 6px; margin: 10px 0; padding: 12px; border-radius: 16px; background: var(--surface-soft); }
+.creator-thanks p { margin: 0; }
+.thanks-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.thanks-actions .secondary-button { min-height: 44px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
