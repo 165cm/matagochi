@@ -69,6 +69,8 @@ ${clipSeconds ? `渡しているのは動画の最初の${Math.round(clipSeconds
 - 動画と説明文で確認できない材料や分量は推測で補完しないでください。分量が不明なら "適量"。
 ${unitPromptTable()}
 - steps は実際の調理の順番どおり、1手順1文で短く（最大10手順）。宣伝・感想・挨拶は含めないでください。
+- stepTimes は steps と同じ数の配列で、各手順を動画の中で始めている時刻（動画の頭からの秒数）。分からない手順は null。
+- 手順の文は要点だけの短い要約にし、動画の言い回しをそのまま書き写さないでください（細かいコツは動画で見てもらいます）。
 - category は "野菜", "肉", "魚", "卵・乳製品", "大豆・加工品", "主食", "缶詰", "調味料", "その他" のどれか。
 - sourceServings は動画・説明文で示された人数。不明なら null。
 - カロリー・糖質などの栄養情報は材料に含めないでください。
@@ -83,7 +85,7 @@ ${unitPromptTable()}
 - tastes：次から1つ：和風, 洋風, 中華風
 
 返却JSON:
-{ "title": "短いレシピ名", "sourceServings": null, "ingredients": [{ "name": "材料名", "amount": "分量", "category": "分類" }], "steps": ["手順"], "stepsComplete": true, "planning": { "minutes": 20, "easy": true, "equipment": ["コンロ"], "tasks": [], "tastes": ["和風"] }, "tags": ["タグ"], "note": "" }
+{ "title": "短いレシピ名", "sourceServings": null, "ingredients": [{ "name": "材料名", "amount": "分量", "category": "分類" }], "steps": ["手順"], "stepTimes": [12], "stepsComplete": true, "planning": { "minutes": 20, "easy": true, "equipment": ["コンロ"], "tasks": [], "tastes": ["和風"] }, "tags": ["タグ"], "note": "" }
 
 参考（動画のタイトルと説明文）:
 ${snippet.title || ""}

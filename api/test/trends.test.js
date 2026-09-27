@@ -111,3 +111,18 @@ test('a trend already collected from an English video is left out of the list', 
   await book.step();
   assert.deepEqual((await book.list()).items.map((i) => i.videoId), [ids[1]]);
 });
+
+test('a creator who asks to be left out disappears from trends and popular at once', async () => {
+  const { createCreatorDesk } = await import('../src/creators.js');
+  const store = createMemorySyncStore();
+  const ch = 'UC' + 'q'.repeat(22);
+  const desk = createCreatorDesk(store, { resolveChannel: async (x) => (x.includes('@taro') ? { channelId: ch, title: 'たろうの台所' } : null) });
+  const catalog = fakeCatalog(Object.fromEntries(ids.map((id, i) => [id, { channelId: i < 3 ? ch : 'UCother' }])));
+  const book = createTrendBook(store, { catalog, optedOut: () => desk.optedOut(), now: () => Date.parse('2026-09-28T01:00:00Z'), search: async () => ids.map((videoId, i) => ({ videoId, channelId: i < 3 ? ch : `c${i}`, title: 'レシピ' })) });
+  await book.step();
+  assert.equal((await book.list()).items.filter((i) => i.channelId === ch).length, 2, 'two per channel');
+  await assert.rejects(desk.request({ channel: 'https://example.com' }), { code: 'channel_not_found' });
+  assert.equal((await desk.request({ channel: 'https://www.youtube.com/@taro', message: '掲載を止めてください' })).removed, true);
+  const fresh = createTrendBook(store, { catalog, optedOut: () => desk.optedOut(), now: () => Date.parse('2026-09-28T01:00:00Z'), search: async () => [] });
+  assert.equal((await fresh.list()).items.some((i) => i.channelId === ch), false);
+});

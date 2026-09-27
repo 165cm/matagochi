@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-trends2";
+const APP_VERSION = "20260927-credit";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2681,6 +2681,8 @@ async function handleAction(event) {
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.author = state.draft.author || "";
       if (state.draft.channelId) existing.channelId = state.draft.channelId;
+      // 手順ごとの動画の時刻は、手順の数が変わっていなければ残す。
+      existing.stepTimes = stepTimesFor(steps, state.draft.stepTimes);
       existing.note = state.draft.note;
       existing.planning = state.draft.planning || undefined;
       existing.thumbnailUrl = state.draftThumbnailUrl || existing.thumbnailUrl || "";
@@ -2711,6 +2713,7 @@ async function handleAction(event) {
         source: state.draft.source,
         author: state.draft.author || "",
         channelId: state.draft.channelId || "",
+        stepTimes: stepTimesFor(steps, state.draft.stepTimes),
         mealType: state.draft.mealType,
         caption: state.draft.caption,
         ingredients,
@@ -3551,6 +3554,7 @@ function applyImportedRecipe(result) {
     source: result.source || platform.label,
     author: state.draft.author || String(result.channelTitle || result.author || "").trim().slice(0, 60),
     channelId: result.channelId || state.draft.channelId || "",
+    stepTimes: Array.isArray(result.stepTimes) ? result.stepTimes : [],
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
   };

@@ -8,7 +8,7 @@ const SEGMENT = /^(any|[LR]{3})-[0-5]$/;
 export const POPULAR_MIN = 3;
 const monthOf = (ms) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 7);
 
-export function createPopularBook(store, { catalog, now = Date.now } = {}) {
+export function createPopularBook(store, { catalog, now = Date.now, optedOut = async () => new Set() } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   const recent = new Map(); // 同じ接続元・同じ動画は1日1回だけ数える
   let cache = new Map();
@@ -50,11 +50,12 @@ export function createPopularBook(store, { catalog, now = Date.now } = {}) {
       }
       const ranked = Object.entries(totals).filter(([, t]) => t.all >= POPULAR_MIN).sort((a, b) => (b[1].same * 3 + b[1].all) - (a[1].same * 3 + a[1].all)).slice(0, limit);
       const items = [];
+      const excluded = await optedOut();
       for (const [videoId, t] of ranked) {
         try {
           const r = await catalog.import(canonicalYouTubeUrl(videoId));
-          if (!r.ingredients?.length || !r.steps?.length) continue;
-          items.push({ videoId, score: t.same * 3 + t.all, title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, tags: r.tags || [], planning: r.planning || null });
+          if (!r.ingredients?.length || !r.steps?.length || (r.channelId && excluded.has(r.channelId))) continue;
+          items.push({ videoId, score: t.same * 3 + t.all, title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
         } catch {}
       }
       const value = { items, minimum: POPULAR_MIN };
