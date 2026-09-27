@@ -62,17 +62,18 @@ export function createTicketBook(store, { now = Date.now, startTickets = START_T
       const { wallet, created } = await load(household, prev, create);
       return { ...view(wallet, unlimited), created: !!created };
     },
-    async spend(household, { unlimited = false } = {}) {
-      if (unlimited) return;
+    // count枚まとめて使う（イラストは3枚）。足りなければ1枚も使わない。
+    async spend(household, { unlimited = false, count = 1 } = {}) {
+      if (unlimited) return null;
       if (!household) throw new ApiError(402, "no_tickets", "チケットがありません。");
-      await update(household, (w) => {
-        if (w.halves < 2) throw new ApiError(402, "no_tickets", "チケットがありません。献立を決めたり作ったりすると、チケットがもらえます。");
-        return { ...w, halves: w.halves - 2, spent: (w.spent || 0) + 1 };
+      return update(household, (w) => {
+        if (w.halves < 2 * count) throw new ApiError(402, "no_tickets", count > 1 ? `チケットが${count}枚いります（いま${w.halves / 2}枚）。献立を決めたり作ったりすると、チケットがもらえます。` : "チケットがありません。献立を決めたり作ったりすると、チケットがもらえます。");
+        return { ...w, halves: w.halves - 2 * count, spent: (w.spent || 0) + count };
       });
     },
-    async refund(household, { unlimited = false } = {}) {
-      if (unlimited || !household) return;
-      await update(household, (w) => ({ ...w, halves: w.halves + 2, spent: Math.max(0, (w.spent || 0) - 1) }));
+    async refund(household, { unlimited = false, count = 1 } = {}) {
+      if (unlimited || !household) return null;
+      return update(household, (w) => ({ ...w, halves: w.halves + 2 * count, spent: Math.max(0, (w.spent || 0) - count) }));
     },
     // 最初の4週間：週ごとに「献立を3日・7日決めた」「3日作った・7日そろった」で2.5枚ずつ。
     // 端末の申告を受けるが、同じ達成は1度だけ・期間内だけ・最大40枚なので、ずるをしても上限は変わらない。
