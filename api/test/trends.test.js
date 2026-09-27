@@ -64,3 +64,13 @@ test('short videos without a description are read from the video; a thin week se
   assert.equal(r.items, 10); assert.equal(r.rounds, 2, 'a second set of search words filled the week');
   assert.equal(r.skipped.error, 1);
 });
+
+test('trend collection stops at half of the daily AI limit so users can still import', async () => {
+  const store = createMemorySyncStore();
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  await store.put(`usage/${new Date(now).toISOString().slice(0, 10)}`, { used: 50 }, { ifGeneration: 0 });
+  const catalog = fakeCatalog();
+  const book = createTrendBook(store, { catalog, now: () => now, dailyLimit: 100, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) });
+  const r = await book.step();
+  assert.equal(r.paused, 'ai_budget'); assert.equal(catalog.calls.length, 0); assert.equal(r.done, false);
+});

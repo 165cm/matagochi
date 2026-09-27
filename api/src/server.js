@@ -32,7 +32,7 @@ export function createApp(env = process.env, deps = {}) {
       enabled: env.AI_IMPORT_ENABLED !== "false",
       tickets,
       refreshSnippet: async (videoId) => { const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env); return { caption: buildCaption(snippet), channelTitle: snippet.channelTitle }; } });
-  const trendBook = createTrendBook(recipeStore, { catalog, search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), now: deps.now || Date.now });
+  const trendBook = createTrendBook(recipeStore, { catalog, search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100) });
   const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.

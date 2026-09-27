@@ -8,10 +8,11 @@ const MAX_TRIES_PER_ROUND = 30;
 export const TREND_KEEP_DAYS = 28;
 export const TREND_PER_WEEK = 10;
 // 10品に届かなければ、次の組の検索語で候補を足す（週3組まで）。説明文にレシピが載りやすい4〜20分の動画を先に。
+// 「材料」を入れると、説明文に材料が書いてある（読み取れる）動画が上に来やすい。
 const SEARCH_ROUNDS = [
-  [["晩ごはん レシピ", "medium"], ["夕飯 簡単 レシピ", "medium"], ["おかず レシピ 人気", ""]],
-  [["簡単 おかず 作り方", "medium"], ["人気 レシピ 夕食", ""], ["メインおかず レシピ", "medium"]],
-  [["献立 レシピ", ""], ["作り置き おかず", "medium"], ["丼 レシピ", ""]],
+  [["晩ごはん レシピ 材料", "medium"], ["夕飯 簡単 レシピ 材料", "medium"], ["おかず レシピ 材料 作り方", ""]],
+  [["簡単 おかず 材料 作り方", "medium"], ["人気 レシピ 夕食 材料", ""], ["メインおかず レシピ 材料", "medium"]],
+  [["献立 レシピ 材料", ""], ["作り置き おかず 材料", "medium"], ["丼 レシピ 材料", ""]],
 ];
 const NOT_DINNER = /ケーキ|クッキー|スイーツ|プリン|アイス|ドリンク|ジュース|スムージー|マフィン|タルト|チョコ|ゼリー|おやつ|デザート|パン作り|食パン|ベーグル|ドーナツ|お菓子|和菓子|コーヒー|カクテル|お酒/;
 
@@ -23,11 +24,20 @@ export function weekOf(ms) {
 }
 export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} ${(r.tags || []).join(" ")}`) && (r.ingredients || []).length >= 3 && (r.steps || []).length >= 2;
 
-export function createTrendBook(store, { catalog, search, now = Date.now, budgetMs = 240_000 } = {}) {
+// 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
+// AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
+export function createTrendBook(store, { catalog, search, now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   async function readIndex() { return (await store.get("trends/index")) || null; }
-  async function writeIndex(entry, index) { return store.put("trends/index", index, { ifGeneration: entry?.generation ?? 0 }); }
+  // 同じ保存先へ1秒以内に続けて書くと断られるので、断られたら1秒あけて1回だけやり直す。
+  async function writeIndex(index) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { const entry = await readIndex(); return await store.put("trends/index", index, { ifGeneration: entry?.generation ?? 0 }); }
+      catch (error) { if (attempt) throw error; await pause(1_200); }
+    }
+  }
+  async function aiUsedToday() { return (await store.get(`usage/${new Date(now()).toISOString().slice(0, 10)}`))?.envelope.used || 0; }
   const fresh = (w) => now() - Date.parse(w.startedAt) < TREND_KEEP_DAYS * DAY;
   async function lock() {
     const entry = await store.get("trends/lock");
@@ -63,7 +73,9 @@ export function createTrendBook(store, { catalog, search, now = Date.now, budget
         // 10品そろうまで：候補を試し切ったら、次の組の検索語で候補を足して続ける。
         current.skipped ||= {};
         const skip = (reason) => { current.skipped[reason] = (current.skipped[reason] || 0) + 1; };
+        let paused = "";
         while (current.items.length < TREND_PER_WEEK && now() - started < budgetMs) {
+          if ((await aiUsedToday()) >= Math.floor(dailyLimit / 2)) { paused = "ai_budget"; break; }
           if (current.tried.length >= current.candidates.length) {
             if ((current.rounds || 0) >= SEARCH_ROUNDS.length) break;
             const seen = new Set([...index.weeks.flatMap((w) => w.items.map((i) => i.videoId)), ...current.candidates]);
@@ -88,13 +100,12 @@ export function createTrendBook(store, { catalog, search, now = Date.now, budget
             if (isDinnerRecipe(r)) current.items.push({ videoId });
             else skip(NOT_DINNER.test(r.title || "") ? "not_dinner" : !(r.steps || []).length ? "no_steps" : "too_short");
           } catch (error) { skip(String(error.code || "error").slice(0, 40)); }
-          await writeIndex(await readIndex(), index);
+          await writeIndex(index);
         }
-        const saved = await readIndex();
-        await writeIndex(saved, index);
+        await writeIndex(index);
         cache = null;
         const exhausted = current.tried.length >= current.candidates.length && (current.rounds || 0) >= SEARCH_ROUNDS.length;
-        return { week, items: current.items.length, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds || 0, skipped: current.skipped || {}, done: current.items.length >= TREND_PER_WEEK || exhausted };
+        return { week, items: current.items.length, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds || 0, skipped: current.skipped || {}, ...(paused ? { paused } : {}), done: current.items.length >= TREND_PER_WEEK || exhausted };
       } finally { await unlock(); }
     },
     // 表示用：取得から28日以内の週だけ。説明文などは読み取り結果の保存先から（30日ルールの取り直しも通る）。
