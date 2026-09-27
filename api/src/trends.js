@@ -8,6 +8,17 @@ const MAX_TRIES_PER_ROUND = 30;
 export const TREND_KEEP_DAYS = 28;
 export const TREND_PER_WEEK = 10;
 // 10品に届かなければ、次の組の検索語で候補を足す（週3組まで）。説明文にレシピが載りやすい4〜20分の動画を先に。
+// 最初に登録する料理系の人気YouTuber。名前でチャンネルを1回だけ探し、名前が合った時だけ使う。
+export const SEED_CHANNELS = [
+  ["リュウジのバズレシピ", /リュウジ/], ["こっタソの自由気ままに", /こっタソ/], ["Kurashiru クラシル", /kurashiru|クラシル/i],
+  ["DELISH KITCHEN", /delish/i], ["だれウマ 料理研究家", /だれウマ/], ["白ごはん.com", /白ごはん/],
+  ["syun cooking", /syun/i], ["Koh Kentetsu Kitchen コウケンテツ", /koh kentetsu|コウケンテツ/i], ["賛否両論 笠原将弘", /笠原|賛否両論/],
+  ["てぬキッチン", /てぬキッチン/], ["はらぺこグリズリーの料理と筋トレ", /はらぺこグリズリー/], ["もあいかすみ", /もあい/],
+  ["ゆかりのおうちごはん", /ゆかり/], ["Chef Ropia", /ropia/i], ["Tasty Japan", /tasty/i],
+];
+const CHANNEL_TOP = 15;
+// チャンネルの当たりやすさ：読めた本数÷試した本数（試していないチャンネルは半々から始める）。
+export const channelScore = (c) => ((c.hits || 0) + 1) / ((c.tries || 0) + 2);
 // 「材料」を入れると、説明文に材料が書いてある（読み取れる）動画が上に来やすい。
 const SEARCH_ROUNDS = [
   [["晩ごはん レシピ 材料", "medium"], ["夕飯 簡単 レシピ 材料", "medium"], ["おかず レシピ 材料 作り方", ""]],
@@ -26,7 +37,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, searchChannels = async () => [], channelUploads = async () => [], now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   async function readIndex() { return (await store.get("trends/index")) || null; }
@@ -35,6 +46,26 @@ export function createTrendBook(store, { catalog, search, now = Date.now, budget
     for (let attempt = 0; attempt < 2; attempt++) {
       try { const entry = await readIndex(); return await store.put("trends/index", index, { ifGeneration: entry?.generation ?? 0 }); }
       catch (error) { if (attempt) throw error; await pause(1_200); }
+    }
+  }
+  async function readChannels() { return (await store.get("trends/channels"))?.envelope || { seeds: {}, channels: {} }; }
+  async function writeChannels(doc) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { const entry = await store.get("trends/channels"); return await store.put("trends/channels", doc, { ifGeneration: entry?.generation ?? 0 }); }
+      catch (error) { if (attempt) return null; await pause(1_200); }
+    }
+  }
+  // 登録チャンネルを名前から探す（1回の呼び出しで5件まで。見つからなければ "none" として二度と探さない）。
+  async function resolveSeeds(doc) {
+    let n = 0;
+    for (const [query, match] of SEED_CHANNELS) {
+      if (query in doc.seeds || n >= 5) continue;
+      n++;
+      const found = await searchChannels(query).catch(() => null);
+      if (!found) continue;
+      const hit = found.find((c) => match.test(c.title));
+      doc.seeds[query] = hit?.channelId || "none";
+      if (hit && !doc.channels[hit.channelId]) doc.channels[hit.channelId] = { name: hit.title, source: "seed", tries: 0, hits: 0 };
     }
   }
   async function aiUsedToday() { return (await store.get(`usage/${new Date(now()).toISOString().slice(0, 10)}`))?.envelope.used || 0; }
@@ -72,23 +103,44 @@ export function createTrendBook(store, { catalog, search, now = Date.now, budget
         }
         // 10品そろうまで：候補を試し切ったら、次の組の検索語で候補を足して続ける。
         current.skipped ||= {};
+        // 以前の形式の週は、チャンネルからの候補集めをまだしていないので、最初の組からやり直す。
+        if (!current.channelOf) { current.channelOf = {}; current.rounds = 0; }
+        const channels = await readChannels();
+        await resolveSeeds(channels);
+        // チャンネルごとの当たり外れを記録（キーワードで当たったチャンネルは、新しくリストに加える）。
+        const learn = (videoId, hit, name) => {
+          const id = current.channelOf[videoId];
+          if (!id) return;
+          const c = channels.channels[id] || (hit ? (channels.channels[id] = { name: name || "", source: "learned", tries: 0, hits: 0 }) : null);
+          if (!c) return;
+          c.tries += 1; c.hits += hit ? 1 : 0;
+        };
         const skip = (reason) => { current.skipped[reason] = (current.skipped[reason] || 0) + 1; };
         let paused = "";
         while (current.items.length < TREND_PER_WEEK && now() - started < budgetMs) {
           if ((await aiUsedToday()) >= Math.floor(dailyLimit / 2)) { paused = "ai_budget"; break; }
           if (current.tried.length >= current.candidates.length) {
-            if ((current.rounds || 0) >= SEARCH_ROUNDS.length) break;
+            const round = current.rounds || 0;
+            if (round >= SEARCH_ROUNDS.length + 1) break;
             const seen = new Set([...index.weeks.flatMap((w) => w.items.map((i) => i.videoId)), ...current.candidates]);
             const publishedAfter = new Date(now() - 14 * DAY).toISOString();
             const found = [];
-            for (const [q, videoDuration] of SEARCH_ROUNDS[current.rounds || 0]) found.push(...(await search(q, { publishedAfter, videoDuration }).catch(() => [])));
-            current.rounds = (current.rounds || 0) + 1;
+            if (round === 0) {
+              // ① 当たりやすいチャンネルの新着動画（直近2週間）を先に。
+              const top = Object.entries(channels.channels).sort((a, b) => channelScore(b[1]) - channelScore(a[1])).slice(0, CHANNEL_TOP);
+              for (const [channelId] of top) found.push(...(await channelUploads(channelId, { maxResults: 6 }).catch(() => [])).filter((v) => !v.publishedAt || v.publishedAt >= publishedAfter));
+            } else {
+              // ② 足りなければキーワード検索。
+              for (const [q, videoDuration] of SEARCH_ROUNDS[round - 1]) found.push(...(await search(q, { publishedAfter, videoDuration }).catch(() => [])));
+            }
+            current.rounds = round + 1;
             const perChannel = {};
             const fresh = [];
             for (const c of found) {
               if (seen.has(c.videoId) || fresh.includes(c.videoId) || NOT_DINNER.test(c.title)) continue;
               if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) continue;
               fresh.push(c.videoId);
+              current.channelOf[c.videoId] = c.channelId;
             }
             current.candidates.push(...fresh.slice(0, MAX_TRIES_PER_ROUND));
             continue;
@@ -97,14 +149,16 @@ export function createTrendBook(store, { catalog, search, now = Date.now, budget
           current.tried.push(videoId);
           try {
             const r = await analyze(videoId);
+            learn(videoId, isDinnerRecipe(r), r.channelTitle);
             if (isDinnerRecipe(r)) current.items.push({ videoId });
             else skip(NOT_DINNER.test(r.title || "") ? "not_dinner" : !(r.steps || []).length ? "no_steps" : "too_short");
-          } catch (error) { skip(String(error.code || "error").slice(0, 40)); }
+          } catch (error) { learn(videoId, false); skip(String(error.code || "error").slice(0, 40)); }
           await writeIndex(index);
         }
         await writeIndex(index);
+        await writeChannels(channels);
         cache = null;
-        const exhausted = current.tried.length >= current.candidates.length && (current.rounds || 0) >= SEARCH_ROUNDS.length;
+        const exhausted = current.tried.length >= current.candidates.length && (current.rounds || 0) >= SEARCH_ROUNDS.length + 1;
         return { week, items: current.items.length, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds || 0, skipped: current.skipped || {}, ...(paused ? { paused } : {}), done: current.items.length >= TREND_PER_WEEK || exhausted };
       } finally { await unlock(); }
     },

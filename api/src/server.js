@@ -14,7 +14,7 @@ import { getSyncPhoto, getSyncRoom, putSyncPhoto, putSyncRoom } from "./sync.js"
 import { gzipSync } from "node:zlib";
 import { createPhotoStore, createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
-import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes } from "./youtube.js";
+import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes, searchYouTubeChannels, fetchChannelUploads } from "./youtube.js";
 
 export function createApp(env = process.env, deps = {}) {
   const app = express();
@@ -32,7 +32,8 @@ export function createApp(env = process.env, deps = {}) {
       enabled: env.AI_IMPORT_ENABLED !== "false",
       tickets,
       refreshSnippet: async (videoId) => { const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env); return { caption: buildCaption(snippet), channelTitle: snippet.channelTitle }; } });
-  const trendBook = createTrendBook(recipeStore, { catalog, search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100) });
+  const trendBook = createTrendBook(recipeStore, { catalog, search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
+    searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100) });
   const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.

@@ -61,7 +61,7 @@ test('short videos without a description are read from the video; a thin week se
   const book = createTrendBook(store, { catalog, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async (q) => { queries.push(q); return (queries.length <= 3 ? first : second).map((videoId, i) => ({ videoId, channelId: `c${videoId}`, title: 'レシピ' })); } });
   const r = await book.step();
   assert.ok(catalog.calls.some(([id, video]) => id === ids[0] && video), 'an empty description falls back to the video');
-  assert.equal(r.items, 10); assert.equal(r.rounds, 2, 'a second set of search words filled the week');
+  assert.equal(r.items, 10); assert.equal(r.rounds, 3, 'after the channel round, a second set of search words filled the week');
   assert.equal(r.skipped.error, 1);
 });
 
@@ -73,4 +73,25 @@ test('trend collection stops at half of the daily AI limit so users can still im
   const book = createTrendBook(store, { catalog, now: () => now, dailyLimit: 100, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) });
   const r = await book.step();
   assert.equal(r.paused, 'ai_budget'); assert.equal(catalog.calls.length, 0); assert.equal(r.done, false);
+});
+
+test('registered channels are found by name once; their new uploads come first; hit rates steer the order', async () => {
+  const store = createMemorySyncStore();
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  const chA = 'UC' + 'a'.repeat(22), chB = 'UC' + 'b'.repeat(22);
+  const channelSearches = [];
+  const uploads = { [chA]: ids.slice(0, 6), [chB]: ids.slice(6, 12) };
+  const catalog = fakeCatalog({ [ids[6]]: 'fail', [ids[7]]: 'fail' });
+  let keyword = 0;
+  const book = createTrendBook(store, { catalog, now: () => now,
+    searchChannels: async (q) => { channelSearches.push(q); return q.startsWith('リュウジ') ? [{ channelId: chA, title: 'リュウジのバズレシピ' }] : q.startsWith('こっタソ') ? [{ channelId: chB, title: 'こっタソの自由気ままに' }] : [{ channelId: 'UC' + 'z'.repeat(22), title: '別の人' }]; },
+    channelUploads: async (id) => (uploads[id] || []).map((videoId) => ({ videoId, channelId: id, title: 'レシピ', publishedAt: new Date(now - 86400000).toISOString() })),
+    search: async () => { keyword++; return []; } });
+  const r = await book.step();
+  assert.equal(channelSearches.length, 5, 'five names are looked up per call');
+  assert.equal(r.items, 2, "two new uploads per channel; the other channel's two failed");
+  assert.equal(keyword, 3, 'then keyword search');
+  const doc = (await store.get('trends/channels')).envelope;
+  assert.equal(doc.seeds['DELISH KITCHEN'], 'none', 'a channel whose name does not match is not used');
+  assert.equal(doc.channels[chA].hits, 2); assert.equal(doc.channels[chB].tries, 2); assert.equal(doc.channels[chB].hits, 0);
 });

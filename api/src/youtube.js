@@ -229,3 +229,14 @@ export async function searchYouTubeRecipes(query, { publishedAfter, maxResults =
   const data = await response.json();
   return (data.items || []).map((item) => ({ videoId: item.id?.videoId, channelId: item.snippet?.channelId || "", title: item.snippet?.title || "" })).filter((x) => YOUTUBE_ID_PATTERN.test(x.videoId || ""));
 }
+
+// チャンネル名からチャンネルを探す（最初に1回だけ。検索は1回100単位なので、結果は保存して使い回す）。
+export async function searchYouTubeChannels(query, env = process.env, fetchImpl = fetch) {
+  const data = await youtubeGet("search", { part: "snippet", type: "channel", q: query, regionCode: "JP", maxResults: "3" }, env, fetchImpl, AbortSignal.timeout(15_000));
+  return (data.items || []).map((item) => ({ channelId: item.snippet?.channelId || item.id?.channelId || "", title: item.snippet?.title || "" })).filter((x) => /^UC[\w-]{22}$/.test(x.channelId));
+}
+// チャンネルの新着動画（アップロード一覧 UU… から。1回1単位）。
+export async function fetchChannelUploads(channelId, { maxResults = 10 } = {}, env = process.env, fetchImpl = fetch) {
+  const data = await youtubeGet("playlistItems", { part: "snippet,contentDetails", playlistId: `UU${channelId.slice(2)}`, maxResults: String(maxResults) }, env, fetchImpl, AbortSignal.timeout(15_000));
+  return (data.items || []).map((item) => ({ videoId: item.contentDetails?.videoId || "", title: item.snippet?.title || "", channelId, publishedAt: item.contentDetails?.videoPublishedAt || item.snippet?.publishedAt || "" })).filter((x) => YOUTUBE_ID_PATTERN.test(x.videoId));
+}
