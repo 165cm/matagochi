@@ -120,7 +120,8 @@ function renderPlanMenu(plan, day) {
     ${day.slot?.status === "confirmed" && slotHasUpdates(day.slot) ? dailyButton("life-refresh", "今のレシピ・人数を反映", `data-date="${day.date}"`) : ""}
     ${up ? `<button type="button" class="plan-menu-item" data-action="life-move" data-date="${day.date}" data-dir="up">↑ 前の日（${formatDate(up.date)}）と入れ替え</button>` : ""}
     ${down ? `<button type="button" class="plan-menu-item" data-action="life-move" data-date="${day.date}" data-dir="down">↓ 次の日（${formatDate(down.date)}）と入れ替え</button>` : ""}
-    <button type="button" class="plan-menu-item" data-action="life-skip" data-date="${day.date}">🍽 外食・中食にする</button></section>`;
+    <button type="button" class="plan-menu-item" data-action="life-skip" data-date="${day.date}">🍽 外食・中食にする</button>
+    ${(() => { const r = day.slot?.recipe || day.candidate?.recipe; const f = r && folderOfRecipe(r); return r ? `<button type="button" class="plan-menu-item" data-action="${f ? "life-folder-open" : "life-recipe-open"}" ${f ? `data-folder="${f.key}"` : `data-recipe="${escapeAttr(recipeById(r.id) ? r.id : r.starterId || r.id)}"`}>📁 ${f ? `「${escapeHtml(f.name)}」フォルダを見る` : "定番フォルダに入れる"}</button>` : ""; })()}</section>`;
 }
 function renderSkipPanel(date) {
   if (skipDate !== date || isViewer()) return "";
