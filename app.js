@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-cooktype5";
+const APP_VERSION = "20260927-skill1";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2135,7 +2135,7 @@ function renderSettings() {
       ${(() => { const p = dailyProfile(); return `<dl class="planning-summary"><div><dt>平日の時間</dt><dd>${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"}</dd></div><div><dt>食べられない</dt><dd>${escapeHtml(p.restrictions.join("・") || "未指定")}</dd></div><div><dt>苦手</dt><dd>${escapeHtml(p.dislikes.join("・") || "未指定")}</dd></div></dl>`; })()}
       <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><button class="secondary-button full-button" data-action="life-pantry-open">🫙 常備品だけ変える</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p>`)}
     ${settingRow("rhythm", "🗓", "献立のリズム", rhythmOn() ? `${RHYTHMS[state.rhythm.preset].label}・買い物${state.rhythm.shopTime}` : "未設定", renderRhythmSettings())}
-    ${isViewer() ? "" : settingRow("skill", "🔪", "料理スキル", sp ? `${Skills.stars(sp.level)} ${SKILL_TYPES[sp.level].name}・${sp.growth === "grow" ? "レベルアップ" : "ルーティン"}` : "未診断", renderSkillSettings())}
+    ${isViewer() ? "" : settingRow("skill", "🔪", "料理スキル・バッジ", `Lv${cookStats().lv}・${sp ? `${Skills.stars(sp.level)} ${SKILL_TYPES[sp.level].name}` : "未診断"}${examReady() ? "・🎖昇級試験OK" : ""}`, renderSkillSettings())}
     ${isViewer() ? "" : settingRow("starters", "🍳", "おすすめレシピ", showStarters() ? "使う" : "使わない（自分のレシピだけ）", renderStarterSettings())}
     ${settingRow("share", "👫", "ふたりで使う", syncEnabled() ? `${state.family.join("・")}でつながっています` : "まだつながっていません", renderSharePanel() + (syncEnabled() ? "" : renderSyncPanel()))}
     ${settingRow("family", "👪", "家族メンバー", `${state.family.join("・")}（${state.family.length}人）`, `<div class="member-list">

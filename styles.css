@@ -3354,3 +3354,101 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .skill-photo figcaption { display: grid; font-size: 12px; color: var(--muted); }
 .skill-photo figcaption b { color: var(--ink); font-size: 14px; }
 .skill-photo small { font-size: 11px; }
+
+/* ── 料理スキル試験（CBT） ── */
+.skill-quiz.is-cbt { text-align: left; }
+.skill-quiz.is-cbt .quiz-progress { text-align: center; }
+.quiz-meta { display: flex; justify-content: space-between; align-items: center; margin: 0; font-size: 12px; font-weight: 800; color: var(--muted); }
+.qm-cat { padding: 3px 10px; border-radius: 999px; background: #fff1dc; color: var(--sage-dark); }
+.qm-level { letter-spacing: 1px; color: #c9a45a; }
+.skill-quiz h2.quiz-q { font-size: 21px; line-height: 1.5; }
+.quiz-choices { display: grid; gap: 8px; }
+.quiz-choice { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 10px 14px; border: 1.5px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); text-align: left; font-weight: 700; line-height: 1.4; cursor: pointer; }
+.quiz-choice:not(:disabled):active { transform: scale(0.99); border-color: var(--tomato); }
+.qc-key { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #f5ebdd; font-size: 12px; font-weight: 900; color: var(--muted); }
+.quiz-choice.is-right { border-color: #3f9a6b; background: #eaf7ef; }
+.quiz-choice.is-right .qc-key { background: #3f9a6b; color: #fff; }
+.quiz-choice.is-wrong { border-color: var(--tomato); background: #fdeae4; }
+.quiz-choice.is-wrong .qc-key { background: var(--tomato); color: #fff; }
+.quiz-choice.is-dim { opacity: 0.5; }
+.quiz-choice:disabled { cursor: default; color: var(--ink); }
+.quiz-reveal { padding: 12px 14px; border-radius: 16px; background: #fff7e8; font-size: 14px; line-height: 1.6; }
+.quiz-reveal p { margin: 0; }
+.quiz-reveal .qr-head { margin-bottom: 4px; font-weight: 900; }
+.quiz-reveal.is-right .qr-head { color: #2f7d55; }
+.quiz-reveal.is-wrong .qr-head { color: var(--sage-dark); }
+.score-card { display: grid; justify-items: center; gap: 2px; padding: 16px 12px 14px; border-radius: 24px; background: #2a2420; color: #fff8ee; }
+.skill-quiz.is-result .score-card p { margin: 0; }
+.sc-score b { font-size: 56px; line-height: 1; font-weight: 900; color: var(--egg); font-variant-numeric: tabular-nums; }
+.sc-score small { margin-left: 4px; font-size: 14px; color: #d8cbbb; }
+.sc-rank { display: flex; align-items: center; gap: 10px; }
+.sc-kyu { padding: 2px 12px; border: 1.5px solid var(--egg); border-radius: 8px; font-size: 18px; font-weight: 900; color: var(--egg); font-family: "Shippori Mincho", serif; }
+.sc-rank .skill-stars { font-size: 20px; color: var(--egg); letter-spacing: 2px; }
+.sc-name { font-size: 22px; font-weight: 900; }
+.sc-sub { font-size: 12px; color: #d8cbbb; }
+.cat-scores { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cat-scores li { display: flex; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #fff1dc; font-size: 12px; font-weight: 700; }
+.cat-scores b { color: var(--sage-dark); }
+.ladder-box { text-align: left; border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; background: var(--surface); }
+.ladder-box summary { font-weight: 800; font-size: 14px; cursor: pointer; }
+.star-ladder { display: grid; gap: 4px; margin: 10px 0 6px; padding: 0; list-style: none; }
+.star-ladder li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 12px; font-size: 13px; }
+.star-ladder li.is-here { background: #fff1dc; outline: 2px solid var(--tomato); }
+.star-ladder li.is-done { opacity: 0.6; }
+.sl-star { font-weight: 900; color: var(--tomato); }
+.sl-body { display: grid; min-width: 0; }
+.sl-body small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.sl-band { display: grid; justify-items: end; font-size: 11px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sl-band em { font-style: normal; color: var(--tomato); }
+.quiz-next { padding: 12px 14px; border-radius: 16px; background: #f1f6ee; text-align: left; font-size: 14px; line-height: 1.6; }
+.quiz-growth-q { margin: 6px 0 0; font-size: 17px; }
+.exam-score { font-size: 18px; font-weight: 800; }
+.exam-score b { font-size: 48px; color: var(--tomato); }
+
+/* ── 経験値のお知らせ（作った！のあと） ── */
+.xp-pop { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 16px); z-index: 90; display: grid; justify-items: center; gap: 2px; min-width: 180px; padding: 10px 18px; border-radius: 18px; background: #2a2420; color: #fff8ee; box-shadow: var(--shadow); font-size: 14px; font-weight: 800; transform: translateX(-50%); animation: xp-pop 3.6s ease forwards; pointer-events: none; }
+.xp-gain { font-size: 22px; color: var(--egg); }
+@keyframes xp-pop { 0% { opacity: 0; transform: translate(-50%, -12px) scale(0.9); } 8% { opacity: 1; transform: translate(-50%, 0) scale(1.04); } 14% { transform: translate(-50%, 0) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -8px); } }
+@media (prefers-reduced-motion: reduce) { .xp-pop { animation: none; } }
+
+/* ── プロフィール：Lv・スキル・バッジ ── */
+.skill-settings { display: grid; gap: 10px; }
+.skill-settings > * { margin: 0; }
+.lv-card { display: flex; align-items: center; gap: 12px; }
+.lv-badge { flex: none; display: grid; place-items: center; align-content: center; width: 62px; height: 62px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe28a, var(--egg) 55%, #d9a92c); color: #5a3d0c; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.12); }
+.lv-badge small { font-size: 11px; font-weight: 900; line-height: 1; }
+.lv-badge b { font-size: 26px; line-height: 1; font-weight: 900; }
+.lv-main { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.lv-main p { margin: 0; }
+.lv-title { font-weight: 800; }
+.lv-title .skill-stars { color: var(--tomato); }
+.lv-title small { display: block; font-size: 12px; color: var(--muted); }
+.xp-bar { height: 10px; border-radius: 999px; background: #f1e6d8; overflow: hidden; }
+.xp-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--egg), var(--tomato)); }
+.next-star { padding: 10px 12px; border-radius: 14px; background: #fff7e8; font-size: 13px; line-height: 1.6; }
+.next-star p { margin: 0; }
+.next-star small { color: var(--muted); }
+.next-star.is-ready { display: grid; gap: 8px; background: #fff1dc; outline: 2px solid var(--egg); }
+.skill-h { margin: 4px 0 0; font-size: 14px; }
+.skill-h small { color: var(--muted); font-weight: 700; }
+.skill-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.skill-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 10px; border-radius: 999px; background: #fff1dc; font-size: 12px; font-weight: 700; }
+.skill-chip small { color: var(--sage-dark); font-weight: 900; }
+.skill-chip.lv3 { background: #fde6c8; } .skill-chip.lv4 { background: #fcd8b8; } .skill-chip.lv5 { background: #f9c6a8; }
+.skill-chip.is-locked { background: none; border: 1px dashed #d8c8b4; color: var(--muted); }
+.badge-shelf { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.badge-shelf li { display: grid; justify-items: center; align-content: start; gap: 2px; padding: 8px 2px 6px; border-radius: 14px; background: #f6efe6; text-align: center; }
+.badge-shelf li span { font-size: 22px; line-height: 1.2; filter: grayscale(1); opacity: 0.35; }
+.badge-shelf li b { font-size: 10px; line-height: 1.3; color: var(--muted); }
+.badge-shelf li small { display: none; }
+.badge-shelf li.is-earned { background: #fff1dc; box-shadow: inset 0 0 0 1.5px var(--egg); }
+.badge-shelf li.is-earned span { filter: none; opacity: 1; }
+.badge-shelf li.is-earned b { color: var(--ink); }
+.illust-pair { position: relative; }
+.illust-pair img:first-child { width: 100%; border-radius: 18px; }
+.illust-pair img.is-small { position: absolute; right: 8px; bottom: 8px; width: 28%; border: 3px solid #fff; border-radius: 12px; box-shadow: var(--shadow); }
+.illust-lock { margin: 0; padding: 10px 12px; border-radius: 14px; background: #f6efe6; font-size: 13px; line-height: 1.6; }
+.illust-lock small { display: block; color: var(--muted); }
+.skill-photo:has(.illust-pair) { grid-template-columns: minmax(0, 1fr); }
+.skill-photo .illust-pair img:first-child { width: 100%; height: auto; aspect-ratio: 1; }
+.skill-photo .illust-pair img.is-small { width: 28%; height: auto; aspect-ratio: 1; }

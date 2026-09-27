@@ -524,7 +524,8 @@ function renderTodayTodos() {
   const toBuy = dailyShopping().filter((i) => i.status === "buy").length;
   const shopToday = rhythmOn() && shoppingBlock() && shoppingBlock().shopAt.slice(0, 10) <= today();
   if (toBuy && (shopToday || !rhythmOn())) rows.push(`<div class="todo-row"><span>🛒</span><p>買うもの <b>あと${toBuy}品</b></p>${dailyButton("go-view", "リストへ", 'data-view="shopping"')}</div>`);
-  if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>料理スキル診断</b>（1分）で、作れる料理だけの献立に</p>${dailyButton("life-quiz-start", "診断する")}</div>`);
+  if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>料理スキル試験</b>（10問）で、作れる料理だけの献立に</p>${dailyButton("life-quiz-start", "受ける")}</div>`);
+  else if (examReady()) rows.push(`<div class="todo-row"><span>🎖</span><p><b>★${skillProfile().level + 1}の昇級試験</b>が受けられます（5問）</p>${dailyButton("life-exam-start", "受ける")}</div>`);
   if (!state.foodProfile?.completed) rows.push(`<div class="todo-row"><span>✍️</span><p>好みとキッチンを教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`);
   return rows.length ? `<section class="today-todos" aria-label="今日やること"><h3 class="section-title"><span class="marker">今日やること</span></h3>${rows.join("")}</section>` : "";
 }
@@ -772,6 +773,7 @@ function dailyRecord(slot) {
   const own = saveOwnRecipe(slot.recipe);
   const id = `meal-${slot.date}`;
   if (!state.evaluations.some((e) => e.id === id)) {
+    const before = cookStats();
     preferencePromptId = id;
     state.evaluations.unshift({
       id,
@@ -785,6 +787,7 @@ function dailyRecord(slot) {
       photo: "",
       updatedAt: nowIso(),
     });
+    celebrateCook(before);
   }
   completeRequests(slot.recipe);
   sharePopular(slot.recipe, "cooked");
@@ -1769,13 +1772,13 @@ function funnelProgress(i) {
 }
 // 自分で選ぶ時のスキル（診断しない人向け）。
 const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒める・煮るならOK", 3: "照り焼きやガパオも作れる", 4: "ハンバーグや揚げ焼きも", 5: "揚げ物も魚をおろすのも" };
-// 料理スキル：写真のAI判定と1分テストの両方で、総合的に判断する（片方だけでも進める）。
+// 料理スキル：写真のAI判定と10問の試験の両方で、総合的に判断する（片方だけでも進める）。
 function renderSkillStep() {
   const sp = state.skillProfile;
   const levels = [1, 2, 3, 4, 5].map((l) => `<button type="button" class="rhythm-option" data-action="life-quick-skill" data-level="${l}" aria-pressed="${sp?.level === l && !sp?.diagnosed}"><strong><span class="skill-stars">${Skills.stars(l)}</span> ${SKILL_TYPES[l].name}</strong><small>${SKILL_PICK_HINT[l]}</small></button>`).join("");
   const quiz = sp?.quizLevel
-    ? `<div class="skill-part is-done"><p class="sp-head">📝 テスト <b>${Skills.stars(sp.quizLevel)}</b></p><p class="small">9問の診断ずみ</p><button type="button" class="link-inline" data-action="life-quiz-start">もう一度</button></div>`
-    : `<button type="button" class="skill-part quiz-start" data-action="life-quiz-start"><span aria-hidden="true">📝</span><b>1分テスト</b><small>9問・できる？に答えるだけ</small></button>`;
+    ? `<div class="skill-part is-done"><p class="sp-head">📝 テスト <b>${Skills.stars(sp.quizLevel)}</b></p><p class="small">${sp.score !== undefined ? `${sp.score}点・${kyuOfScore(sp.score)}` : "受験ずみ"}</p><button type="button" class="link-inline" data-action="life-quiz-start">もう一度</button></div>`
+    : `<button type="button" class="skill-part quiz-start" data-action="life-quiz-start"><span aria-hidden="true">📝</span><b>スキル試験</b><small>10問・4択の知識問題</small></button>`;
   const both = sp?.quizLevel && sp?.photoLevel;
   const total = sp?.diagnosed ? `<div class="skill-total"><p class="st-label">${both ? "写真 ＋ テストの総合" : "いまの判定（もう片方もやると、より正確に）"}</p><p class="quiz-stars">${Skills.stars(sp.level)}</p><p class="st-name">${SKILL_TYPES[sp.level].name}</p>${both ? '<p class="cc-badge">✓ 写真とテストで診断ずみ・ぴったり度 高</p>' : ""}</div>` : "";
   return `<p class="small">写真とテスト、<b>両方やるとぴったり度が上がります</b>。作れない料理は献立に入りません。</p>

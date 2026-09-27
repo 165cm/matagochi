@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-type.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -849,9 +849,20 @@ test("skills: every starter gets a 1–5 skill level from its steps; titles and 
 
 test("skill quiz: answers give a level; the plan stays at that level, or adds one challenge when growing", () => {
   const run = app();
-  assert.equal(run("skillQuizLevel({0:2,1:2,2:2,3:2,4:1,5:0,6:0,7:0,8:0})"), 3);
-  assert.equal(run("skillQuizLevel({0:0})"), 1);
-  assert.equal(run("skillQuizLevel({0:2,1:2,2:1,3:0})"), 2, "作れる+たぶん at ★2 averages 1.5, which passes");
+  const bank = JSON.parse(run("JSON.stringify(SKILL_BANK)"));
+  assert.ok(bank.length >= 50, "a bank of about 50 questions");
+  assert.equal(new Set(bank.map((q) => q.id)).size, bank.length, "unique ids");
+  for (const q of bank) { assert.equal(q.c.length, 4, q.id); assert.equal(new Set(q.c).size, 4, q.id); assert.ok(q.why && q.a >= 0 && q.a < 4, q.id); assert.ok(run(`!!SKILL_CATS["${q.cat}"]`), q.id); }
+  for (const l of [1, 2, 3, 4, 5]) assert.ok(bank.filter((q) => q.level === l).length >= 7, `enough at ★${l}`);
+  const take = (rightWhen) => run(`startSkillQuiz();for(let i=0;i<10;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction("life-quiz-answer",{value:String((${rightWhen})(i,q)?q.a:(q.a+1)%4)});handleDailyAction("life-quiz-next",{})};JSON.stringify({...cbtResult(skillQuiz),done:skillQuiz.done,levels:skillQuiz.answers.map(a=>SKILL_BANK.find(q=>q.id===a.id).level),ids:new Set(skillQuiz.answers.map(a=>a.id)).size})`);
+  const top = JSON.parse(take("() => true"));
+  assert.deepEqual([top.score, top.star, top.kyu, top.done, top.ids], [1000, 5, "初段", true, 10], "all right: the top, no repeats");
+  assert.ok(JSON.parse(take("() => true")).levels.slice(-3).every((l) => l === 5), "right answers climb to ★5 questions");
+  const low = JSON.parse(take("() => false"));
+  assert.deepEqual([low.score, low.star, low.kyu], [0, 1, "10級"]);
+  const mid = JSON.parse(take("(i) => i % 2 === 0"));
+  assert.ok(mid.score > 200 && mid.score < 700 && mid.star >= 2 && mid.star <= 4, `alternating lands in the middle: ${mid.score}`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify([starOfScore(239),starOfScore(240),starOfScore(840),kyuOfScore(612),kyuOfScore(99)])")), [1, 2, 5, "4級", "10級"]);
   const S = require("../skills.js");
   const steady = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
   assert.ok(steady.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 2), "routine keeps to ★2");
@@ -860,8 +871,34 @@ test("skill quiz: answers give a level; the plan stays at that level, or adds on
   assert.ok(hard.length <= 1, "at most one challenge per plan");
   assert.ok(grow.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 3));
   if (hard.length) assert.match(hard[0].candidate.reasons[0], /^ちょっと挑戦/);
-  run('state.onboarded=true;startSkillQuiz();for(let i=0;i<9;i++)handleDailyAction("life-quiz-answer",{value:i<5?"2":"0"});handleDailyAction("life-quiz-growth",{value:"steady"});handleDailyAction("life-quiz-save",{})');
-  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.growth,dailyProfile().skillLevel])")), [3, "steady", 3]);
+  run('state.onboarded=true;startSkillQuiz();skillQuiz.theta=3.4;skillQuiz.answers=Array(10).fill({id:"m1",ok:true});skillQuiz.done=true');
+  assert.match(run("renderSkillQuiz()"), /580<\/b><small>\/ 1000点[\s\S]*5級[\s\S]*いまここ[\s\S]*★4「おうちシェフ」<\/b>へ[\s\S]*約\d+皿[\s\S]*life-quiz-save" data-value="grow"/, "score, rank, ladder, the way to the next star, then growth");
+  run('handleDailyAction("life-quiz-save",{value:"steady"})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.score,state.skillProfile.growth,dailyProfile().skillLevel,skillQuiz])")), [3, 580, "steady", 3, null]);
+});
+
+test("cooking XP, levels, badges, the skill list and the promotion exam", () => {
+  const run = app();
+  const S = require("../skills.js");
+  run('state.onboarded=true;state.skillProfile={level:2,quizLevel:2,growth:"steady",diagnosed:true,updatedAt:nowIso()}');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([cookStats().xp,cookStats().lv,earnedBadges().length])")), [0, 1, 1], "nothing cooked yet: only the test badge");
+  run(`const r=Lifestyle.curated[0]; for (let i=11;i>=0;i--) state.evaluations.unshift({id:"meal-"+addDays(today(),-i),recipeId:r.id,recipeTitle:r.title,cookedAt:addDays(today(),-i),mealType:"dinner",photo:i===0?"data:image/jpeg;base64,xx":"",familyRepeatCycles:{},memo:"",updatedAt:nowIso()})`);
+  const L = S.rate(require("../lifestyle.js").curated[0]).level;
+  const s = JSON.parse(run("JSON.stringify(cookStats())"));
+  assert.equal(s.xp, 12 * (10 + 5 * (L - 1)) + 10 + 5 + 11 * 5, "base + ★ + first time + photo + days in a row");
+  assert.deepEqual([s.count, s.kinds, s.streak, s.week, s.photos], [12, 1, 12, true, 1]);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(earnedBadges().map(b=>b.id))")), ["first", "test", "photo", "streak3", "week", "d10", "regular", "streak7"]);
+  assert.equal(run("levelOfXp(39).lv+','+levelOfXp(40).lv+','+levelOfXp(100).lv+','+xpAtLv(4)"), "1,2,3,180");
+  assert.ok(s.lv >= 4 && run("examReady()"), "Lv4 opens the ★3 exam");
+  assert.match(run("renderSkillSettings()"), /lv-badge[\s\S]*昇級試験を受ける[\s\S]*身についたスキル[\s\S]*バッジ <small>8\/15/);
+  run("startSkillExam()");
+  const levels = JSON.parse(run('const out=[];for(let i=0;i<5;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);out.push(q.level);handleDailyAction("life-quiz-answer",{value:String(i===0?(q.a+1)%4:q.a)});handleDailyAction("life-quiz-next",{})};JSON.stringify(out)'));
+  assert.deepEqual(levels, [3, 3, 3, 3, 3], "the exam asks ★3 questions");
+  assert.match(run("renderSkillQuiz()"), /4<\/b> \/ 5 問正解[\s\S]*合格/);
+  run('handleDailyAction("life-exam-done",{})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.promoted,earnedBadges().some(b=>b.id==='promote'),examReady()])")), [3, 1, true, false], "★3 now; the ★4 exam waits for Lv7");
+  run("startSkillExam();for(let i=0;i<5;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction('life-quiz-answer',{value:String((q.a+1)%4)});handleDailyAction('life-quiz-next',{})};handleDailyAction('life-exam-done',{})");
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.examFailedOn===today()])")), [3, true], "a failed exam keeps the star; try again tomorrow");
 });
 
 test("rhythm: starting mid-block begins at the next whole block; days before it are 'いつもどおり'", () => {
