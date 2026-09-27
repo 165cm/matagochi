@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-type.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -914,9 +914,28 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "equipment");
   run(`state.onboardingDraft.equipment = Lifestyle.equipmentDefaults(state.onboardingDraft.equipment); handleDailyAction("life-equipment-toggle",{name:"オーブン"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(run("state.onboardingDraft.equipment.オーブン"), "have");
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "taste", "the taste quiz can be skipped");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "ratio", "then how the week's dinners split");
+  run(`handleDailyAction("life-ratio",{part:"wd",kind:"out",delta:"1"}); handleDailyAction("life-ratio",{part:"we",kind:"deli",delta:"1"})`);
+  assert.equal(run("JSON.stringify(partOf(state.onboardingDraft,'wd'))"), JSON.stringify({ self: 2, out: 2, take: 1, deli: 0 }), "weekdays stay 5: more eating out comes from cooking");
+  assert.equal(run("JSON.stringify(partOf(state.onboardingDraft,'we'))"), JSON.stringify({ self: 0, out: 1, take: 0, deli: 1 }), "the weekend stays 2");
+  assert.equal(run("JSON.stringify(ratioOf(state.onboardingDraft))"), JSON.stringify({ self: 2, out: 3, take: 1, deli: 1 }), "together, 7 nights");
+  run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-staple",{value:"rice"}); handleDailyAction("life-staple",{value:"noodle"}); handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("state.onboardingDraft.staples.join()"), "rice,noodle");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "chains");
+  run(`["ichiran","ohsho","sukiya","mcd"].forEach((value) => handleDailyAction("life-chain",{value})); handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("state.onboardingDraft.chains.join()"), "ichiran,ohsho,sukiya", "three shops at most");
+  run(`handleDailyAction("life-priority",{value:"fast"})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 2, "the priority moves on by itself to skill");
+  assert.equal(run("cookTypeOf(state.onboardingDraft).code"), "CKQ", "ramen, chinese and beef bowls, fast: 疾風のスパイスハンター");
+  assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /assets\/types\/CKQ\.webp/);
+  assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /cs-grade g-[SABCDEFG]/, "stats show S to G grades");
+  assert.equal(run("chainTastes(state.onboardingDraft).join()"), "中華風,和風");
+  assert.match(run("cookTypeOf(state.onboardingDraft).story"), /一蘭や餃子の王将など.*主食はごはんと麺類の二刀流.*「早さ」/, "a personal write-up from the answers");
+  assert.equal(run("[combinedSkill(3, 4), combinedSkill(2, null), combinedSkill(null, 5)].join()"), "4,2,5", "photo and test together: the average, rounded up");
   run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-quick-skill",{level:"3"})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "videos", "a picked skill moves on to saved videos");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "type", "a picked skill shows the dinner type");
+  run(`handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "videos");
   run(`handleDailyAction("life-funnel-pick",{field:"savedVideos",value:"few"})`);
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "demo");
   run(`handleDailyAction("life-quick-next",{})`);
@@ -935,10 +954,12 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "building");
   assert.match(run("buildingLines(state.onboardingDraft).join('|')"), /4人分に、分量をそろえています\|.*オーブンも使える料理.*★3までの.*平日45分以内/, "the building screen shows the answers being used");
   assert.equal(run("state.onboardingDraft.eaters.join()"), "partner,kids", "who eats survives a reload");
+  assert.equal(run("state.onboardingDraft.ratio.wd.out + ':' + state.onboardingDraft.chains.length + ':' + state.onboardingDraft.priority"), "2:3:fast", "the diagnosis answers survive a reload");
   assert.equal(run("state.onboardingDraft.goal + state.onboardingDraft.pain + state.onboardingDraft.weekdayMinutes"), "savetired45");
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded && state.view"), "plan");
   assert.equal(run("state.servingCount"), 4);
+  assert.ok(run("state.foodProfile.tastes.includes('中華風')"), "the shops' tastes feed the plan");
 });
 
 test("the paywall: yearly by default, a free trial of the odd days plus two weeks from Monday, closing just closes", () => {
