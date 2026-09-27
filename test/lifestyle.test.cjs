@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "cook-type.js", "plan-moves.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -875,6 +875,34 @@ test("skill quiz: answers give a level; the plan stays at that level, or adds on
   assert.match(run("renderSkillQuiz()"), /580<\/b><small>\/ 1000点[\s\S]*5級[\s\S]*いまここ[\s\S]*★4「おうちシェフ」<\/b>へ[\s\S]*約\d+皿[\s\S]*life-quiz-save" data-value="grow"/, "score, rank, ladder, the way to the next star, then growth");
   run('handleDailyAction("life-quiz-save",{value:"steady"})');
   assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.score,state.skillProfile.growth,dailyProfile().skillLevel,skillQuiz])")), [3, 580, "steady", 3, null]);
+});
+
+test("freshness: perishable, hard-to-freeze food goes first after shopping", () => {
+  const f = (names) => L.freshness({ ingredients: names.map((name) => ({ name })) });
+  assert.deepEqual([f(["もやし", "豚こま切れ肉"]).urgency, f(["ほうれん草"]).label, f(["冷凍えび", "ツナ缶"]).urgency, f(["じゃがいも", "玉ねぎ"]).urgency], [5, "葉もの野菜", 0, 0]);
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 7, addDays, rounds: [dates] });
+  const u = plan.map((d) => L.freshness(d.candidate.recipe).urgency);
+  assert.ok(u[0] + u[1] > u[5] + u[6], `perishables early: ${u}`);
+  assert.ok(u.slice(3).every((x) => x < 5), "nothing that spoils fast on day 4 and later");
+  assert.match(plan.find((d) => L.freshness(d.candidate.recipe).urgency >= 3).candidate.reasons.join(), /日持ちしないので早めに/);
+});
+
+test("eating out moves the bought dinners back a day; neighbours can swap", () => {
+  const run = app();
+  run(`state.onboarded=true;state.rhythm=null;const rs=allDinnerRecipes().slice(0,3);[0,1,2].forEach(i=>{confirmDaily({date:addDays(today(),i)},rs[i]);state.mealSlots[addDays(today(),i)].updatedAt="2026-01-01T00:00:00.000Z"});state.shopDone={x:"2026-01-02T00:00:00.000Z"};globalThis.T=rs.map(r=>r.title)`);
+  const titles = JSON.parse(run("JSON.stringify(T)"));
+  run('handleDailyAction("life-skip",{date:today()});handleDailyAction("life-skip-kind",{date:today(),kind:"out",shift:"true"})');
+  const got = JSON.parse(run("JSON.stringify([0,1,2,3].map(i=>{const s=state.mealSlots[addDays(today(),i)];return s.status==='off'?s.kind:s.recipe.title}))"));
+  assert.deepEqual(got, ["out", ...titles], "each dinner one day later; the last one spills over");
+  assert.ok(run("[1,2,3].every(i=>state.mealSlots[addDays(today(),i)].bought)"), "still marked as bought");
+  assert.equal(run("tripMeals().length"), 0, "moved dinners do not come back to the shopping list");
+  assert.match(run("renderToday()"), /今日は外食[\s\S]*また次の晩ごはんで/);
+  assert.match(run("renderDailyPlan()"), /🍽 外食[\s\S]*からずらしました/);
+  run('handleDailyAction("life-move",{date:addDays(today(),1),dir:"down"})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([1,2].map(i=>state.mealSlots[addDays(today(),i)].recipe.title))")), [titles[1], titles[0]], "swapped with the next day");
+  run('handleDailyAction("life-skip-kind",{date:addDays(today(),3),kind:"deli",shift:"false"})');
+  assert.equal(run("state.mealSlots[addDays(today(),3)].status+state.mealSlots[addDays(today(),3)].kind+(state.mealSlots[addDays(today(),4)]?.status||'none')"), "offdelinone", "without shifting, the dinner is dropped");
 });
 
 test("cooking XP, levels, badges, the skill list and the promotion exam", () => {
