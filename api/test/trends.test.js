@@ -95,3 +95,19 @@ test('registered channels are found by name once; their new uploads come first; 
   assert.equal(doc.seeds['DELISH KITCHEN'], 'none', 'a channel whose name does not match is not used');
   assert.equal(doc.channels[chA].hits, 2); assert.equal(doc.channels[chB].tries, 2); assert.equal(doc.channels[chB].hits, 0);
 });
+
+test('only Japanese videos become trend candidates for now', async () => {
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  const book = createTrendBook(store, { catalog, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async () => ids.map((videoId, i) => ({ videoId, channelId: `c${i}`, title: i < 4 ? 'Easy Garlic Butter Chicken' : '簡単 鶏むね レシピ' })) });
+  await book.step();
+  assert.equal(catalog.calls.some(([id]) => ids.slice(0, 4).includes(id)), false);
+});
+
+test('a trend already collected from an English video is left out of the list', async () => {
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog({ [ids[0]]: { caption: 'Easy garlic butter chicken. Ingredients: 1 lb chicken' }, [ids[1]]: { caption: '材料（2人分）鶏むね肉 1枚' } });
+  const book = createTrendBook(store, { catalog, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async () => ids.slice(0, 2).map((videoId, i) => ({ videoId, channelId: `c${i}`, title: '鶏むね レシピ' })) });
+  await book.step();
+  assert.deepEqual((await book.list()).items.map((i) => i.videoId), [ids[1]]);
+});
