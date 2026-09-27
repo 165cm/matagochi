@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-cooktype4";
+const APP_VERSION = "20260927-cooktype5";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -70,6 +70,7 @@ const demoState = {
   creatorNames: {},
   starterPref: { show: true, asked: false, updatedAt: "" },
   skillProfile: null,
+  skillPhoto: null,
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -308,6 +309,7 @@ function normalizeState(saved) {
     tasteSeeds: Array.isArray(saved.tasteSeeds) ? saved.tasteSeeds.filter((t) => t && typeof t.staple === "string").slice(0, 12).map(({ staple, protein, cuisine }) => ({ staple, protein, cuisine })) : [],
     starterPref: normalizeStarterPref(saved.starterPref),
     skillProfile: normalizeSkillProfile(saved.skillProfile),
+    skillPhoto: normalizeSkillPhoto(saved.skillPhoto),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),

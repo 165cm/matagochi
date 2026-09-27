@@ -94,7 +94,7 @@ function renderPhotoJudge() {
   const s = skillPhoto;
   if (s.status === "loading") return `<div class="demo-wait"><p class="dw-stage" aria-live="polite">${WAIT_STAGES_PHOTO[0]}</p><div class="dw-bar"><i></i></div><div class="dw-tip" aria-live="polite"><small>待っている間に、ひとこと</small><p>${WAIT_TIPS[3]}</p></div></div>`;
   if (s.status === "done") { const r = s.result; return `<div class="skill-part is-done"><p class="sp-head">📸 写真 <b>${Skills.stars(r.level)}</b></p><p class="pj-dish">${escapeHtml(r.dish)}</p>${r.techniques.length ? `<p class="pj-tech">${r.techniques.map((t) => `<i>${escapeHtml(t)}</i>`).join("")}</p>` : ""}${r.comment ? `<p class="pj-comment">${escapeHtml(r.comment)}</p>` : ""}<button type="button" class="link-inline" data-action="life-photo-retry">別の写真で</button></div>`; }
-  return `<label class="skill-part photo-drop"><input type="file" accept="image/*" id="skill-photo" hidden><span aria-hidden="true">📸</span><b>作った料理の写真</b><small>AIが腕前を見ます。写真は保存しません</small></label>${s.status === "error" ? `<p class="form-error small">${escapeHtml(s.message)}</p>` : ""}`;
+  return `<label class="skill-part photo-drop"><input type="file" accept="image/*" id="skill-photo" hidden><span aria-hidden="true">📸</span><b>作った料理の写真</b><small>AIが腕前を見ます。写真はこの端末にだけ残ります</small></label>${s.status === "error" ? `<p class="form-error small">${escapeHtml(s.message)}</p>` : ""}`;
 }
 const WAIT_STAGES_PHOTO = ["写真を見ています", "焼き色と切り方を見ています", "腕前を計算しています"];
 function bindPhotoJudge() {
@@ -106,12 +106,15 @@ function bindPhotoJudge() {
     skillPhoto = { status: "loading", result: null, message: "" }; render();
     try {
       const url = await resizeImage(file, 960, 0.75);
+      const keep = await resizeImage(file, 640, 0.72);
       const response = await fetchWithTimeout(`${API_BASE_URL}/api/skill/photo`, { method: "POST", headers: { "Content-Type": "application/json", "X-Household": householdKey() }, body: JSON.stringify({ image: { mimeType: "image/jpeg", data: url.split(",")[1] } }) }, 90_000);
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error?.message || "判定できませんでした。");
       skillPhoto = { status: "done", result: data, message: "" };
       const quizLevel = state.skillProfile?.quizLevel || null;
       state.skillProfile = { level: combinedSkill(quizLevel, data.level), photoLevel: data.level, ...(quizLevel ? { quizLevel } : {}), growth: state.skillProfile?.growth || "steady", diagnosed: true, updatedAt: nowIso() };
+      // 診断に使った写真は、この端末のプロフィールに残す（サーバーには残さない）。あとでイラストにする時に使う。
+      state.skillPhoto = { photo: keep, dish: data.dish, level: data.level, at: nowIso() };
       trackDaily("skill_photo_judged", { level: data.level });
       saveState({ scheduleSync: false });
     } catch (error) {
@@ -153,7 +156,26 @@ function cookTypeOf(p) {
   const counts = {};
   chains.forEach((x) => { counts[x.genre] = (counts[x.genre] || 0) + 1; });
   const fav = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
-  return { code, ...COOK_TYPES[code], stats, overall, move: (fav && MOVES[fav]) || COOK_TYPES[code].move, fav: fav || "" };
+  const result = { code, ...COOK_TYPES[code], stats, overall, move: (fav && MOVES[fav]) || COOK_TYPES[code].move, fav: fav || "" };
+  return { ...result, story: typeStory(p, result) };
+}
+// その人の答えから作る、5行くらいの解説（よく行くお店・主食・大事なこと・腕前をやんわり入れる）。
+function typeStory(p, r) {
+  const wd = partOf(p, "wd"), we = partOf(p, "we");
+  const shops = (p.chains || []).map((id) => CHAIN_OF[id]?.name).filter(Boolean);
+  const staples = (p.staples || []).map((id) => STAPLES.find(([x]) => x === id)?.[2]).filter(Boolean);
+  const pr = PRIORITIES.find(([id]) => id === p.priority)?.[2];
+  const sp = state.skillProfile;
+  const lines = [];
+  lines.push(wd.self >= 4 ? `平日は${wd.self}日も台所に立つ、しっかり自炊派。` : wd.self >= 2 ? `平日は${wd.self}日ほど自炊して、あとは上手に外の力も借りるタイプ。` : `平日は外の力をうまく使う、身軽な晩ごはん派。`);
+  if (shops.length) lines.push(`${shops.slice(0, 2).join("や")}${shops.length > 2 ? "など" : ""}に足が向く日は、${r.fav ? `${r.fav}の気分` : "おいしいものの気分"}が高まっているサイン。`);
+  if (staples.length) lines.push(staples.length >= 3 ? "主食は日によって変える、よくばり派。" : `主食は${staples.join("と")}${staples.length === 2 ? "の二刀流" : "がいちばん"}。`);
+  if (pr) lines.push(`晩ごはんでいちばん大事なのは「${pr}」。${{ 安さ: "やりくり上手の腕が光ります。", 早さ: "段取りの速さは、もはや才能です。", ボリューム: "おなかも心も満たしたい、頼れる台所番。", からだにいい: "家族のからだを思いやる、やさしい料理人。", いろいろ食べたい: "食卓に変化をつける、好奇心のかたまり。" }[pr] || ""}`);
+  if (sp?.level) lines.push(`${state.skillPhoto?.dish ? `${state.skillPhoto.dish}を見るかぎり、` : ""}腕前は${Skills.stars(sp.level)}の「${SKILL_TYPES[sp.level].name}」。${we.self >= 1 ? "休日はもう一品に挑戦する余裕も。" : "休日は、しっかり休むのも才能です。"}`);
+  return lines.slice(0, 5).join("");
+}
+function normalizeSkillPhoto(raw) {
+  return raw && typeof raw.photo === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(raw.photo) && raw.photo.length < 400_000 ? { photo: raw.photo, dish: String(raw.dish || "").slice(0, 40), level: [1, 2, 3, 4, 5].includes(raw.level) ? raw.level : null, at: String(raw.at || "") } : null;
 }
 // 献立に使う好みの味：選んだお店のジャンルから（和風・洋風・中華風）。
 function chainTastes(p) {
@@ -167,10 +189,11 @@ const TYPE_NO = { RKQ: 1, RKS: 2, RAQ: 3, RAS: 4, CKQ: 5, CKS: 6, CAQ: 7, CAS: 8
 function renderCookTypeCard(r) {
   return `<div class="cook-type-card" style="--el:${r.color}" data-code="${r.code}">
     <p class="ct-kicker"><span>YOUR DINNER TYPE</span><span>No.${String(TYPE_NO[r.code]).padStart(2, "0")}</span></p>
-    <figure class="ct-portrait"><img class="ct-art" src="assets/types/${r.code}.webp" alt="${escapeAttr(r.name)}のキャラクター" width="640" height="850"><span class="ct-stamp" aria-label="${escapeAttr(r.element)}属性">${escapeHtml(r.element)}</span><span class="ct-overall"><span>総合</span><b>${r.overall}</b></span></figure>
+    <figure class="ct-portrait"><img class="ct-art" src="assets/types/${r.code}.webp" alt="${escapeAttr(r.name)}のキャラクター" width="640" height="850"><span class="ct-overall"><span>総合</span><b>${r.overall}</b></span></figure>
     <p class="ct-element">${r.el} ${escapeHtml(r.element)}属性</p>
     <h3 class="ct-name">${escapeHtml(r.name)}</h3>
     <p class="ct-catch">${escapeHtml(r.catch)}</p>
+    ${r.story ? `<p class="ct-story">${escapeHtml(r.story)}</p>` : ""}
     <div class="ct-sheet">
       <ul class="ct-stats">${STAT_NAMES.map(([id, name], i) => { const v = r.stats[id], g = gradeOf(v); return `<li style="--v:${v}%;--d:${i * 0.1 + 0.2}s"><span class="cs-name">${name}</span><span class="cs-bar"><i class="g-${g}"></i></span><b class="cs-grade g-${g}">${g}</b></li>`; }).join("")}</ul>
     </div>

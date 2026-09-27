@@ -930,6 +930,7 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /assets\/types\/CKQ\.webp/);
   assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /cs-grade g-[SABCDEFG]/, "stats show S to G grades");
   assert.equal(run("chainTastes(state.onboardingDraft).join()"), "中華風,和風");
+  assert.match(run("cookTypeOf(state.onboardingDraft).story"), /一蘭や餃子の王将など.*主食はごはんと麺類の二刀流.*「早さ」/, "a personal write-up from the answers");
   assert.equal(run("[combinedSkill(3, 4), combinedSkill(2, null), combinedSkill(null, 5)].join()"), "4,2,5", "photo and test together: the average, rounded up");
   run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-quick-skill",{level:"3"})`);
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "type", "a picked skill shows the dinner type");

@@ -112,7 +112,8 @@ function normalizeSkillProfile(raw) {
 function renderSkillSettings() {
   if (isViewer()) return "";
   const sp = skillProfile();
-  return `<section class="panel skill-settings"><h3>🔪 料理スキル</h3>${sp
+  const photo = state.skillPhoto ? `<figure class="skill-photo"><img src="${state.skillPhoto.photo}" alt="診断に使った料理の写真"><figcaption><b>${escapeHtml(state.skillPhoto.dish)}</b>診断に使った写真（この端末だけに保存）<small>1週間の献立を達成すると、イラストにできるようになります（準備中）</small></figcaption></figure>` : "";
+  return `<section class="panel skill-settings"><h3>🔪 料理スキル</h3>${photo}${sp
     ? `<p><span class="skill-stars">${Skills.stars(sp.level)}</span> <b>${SKILL_TYPES[sp.level].name}</b></p>
       <div class="segmented" role="group" aria-label="献立の方針">${[["steady", "今のレパートリーで"], ["grow", "少しずつレベルアップ"]].map(([v, l]) => `<button type="button" class="choice-button" data-action="life-skill-growth" data-value="${v}" aria-pressed="${sp.growth === v}">${l}</button>`).join("")}</div>
       <button type="button" class="text-button" data-action="life-quiz-start">もう一度診断する</button>`
