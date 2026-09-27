@@ -1,3 +1,4 @@
+import { localizeAmount, localizeStep } from "./units.js";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from "./youtube.js";
 
@@ -95,7 +96,8 @@ function normalizeIngredients(value) {
   return value
     .map((item) => ({
       name: cleanText(item?.name),
-      amount: cleanText(item?.amount || "適量"),
+      // 海外の単位（cup・oz など）は日本の単位に。AIが換算し忘れた分の取りこぼし対策。
+      amount: localizeAmount(cleanText(item?.amount || "適量")),
       category: cleanText(item?.category || DEFAULT_CATEGORY)
     }))
     .filter((item) => item.name && !NUTRITION.test(`${item.name} ${item.amount}`))
@@ -122,7 +124,7 @@ function normalizePlanning(value) {
 
 function normalizeSteps(value) {
   if (!Array.isArray(value)) return [];
-  return value.map(cleanText).filter(Boolean).slice(0, 10);
+  return value.map(cleanText).filter(Boolean).map((step) => localizeStep(step)).slice(0, 10);
 }
 
 function normalizeTags(value) {

@@ -25,6 +25,8 @@ const SEARCH_ROUNDS = [
   [["簡単 おかず 材料 作り方", "medium"], ["人気 レシピ 夕食 材料", ""], ["メインおかず レシピ 材料", "medium"]],
   [["献立 レシピ 材料", ""], ["作り置き おかず 材料", "medium"], ["丼 レシピ 材料", ""]],
 ];
+// 対象の国と言語。いまは日本の動画だけ（タイトルに日本語がない動画は外す）。海外展開の時はここに国を足す。
+export const TREND_MARKET = { regionCode: "JP", relevanceLanguage: "ja", titleLooksLocal: (title) => /[ぁ-んァ-ヶ一-龠]/.test(String(title || "")) };
 const NOT_DINNER = /ケーキ|クッキー|スイーツ|プリン|アイス|ドリンク|ジュース|スムージー|マフィン|タルト|チョコ|ゼリー|おやつ|デザート|パン作り|食パン|ベーグル|ドーナツ|お菓子|和菓子|コーヒー|カクテル|お酒/;
 
 // 週の区切り：日本時間の月曜日。
@@ -137,7 +139,7 @@ export function createTrendBook(store, { catalog, search, searchChannels = async
             const perChannel = {};
             const fresh = [];
             for (const c of found) {
-              if (seen.has(c.videoId) || fresh.includes(c.videoId) || NOT_DINNER.test(c.title)) continue;
+              if (seen.has(c.videoId) || fresh.includes(c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title)) continue;
               if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) continue;
               fresh.push(c.videoId);
               current.channelOf[c.videoId] = c.channelId;
@@ -173,6 +175,8 @@ export function createTrendBook(store, { catalog, search, searchChannels = async
           try {
             const r = await catalog.import(canonicalYouTubeUrl(videoId));
             if (!isDinnerRecipe(r)) continue;
+            // 対象の国の動画だけ（説明文が残っていて、日本語がない動画は外す）。
+            if (r.caption && !TREND_MARKET.titleLooksLocal(r.caption)) continue;
             items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
               title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
               sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, tags: r.tags || [], planning: r.planning || null });

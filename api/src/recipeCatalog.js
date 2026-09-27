@@ -3,6 +3,7 @@ import { ApiError } from "./errors.js";
 import { createGcsSyncStore, createMemorySyncStore } from "./syncStore.js";
 import { extractYouTubeVideoId, canonicalYouTubeUrl } from "./youtube.js";
 import { normalizeImportResult } from "./importRecipe.js";
+import { localizeRecipe } from "./units.js";
 
 export function createRecipeStore(env) {
   const bucket = env.RECIPE_BUCKET || env.SYNC_BUCKET;
@@ -58,7 +59,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const fresh = (current?.envelope.result?.catalog?.extractorVersion || 1) >= EXTRACTOR_VERSION;
     // 「動画から読み直す」：すでに動画から読んだ結果があれば、同じ結果になるので再解析しない（費用をかけない）。
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
-    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) return { ...structuredClone(await refreshed(key, current)), cacheHit: true };
+    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) return { ...localizeRecipe(structuredClone(await refreshed(key, current))), cacheHit: true };
     // 動画の読み取りは、ボタンを押した時だけ。チケットを先に1枚使う（なければ保存済みの結果には触れない）。
     // 誰かがもう動画から読んだ動画なら、上で保存済みの結果を返すのでチケットは使わない。
     let spent = false;
