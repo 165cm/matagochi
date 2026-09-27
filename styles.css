@@ -3497,3 +3497,11 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .plan-menu { display: grid; gap: 6px; margin: -4px 0 12px; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: #fffaf0; }
 .plan-menu-item { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-weight: 800; text-align: left; cursor: pointer; }
 .plan-menu-item:active { border-color: var(--tomato); background: #fff1dc; }
+.skip-spill { margin-top: 4px; padding: 6px 8px; border-radius: 10px; background: #fff1dc; color: var(--ink) !important; }
+.skip-modes { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.skip-modes legend { margin-bottom: 4px; font-size: 13px; font-weight: 800; }
+.skip-mode { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 13px; line-height: 1.5; }
+.skip-mode:has(input:checked) { border-color: var(--tomato); background: #fff6ec; }
+.skip-mode input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--tomato); flex: none; }
+.skip-mode small { display: block; color: var(--muted); }
+.skip-mode u { text-decoration-color: var(--egg); text-decoration-thickness: 3px; }
