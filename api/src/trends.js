@@ -39,7 +39,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, searchChannels = async () => [], channelUploads = async () => [], now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], now = Date.now, budgetMs = 150_000, dailyLimit = 100, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   async function readIndex() { return (await store.get("trends/index")) || null; }
@@ -118,6 +118,8 @@ export function createTrendBook(store, { catalog, search, searchChannels = async
           c.tries += 1; c.hits += hit ? 1 : 0;
         };
         const skip = (reason) => { current.skipped[reason] = (current.skipped[reason] || 0) + 1; };
+        const excluded = await optedOut();
+        for (const id of excluded) delete channels.channels[id];
         let paused = "";
         while (current.items.length < TREND_PER_WEEK && now() - started < budgetMs) {
           if ((await aiUsedToday()) >= Math.floor(dailyLimit / 2)) { paused = "ai_budget"; break; }
@@ -139,7 +141,7 @@ export function createTrendBook(store, { catalog, search, searchChannels = async
             const perChannel = {};
             const fresh = [];
             for (const c of found) {
-              if (seen.has(c.videoId) || fresh.includes(c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title)) continue;
+              if (seen.has(c.videoId) || fresh.includes(c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId)) continue;
               if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) continue;
               fresh.push(c.videoId);
               current.channelOf[c.videoId] = c.channelId;
@@ -169,6 +171,7 @@ export function createTrendBook(store, { catalog, search, searchChannels = async
       required();
       if (cache && cache.until > now()) return cache.value;
       const entry = await readIndex();
+      const excluded = await optedOut();
       const items = [];
       for (const w of (entry?.envelope.weeks || []).filter(fresh)) {
         for (const { videoId } of w.items) {
@@ -177,9 +180,10 @@ export function createTrendBook(store, { catalog, search, searchChannels = async
             if (!isDinnerRecipe(r)) continue;
             // 対象の国の動画だけ（説明文が残っていて、日本語がない動画は外す）。
             if (r.caption && !TREND_MARKET.titleLooksLocal(r.caption)) continue;
+            if (r.channelId && excluded.has(r.channelId)) continue; // 掲載停止を申し込んだ投稿者
             items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
               title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, tags: r.tags || [], planning: r.planning || null });
+              sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
           } catch {}
         }
       }

@@ -2964,3 +2964,17 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .pick-tile[aria-pressed="true"] .pick-check { background: var(--tomato); }
 .pick-tile[aria-pressed="true"] .pick-check::after { content: ""; position: absolute; left: 7px; top: 3px; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
 .discover-badge { color: #c2551f; font-weight: 800; }
+/* 出典と、見ながら作るプレーヤー */
+.creator-credit { display: grid; gap: 8px; margin: 8px 0 12px; }
+.video-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: #000; }
+.video-frame.is-shorts { aspect-ratio: 9 / 16; max-height: 62vh; width: auto; margin: 0 auto; }
+.video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.credit-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface-soft); }
+.credit-name { margin: 0; display: grid; min-width: 0; }
+.credit-name small { font-size: 11px; color: var(--muted); }
+.credit-name b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subscribe-button { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; background: #cc0000; color: #fff; font-weight: 800; font-size: 13px; text-decoration: none; }
+.credit-note { margin: 0; color: var(--muted); }
+.credit-note a { color: var(--muted); }
+.step-time { margin-left: 4px; padding: 2px 8px; min-height: 26px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font: inherit; font-size: 12px; font-weight: 800; color: #cc0000; cursor: pointer; white-space: nowrap; }
+.cooking-steps li { display: flex; align-items: flex-start; gap: 4px; flex-wrap: wrap; }

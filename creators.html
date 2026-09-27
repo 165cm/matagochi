@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>投稿者の皆さまへ｜リピごち</title>
+<meta name="description" content="リピごちは、レシピ動画の投稿者の皆さまへのリスペクトを大切にしています。動画の出典表示と、掲載停止のお申し込みについて。">
+<meta name="theme-color" content="#FFF8EE">
+<link rel="icon" href="icons/favicon-32.png">
+<style>
+  :root { --bg: #fff8ee; --surface: #fffdf8; --ink: #2a2420; --muted: #7a6e64; --line: #efe4d6; --tomato: #ee6a4c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Hiragino Maru Gothic ProN", "Zen Maru Gothic", system-ui, sans-serif; line-height: 1.8; }
+  main { max-width: 680px; margin: 0 auto; padding: 28px 18px 60px; display: grid; gap: 18px; }
+  h1 { font-size: 26px; margin: 0; line-height: 1.4; }
+  h2 { font-size: 18px; margin: 0 0 6px; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+  ul { margin: 0; padding-left: 1.2em; } li { margin: 4px 0; }
+  .lead { color: var(--muted); margin: 0; }
+  label { display: grid; gap: 4px; font-weight: 700; font-size: 14px; margin-top: 10px; }
+  input, textarea { font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; }
+  textarea { min-height: 90px; }
+  button { margin-top: 14px; width: 100%; min-height: 48px; border: 0; border-radius: 999px; background: var(--tomato); color: #fff; font: inherit; font-weight: 800; font-size: 16px; cursor: pointer; }
+  button:disabled { opacity: .6; }
+  .note { font-size: 13px; color: var(--muted); }
+  #result { margin: 12px 0 0; font-weight: 700; }
+  a { color: #c2551f; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="./">← リピごちへ</a></p>
+  <h1>レシピ動画の投稿者の皆さまへ</h1>
+  <p class="lead">リピごちは、SNSで見つけたレシピ動画を、家族の毎日の献立に生かすアプリです。すてきなレシピを届けてくださる投稿者の皆さまへのリスペクトを、いちばん大切にしています。</p>
+
+  <section>
+    <h2>リピごちでの動画の扱い</h2>
+    <ul>
+      <li><b>動画はYouTube公式のプレーヤーで再生します。</b>再生は皆さまのチャンネルの再生として数えられ、広告が表示される場合はその収益も皆さまに届きます。</li>
+      <li><b>レシピの画面では、投稿者名と「チャンネル登録」ボタンを目立つ位置に出しています。</b></li>
+      <li><b>作り方は要点だけの短い要約です。</b>コツや火加減は動画で見ていただくように案内し、手順ごとに「▶」でその場面から再生できるようにしています。</li>
+      <li><b>材料の分量は、献立と買い物リストに使うための情報です。</b>元の動画へのリンクと出典を必ず添えます。</li>
+      <li><b>「今週の人気」:</b> 公開されている日本の料理動画から、毎週10品を紹介しています。取得した動画の情報は28日で自動的に入れ替わり、消えます。</li>
+      <li><b>YouTubeの利用規約とAPIの規約に沿うよう運営しています。</b>非公開・限定公開の動画は取り込みません。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>掲載を止めたい場合</h2>
+    <p>下のフォームから、チャンネルのURL（または動画のURL）をお送りください。<b>その場で「今週の人気」「みんなの定番」から外します</b>（10分ほどで反映されます）。</p>
+    <form id="optout">
+      <label>チャンネルのURL、@ハンドル、または動画のURL<input id="channel" required placeholder="https://www.youtube.com/@..." autocomplete="off"></label>
+      <label>メッセージ（任意）<textarea id="message" maxlength="1000"></textarea></label>
+      <label>ご連絡先（任意・返信が必要な場合）<input id="contact" maxlength="200" placeholder="メールアドレスなど"></label>
+      <button id="send" type="submit">掲載の停止を申し込む</button>
+      <p id="result" role="status" aria-live="polite"></p>
+    </form>
+    <p class="note">利用者の方がご自身で保存したレシピは、その方の端末の中のデータのため、この申し込みの対象外です（その場合も、出典とチャンネル登録ボタンは表示されます）。</p>
+  </section>
+
+  <section>
+    <h2>これから準備していること</h2>
+    <ul>
+      <li>作った人の感想を、皆さまの動画のコメント欄へ届ける導線</li>
+      <li>「作ってみた」をSNSでシェアする時に、皆さまのチャンネル名が入る仕組み</li>
+      <li>リピごち経由の再生数や「作った」数をお知らせするレポート</li>
+    </ul>
+    <p class="note">ご要望やご提案があれば、上のフォームのメッセージ欄でお知らせください。</p>
+  </section>
+</main>
+<script>
+  const API = "https://matagochi-api-292190013809.us-central1.run.app";
+  const form = document.getElementById("optout"), result = document.getElementById("result"), send = document.getElementById("send");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    send.disabled = true; result.textContent = "送っています…";
+    try {
+      const response = await fetch(`${API}/api/creators/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: document.getElementById("channel").value, message: document.getElementById("message").value, contact: document.getElementById("contact").value }) });
+      const data = await response.json().catch(() => ({}));
+      result.textContent = response.ok ? `「${data.title || data.channelId}」を、今週の人気・みんなの定番から外しました。10分ほどで反映されます。` : (data.error?.message || "送れませんでした。時間をおいてお試しください。");
+    } catch { result.textContent = "送れませんでした。通信環境を確かめてください。"; }
+    finally { send.disabled = false; }
+  });
+</script>
+</body>
+</html>

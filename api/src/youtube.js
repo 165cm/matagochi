@@ -240,3 +240,22 @@ export async function fetchChannelUploads(channelId, { maxResults = 10 } = {}, e
   const data = await youtubeGet("playlistItems", { part: "snippet,contentDetails", playlistId: `UU${channelId.slice(2)}`, maxResults: String(maxResults) }, env, fetchImpl, AbortSignal.timeout(15_000));
   return (data.items || []).map((item) => ({ videoId: item.contentDetails?.videoId || "", title: item.snippet?.title || "", channelId, publishedAt: item.contentDetails?.videoPublishedAt || item.snippet?.publishedAt || "" })).filter((x) => YOUTUBE_ID_PATTERN.test(x.videoId));
 }
+
+// チャンネルURL・@ハンドル・動画URL・チャンネルID のどれからでも、チャンネルIDを割り出す。
+export async function resolveYouTubeChannel(input, env = process.env, fetchImpl = fetch) {
+  const text = String(input || "").trim();
+  const direct = text.match(/(UC[\w-]{22})/);
+  if (direct) return { channelId: direct[1], title: "" };
+  const handle = text.match(/@([\w.-]{3,100})/);
+  if (handle) {
+    const data = await youtubeGet("channels", { part: "snippet", forHandle: `@${handle[1]}` }, env, fetchImpl, AbortSignal.timeout(15_000));
+    const item = data.items?.[0];
+    if (item?.id) return { channelId: item.id, title: item.snippet?.title || "" };
+  }
+  try {
+    const videoId = extractYouTubeVideoId(text);
+    const snippet = await fetchYouTubeSnippet(videoId, env, fetchImpl);
+    if (snippet.channelId) return { channelId: snippet.channelId, title: snippet.channelTitle || "" };
+  } catch {}
+  return null;
+}

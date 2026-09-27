@@ -37,6 +37,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         sourceServings: Number.isInteger(analysis.sourceServings) ? analysis.sourceServings : video.sourceServings,
         ingredients: normalizeIngredients(analysis.ingredients).length ? analysis.ingredients : videoIngredients,
         steps: videoSteps.length ? videoSteps : analysis.steps,
+        stepTimes: videoSteps.length ? video.stepTimes : undefined,
         tags: analysis.tags?.length ? analysis.tags : video.tags,
         planning: videoSteps.length && video.planning ? video.planning : analysis.planning || video.planning
       };
@@ -71,6 +72,8 @@ export function normalizeImportResult(result) {
     caption: cleanText(result.caption),
     ingredients: normalizeIngredients(result.ingredients),
     steps: normalizeSteps(result.steps),
+    // 手順ごとの動画の時刻（秒）。「▶ 2:15」でその場面から再生するのに使う。
+    stepTimes: normalizeStepTimes(result.stepTimes, normalizeSteps(result.steps).length),
     tags: normalizeTags(result.tags),
     note: cleanText(result.note),
     videoId: cleanText(result.videoId),
@@ -125,6 +128,12 @@ function normalizePlanning(value) {
 function normalizeSteps(value) {
   if (!Array.isArray(value)) return [];
   return value.map(cleanText).filter(Boolean).map((step) => localizeStep(step)).slice(0, 10);
+}
+
+function normalizeStepTimes(value, count) {
+  if (!Array.isArray(value) || !count) return [];
+  const times = value.slice(0, count).map((t) => (Number.isFinite(Number(t)) && t !== null && Number(t) >= 0 && Number(t) < 36_000 ? Math.floor(Number(t)) : null));
+  return times.some((t) => t !== null) ? times : [];
 }
 
 function normalizeTags(value) {

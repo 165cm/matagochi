@@ -37,7 +37,7 @@ async function loadDiscover({ force = false } = {}) {
 function discoverRecipe(item, kind) {
   const ingredients = normalizeImportedIngredients(item.ingredients || []);
   const steps = (item.steps || []).map((s) => String(s || "").trim()).filter(Boolean);
-  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", sourceServings: item.sourceServings ?? null, mealType: "dinner", tags: item.tags || [], curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
+  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", sourceServings: item.sourceServings ?? null, mealType: "dinner", tags: item.tags || [], curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
   recipe.planning = aiPlanning(item.planning, { ingredients, steps }) || Lifestyle.suggestPlanning({ ingredients, steps });
   return recipe;
 }
@@ -107,4 +107,35 @@ function finishFunnelPicks() {
   const chosen = ids.map((id) => findDiscover(id) || Lifestyle.curated.find((r) => r.id === id)).filter(Boolean);
   state.tasteSeeds = chosen.map((r) => Lifestyle.traits(r)).slice(0, 12);
   chosen.forEach((r) => saveOwnRecipe(r));
+}
+
+/* ---- 投稿者へのリスペクト：公式プレーヤーで見ながら作る・出典を主役に・チャンネル登録へ ---- */
+// 手順ごとの動画の時刻は、手順の数と合う時だけ使う。
+function stepTimesFor(steps, times) {
+  return Array.isArray(times) && Array.isArray(steps) && times.length === steps.length && times.some((t) => Number.isFinite(t)) ? times.map((t) => (Number.isFinite(t) ? t : null)) : [];
+}
+let videoStartAt = { key: "", seconds: 0 };
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+function stepTimeButton(recipe, index) {
+  const t = recipe?.stepTimes?.[index];
+  if (!Number.isFinite(t) || !youtubeVideoId(recipe.videoUrl)) return "";
+  return ` <button type="button" class="step-time" data-action="life-video-at" data-recipe="${escapeAttr(recipe.id)}" data-seconds="${t}" aria-label="この手順を動画の${mmss(t)}から見る">▶ ${mmss(t)}</button>`;
+}
+function creatorLink(recipe) {
+  if (recipe.channelId) return `https://www.youtube.com/channel/${encodeURIComponent(recipe.channelId)}?sub_confirmation=1`;
+  const tiktok = String(recipe.videoUrl || "").match(/tiktok\.com\/(@[\w.]+)/i);
+  if (tiktok) return `https://www.tiktok.com/${tiktok[1]}`;
+  return recipe.videoUrl || "";
+}
+function renderCreatorCredit(recipe) {
+  if (!recipe?.videoUrl) return "";
+  const id = youtubeVideoId(recipe.videoUrl);
+  const start = videoStartAt.key === recipe.id ? videoStartAt.seconds : 0;
+  // 公式の埋め込みプレーヤー（再生は投稿者の再生回数・広告収益になる）。
+  const shorts = /youtube\.com\/shorts\//i.test(recipe.videoUrl);
+  const player = id ? `<div class="video-frame${shorts ? " is-shorts" : ""}"><iframe src="https://www.youtube.com/embed/${id}?playsinline=1&rel=0${start ? `&start=${start}&autoplay=1` : ""}" title="${escapeAttr(recipe.title)}の動画" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>` : "";
+  const name = recipe.author || (id ? "YouTubeの投稿者" : "投稿者");
+  const link = creatorLink(recipe);
+  const isYouTube = !!id;
+  return `<section class="creator-credit" aria-label="レシピの出典">${player}<div class="credit-row"><p class="credit-name"><small>レシピ・動画</small><b>${escapeHtml(name)}</b></p>${link ? `<a class="subscribe-button" href="${escapeAttr(link)}" target="_blank" rel="noopener">${isYouTube && recipe.channelId ? "チャンネル登録" : "投稿者を見る"}</a>` : ""}</div><p class="credit-note small">${isYouTube ? "コツや火加減は動画で。手順の「▶」から、その場面を再生できます。" : "元の動画で、コツや火加減も確かめてください。"} <a href="creators.html" target="_blank" rel="noopener">投稿者の方へ</a></p></section>`;
 }
