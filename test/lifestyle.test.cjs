@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-type.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -914,7 +914,18 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "equipment");
   run(`state.onboardingDraft.equipment = Lifestyle.equipmentDefaults(state.onboardingDraft.equipment); handleDailyAction("life-equipment-toggle",{name:"オーブン"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(run("state.onboardingDraft.equipment.オーブン"), "have");
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "taste", "the taste quiz can be skipped");
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "diary", "then last week's dinners");
+  run(`lastWeekDates().forEach((d, i) => handleDailyAction("life-diary",{date:d, genre:["don","don","stirfry","fry","don","eatout","deli"][i]}))`);
+  assert.equal(run("diaryDone(state.onboardingDraft)"), true);
+  assert.equal(run("topGenre(state.onboardingDraft).label"), "丼もの");
+  assert.equal(run("diaryTastes(state.onboardingDraft).join()"), "和風", "three rice bowls make 和風 a liked taste");
+  run(`handleDailyAction("life-quick-next",{})`);
+  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "dish");
+  run(`["flavor:k","topping:r","time:q","finish:k"].forEach((x) => { const [q, value] = x.split(":"); handleDailyAction("life-dish",{q, value}); })`);
+  assert.equal(run("cookTypeOf(state.onboardingDraft).code"), "RKQ", "few kinds, rich and quick: 雷速の丼ソードマン");
+  assert.equal(run("cookTypeOf(state.onboardingDraft).move"), "丼もの", "the special move is the dinner cooked most");
+  assert.match(run("renderDishStep(state.onboardingDraft)"), /強火一気のこってり王道チャーハン・目玉焼きのせ/);
+  assert.match(run("renderDishStep(state.onboardingDraft)"), /assets\/types\/RKQ\.webp/);
   run(`handleDailyAction("life-quick-next",{}); handleDailyAction("life-quick-skill",{level:"3"})`);
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "videos", "a picked skill moves on to saved videos");
   run(`handleDailyAction("life-funnel-pick",{field:"savedVideos",value:"few"})`);
@@ -935,10 +946,12 @@ test("the first-run funnel: part 1 is today, part 2 is what comes next, answers 
   assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "building");
   assert.match(run("buildingLines(state.onboardingDraft).join('|')"), /4人分に、分量をそろえています\|.*オーブンも使える料理.*★3までの.*平日45分以内/, "the building screen shows the answers being used");
   assert.equal(run("state.onboardingDraft.eaters.join()"), "partner,kids", "who eats survives a reload");
+  assert.equal(run("Object.keys(state.onboardingDraft.diary).length + ':' + state.onboardingDraft.dish.time"), "7:q", "the diary and the dish survive a reload");
   assert.equal(run("state.onboardingDraft.goal + state.onboardingDraft.pain + state.onboardingDraft.weekdayMinutes"), "savetired45");
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded && state.view"), "plan");
   assert.equal(run("state.servingCount"), 4);
+  assert.ok(run("state.foodProfile.tastes.includes('和風')"), "last week's tastes feed the plan");
 });
 
 test("the paywall: yearly by default, a free trial of the odd days plus two weeks from Monday, closing just closes", () => {

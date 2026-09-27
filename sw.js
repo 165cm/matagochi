@@ -1,11 +1,12 @@
-const CACHE_NAME = "ripigochi-v69";
-const APP_VERSION = "20260927-onboarding3";
+const CACHE_NAME = "ripigochi-v70";
+const APP_VERSION = "20260927-cooktype";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   `./styles.css?v=${APP_VERSION}`,
   `./dinner-persona.js?v=${APP_VERSION}`,
   ...["LLL","LLR","LRL","LRR","RLL","RLR","RRL","RRR"].map(code => `./assets/persona/${code}.webp`),
+  ...["RKQ","RKS","RAQ","RAS","CKQ","CKS","CAQ","CAS"].map(code => `./assets/types/${code}.webp`),
   `./taste.js?v=${APP_VERSION}`,
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),
@@ -20,17 +21,18 @@ const CORE_ASSETS = [
   `./playlist-import.js?v=${APP_VERSION}`,
   `./household.js?v=${APP_VERSION}`,
   `./skill-quiz.js?v=${APP_VERSION}`,
+  `./cook-type.js?v=${APP_VERSION}`,
   `./tickets.js?v=${APP_VERSION}`,
   `./account.js?v=${APP_VERSION}`,
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260927-onboarding3",
-  "./icons/favicon-32.png?v=20260927-onboarding3",
-  "./icons/icon-192.png?v=20260927-onboarding3",
-  "./icons/icon-512.png?v=20260927-onboarding3",
-  "./icons/icon-maskable-512.png?v=20260927-onboarding3",
-  "./icons/apple-touch-icon.png?v=20260927-onboarding3"
+  "./manifest.webmanifest?v=20260927-cooktype",
+  "./icons/favicon-32.png?v=20260927-cooktype",
+  "./icons/icon-192.png?v=20260927-cooktype",
+  "./icons/icon-512.png?v=20260927-cooktype",
+  "./icons/icon-maskable-512.png?v=20260927-cooktype",
+  "./icons/apple-touch-icon.png?v=20260927-cooktype"
 ];
 
 self.addEventListener("install", (event) => {
