@@ -8,7 +8,7 @@ const DAY = 86_400_000;
 const recipe = (id, extra = {}) => ({ title: `料理${id}`, videoUrl: `https://www.youtube.com/watch?v=${id}`, ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps: ['切る', '炒める'], tags: [], ...extra });
 function fakeCatalog(overrides = {}) {
   const calls = [], read = new Set();
-  return { calls, async import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw new Error('x'); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
+  return { calls, async import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw new Error('x'); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
 }
 const ids = Array.from({ length: 14 }, (_, i) => `vid${String(i).padStart(8, '0')}`);
 
@@ -51,4 +51,16 @@ test('popular: anonymous counts, one per source a day, similar tastes first, sma
   await book.record({ videoId: ids[2], segment: 'LLL-3', kind: 'planned' }, 'c');
   const top = await book.top('LLL-3');
   assert.deepEqual(top.items.map((i) => i.videoId), [ids[1], ids[0]], 'same taste first; one planning alone is too few to show');
+});
+
+test('short videos without a description are read from the video; a thin week searches again with other words', async () => {
+  const store = createMemorySyncStore();
+  const first = ids.slice(0, 4), second = ids.slice(4, 14);
+  const catalog = fakeCatalog({ [ids[0]]: 'empty', [ids[1]]: 'fail' });
+  const queries = [];
+  const book = createTrendBook(store, { catalog, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async (q) => { queries.push(q); return (queries.length <= 3 ? first : second).map((videoId, i) => ({ videoId, channelId: `c${videoId}`, title: 'レシピ' })); } });
+  const r = await book.step();
+  assert.ok(catalog.calls.some(([id, video]) => id === ids[0] && video), 'an empty description falls back to the video');
+  assert.equal(r.items, 10); assert.equal(r.rounds, 2, 'a second set of search words filled the week');
+  assert.equal(r.skipped.error, 1);
 });
