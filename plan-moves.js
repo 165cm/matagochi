@@ -9,7 +9,7 @@ const SKIP_KINDS = [
   { id: "home", icon: "🍙", label: "あるもので" },
 ];
 const SKIP_OF = Object.fromEntries(SKIP_KINDS.map((k) => [k.id, k]));
-let skipDate = "";
+let skipDate = "", moreDate = "";
 function skipLabel(slot) {
   const k = SKIP_OF[slot?.kind];
   return k ? `${k.icon} ${k.label}` : "自炊はお休み";
@@ -80,6 +80,16 @@ function swapDays(plan, date, dir) {
   const bad = [[ea.recipe, b.date], [eb.recipe, a.date]].find(([r, d]) => !Lifestyle.fit(r, p, d).ok);
   return bad ? `入れ替えました。「${bad[0].title}」は${formatDate(bad[1])}の条件（時間など）に合わないかもしれません。` : `${formatDate(a.date)}と${formatDate(b.date)}を入れ替えました。`;
 }
+// 献立の「⋯」：入れ替え・外食・中食・今のレシピを反映。
+function renderPlanMenu(plan, day) {
+  if (moreDate !== day.date || isViewer()) return "";
+  const up = neighborDay(plan, day.date, -1), down = neighborDay(plan, day.date, 1);
+  return `<section class="plan-menu" aria-label="${formatDate(day.date)}のその他の操作">
+    ${day.slot?.status === "confirmed" && slotHasUpdates(day.slot) ? dailyButton("life-refresh", "今のレシピ・人数を反映", `data-date="${day.date}"`) : ""}
+    ${up ? `<button type="button" class="plan-menu-item" data-action="life-move" data-date="${day.date}" data-dir="up">↑ 前の日（${formatDate(up.date)}）と入れ替え</button>` : ""}
+    ${down ? `<button type="button" class="plan-menu-item" data-action="life-move" data-date="${day.date}" data-dir="down">↓ 次の日（${formatDate(down.date)}）と入れ替え</button>` : ""}
+    <button type="button" class="plan-menu-item" data-action="life-skip" data-date="${day.date}">🍽 外食・中食にする</button></section>`;
+}
 function renderSkipPanel(date) {
   if (skipDate !== date || isViewer()) return "";
   const entry = dayEntry(date);
@@ -93,9 +103,10 @@ function renderSkipPanel(date) {
     <button type="button" class="text-button" data-action="life-skip-close">やめる</button></section>`;
 }
 function handlePlanMoveAction(action, data) {
-  if (!["life-skip", "life-skip-close", "life-skip-kind", "life-move"].includes(action)) return false;
+  if (!["life-more", "life-skip", "life-skip-close", "life-skip-kind", "life-move"].includes(action)) return false;
   if (isViewer()) return true;
-  if (action === "life-skip") { skipDate = data.date; swapDate = ""; }
+  if (action === "life-more") { moreDate = moreDate === data.date ? "" : data.date; skipDate = ""; swapDate = ""; }
+  else if (action === "life-skip") { skipDate = data.date; swapDate = ""; moreDate = ""; }
   else if (action === "life-skip-close") skipDate = "";
   else if (action === "life-skip-kind") {
     const before = dailyShopping();
@@ -109,6 +120,7 @@ function handlePlanMoveAction(action, data) {
   } else if (action === "life-move") {
     const before = dailyShopping();
     const message = swapDays(dailyPlan(), data.date, data.dir === "up" ? -1 : 1);
+    moreDate = "";
     if (message) { changedShopping(before); saveState(); showToast(message); }
   }
   render();

@@ -3492,3 +3492,8 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .child-name span, .fr-main b span, .rank-prompt b span { display: inline; }
 .swap-option .child-name { display: block; }
 .swap-option .child-name .src-mark { display: inline-block; }
+/* 献立の「⋯」メニュー（カードの下に開く） */
+.plan-more-btn { min-width: 36px; font-weight: 900; color: var(--muted); }
+.plan-menu { display: grid; gap: 6px; margin: -4px 0 12px; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: #fffaf0; }
+.plan-menu-item { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-weight: 800; text-align: left; cursor: pointer; }
+.plan-menu-item:active { border-color: var(--tomato); background: #fff1dc; }
