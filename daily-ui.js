@@ -885,7 +885,7 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-quick-skill") {
     state.skillProfile = { level: Number(data.level), growth: state.skillProfile?.growth || "steady", diagnosed: false, updatedAt: nowIso() };
-    profileDraft().quickSetupIndex = FUNNEL.indexOf(3);
+    profileDraft().quickSetupIndex = FUNNEL.indexOf(2) + 1;
   }
   if (action === "life-funnel-pick") {
     const p = profileDraft();
@@ -900,6 +900,7 @@ function handleDailyAction(action, data) {
   if (action === "life-minutes") profileDraft().weekdayMinutes = Number(data.minutes) || 20;
   if (action === "life-chip-add") { addChip(data.field); return true; }
   if (action === "life-chip-remove") { const p = profileDraft(); p[data.field] = (p[data.field] || []).filter((x) => x !== data.name); }
+  if (action === "life-remind-calendar") { downloadReminder(); profileDraft().remindAdded = true; trackDaily("funnel_reminder_added"); }
   if (action === "life-demo-read") { runFunnelDemo(document.querySelector("#demo-url")?.value.trim() || ""); return true; }
   if (action === "life-funnel-dish") {
     const p = profileDraft();
@@ -1341,8 +1342,16 @@ const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", 
 // 目標（何を叶えたい？）→ 悩み → 人数 → リズム → 1年の変化（時間と食材）→ 保存した動画 → AIの読み取りを試す
 // → 料理スキル（診断がおすすめ）→ 平日の夜の時間（ダイヤル）→ 食べられないもの → 新着から選ぶ → 目標を決める → 作成中。
 // 数字（0〜4）は献立に使う5問（0 人数・1 リズム・2 スキル・3 時間・4 食べられないもの）。
-const FUNNEL = ["goal", "pain", 0, 1, "value", "videos", "demo", 2, 3, 4, "picks", "commit", "building"];
+// 2部構成。第1部「いまのあなた」（現状）→ いまのままだと…（損の見える化）→ 第2部「これからのあなた」（希望と設定）→ 約束。
+const FUNNEL = ["pain", 0, 4, 2, "videos", "demo", "loss", "goal", 1, "remind", 3, "picks", "commit", "building"];
 const QUICK_STEPS = FUNNEL.length;
+const FUNNEL_PART2 = FUNNEL.indexOf("goal");
+// 答えへのひとこと（入力が続く第1部を、会話のようにする）。前の答えを次の画面の上に出す。
+const FUNNEL_ECHO = {
+  1: (p) => ({ fridge: "毎日その場で考えるの、大変ですよね。", same: "同じ料理が続くと、飽きちゃいますよね。", tired: "考えるのが一番しんどい、よく聞きます。", ok: "いいですね。もっと楽にしましょう。" })[p.pain] || "",
+  5: (p) => ({ few: "保存したまま、もったいない！1本、試してみましょう。", some: "たまに作れるなら、あと一歩です。", many: "よく作る人ほど、献立にまとめると一気にラクに。", none: "動画がなくても大丈夫。見本で見てみましょう。" })[p.savedVideos] || "",
+  2: (p) => (p.servings >= 3 ? `${p.servings >= 5 ? "5人以上" : `${p.servings}人分`}ですね。まとめ買いが効く人数です。` : p.servings === 2 ? "2人分ですね。食材を使い切りやすい人数です。" : "1人分ですね。少量でもムダなく回します。"),
+};
 const GOALS = [["smile", "😊", "一緒に食べる人を、笑顔にしたい"], ["save", "💴", "食費と食材のムダを、減らしたい"], ["time", "⏰", "自分の時間を、つくりたい"], ["grow", "🌱", "料理のレパートリーを、広げたい"]];
 const GOAL_OF = Object.fromEntries(GOALS.map(([id, icon, label]) => [id, { icon, label }]));
 const PAINS = [["fridge", "その日に冷蔵庫を見て考える"], ["same", "いつも同じ料理になりがち"], ["tired", "考えるのが一番しんどい"], ["ok", "わりと決められている"]];
@@ -1369,7 +1378,39 @@ const funnelSource = `<details class="funnel-source"><summary>数字の出典</s
   <li>家庭の食品ロス 年233万トン（1人あたり約19kgで計算）：<a href="https://www.env.go.jp/press/press_00002.html" target="_blank" rel="noopener">環境省「食品ロスの発生量の推計値（令和5年度）」</a></li>
   <li>捨てた理由「傷んでいた23%・期限切れ11%」、記録と工夫で約4割減：<a href="https://www.caa.go.jp/policies/policy/consumer_policy/information/food_loss/efforts/pdf/efforts_180703_0003.pdf" target="_blank" rel="noopener">消費者庁「徳島県における食品ロス削減に関する実証事業」</a></li>
   <li>リピごちで決める時間は1回約10分・決めない日は今と同じとして計算した目安です。</li></ul></details>`;
-const GOAL_LINE = { smile: "その時間を、一緒に食べる人との会話に。", save: "考える時間も、食材も、ムダにしない。", time: "その時間は、あなたのものに。", grow: "その時間で、新しい一皿に挑戦。" };
+// いまのまま（リピごちなし）の1年。
+function nowCost(p) {
+  const hours = Math.round((365 * THINK_MIN) / 60);
+  const people = Number(p.servings) || 1;
+  const kg = LOSS_KG_PER_PERSON * people;
+  return { hours, movies: Math.floor(hours / 2), days: Math.round((hours / 24) * 10) / 10, kg, bags: Math.max(1, Math.round(kg / 5)), people };
+}
+// 決める日（まとまりの前日）の予定を、毎週くり返しのカレンダーファイルにする。
+const ICS_DAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"], DAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
+function rhythmReminder() {
+  const preset = RHYTHMS[state.rhythm?.preset || "weekday"];
+  const days = preset.blocks.map((b) => (b[0] + 6) % 7);
+  const time = state.rhythm?.shopTime || "17:00";
+  const [h, m] = time.split(":").map(Number);
+  const at = `${String(Math.max(0, h - 1)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  return { days, at, label: `${days.map((d) => DAY_JA[d]).join("・")}曜 ${at}` };
+}
+function downloadReminder() {
+  const r = rhythmReminder();
+  const first = new Date(); first.setHours(0, 0, 0, 0);
+  while (!r.days.includes(first.getDay())) first.setDate(first.getDate() + 1);
+  const ymd = `${first.getFullYear()}${String(first.getMonth() + 1).padStart(2, "0")}${String(first.getDate()).padStart(2, "0")}`;
+  const hm = r.at.replace(":", "");
+  const url = `${location.origin}${location.pathname}`;
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ripigochi//JP", "BEGIN:VTIMEZONE", "TZID:Asia/Tokyo", "BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:+0900", "TZOFFSETTO:+0900", "TZNAME:JST", "END:STANDARD", "END:VTIMEZONE", "BEGIN:VEVENT", `UID:ripigochi-decide-${Date.now()}@ripigochi`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`,
+    `DTSTART;TZID=Asia/Tokyo:${ymd}T${hm}00`, "DURATION:PT15M", `RRULE:FREQ=WEEKLY;BYDAY=${r.days.map((d) => ICS_DAYS[d]).join(",")}`, "SUMMARY:🍳 リピごち：献立を決めて、買い物へ", `DESCRIPTION:アプリを開いて、次の献立を決めましょう。\n${url}`, `URL:${url}`,
+    "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:献立を決める日です", "TRIGGER:PT0M", "END:VALARM", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+  a.download = "ripigochi-kondate.ics";
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
 // AIの読み取りを試す（説明欄から読むのでチケットは使わない）。
 let funnelDemo = { status: "idle", url: "", result: null, message: "" };
 async function runFunnelDemo(url) {
@@ -1465,15 +1506,18 @@ function addChip(field) {
 }
 function renderFunnelStep(key) {
   const p = profileDraft();
-  if (key === "goal") return [`🎯 リピごちで、何を叶えたい？`, `<div class="funnel-picks is-goals">${GOALS.map(([id, icon, label]) => funnelPick("goal", [id, label], p.goal, icon)).join("")}</div>`];
-  if (key === "pain") return [`🤔 毎日の夜ごはん、どうやって決めてる？`, `<div class="funnel-picks">${PAINS.map((x) => funnelPick("pain", x, p.pain)).join("")}</div>`];
-  if (key === "value") {
-    const y = yearlyChange(p);
-    const bagIcons = "🍚".repeat(Math.min(12, y.bags));
-    return [`✨ 1年で、こう変わります`, `<div class="funnel-year">
-      <div class="fy-card is-time"><p class="fy-label">献立を考える時間</p><p class="fy-big">年 <b data-count="${y.hours}">${y.hours}</b>時間 <span>うく</span></p><p class="fy-eq">🎬 映画 ${y.movies}本分 ・ 丸${y.days}日分</p><p class="fy-goal">${GOAL_LINE[p.goal] || GOAL_LINE.time}</p></div>
-      <div class="fy-card is-food"><p class="fy-label">${y.people >= 5 ? "5人以上" : `${y.people}人`}の家庭で、捨てている食材</p><p class="fy-big">年 約<b>${y.kg}</b>kg</p><p class="fy-bags" aria-label="お米5kg袋で${y.bags}袋分">${bagIcons}<small>お米5kg袋 ${y.bags}袋分</small></p><p class="fy-goal">理由の3割以上は「傷んだ・期限切れ」。<b>使い切る献立</b>で減らせます。</p></div>
-    </div>${funnelSource}`];
+  if (key === "goal") return [`🎯 これから、何を叶えたい？`, `<div class="funnel-picks is-goals">${GOALS.map(([id, icon, label]) => funnelPick("goal", [id, label], p.goal, icon)).join("")}</div>`];
+  if (key === "pain") return [`🤔 いま、夜ごはんはどうやって決めてる？`, `<div class="funnel-picks">${PAINS.map((x) => funnelPick("pain", x, p.pain)).join("")}</div>`];
+  if (key === "loss") {
+    const c = nowCost(p);
+    return [`⏳ いまのままだと、1年で…`, `<div class="funnel-year">
+      <div class="fy-card is-time"><p class="fy-label">献立を考えるのに</p><p class="fy-big">年 <b data-count="${c.hours}">${c.hours}</b>時間</p><p class="fy-eq">🎬 映画 ${c.movies}本分 ・ 丸${c.days}日分</p></div>
+      <div class="fy-card is-food"><p class="fy-label">${c.people >= 5 ? "5人以上" : `${c.people}人`}の家庭で、捨てている食材</p><p class="fy-big">年 約<b>${c.kg}</b>kg</p><p class="fy-bags" aria-label="お米5kg袋で${c.bags}袋分">${"🍚".repeat(Math.min(12, c.bags))}<small>お米5kg袋 ${c.bags}袋分</small></p><p class="fy-goal">理由の3割以上は「傷んだ・期限切れ」。</p></div>
+    </div><p class="funnel-turn">ここから、<b>これからのこと</b>を決めましょう →</p>${funnelSource}`];
+  }
+  if (key === "remind") {
+    const r = rhythmReminder();
+    return [`🔔 決める日を、忘れないように`, `<div class="remind-card"><p class="rc-when">毎週 <b>${escapeHtml(r.label)}</b></p><p class="small">「献立を決めて、買い物へ」をカレンダーに入れます。前日に決めるだけで、1週間がラクになります。</p></div><button type="button" class="primary-button full-button" data-action="life-remind-calendar">📅 カレンダーに入れる</button>${p.remindAdded ? '<p class="fd-ok small">✓ カレンダー用のファイルを作りました。開いて追加してください。</p>' : '<p class="muted small">続けている人の多くが、決める日を決めています。</p>'}`];
   }
   if (key === "videos") return [`📱 保存したレシピ動画、実際に作ったのは？`, `<div class="funnel-picks">${VIDEOS.map((x) => funnelPick("savedVideos", x, p.savedVideos)).join("")}</div><p class="muted small">YouTube・インスタ・TikTokで「保存」したままの料理、ありませんか？</p>`];
   if (key === "demo") return renderFunnelDemo();
@@ -1483,8 +1527,8 @@ function renderFunnelStep(key) {
     const y = yearlyChange(p);
     const sp = state.skillProfile;
     const rhythm = RHYTHMS[state.rhythm?.preset || "weekday"];
-    const promise = { smile: "「おいしい」を、毎週ふやす", save: `食材のムダを、年${Math.round(y.kg * 0.4)}kg減らす`, time: `考える時間を、年${y.hours}時間へらす`, grow: "毎週ひとつ、新しい料理に挑戦" }[p.goal] || `考える時間を、年${y.hours}時間へらす`;
-    return [`🤝 あなたの目標を、決めましょう`, `<div class="commit-card"><p class="cc-goal">${goal.icon} ${escapeHtml(promise)}</p><ul class="cc-plan">
+    const promise = { smile: "一緒に食べる人の「おいしい」を、毎週ふやす", save: "買った食材を、ムダなく使い切る", time: "自分の時間を、毎週とり戻す", grow: "毎週ひとつ、新しい料理に挑戦する" }[p.goal] || "自分の時間を、毎週とり戻す";
+    return [`🤝 あなたの目標を、決めましょう`, `<div class="commit-card"><p class="cc-goal">${goal.icon} ${escapeHtml(promise)}</p><div class="cc-gain"><p><small>考える時間</small><b>年 −${y.hours}時間</b></p><p><small>捨てる食材</small><b>年 −${Math.round(y.kg * 0.4)}kg</b></p></div><ul class="cc-plan">
       <li><span>リズム</span><b>${escapeHtml(rhythm.label)}</b><small>${escapeHtml(rhythm.note)}</small></li>
       <li><span>人数</span><b>${p.servings >= 5 ? "5人以上" : `${p.servings || 1}人分`}</b></li>
       <li><span>平日の夜</span><b>${p.weekdayMinutes || 20}分以内</b></li>
@@ -1533,7 +1577,9 @@ function bindFunnel() {
 }
 // 上の進み具合：13のブロックが1つずつ色づく。
 function funnelProgress(i) {
-  return `<div class="wizard-progress"><span>あなた用の献立づくり</span><span>${i + 1} / ${QUICK_STEPS}</span></div><ol class="funnel-steps" role="progressbar" aria-label="初回設定の進み具合" aria-valuemin="1" aria-valuemax="${QUICK_STEPS}" aria-valuenow="${i + 1}">${FUNNEL.map((_, k) => `<li class="${k < i ? "is-done" : k === i ? "is-current" : ""}"></li>`).join("")}</ol>`;
+  const block = (k) => `<li class="${k < i ? "is-done" : k === i ? "is-current" : ""}"></li>`;
+  const part = (from, to, label, n) => `<div class="fs-part${i >= from && i < to ? " is-active" : i >= to ? " is-done" : ""}"><span class="fs-label">${n}. ${label}</span><ol class="funnel-steps" style="--n:${to - from}">${FUNNEL.slice(from, to).map((_, k) => block(from + k)).join("")}</ol></div>`;
+  return `<div class="funnel-parts" role="progressbar" aria-label="初回設定の進み具合" aria-valuemin="1" aria-valuemax="${QUICK_STEPS}" aria-valuenow="${i + 1}" aria-valuetext="${i < FUNNEL_PART2 ? "第1部 いまのあなた" : "第2部 これからのあなた"}（${i + 1} / ${QUICK_STEPS}）">${part(0, FUNNEL_PART2, "いまのあなた", 1)}${part(FUNNEL_PART2, QUICK_STEPS, "これからのあなた", 2)}</div>`;
 }
 // 自分で選ぶ時のスキル（診断しない人向け）。
 const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒める・煮るならOK", 3: "照り焼きやガパオも作れる", 4: "ハンバーグや揚げ焼きも", 5: "揚げ物も魚をおろすのも" };
@@ -1550,7 +1596,8 @@ function renderQuickSetup() {
   const key = FUNNEL[i];
   const shell = (title, body, next, extra = "") => {
     document.body.classList.toggle("is-onboarding", !state.onboarded);
-    document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard funnel-step" data-funnel="${key}">${funnelProgress(i)}<h2 tabindex="-1">${title}</h2>${body}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i === 0 || key === "building" ? "disabled" : ""}>戻る</button>${next}</div>${extra}</section>`;
+    const echo = FUNNEL_ECHO[i]?.(p) || "";
+    document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard funnel-step" data-funnel="${key}">${funnelProgress(i)}${echo ? `<p class="funnel-echo">💬 ${escapeHtml(echo)}</p>` : ""}<h2 tabindex="-1">${title}</h2>${body}<div class="wizard-footer"><button class="text-button" data-action="life-quick-back" ${i === 0 || key === "building" ? "disabled" : ""}>戻る</button>${next}</div>${extra}</section>`;
     document.querySelectorAll("[data-profile]").forEach((el) => el.addEventListener("input", () => captureProfile(el)));
     bindAutoAdvance();
     document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
@@ -1559,7 +1606,7 @@ function renderQuickSetup() {
   const nextButton = `<button class="primary-button" data-action="life-quick-next">次へ</button>`;
   if (typeof key === "string") {
     const [title, body] = renderFunnelStep(key);
-    const next = ["commit", "building", "goal", "pain", "videos"].includes(key) ? "" : nextButton;
+    const next = ["commit", "building", "goal", "pain", "videos"].includes(key) ? "" : key === "remind" ? `<button class="primary-button is-quiet" data-action="life-quick-next">${p.remindAdded ? "次へ" : "あとで"}</button>` : nextButton;
     return shell(title, body, next);
   }
   if (key === 3 && !p.weekdayMinutes) p.weekdayMinutes = 20;
@@ -1573,7 +1620,7 @@ function renderQuickSetup() {
      <h3 class="quick-sub">苦手なもの・一覧にない食材</h3><div class="profile-options">${COMMON_DISLIKES.map((n) => optionInput("dislikes", n, n, true)).join("")}</div>${chipField("dislikes", "ほかにあれば入力（例：キウイ）")}
      <p class="muted small">選んだもの・入力したものを材料に含む料理は、献立に入りません。<b>市販品（たれ・加工品）の原材料</b>は、作る前に確かめてください。</p>`,
   ][key];
-  const titles = ["🍽️ 何人分つくる？", "🗓 献立は、どのリズムで決める？", "🔪 あなたの料理スキルは？", "🌙 平日の夜ごはん、何分で作りたい？", "🔎 食べられないもの・苦手なものは？"];
+  const titles = ["🍽️ 何人分つくる？", "🗓 これからの献立、どのリズムで決める？", "🔪 いまの料理スキルは？", "🌙 これからの平日の夜ごはん、何分で作りたい？", "🔎 食べられないもの・苦手なものは？"];
   shell(titles[key], content, key === 0 ? "" : nextButton);
 }
 

@@ -92,7 +92,7 @@ function handleSkillQuizAction(action, data) {
     skillQuiz = null;
     // 初回設定の途中で診断した時は、次の質問へ。
     const draft = state.onboardingDraft;
-    if (!state.onboarded && draft && FUNNEL[draft.quickSetupIndex] === 2) draft.quickSetupIndex = FUNNEL.indexOf(3);
+    if (!state.onboarded && draft && FUNNEL[draft.quickSetupIndex] === 2) draft.quickSetupIndex = FUNNEL.indexOf(2) + 1;
     saveState();
     if (state.onboarded) showToast(`「${SKILL_TYPES[level].name}」を献立に反映しました。`);
   }

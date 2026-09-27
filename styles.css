@@ -3019,7 +3019,24 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 
 /* ===== 初回設定（2026-09 作り直し） ===== */
 /* 進み具合：13のブロックが1つずつ色づく */
-.funnel-steps { display: grid; grid-template-columns: repeat(13, 1fr); gap: 4px; margin: 8px 0 14px; padding: 0; list-style: none; }
+.funnel-steps { display: grid; grid-template-columns: repeat(var(--n, 7), 1fr); gap: 3px; margin: 4px 0 0; padding: 0; list-style: none; }
+/* 2部構成：いまのあなた ｜ これからのあなた */
+.funnel-parts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 14px; }
+.fs-label { display: block; font-size: 11px; font-weight: 800; color: #b9ab9b; white-space: nowrap; }
+.fs-part.is-active .fs-label { color: var(--sage-dark); }
+.fs-part.is-done .fs-label { color: var(--muted); }
+.funnel-echo { margin: 0 0 6px; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: #fff1ec; font-size: 13px; font-weight: 700; width: fit-content; max-width: 100%; animation: fd-in .35s ease-out both; }
+.funnel-turn { margin: 12px 0 0; text-align: center; font-size: 15px; }
+.remind-card { padding: 16px; border-radius: 20px; background: linear-gradient(135deg, #fff7e8, #ffeccc); margin-bottom: 12px; }
+.remind-card p { margin: 0; }
+.rc-when { font-size: 16px; margin-bottom: 6px !important; }
+.rc-when b { font-size: 22px; color: var(--sage-dark); }
+.primary-button.is-quiet { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); box-shadow: none; }
+.cc-gain { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 12px; }
+.cc-gain p { margin: 0; padding: 10px; border-radius: 14px; background: #fff1ec; display: grid; }
+.cc-gain p:last-child { background: #eef5e2; }
+.cc-gain small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.cc-gain b { font-size: 20px; }
 .funnel-steps li { height: 8px; border-radius: 4px; background: #eadfd1; transition: background .3s, transform .3s; }
 .funnel-steps li.is-done { background: var(--tomato); }
 .funnel-steps li.is-current { background: var(--tomato); opacity: .55; transform: scaleY(1.35); }
