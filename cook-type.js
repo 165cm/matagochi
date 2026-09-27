@@ -167,7 +167,7 @@ const TYPE_NO = { RKQ: 1, RKS: 2, RAQ: 3, RAS: 4, CKQ: 5, CKS: 6, CAQ: 7, CAS: 8
 function renderCookTypeCard(r) {
   return `<div class="cook-type-card" style="--el:${r.color}" data-code="${r.code}">
     <p class="ct-kicker"><span>YOUR DINNER TYPE</span><span>No.${String(TYPE_NO[r.code]).padStart(2, "0")}</span></p>
-    <figure class="ct-portrait"><img class="ct-art" src="assets/types/${r.code}.webp" alt="${escapeAttr(r.name)}のキャラクター" width="640" height="640"><span class="ct-stamp" aria-label="${escapeAttr(r.element)}属性">${escapeHtml(r.element)}</span><span class="ct-overall"><span>総合</span><b>${r.overall}</b></span></figure>
+    <figure class="ct-portrait"><img class="ct-art" src="assets/types/${r.code}.webp" alt="${escapeAttr(r.name)}のキャラクター" width="640" height="850"><span class="ct-stamp" aria-label="${escapeAttr(r.element)}属性">${escapeHtml(r.element)}</span><span class="ct-overall"><span>総合</span><b>${r.overall}</b></span></figure>
     <p class="ct-element">${r.el} ${escapeHtml(r.element)}属性</p>
     <h3 class="ct-name">${escapeHtml(r.name)}</h3>
     <p class="ct-catch">${escapeHtml(r.catch)}</p>
