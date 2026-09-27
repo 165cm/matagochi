@@ -3517,3 +3517,33 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .install-steps b { color: var(--sage-dark); }
 .ios-share { display: inline-block; width: 20px; height: 20px; vertical-align: -4px; color: #1a73e8; }
 .install-card .text-button { justify-self: center; }
+/* 振り分け（いまの1週間）：1画面に収まるよう小さく */
+.ratio-part { margin-bottom: 12px; }
+.ratio-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.ratio-head .ratio-plates { display: flex; gap: 3px; margin: 0; }
+.ratio-head .ratio-plates i { width: 24px; height: 24px; font-size: 13px; box-shadow: inset 0 -2px 0 rgba(0,0,0,.12); }
+.ratio-grid { gap: 5px; }
+.ratio-cell { gap: 4px; padding: 6px 2px; border-radius: 12px; }
+.rc-label { display: flex; align-items: center; justify-content: center; gap: 2px; min-height: 0; font-size: 10.5px; white-space: nowrap; letter-spacing: -.02em; }
+.rc-label span { font-size: 15px; }
+.rc-row { display: flex; align-items: center; justify-content: center; gap: 2px; }
+.ratio-cell .rr-count { min-width: 18px; font-size: 20px; }
+.ratio-cell .rc-btn { flex: none; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--line); background: #fffaf3; font: inherit; font-size: 15px; font-weight: 800; line-height: 1; color: var(--ink); cursor: pointer; }
+.ratio-cell .rc-btn:disabled { opacity: .35; }
+.ratio-cell .rc-btn:active:not(:disabled) { background: #fff1dc; border-color: var(--c); }
+.ratio-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ratio-cell { min-width: 0; }
+.rc-label { max-width: 100%; overflow: hidden; }
+@media (max-width: 374px) {
+  .ratio-grid { gap: 4px; }
+  .rc-label { display: grid; justify-items: center; gap: 0; font-size: 9.5px; }
+  .rc-label span { font-size: 14px; line-height: 1.1; }
+  .rc-row { gap: 1px; }
+  .ratio-cell .rc-btn { width: 23px; height: 23px; font-size: 13px; }
+  .ratio-cell .rr-count { min-width: 13px; font-size: 18px; }
+  .ratio-head { flex-wrap: wrap; }
+  .ratio-head .ratio-plates i { width: 20px; height: 20px; font-size: 11px; }
+}
+.rc-label { display: grid; justify-items: center; gap: 0; font-size: 10.5px; line-height: 1.25; }
+.rc-label span { font-size: 16px; line-height: 1.1; }
+@media (max-width: 374px) { .rc-label { font-size: 9.5px; } .rc-label span { font-size: 14px; } }
