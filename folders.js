@@ -7,7 +7,7 @@
 const RANK_MAX = 5;
 const MEDALS = ["🥇", "🥈", "🥉", "4位", "5位"];
 const WEEKDAYS = "日月火水木金土";
-let folderOpen = "", rankPromptId = "", pendingFolder = "";
+let folderOpen = "", rankPromptId = "", pendingFolder = "", folderPicking = false;
 let folderSearch = { key: "", status: "idle", items: [], message: "" };
 // 名前をそろえて比べる（たらこ＝明太子、スパゲッティ＝パスタ）。
 function folderNorm(text) {
@@ -120,10 +120,12 @@ function renderFolderDetail(f) {
   return `<section class="folder-detail"><button type="button" class="text-button cooking-back" data-action="life-folder-close">‹ 定番フォルダ</button>
     <h2 class="folder-title">📁 ${escapeHtml(f.name)}</h2>
     <div class="folder-pin"><label>📌 毎週 <select class="input" data-folder-pin="${f.key}"><option value="">決めない</option>${[1, 2, 3, 4, 5, 6, 0].map((d) => `<option value="${d}" ${f.pinDay === String(d) ? "selected" : ""}>${WEEKDAYS[d]}曜</option>`).join("")}</select> は、この料理</label></div>
-    <h3 class="detail-h">🏆 ランキング <small>${ranked.length}/${RANK_MAX}</small></h3>
-    ${ranked.length ? `<ol class="folder-rows">${ranked.map((r, i) => renderFolderRow(r, f, i)).join("")}</ol>` : '<p class="muted small">作ったあとに、何位か選ぶとここに並びます。</p>'}
+    ${members.length ? `<h3 class="detail-h">🏆 ランキング <small>${ranked.length}/${RANK_MAX}</small></h3>
+    ${ranked.length ? `<ol class="folder-rows">${ranked.map((r, i) => renderFolderRow(r, f, i)).join("")}</ol>` : '<p class="muted small">作ったあとに、何位か選ぶとここに並びます。</p>'}` : ""}
     ${untried.length ? `<h3 class="detail-h">🆕 まだ作っていない <small>${untried.length}</small></h3><ul class="folder-rows">${untried.map((r) => renderFolderRow(r, f)).join("")}</ul>` : ""}
     ${out.length ? `<h3 class="detail-h">圏外 <small>${out.length}</small></h3><ul class="folder-rows is-out">${out.map((r) => renderFolderRow(r, f)).join("")}</ul>` : ""}
+    ${members.length ? "" : '<p class="muted small">まだ作り方がありません。下の「＋ レシピを入れる」か「ほかの作り方を探す」から入れてください。</p>'}
+    ${renderFolderPicker(f)}
     <div class="folder-search">${s.status === "loading" ? '<p class="muted small" role="status">🔍 探しています…</p>' : dailyButton("life-folder-search", `🔍 ほかの「${escapeHtml(f.name)}」の作り方を探す`, `data-folder="${f.key}"`, !results.length)}
       ${s.status === "error" ? `<p class="form-error">${escapeHtml(s.message)}</p>` : ""}
       ${results.length ? `<ul class="search-results">${results.map((x) => `<li><img src="https://i.ytimg.com/vi/${escapeAttr(x.videoId)}/mqdefault.jpg" alt="" loading="lazy"><span><b>${escapeHtml(x.title)}</b><small>${escapeHtml(x.channelTitle || "")}</small></span><button type="button" class="secondary-button" data-action="life-folder-import" data-folder="${f.key}" data-video="${escapeAttr(x.videoId)}">取り込む</button></li>`).join("")}</ul><p class="muted small">取り込むと、材料・作り方を読み取ってこのフォルダに入ります。</p>` : ""}</div>
@@ -133,11 +135,47 @@ function renderFolders() {
   const f = folderOpen && state.folders?.[folderOpen];
   if (f && !f.deleted) return renderFolderDetail(f);
   const list = folderList();
-  if (!list.length) return `<section class="folder-empty panel"><p><b>📁 定番フォルダ</b></p><p class="small">同じ料理のいろいろな作り方をまとめて、食べ比べできます。レシピの画面の「📁 定番フォルダに入れる」から作れます。</p></section>`;
-  return `<ul class="folder-list">${list.map((x) => {
+  const create = isViewer() ? "" : `<form class="folder-create" data-folder-create><label class="sr-only" for="folder-new-name">新しいフォルダの名前</label><input id="folder-new-name" class="input" maxlength="20" placeholder="料理名（例：明太子パスタ）" autocomplete="off"><button type="submit" class="primary-button">＋ 作る</button></form>`;
+  if (!list.length) return `<section class="folder-empty panel"><p><b>📁 定番フォルダ</b></p><p class="small">同じ料理のいろいろな作り方をまとめて、食べ比べできます。料理名でフォルダを作って、保存したレシピを入れたり、YouTubeでほかの作り方を探したりできます。</p>${create}</section>`;
+  return `${create}<ul class="folder-list">${list.map((x) => {
     const top = folderRanking(x)[0] || folderMembers(x.key)[0];
     return `<li><button type="button" class="folder-card" data-action="life-folder-open" data-folder="${x.key}">${top ? dishTile(top, "fc-thumb") : ""}<span><b>${escapeHtml(x.name)}</b><small>${folderMembers(x.key).length}の作り方${top && folderRanking(x)[0] ? ` · 🥇${escapeHtml(childText(top))}` : ""}</small></span>${x.pinDay ? `<em class="fc-pin">📌${WEEKDAYS[Number(x.pinDay)]}</em>` : ""}</button></li>`;
   }).join("")}</ul>`;
+}
+// フォルダに入れるレシピを選ぶ（名前が近いものを先に。自分のレシピとおすすめから）。
+function renderFolderPicker(f) {
+  if (isViewer()) return "";
+  if (!folderPicking) return `<button type="button" class="secondary-button full-button" data-action="life-folder-pick" data-folder="${f.key}">＋ レシピを入れる</button>`;
+  const n = folderNorm(f.name);
+  const pool = allDinnerRecipes().filter((r) => r.folder !== f.key && !state.recipes.some((x) => x.folder === f.key && x.starterId && x.starterId === r.id));
+  const score = (r) => (folderNorm(r.title).includes(n) ? 2 : [...n].filter((c) => folderNorm(r.title).includes(c)).length / Math.max(1, n.length));
+  const list = pool.map((r) => ({ r, s: score(r) })).sort((a, b) => b.s - a.s || Number(!!a.r.curated) - Number(!!b.r.curated)).slice(0, 40);
+  return `<section class="folder-picker" aria-label="${escapeAttr(f.name)}に入れるレシピ"><div class="folder-picker-head"><b>＋ レシピを入れる</b><button type="button" class="text-button" data-action="life-folder-pick-close">閉じる</button></div>
+    <input class="input" type="search" placeholder="レシピを探す" aria-label="レシピを探す" data-folder-filter>
+    <ul class="folder-pick-list">${list.map(({ r }) => `<li data-title="${escapeAttr(folderNorm(r.title))}">${dishTile(r, "fr-thumb")}<span><b>${escapeHtml(r.title)}</b><small>${r.curated ? "おすすめ" : escapeHtml(authorOf(r) ? childText(r) : "保存したレシピ")}${r.folder && state.folders?.[r.folder] ? ` · 📁${escapeHtml(state.folders[r.folder].name)}` : ""}</small></span><button type="button" class="secondary-button" data-action="life-folder-add" data-recipe="${escapeAttr(r.id)}" data-folder="${f.key}">入れる</button></li>`).join("")}</ul></section>`;
+}
+function createFolder(name) {
+  const clean = String(name || "").trim().slice(0, 20);
+  if (!clean) return null;
+  const same = folderList().find((x) => folderNorm(x.name) === folderNorm(clean));
+  if (same) return same.key;
+  const key = generateId("f");
+  state.folders = { ...(state.folders || {}), [key]: { key, name: clean, ranking: [], pinDay: "", updatedAt: nowIso() } };
+  return key;
+}
+function bindFolderForms() {
+  document.querySelector("[data-folder-create]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const key = createFolder(document.querySelector("#folder-new-name")?.value);
+    if (!key) { showToast("料理名を入れてください。"); return; }
+    folderOpen = key; folderPicking = true;
+    saveState(); render();
+    showToast(`「${state.folders[key].name}」を作りました。レシピを入れてみましょう。`);
+  });
+  document.querySelector("[data-folder-filter]")?.addEventListener("input", (event) => {
+    const q = folderNorm(event.target.value);
+    document.querySelectorAll(".folder-pick-list li").forEach((li) => { li.hidden = !!q && !li.dataset.title.includes(q); });
+  });
 }
 // レシピの画面：フォルダに入れる／見る
 function renderFolderLine(r) {
@@ -168,8 +206,10 @@ function handleFolderAction(action, data) {
   if (!action.startsWith("life-folder") && !action.startsWith("life-rank")) return false;
   if (isViewer()) return true;
   const f = data.folder && state.folders?.[data.folder];
-  if (action === "life-folder-open") { recipeTab = "folders"; folderOpen = data.folder || ""; state.view = "collection"; swapDate = ""; if (data.search === "true" && f) { render(); searchFolderVariants(f); return true; } }
-  else if (action === "life-folder-close") folderOpen = "";
+  if (action === "life-folder-pick") folderPicking = true;
+  else if (action === "life-folder-pick-close") folderPicking = false;
+  else if (action === "life-folder-open") { folderPicking = false; recipeTab = "folders"; folderOpen = data.folder || ""; state.view = "collection"; swapDate = ""; if (data.search === "true" && f) { render(); searchFolderVariants(f); return true; } }
+  else if (action === "life-folder-close") { folderOpen = ""; folderPicking = false; }
   else if (action === "life-rank-close") rankPromptId = "";
   else if (action === "life-folder-add") {
     const base = recipeById(data.recipe) || Lifestyle.curated.find((x) => x.id === data.recipe) || findDiscover(data.recipe);

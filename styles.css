@@ -3559,3 +3559,15 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .push-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .remind-button.is-push { border-color: var(--tomato); background: #fff1dc; }
 .remind-done { margin: 0; font-weight: 800; color: var(--sage-dark); }
+/* フォルダを作る・レシピを入れる */
+.folder-create { display: flex; gap: 6px; margin: 0 0 10px; }
+.folder-create .input { flex: 1; min-width: 0; }
+.folder-create .primary-button { flex: none; min-height: 44px; padding: 0 16px; }
+.folder-picker { display: grid; gap: 8px; padding: 12px; border: 1.5px solid var(--egg); border-radius: 16px; background: #fffaf0; }
+.folder-picker-head { display: flex; justify-content: space-between; align-items: center; }
+.folder-pick-list { display: grid; gap: 6px; max-height: 420px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.folder-pick-list li { display: flex; align-items: center; gap: 8px; }
+.folder-pick-list li[hidden] { display: none; }
+.folder-pick-list span { display: grid; flex: 1; min-width: 0; font-size: 13px; }
+.folder-pick-list small { color: var(--muted); font-size: 11px; }
+.folder-pick-list .secondary-button { flex: none; min-height: 38px; padding: 0 12px; }

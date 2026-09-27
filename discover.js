@@ -16,12 +16,17 @@ function tasteSegment() {
   try { const r = DinnerPersona.result(dailyProfile().dinnerPriorities || {}); if (/^[LR]{3}$/.test(r?.code || "")) code = r.code; } catch {}
   return `${code}-${Math.max(0, Math.min(5, Number(state.skillProfile?.level) || 0))}`;
 }
+let discoverTriedAt = 0;
 async function loadDiscover({ force = false } = {}) {
   if (!API_BASE_URL || discoverLoading) return;
   pruneDiscover();
   // 取り直しは1時間ごと。まだ1品もない時は覚えずに、次に開いた時また取りに行く。
   if (!force && discover.savedAt && discover.trends.length && Date.now() - Date.parse(discover.savedAt) < 3_600_000) return;
+  // 取れなかった時（0品・通信エラー）は、1分あける。描き直すたびに取りに行って、画面が作り直され続けないように。
+  if (!force && Date.now() - discoverTriedAt < 60_000) return;
+  discoverTriedAt = Date.now();
   discoverLoading = true;
+  const before = JSON.stringify([discover.trends.length, discover.popular.length, discover.savedAt]);
   try {
     const [t, p] = await Promise.all([
       fetchWithTimeout(`${API_BASE_URL}/api/trends`, {}, 15_000).then((r) => (r.ok ? r.json() : null)).catch(() => null),
@@ -31,6 +36,8 @@ async function loadDiscover({ force = false } = {}) {
     if (p?.items) discover.popular = p.items.slice(0, 20);
     if (t || p) { discover.savedAt = discover.trends.length ? new Date().toISOString() : ""; saveDiscover(); }
   } finally { discoverLoading = false; }
+  // 中身が変わった時だけ描き直す（入力中の欄を消さない）。
+  if (before === JSON.stringify([discover.trends.length, discover.popular.length, discover.savedAt])) return;
   if (["collection", "plan"].includes(state.view) || FUNNEL[state.onboardingDraft?.quickSetupIndex] === "picks") render();
 }
 // サーバーの読み取り結果を、アプリのレシピの形に。読み取り専用の「おすすめ」として扱う（保存すると自分のレシピになる）。

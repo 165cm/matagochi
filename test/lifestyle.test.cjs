@@ -1028,6 +1028,22 @@ test("定番フォルダ: one dish, many ways; once a week, pinned weekdays, a t
   assert.equal(run("state.recipes.filter(r=>r.folder).length+':'+folderList().length"), "0:0", "deleting the folder keeps the recipes");
 });
 
+test("定番フォルダ: make one by name, then add recipes from a picker", () => {
+  const run = app();
+  run(`state.onboarded=true;recipeTab="folders"`);
+  assert.match(run("renderFolders()"), /data-folder-create[\s\S]*料理名/, "a create form even with no folders");
+  const key = run(`createFolder("照り焼き丼")`);
+  assert.equal(run(`createFolder("照り焼き丼 ")`), key, "the same name is not made twice");
+  run(`folderOpen="${key}";folderPicking=true`);
+  const html = run("renderFolders()");
+  assert.match(html, /まだ作り方がありません[\s\S]*＋ レシピを入れる/);
+  const first = run(`(()=>{const m=/data-action="life-folder-add" data-recipe="([^"]+)"/.exec(renderFolderPicker(state.folders["${key}"]));return m[1]})()`);
+  assert.match(run(`allDinnerRecipes().find(r=>r.id==="${first}").title`), /照り焼き丼/, "recipes with a similar name come first");
+  run(`handleDailyAction("life-folder-add",{recipe:"${first}",folder:"${key}"})`);
+  assert.equal(run(`folderMembers("${key}").length`), 1, "a starter is saved as your own recipe and put in the folder");
+  assert.doesNotMatch(run(`renderFolderPicker(state.folders["${key}"])`), new RegExp(`data-recipe="${first}"`), "already in: not offered again");
+});
+
 test("選択: new recipes first, then the best three by rating", () => {
   const run = app();
   run(`state.onboarded=true;state.rhythm=null;const r=Lifestyle.curated.find(x=>x.id==="starter-12");state.evaluations.unshift({id:"meal-x",recipeId:r.id,recipeTitle:r.title,cookedAt:addDays(today(),-20),mealType:"dinner",familyRepeatCycles:{自分:"tomorrow"},memo:"",photo:"",updatedAt:nowIso()});swapDate=addDays(today(),1)`);
