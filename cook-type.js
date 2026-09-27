@@ -59,8 +59,9 @@ function renderRatioStep(p) {
   return `<p class="small">だいたいでOK。平日と休日に分けて、振り分けてください。</p>${RATIO_PARTS.map((part) => {
     const r = partOf(p, part.id);
     const plates = RATIO_KINDS.flatMap((k) => Array.from({ length: r[k.id] }, () => `<i style="--c:${k.color}" title="${k.label}">${k.icon}</i>`)).join("");
-    return `<section class="ratio-part"><h3 class="quick-sub">${part.label} <small>${part.total}回</small></h3><div class="ratio-plates" style="--n:${part.total}" aria-hidden="true">${plates}</div>
-      <div class="ratio-grid">${RATIO_KINDS.map((k) => `<div class="ratio-cell" style="--c:${k.color}"><span class="rc-label"><span aria-hidden="true">${k.icon}</span>${k.label.replace("・惣菜", "")}</span><b class="rr-count" aria-live="polite">${r[k.id]}</b><span class="rc-btns"><button type="button" data-action="life-ratio" data-part="${part.id}" data-kind="${k.id}" data-delta="-1" aria-label="${part.label}の${k.label}を1回減らす" ${r[k.id] <= 0 ? "disabled" : ""}>−</button><button type="button" data-action="life-ratio" data-part="${part.id}" data-kind="${k.id}" data-delta="1" aria-label="${part.label}の${k.label}を1回増やす" ${r[k.id] >= part.total ? "disabled" : ""}>＋</button></span></div>`).join("")}</div></section>`;
+    // 見出しの横に、その回数ぶんのお皿。下に4つの枠（アイコンと名前、− 回数 ＋）。
+    return `<section class="ratio-part"><h3 class="quick-sub ratio-head"><span>${part.label} <small>${part.total}回</small></span><span class="ratio-plates" aria-hidden="true">${plates}</span></h3>
+      <div class="ratio-grid">${RATIO_KINDS.map((k) => `<div class="ratio-cell" style="--c:${k.color}"><span class="rc-label"><span aria-hidden="true">${k.icon}</span>${k.label.replace("・惣菜", "")}</span><span class="rc-row"><button type="button" class="rc-btn" data-action="life-ratio" data-part="${part.id}" data-kind="${k.id}" data-delta="-1" aria-label="${part.label}の${k.label}を1回減らす" ${r[k.id] <= 0 ? "disabled" : ""}>−</button><b class="rr-count" aria-live="polite">${r[k.id]}</b><button type="button" class="rc-btn" data-action="life-ratio" data-part="${part.id}" data-kind="${k.id}" data-delta="1" aria-label="${part.label}の${k.label}を1回増やす" ${r[k.id] >= part.total ? "disabled" : ""}>＋</button></span></div>`).join("")}</div></section>`;
   }).join("")}`;
 }
 function changeRatio(p, partId, kind, delta) {
