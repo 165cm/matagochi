@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "tickets.js", "account.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -913,4 +913,18 @@ test("the first-run funnel: questions before and after the five, answers kept ac
   assert.equal(run("state.onboardingDraft.pain + state.onboardingDraft.foodBudget"), "tired50000");
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded && state.view"), "plan");
+});
+
+test("trend recipes: ranked by chosen dishes, saved when planned, removed after their 28 days", () => {
+  const run = app();
+  run(`state.onboarded = true; state.foodProfile = Lifestyle.profile({ servings: 2, completed: true });
+    const item = (id, title, ing, days) => ({ videoId: id, title, videoUrl: "https://www.youtube.com/watch?v=" + id, expiresAt: new Date(Date.now() + days * 86400000).toISOString(), ingredients: ing.map((name) => ({ name, amount: "適量" })), steps: ["切る", "焼く"], planning: { minutes: 15, equipment: ["フライパン"], tastes: ["和風"] } });
+    discover = { trends: [item("aaaaaaaaaaa", "豚こま焼き", ["豚こま", "玉ねぎ", "しょうゆ"], 10), item("bbbbbbbbbbb", "鮭のムニエル", ["鮭", "バター", "小麦粉"], 10), item("ccccccccccc", "古い人気", ["鶏肉", "塩", "油"], -1)], popular: [], savedAt: new Date().toISOString() };
+    state.tasteSeeds = [Lifestyle.traits({ title: "鮭の塩焼き", ingredients: [{ name: "鮭" }] })];`);
+  assert.equal(run("discoverRecipes().length"), 2, "expired trends are dropped");
+  assert.equal(run("rankByTaste(discoverRecipes())[0].title"), "鮭のムニエル", "closest to the chosen dishes first");
+  run(`confirmDaily({ date: today() }, discoverRecipes()[0])`);
+  assert.equal(run("state.mealSlots[today()].recipe.discover"), undefined, "a planned trend becomes the user's own recipe");
+  assert.equal(run("state.recipes.length"), 1);
+  assert.equal(run("discoverRecipes().length"), 1, "and leaves the suggestions");
 });

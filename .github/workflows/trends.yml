@@ -1,0 +1,21 @@
+name: Weekly trend recipes
+
+# サーバーは呼ばれた時しか動かないので、1時間ごとにノックする。
+# サーバー側は「その週の10品がそろっていれば何もしない」ので、何回呼んでも費用は週10品分まで。
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  knock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Advance this week's trend recipes
+        run: |
+          curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \
+            https://matagochi-api-292190013809.us-central1.run.app/api/trends/refresh || true

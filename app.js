@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260927-funnel";
+const APP_VERSION = "20260927-trends";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -305,6 +305,7 @@ function normalizeState(saved) {
     shopDone: normalizeShopDone(saved.shopDone),
     aisleOverrides: normalizeAisleOverrides(saved.aisleOverrides),
     creatorNames: normalizeCreatorNames(saved.creatorNames),
+    tasteSeeds: Array.isArray(saved.tasteSeeds) ? saved.tasteSeeds.filter((t) => t && typeof t.staple === "string").slice(0, 12).map(({ staple, protein, cuisine }) => ({ staple, protein, cuisine })) : [],
     starterPref: normalizeStarterPref(saved.starterPref),
     skillProfile: normalizeSkillProfile(saved.skillProfile),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
@@ -1251,7 +1252,8 @@ function renderIngredientEditorRow(item, index) {
 function renderCollection() {
   const allSaved = getFilteredRecipes({ allMeals: true });
   // Photographed dishes first, so the grid opens with pictures.
-  const allStarters = recipeTab === "saved" || recipeTab === "creators" ? [] : starterRecipeList().sort((a, b) => !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id]);
+  // 今週の人気・みんなの定番（好みの順）を先に、写真のある定番を次に。
+  const allStarters = recipeTab === "saved" || recipeTab === "creators" ? [] : starterRecipeList().sort((a, b) => !!b.discover - !!a.discover || (!a.discover && !b.discover ? !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id] : 0));
   const pool = [...(recipeTab === "starter" ? [] : allSaved), ...allStarters];
   const saved = allSaved.filter((r) => facetMatch(r));
   const starters = allStarters.filter((r) => facetMatch(r));
@@ -1450,7 +1452,7 @@ function renderStarterTile(recipe) {
       ${isViewer() ? "" : `<button type="button" class="tile-mark" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></button>`}
       <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
       ${requestButton(recipe)}
-      ${isViewer() ? "" : `<div class="tile-foot"><small class="muted">おすすめ${recipe.planning?.tastes?.length ? ` · ${escapeHtml(recipe.planning.tastes[0])}` : ""}</small></div>`}
+      ${isViewer() ? "" : `<div class="tile-foot"><small class="muted">${recipe.discover ? `<b class="discover-badge">${discoverLabel(recipe)}</b>${recipe.author ? ` · ${escapeHtml(shortCreatorName(recipe.author))}` : ""}` : `おすすめ${recipe.planning?.tastes?.length ? ` · ${escapeHtml(recipe.planning.tastes[0])}` : ""}`}</small></div>`}
     </article>`;
 }
 
@@ -3944,6 +3946,7 @@ document.addEventListener("visibilitychange", () => {
   if (syncEnabled()) syncNow({ silent: true });
   refreshTickets();
   loadAuth();
+  loadDiscover();
 })();
 // Like a browser toolbar: bars slide away while scrolling down, come back on scroll up.
 (() => {
