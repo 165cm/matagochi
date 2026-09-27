@@ -45,23 +45,44 @@ function placeEntry(entry, to) {
     state.planOverrides[to] = entry.recipe.id;
   }
 }
-// 外食などの日：その日を休みにして、決まっていた料理を次に作る日へ。押し出された料理も順に後ろへ。
-function skipDay(date, kind, shift = true) {
-  let carry = shift ? dayEntry(date) : null;
-  const moved = carry?.recipe?.title || "";
-  state.mealSlots[date] = { date, status: "off", ...(SKIP_OF[kind] ? { kind } : {}), updatedAt: nowIso() };
-  delete state.planOverrides[date];
-  let d = date, first = "", count = 0;
+// 外食などの日に、決まっていた料理がどこへ動くか（書きかえずに調べる）。後ろの料理も1日ずつ押し出す。
+function shiftMoves(date) {
+  const moves = [];
+  let carry = dayEntry(date), from = date, d = date;
   for (let n = 0; carry && n < 21; n += 1) {
     d = addDays(d, 1);
     if (!cooksOn(d)) continue;
     const next = dayEntry(d);
-    placeEntry(carry, d);
-    first = first || d;
-    count += 1;
+    moves.push({ entry: carry, from, to: d });
+    from = d;
     carry = next;
   }
-  return { moved, to: first, count };
+  return moves;
+}
+// 買い物のまとまり（リズム）の外へはみ出す料理（例：金曜の分が来週の月曜へ）。
+function spillOf(date, moves) {
+  const end = rhythmOn() ? currentBlocks().find((b) => b.dates.includes(date))?.end : "";
+  const last = moves[moves.length - 1];
+  return end && last && last.to > end ? last : null;
+}
+// 外食などの日：その日を休みにして、決まっていた料理を次に作る日へ。押し出された料理も順に後ろへ。
+function skipDay(date, kind, shift = true) {
+  const moves = shift ? shiftMoves(date) : [];
+  const spill = spillOf(date, moves);
+  state.mealSlots[date] = { date, status: "off", ...(SKIP_OF[kind] ? { kind } : {}), updatedAt: nowIso() };
+  delete state.planOverrides[date];
+  moves.forEach((m) => placeEntry(m.entry, m.to));
+  return { moved: moves[0]?.entry.recipe.title || "", to: moves[0]?.to || "", count: moves.length, spill };
+}
+// 持ち越した料理の注意：傷みやすい食材を、買ってから日がたって使う時。
+function carryNote(slot) {
+  if (!slot?.movedFrom) return "";
+  const f = Lifestyle.freshness(slot.recipe);
+  const age = slot.bought ? daysBetween(slot.bought.slice(0, 10), slot.date) : 0;
+  const block = rhythmOn() ? currentBlocks().find((b) => b.dates.includes(slot.date)) : null;
+  const carried = block && slot.movedFrom < block.start;
+  const base = carried ? `↪ ${formatDate(slot.movedFrom)}の分を持ち越し` : `${formatDate(slot.movedFrom)}からずらしました`;
+  return f.urgency >= 3 && age >= 4 ? `${base}・🧊${f.label}は買ってから${age}日。冷凍しておくと安心` : base;
 }
 // となりの料理する日（お休み・作った日はとばす）。
 function neighborDay(plan, date, dir) {
@@ -99,7 +120,11 @@ function renderSkipPanel(date) {
     <p class="skip-q"><b>${when}</b>の晩ごはんは？</p>
     <div class="skip-kinds">${SKIP_KINDS.map((k) => `<button type="button" class="skip-kind" data-action="life-skip-kind" data-date="${date}" data-kind="${k.id}"><span aria-hidden="true">${k.icon}</span>${k.label}</button>`).join("")}</div>
     ${shops.length ? `<p class="skip-shops">いつものお店：${shops.map(escapeHtml).join("・")}</p>` : ""}
-    ${entry ? `<label class="skip-shift"><input type="checkbox" id="skip-shift" checked><span>「${escapeHtml(entry.recipe.title)}」は次に作る日へずらす<small>${entry.slot ? "買った材料をむだにしません。あとの料理も1日ずつ後ろへ。" : "選んだ料理を残します。"}</small></span></label>` : ""}
+    ${entry ? (() => {
+      const spill = spillOf(date, shiftMoves(date));
+      const f = spill && Lifestyle.freshness(spill.entry.recipe);
+      return `<label class="skip-shift"><input type="checkbox" id="skip-shift" checked><span>「${escapeHtml(entry.recipe.title)}」は次に作る日へずらす<small>${entry.slot ? "買った材料をむだにしません。あとの料理も1日ずつ後ろへ。" : "選んだ料理を残します。"}</small>${spill ? `<small class="skip-spill">↪「${escapeHtml(spill.entry.recipe.title)}」は<b>${formatDate(spill.to)}（${weekdayLabel(spill.to)}）</b>に持ち越し。次の献立はその日から始まり、この分は買い物リストに入りません。${f.urgency >= 3 ? `<br>🧊 ${f.label}は日持ちしないので、冷凍しておくと安心です。` : ""}</small>` : ""}</span></label>`;
+    })() : ""}
     <button type="button" class="text-button" data-action="life-skip-close">やめる</button></section>`;
 }
 function handlePlanMoveAction(action, data) {
@@ -111,12 +136,12 @@ function handlePlanMoveAction(action, data) {
   else if (action === "life-skip-kind") {
     const before = dailyShopping();
     const shift = data.shift !== undefined ? data.shift !== "false" : (globalThis.document?.querySelector?.("#skip-shift")?.checked ?? true);
-    const { moved, to, count } = skipDay(data.date, data.kind, shift);
+    const { moved, to, count, spill } = skipDay(data.date, data.kind, shift);
     skipDate = "";
     trackDaily("meal_skipped", { kind: data.kind, shifted: !!to });
     changedShopping(before);
     saveState();
-    showToast(moved && to ? `「${moved}」は${formatDate(to)}（${weekdayLabel(to)}）へ。${count > 1 ? "あとの料理も1日ずつずらしました。" : ""}` : `${SKIP_OF[data.kind]?.label || "お休み"}にしました。`);
+    showToast(moved && to ? `「${moved}」は${formatDate(to)}（${weekdayLabel(to)}）へ。${spill ? `「${spill.entry.recipe.title}」は${formatDate(spill.to)}（${weekdayLabel(spill.to)}）に持ち越しました。` : count > 1 ? "あとの料理も1日ずつずらしました。" : ""}` : `${SKIP_OF[data.kind]?.label || "お休み"}にしました。`);
   } else if (action === "life-move") {
     const before = dailyShopping();
     const message = swapDays(dailyPlan(), data.date, data.dir === "up" ? -1 : 1);

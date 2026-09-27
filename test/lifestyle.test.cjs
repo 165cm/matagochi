@@ -905,6 +905,25 @@ test("eating out moves the bought dinners back a day; neighbours can swap", () =
   assert.equal(run("state.mealSlots[addDays(today(),3)].status+state.mealSlots[addDays(today(),3)].kind+(state.mealSlots[addDays(today(),4)]?.status||'none')"), "offdelinone", "without shifting, the dinner is dropped");
 });
 
+test("eating out on a weekday rhythm carries Friday's dinner into next week, bought and off the list", () => {
+  const run = app();
+  run(`state.onboarded=true;handleDailyAction("life-rhythm",{preset:"weekday"});globalThis.B=currentBlocks();handleDailyAction("life-confirm",{block:B[0].key});state.shopDone={...(state.shopDone||{}),[B[0].key]:nowIso()}`);
+  const b = JSON.parse(run("JSON.stringify(B.map(x=>x.dates))"));
+  const fri = run(`state.mealSlots["${b[0][b[0].length - 1]}"].recipe.title`);
+  run(`skipDate="${b[0][1]}"`);
+  assert.match(run(`renderSkipPanel("${b[0][1]}")`), new RegExp(`「${fri}」は<b>[^<]+</b>に持ち越し`), "the panel says where Friday's dinner goes");
+  run(`handleDailyAction("life-skip-kind",{date:"${b[0][1]}",kind:"out",shift:"true"})`);
+  const mon = JSON.parse(run(`JSON.stringify(state.mealSlots["${b[1][0]}"])`));
+  assert.equal(mon.recipe.title, fri, "Friday's dinner is next Monday's");
+  assert.ok(mon.bought && mon.status === "confirmed");
+  assert.match(run("renderDailyPlan()"), /↪ [^<]+の分を持ち越し/);
+  const plan = JSON.parse(run(`JSON.stringify(dailyPlan().filter(d=>${JSON.stringify(b[1])}.includes(d.date)).map(d=>d.slot?"slot":d.candidate?"new":"-"))`));
+  assert.deepEqual(plan, ["slot", "new", "new", "new", "new"], "next week starts with the carried dinner and fills the rest");
+  assert.equal(run(`dailyShopping().filter(i=>i.status==="buy"&&(i.uses||[]).includes("${fri}")).length`), 0, "not on any shopping list again");
+  run(`handleDailyAction("life-skip-kind",{date:"${b[0][2]}",kind:"deli",shift:"true"})`);
+  assert.equal(run(`[0,1].map(i=>state.mealSlots[${JSON.stringify(b[1])}[i]]?.bought?"c":"-").join("")`), "cc", "a second night out carries one more");
+});
+
 test("定番フォルダ: one dish, many ways; once a week, pinned weekdays, a top-5 ranking", () => {
   const run = app();
   assert.equal(run('dishNameOf("【悪魔の】レンジで明太子パスタ｜リュウジのバズレシピ")'), "明太子パスタ");

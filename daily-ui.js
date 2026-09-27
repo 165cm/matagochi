@@ -419,7 +419,7 @@ function renderDailyPlan() {
       if (!recipe)
         return `<article class="plan-card"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>🤔</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">条件に合う候補がありません</strong><p class="plan-time">時間・食材・器具をゆるめるか、レシピを追加してください。</p>${dailyButton("life-profile", "条件を確認")}</div></article>`;
       const status = day.slot?.status === "cooked" ? "作った" : day.slot ? "確定" : "";
-      const note = (day.slot?.movedFrom ? `${formatDate(day.slot.movedFrom)}からずらしました` : "") || planReason(day) || (bothLike(recipe) ? "ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe));
+      const note = carryNote(day.slot) || planReason(day) || (bothLike(recipe) ? "ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe));
       const minutes = recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
       // 「⋯」はカードの下にメニューを開く（カードの外にはみ出すと、スマホでは押せない）。
       const more = day.slot?.status === "cooked" || isViewer() ? "" : `<button type="button" class="plan-icon plan-more-btn" data-action="life-more" data-date="${day.date}" aria-expanded="${moreDate === day.date}" aria-label="${dateLabel}のその他の操作">${moreDate === day.date ? "×" : "⋯"}</button>`;
