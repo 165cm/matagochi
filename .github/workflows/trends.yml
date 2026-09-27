@@ -24,6 +24,8 @@ jobs:
               https://matagochi-api-292190013809.us-central1.run.app/api/trends/refresh || echo '{}')
             echo "Round $i: $out"
             echo "$out" | grep -q '"done":true' && exit 0
+            echo "$out" | grep -q '"paused"' && { echo "AIの今日の枠を利用者に残すため、続きは明日。"; exit 0; }
             echo "$out" | grep -q '"busy":true' && sleep 60
+            sleep 5
           done
           echo "Not finished yet; the next run continues."
