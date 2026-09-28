@@ -133,7 +133,7 @@ function profileSummary(p) {
 }
 // ベータ版の目印：いまは晩ごはんだけ（朝ごはん・お弁当はこれから）。
 const betaBadge = () => `<span class="beta-badge">ベータ版 <i>for 晩ごはん</i></span>`;
-const betaNote = () => `<p class="beta-note">${betaBadge()}<span>朝ごはん・お弁当は準備中です。</span></p>`;
+const betaNote = () => `<p class="beta-note">${betaBadge()}${tip("朝ごはん・お弁当は準備中です")}</p>`;
 function renderWelcome() {
   document.body.classList.add("is-onboarding");
   // 質問の前に、何ができるアプリかを見せる（文脈がわかってから答えてもらう）。
@@ -540,7 +540,7 @@ function renderToday() {
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
   return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div>
-    ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", `${servings}人分`, bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
+    ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
     ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-skip" data-date="${today()}">🍽 今日は外食・中食にする</button>` : ""}</div>` : ""}</section>
   ${renderSkipPanel(today())}
@@ -568,7 +568,7 @@ function renderTodayTodos() {
   const toBuy = dailyShopping().filter((i) => i.status === "buy").length;
   const shopToday = rhythmOn() && shoppingBlock() && shoppingBlock().shopAt.slice(0, 10) <= today();
   if (toBuy && (shopToday || !rhythmOn())) rows.push(`<div class="todo-row"><span>🛒</span><p>買うもの <b>あと${toBuy}品</b></p>${dailyButton("go-view", "リストへ", 'data-view="shopping"')}</div>`);
-  if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>料理スキル試験</b>（10問）で、作れる料理だけの献立に</p>${dailyButton("life-quiz-start", "受ける")}</div>`);
+  if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>スキル試験</b>（10問）→ 作れる料理だけに</p>${dailyButton("life-quiz-start", "受ける")}</div>`);
   else if (examReady()) rows.push(`<div class="todo-row"><span>🎖</span><p><b>★${skillProfile().level + 1}の昇級試験</b>が受けられます（5問）</p>${dailyButton("life-exam-start", "受ける")}</div>`);
   if (!state.foodProfile?.completed) rows.push(`<div class="todo-row"><span>✍️</span><p>好みとキッチンを教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`);
   return rows.length ? `<section class="today-todos" aria-label="今日やること"><h3 class="section-title"><span class="marker">今日やること</span></h3>${rows.join("")}</section>` : "";
@@ -696,12 +696,12 @@ function renderCooking() {
   const meta = [`${servings}人分`, recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分（炊飯は別）` : "時間は未確認", recipe.planning?.equipment?.length ? `器具：${recipe.planning.equipment.join("・")}` : ""].filter(Boolean).join(" · ");
   const primary = slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った！", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : "";
   return `<section class="hero-card cooking-card"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p></div></div>
-  <details class="cooking-safety"><summary>⚠️ 市販品の原材料と、中までの火の通りを確認してください</summary><p class="small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p></details>
+  <details class="cooking-safety"><summary>⚠️ 原材料・火の通りを確認</summary><p class="small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p></details>
   ${renderCreatorCredit(recipe)}
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
-  <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま・" : ""}そろえたらタップ</small></h3><ul class="cooking-ingredients cooking-check">${recipe.ingredients.map((i, index) => `<li><label>${cookingCheck("ingredient", index, recipe, servings)}<span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></label></li>`).join("")}</ul>
-  <h3>作り方 <small class="muted">終わったらタップ${timecodeHintHtml(recipe, "・")}</small></h3><ol class="cooking-steps cooking-check" data-steps-of="${escapeAttr(recipe.id)}">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${stepTimeSlot(recipe, index)}${escapeHtml(st)}</span></label></li>`).join("")}</ol>${timeFixBar(recipe)}
+  <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま・" : ""}タップで✓</small></h3><ul class="cooking-ingredients cooking-check">${recipe.ingredients.map((i, index) => `<li><label>${cookingCheck("ingredient", index, recipe, servings)}<span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></label></li>`).join("")}</ul>
+  <h3>作り方 <small class="muted">タップで✓${timecodeHintHtml(recipe, "・")}</small></h3><ol class="cooking-steps cooking-check" data-steps-of="${escapeAttr(recipe.id)}">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${stepTimeSlot(recipe, index)}${escapeHtml(st)}</span></label></li>`).join("")}</ol>${timeFixBar(recipe)}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
 // ----- 記録の編集（食べた日・次に食べたい頃・写真・メモ） -----
@@ -1357,8 +1357,8 @@ function renderPlanningFields() {
   const confirm = ai
     ? (restricted.length ? `<label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified ? "checked" : ""}>食べられないもの（${escapeHtml(restricted.join("・"))}）が入っていないか、材料と市販品の表示を確認した</label>` : "")
     : `<label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified && p.conditionsConfirmed?"checked":""}>材料・市販品の表示と、上の条件を確認した</label>
-  <p class="muted small">わからなければ未確認のまま保存できます。自動の献立には使わず、入れ替え時に確認します。</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button>`;
-  return `<section id="planning-panel" class="planning-panel ${ai ? "is-ai" : ""}">${ai ? '<input id="planning-ai" type="hidden" value="1">' : ""}<h3>${ai ? "🤖 献立に使う条件" : "🍳 献立に使う条件"}</h3><p class="muted small">${ai ? "AIが材料と作り方から判定しました。違っていたら、ここで直せます。" : "材料と手順から読み取りました。違うところだけ直してください。"}</p>
+  <p class="muted small">わからなければ未確認でOK ${tip("未確認のレシピは自動の献立に使わず、入れ替える時に確認します")}</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button>`;
+  return `<section id="planning-panel" class="planning-panel ${ai ? "is-ai" : ""}">${ai ? '<input id="planning-ai" type="hidden" value="1">' : ""}<h3>${ai ? "🤖 献立に使う条件" : "🍳 献立に使う条件"}</h3><p class="muted small">${ai ? "AIが判定" : "材料と手順から判定"}・違う所だけ直す</p>
   <div class="planning-row"><span>時間</span><div class="planning-options">${[10,15,20,30,45,60].map(n=>`<button type="button" class="choice-button" data-planning-minute="${n}" aria-pressed="${p.minutes===n}">${n}分</button>`).join("")}</div></div>
   <div class="planning-row"><span>手間</span><div class="planning-options"><input id="planning-easy" type="hidden" value="${p.easy===true?"true":p.easy===false?"false":""}"><button type="button" class="choice-button" data-planning-easy="true" aria-pressed="${p.easy===true}">😊 かんたん</button><button type="button" class="choice-button" data-planning-easy="false" aria-pressed="${p.easy===false}">🍳 手間をかける</button></div></div>
   <dl class="planning-summary"><div><dt>器具</dt><dd data-planning-summary="equipment">${escapeHtml(summary.equipment)}</dd></div><div><dt>含む食材</dt><dd data-planning-summary="contains">${escapeHtml(summary.contains)}</dd></div><div><dt>作業</dt><dd data-planning-summary="tasks">${escapeHtml(summary.tasks)}</dd></div></dl>
@@ -1666,11 +1666,11 @@ function renderFunnelStep(key) {
         ${lossVideo("table")}
         <figcaption class="lv-over" aria-hidden="true"><span class="lv-label">捨てる食材 年${c.kg}kg</span><b class="lv-num">ちゃぶ台返し <span data-count="${flips}">${flips}</span>回分</b><span class="lv-sub">${kgLine}・3割は「傷んだ・期限切れ」</span></figcaption>
       </figure>
-    </div><p class="funnel-turn">ここから、<b>これからのこと</b>を決めましょう →</p>${funnelSource}`];
+    </div><p class="funnel-turn">次は、<b>これから</b>のこと →</p>${funnelSource}`];
   }
   if (key === "remind") {
     const r = rhythmReminder();
-    return [`🔔 決める日を、忘れないように`, `<div class="remind-card"><p class="rc-when">毎週 <b>${escapeHtml(r.label)}</b></p><p class="small">「献立を決めて、買い物へ」を、くり返しの予定として入れておきましょう。</p></div>
+    return [`🔔 決める日を、忘れないように`, `<div class="remind-card"><p class="rc-when">毎週 <b>${escapeHtml(r.label)}</b></p></div>
       <div class="remind-options">
         ${pushState() === "off" ? `<button type="button" class="remind-button is-push" data-action="life-push-on" ${pushBusy ? "disabled" : ""}><span aria-hidden="true">🔔</span>${pushBusy ? "準備しています…" : "通知でお知らせ（おすすめ）"}</button>` : pushState() === "on" ? '<p class="remind-done">🔔 通知はオンです</p>' : ""}
         <button type="button" class="remind-button" data-action="life-remind-google"><span aria-hidden="true">🗓</span>Googleカレンダーに追加</button>
@@ -1682,31 +1682,29 @@ function renderFunnelStep(key) {
 
   if (key === "eaters") {
     const on = new Set(p.eaters || []);
-    return [`👨‍👩‍👧 いま、一緒に食べるのは？`, `<p class="small">あてはまるものを、ぜんぶ選んでください。</p><div class="funnel-picks is-grid2">${EATERS.map(([id, icon, label]) => `<button type="button" class="funnel-pick" data-action="life-eater" data-value="${id}" aria-pressed="${on.has(id)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${escapeHtml(label)}</button>`).join("")}</div>`];
+    return [`👨‍👩‍👧 いま、一緒に食べるのは？`, `<p class="small">複数OK</p><div class="funnel-picks is-grid2">${EATERS.map(([id, icon, label]) => `<button type="button" class="funnel-pick" data-action="life-eater" data-value="${id}" aria-pressed="${on.has(id)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${escapeHtml(label)}</button>`).join("")}</div>`];
   }
   if (key === "equipment") {
     const eq = p.equipment;
     const chip = (name) => `<button type="button" class="tool-chip" data-action="life-equipment-toggle" data-name="${escapeAttr(name)}" aria-pressed="${eq[name] === "have"}">${escapeHtml(name)}</button>`;
-    return [`🍳 いま、キッチンにあるものは？`, `<p class="small">持っている道具だけで作れる料理を選びます。</p><h3 class="quick-sub">基本（ない物だけ外す）</h3><div class="tool-chips">${["コンロ", "電子レンジ", "フライパン", "鍋"].map(chip).join("")}</div><h3 class="quick-sub">あると使う（ある物をタップ）</h3><div class="tool-chips">${OPTIONAL_TOOLS.map(chip).join("")}</div>`];
+    return [`🍳 いま、キッチンにあるものは？`, `<p class="small">持っている道具で作れる料理だけ出します</p><h3 class="quick-sub">基本（ない物だけ外す）</h3><div class="tool-chips">${["コンロ", "電子レンジ", "フライパン", "鍋"].map(chip).join("")}</div><h3 class="quick-sub">あると使う（ある物をタップ）</h3><div class="tool-chips">${OPTIONAL_TOOLS.map(chip).join("")}</div>`];
   }
   if (key === "ratio") return [`🗓 いまの1週間、晩ごはんはどうしてる？`, renderRatioStep(p)];
   if (key === "staple") return [`🍚 晩ごはんで、よく食べる主食は？`, renderStapleStep(p)];
   if (key === "chains") return [`🏪 晩ごはんを外で食べるなら、どこ？`, renderChainStep(p)];
   if (key === "priority") return [`🎯 晩ごはんで、いちばん大事なのは？`, renderPriorityStep(p)];
   if (key === "type") { const r = cookTypeOf(p); return [`🎴 あなたの晩ごはんタイプ`, r ? renderCookTypeCard(r) : `<p>答えが足りないので、タイプはあとで診断できます。</p>`]; }
-  if (key === "videos") return [`📱 保存したレシピ動画、実際に作ったのは？`, `<div class="funnel-picks">${VIDEOS.map((x) => funnelPick("savedVideos", x, p.savedVideos)).join("")}</div><p class="muted small">YouTube・インスタ・TikTokで「保存」したままの料理、ありませんか？</p>`];
+  if (key === "videos") return [`📱 保存したレシピ動画、実際に作ったのは？`, `<div class="funnel-picks">${VIDEOS.map((x) => funnelPick("savedVideos", x, p.savedVideos)).join("")}</div>`];
   if (key === "demo") return renderFunnelDemo();
   if (key === "picks") return renderFunnelPicks();
   if (key === "commit") {
     const lines = PLEDGES[p.goal] || PLEDGES.time;
     const read = pledgeCount;
     return [`あなたの宣言`, `<div class="pledge" role="group" aria-label="宣言">
-      <p class="pl-kicker">あなたの宣言</p>
       <p class="pl-text">${lines.map((l) => `<span>${escapeHtml(l)}</span>`).join("")}</p>
       <p class="pl-guide">声に出して（心の中でも）、ゆっくり<b>3回</b>。<br>1回読むごとに、指を置いてください。</p>
       <button type="button" class="funnel-hold is-print is-pledge" data-hold="900" data-pledge="1" aria-label="読んだら、指を置いて長押し（${read} / 3）"><span class="fh-ring" aria-hidden="true"></span>${FINGERPRINT}</button>
-      <p class="pl-dots" aria-live="polite">${[0, 1, 2].map((k) => `<i class="${k < read ? "is-on" : ""}"></i>`).join("")}<span>${read} / 3</span></p>
-      <button type="button" class="pl-back" data-action="life-quick-back">戻る</button></div>`];
+      <p class="pl-dots" aria-live="polite">${[0, 1, 2].map((k) => `<i class="${k < read ? "is-on" : ""}"></i>`).join("")}<span>${read} / 3</span></p></div>`];
   }
   if (key === "building") return [`🍳 あなた専用の献立を、つくっています`, `<div class="funnel-building"><p class="fb-pct" aria-live="polite">0%</p><progress max="100" value="0" aria-label="作成中"></progress><ul class="fb-list">${buildingLines(p).map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`];
   return ["", ""];
@@ -1854,7 +1852,7 @@ function renderSkillStep() {
     : `<button type="button" class="skill-part quiz-start" data-action="life-quiz-start"><span aria-hidden="true">📝</span><b>スキル試験</b><small>10問・4択の知識問題</small></button>`;
   const both = sp?.quizLevel && sp?.photoLevel;
   const total = sp?.diagnosed ? `<div class="skill-total"><p class="st-label">${both ? "写真 ＋ テストの総合" : "いまの判定（もう片方もやると、より正確に）"}</p><p class="quiz-stars">${Skills.stars(sp.level)}</p><p class="st-name">${SKILL_TYPES[sp.level].name}</p>${both ? '<p class="cc-badge">✓ 写真とテストで診断ずみ・ぴったり度 高</p>' : ""}</div>` : "";
-  return `<p class="small">写真とテスト、<b>両方やるとぴったり度が上がります</b>。作れない料理は献立に入りません。</p>
+  return `<p class="small">作れる料理だけ出します ${tip("写真とテスト、両方やると精度が上がります")}</p>
     <div class="skill-parts">${renderPhotoJudge()}${quiz}</div>${total}
     <details class="skill-self" ${sp && !sp.diagnosed ? "open" : ""}><summary>どちらもしないで、自分で選ぶ</summary><div class="skill-picks">${levels}</div></details>`;
 }
@@ -1886,12 +1884,12 @@ function renderQuickSetup() {
   const rhythmNow = state.rhythm?.preset || "weekday";
   const content = [
     `<div class="funnel-picks is-servings">${SERVINGS.map(([n, label]) => `<button type="button" class="funnel-pick" data-action="life-servings" data-count="${n}" aria-pressed="${Number(p.servings) === n}"><span class="fp-icon" aria-hidden="true">${"🧑".repeat(Math.min(n, 4))}${n >= 5 ? "＋" : ""}</span>${label}</button>`).join("")}</div>`,
-    `<p class="small">決める日と買い物の日が、曜日で決まります。</p><div class="rhythm-options">${Object.entries(RHYTHMS).map(([id, r]) => `<button type="button" class="rhythm-option" data-action="life-rhythm" data-preset="${id}" aria-pressed="${rhythmNow === id}"><strong>${r.label}${id === "weekday" ? "（おすすめ・習慣にしやすい）" : ""}</strong><small>${r.note}</small></button>`).join("")}</div><label class="rhythm-time">買い物の時間（まとまりの前日）<select id="rhythm-time" class="input">${SHOP_TIMES.map((t) => `<option ${(state.rhythm?.shopTime || "17:00") === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>`,
+    `<div class="rhythm-options">${Object.entries(RHYTHMS).map(([id, r]) => `<button type="button" class="rhythm-option" data-action="life-rhythm" data-preset="${id}" aria-pressed="${rhythmNow === id}"><strong>${r.label}${id === "weekday" ? " ⭐おすすめ" : ""}</strong><small>${r.note}</small></button>`).join("")}</div><label class="rhythm-time">買い物の時間（まとまりの前日）<select id="rhythm-time" class="input">${SHOP_TIMES.map((t) => `<option ${(state.rhythm?.shopTime || "17:00") === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>`,
     renderSkillStep(),
-    `${renderTimeDial(p.weekdayMinutes)}<p class="muted small">ぐるっと回して決められます。炊飯の時間は別です。</p>`,
+    `${renderTimeDial(p.weekdayMinutes)}<p class="muted small">炊飯の時間は別</p>`,
     `<h3 class="quick-sub">アレルギー・食べられないもの</h3><div class="profile-options">${Lifestyle.restrictionOptions.map((n) => optionInput("restrictions", n, n, true)).join("")}</div>
      <h3 class="quick-sub">苦手なもの・一覧にない食材</h3><div class="profile-options">${COMMON_DISLIKES.map((n) => optionInput("dislikes", n, n, true)).join("")}</div>${chipField("dislikes", "ほかにあれば入力（例：キウイ）")}
-     <p class="muted small">選んだもの・入力したものを材料に含む料理は、献立に入りません。<b>市販品（たれ・加工品）の原材料</b>は、作る前に確かめてください。</p>`,
+     <p class="muted small">選んだ食材の料理は出しません ${tip("市販品（たれ・加工品）の原材料は、作る前に確かめてください")}</p>`,
   ][key];
   const titles = ["🍽️ 何人分つくる？", "🗓 これからの献立、どのリズムで決める？", "🔪 いまの料理スキルは？", "🌙 これからの平日の夜ごはん、何分で作りたい？", "🔎 食べられないもの・苦手なものは？"];
   shell(titles[key], content, key === 0 ? "" : nextButton);

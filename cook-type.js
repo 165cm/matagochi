@@ -56,7 +56,7 @@ const ratioTotal = (r) => RATIO_KINDS.reduce((s, k) => s + (Number(r[k.id]) || 0
 
 // ① いまの1週間：平日5回・休日2回の晩ごはんを、自炊・外食・テイクアウト・デリバリーに振り分ける。
 function renderRatioStep(p) {
-  return `<p class="small">だいたいでOK。平日と休日に分けて、振り分けてください。</p>${RATIO_PARTS.map((part) => {
+  return `<p class="small">だいたいでOK</p>${RATIO_PARTS.map((part) => {
     const r = partOf(p, part.id);
     const plates = RATIO_KINDS.flatMap((k) => Array.from({ length: r[k.id] }, () => `<i style="--c:${k.color}" title="${k.label}">${k.icon}</i>`)).join("");
     // 見出しの横に、その回数ぶんのお皿。下に4つの枠（アイコンと名前、− 回数 ＋）。
@@ -77,12 +77,12 @@ function changeRatio(p, partId, kind, delta) {
 // ② よく食べる主食（複数OK）
 function renderStapleStep(p) {
   const on = new Set(p.staples || []);
-  return `<p class="small">あてはまるものを、ぜんぶ。</p><div class="funnel-picks is-grid2 staple-picks">${STAPLES.map(([id, icon, label]) => `<button type="button" class="funnel-pick" data-action="life-staple" data-value="${id}" aria-pressed="${on.has(id)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${label}</button>`).join("")}</div>`;
+  return `<p class="small">複数OK</p><div class="funnel-picks is-grid2 staple-picks">${STAPLES.map(([id, icon, label]) => `<button type="button" class="funnel-pick" data-action="life-staple" data-value="${id}" aria-pressed="${on.has(id)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${label}</button>`).join("")}</div>`;
 }
 // ③ 外食するなら？（駅前のお店をタップ・3つまで）
 function renderChainStep(p) {
   const on = new Set(p.chains || []);
-  return `<p class="small">入りたいお店を、<b>3つまで</b>タップ。</p><div class="chain-grid">${CHAINS.map((c) => `<button type="button" class="chain-tile" data-action="life-chain" data-value="${c.id}" aria-pressed="${on.has(c.id)}" ${!on.has(c.id) && on.size >= 3 ? "disabled" : ""}><span aria-hidden="true">${c.icon}</span><b>${escapeHtml(c.name)}</b><small>${escapeHtml(c.genre)}</small></button>`).join("")}</div><p class="muted small">お店の名前は、選びやすさのためだけに使っています。</p>`;
+  return `<p class="small"><b>3つまで</b></p><div class="chain-grid">${CHAINS.map((c) => `<button type="button" class="chain-tile" data-action="life-chain" data-value="${c.id}" aria-pressed="${on.has(c.id)}" ${!on.has(c.id) && on.size >= 3 ? "disabled" : ""}><span aria-hidden="true">${c.icon}</span><b>${escapeHtml(c.name)}</b><small>${escapeHtml(c.genre)}</small></button>`).join("")}</div><p class="muted small">${tip("お店の名前は、選びやすさのためだけに使っています")}</p>`;
 }
 // ④ いちばん大事なこと
 function renderPriorityStep(p) {
@@ -95,7 +95,7 @@ function renderPhotoJudge() {
   const s = skillPhoto;
   if (s.status === "loading") return `<div class="demo-wait"><p class="dw-stage" aria-live="polite">${WAIT_STAGES_PHOTO[0]}</p><div class="dw-bar"><i></i></div><div class="dw-tip" aria-live="polite"><small>待っている間に、ひとこと</small><p>${WAIT_TIPS[3]}</p></div></div>`;
   if (s.status === "done") { const r = s.result; return `<div class="skill-part is-done"><p class="sp-head">📸 写真 <b>${Skills.stars(r.level)}</b></p><p class="pj-dish">${escapeHtml(r.dish)}</p>${r.techniques.length ? `<p class="pj-tech">${r.techniques.map((t) => `<i>${escapeHtml(t)}</i>`).join("")}</p>` : ""}${r.comment ? `<p class="pj-comment">${escapeHtml(r.comment)}</p>` : ""}<button type="button" class="link-inline" data-action="life-photo-retry">別の写真で</button></div>`; }
-  return `<label class="skill-part photo-drop"><input type="file" accept="image/*" id="skill-photo" hidden><span aria-hidden="true">📸</span><b>作った料理の写真</b><small>AIが腕前を見ます。写真はこの端末にだけ残ります</small></label>${s.status === "error" ? `<p class="form-error small">${escapeHtml(s.message)}</p>` : ""}`;
+  return `<label class="skill-part photo-drop"><input type="file" accept="image/*" id="skill-photo" hidden><span aria-hidden="true">📸</span><b>作った料理の写真</b><small>AIが腕前を判定・写真は端末だけ</small></label>${s.status === "error" ? `<p class="form-error small">${escapeHtml(s.message)}</p>` : ""}`;
 }
 const WAIT_STAGES_PHOTO = ["写真を見ています", "焼き色と切り方を見ています", "腕前を計算しています"];
 function bindPhotoJudge() {

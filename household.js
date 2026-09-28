@@ -873,11 +873,11 @@ function renderWeekBoard() {
 function boardHint() {
   const v = isViewer();
   const until = decidedUntil();
-  const untilText = until ? `<b>${formatDate(until)}（${weekdayLabel(until)}）</b>まで決まってるよ` : "";
+  const untilText = until ? `✓ <b>${formatDate(until)}（${weekdayLabel(until)}）</b>まで決定` : "";
   if (!rhythmOn()) {
     const phase = roundPhase();
     if (phase === "open") return v ? `<b>${deadlineLabel()}</b>までに🙋で送ってね（${timeLeftLabel()}）` : `<b>${deadlineLabel()}</b>の買い物まで受付中（${timeLeftLabel()}）`;
-    return v ? untilText || "献立を準備中" : `${untilText ? untilText + "。" : ""}<button type="button" class="text-button" data-action="life-rhythm-open">献立のリズムを決める ›</button>`;
+    return v ? untilText || "献立を準備中" : `${untilText}${state.rhythm?.dismissed ? ` <button type="button" class="text-button" data-action="life-rhythm-open">リズムを決める ›</button>` : ""}`;
   }
   const b = planningBlock();
   const shop = shoppingBlock();
@@ -908,7 +908,7 @@ function renderRhythmSettings(first = false) {
 }
 function renderRhythmInvite() {
   if (rhythmOn() || isViewer() || state.rhythm?.dismissed) return "";
-  return `<section class="rhythm-invite"><p><b>献立のリズムを決めよう</b><br><small>おすすめ：平日5日（月〜金・土日はお休み）、買い物は前日17:00</small></p><div class="actions">${dailyButton("life-rhythm", "これではじめる", 'data-preset="weekday"', true)}${dailyButton("life-rhythm-open", "ほかを選ぶ")}</div></section>`;
+  return `<section class="rhythm-invite"><p><b>献立のリズムを決めよう</b><br><small>⭐ 平日5日・買い物は前日17:00</small></p><div class="actions">${dailyButton("life-rhythm", "これではじめる", 'data-preset="weekday"', true)}${dailyButton("life-rhythm-open", "ほかを選ぶ")}</div></section>`;
 }
 function handleRhythmAction(action, data) {
   if (action === "life-week") { boardWeek = Math.max(-2, Math.min(1, boardWeek + (Number(data.delta) || 0))); calPick = ""; }

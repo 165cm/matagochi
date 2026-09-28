@@ -119,8 +119,8 @@ function creatorAvatar(r) {
 function renderFunnelPicks() {
   const picks = new Set(profileDraft().picks || []);
   const list = funnelPickCandidates();
-  const tiles = list.map((r) => `<button type="button" class="pick-tile is-mag" data-action="life-funnel-dish" data-recipe="${escapeAttr(r.id)}" aria-pressed="${picks.has(r.id)}"><span class="pick-photo">${dishTile(r)}${r.discover?.kind === "trend" ? '<span class="pick-badge">新着</span>' : ""}<i class="pick-check" aria-hidden="true"></i></span><span class="pick-title">${escapeHtml(r.title)}</span>${r.author ? `<span class="pick-creator">${creatorAvatar(r)}<span>${escapeHtml(shortCreatorName(r.author))}</span></span>` : '<span class="pick-creator is-starter">リピごちの定番</span>'}${r.catch ? `<span class="pick-blurb">${escapeHtml(r.catch)}</span>` : `<span class="pick-facts">${dishFacts(r).map((x) => `<i>${escapeHtml(x)}</i>`).join("")}</span>`}</button>`).join("");
-  return [`😋 気になる料理を、選んで`, `<p class="small">選んだ料理は保存して、最初の献立に入れます。</p><div class="pick-grid is-mag">${tiles || '<p class="muted small">読み込んでいます…</p>'}</div>`];
+  const tiles = list.map((r) => `<button type="button" class="pick-tile is-mag" data-action="life-funnel-dish" data-recipe="${escapeAttr(r.id)}" aria-pressed="${picks.has(r.id)}"><span class="pick-photo">${dishTile(r)}${r.discover?.kind === "trend" ? '<span class="pick-badge">新着</span>' : ""}<i class="pick-check" aria-hidden="true"></i></span><span class="pick-title">${escapeHtml(r.title)}</span>${r.author ? `<span class="pick-creator">${creatorAvatar(r)}<span>${escapeHtml(shortCreatorName(r.author))}</span></span>` : ""}${r.catch ? `<span class="pick-blurb">${escapeHtml(r.catch)}</span>` : `<span class="pick-facts">${dishFacts(r).map((x) => `<i>${escapeHtml(x)}</i>`).join("")}</span>`}</button>`).join("");
+  return [`😋 気になる料理を、選んで`, `<p class="small">最初の献立に入ります</p><div class="pick-grid is-mag">${tiles || '<p class="muted small">読み込んでいます…</p>'}</div>`];
 }
 function finishFunnelPicks() {
   const ids = profileDraft().picks || [];
