@@ -69,13 +69,15 @@ function normalizeFreePicks(raw) {
   if (!raw || typeof raw !== "object") return {};
   return Object.fromEntries(Object.entries(raw).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && Array.isArray(v)).map(([k, v]) => [k, v.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, FREE_DAYS)]));
 }
-// ── 表示
-const LOCK_TITLE = "🔒 プラスなら毎日の献立";
-function renderLockedCard(day, dateLabel, badge) {
-  const recipe = day.candidate?.recipe;
-  return `<article class="plan-card is-locked"><button type="button" class="plan-photo plan-main" data-action="life-plus-open" data-from="locked" aria-label="${dateLabel}はプラスで献立が入ります">${recipe ? dishTile(recipe) : ""}<span class="lock-veil" aria-hidden="true">🔒</span>${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">${LOCK_TITLE}</strong><p class="plan-time">無料は1週間に3日分まで</p><div class="plan-controls"><button type="button" class="plan-icon" data-action="life-free-pick" data-date="${day.date}">3日に入れる</button><button type="button" class="plan-icon" data-action="life-plus-open" data-from="locked">✨ プラス</button></div></div></article>`;
+// ── 表示（文字は最小限。説明はⓘに入れる）
+const LOCK_TITLE = "🔒 今夜はプラスの日";
+const WD_SHORT = ["日", "月", "火", "水", "木", "金", "土"];
+// 続いているロックの日を1行にまとめる：「🔒 木 金 土 日 ⓘ　✨ 毎日にする」。曜日を押すと無料の3日と入れ替え。
+function renderLockStrip(dates) {
+  const days = dates.map((d) => `<button type="button" class="lock-day" data-action="life-free-pick" data-date="${d}" aria-label="${formatDate(d)}を無料の日にする">${WD_SHORT[dow(d)]}</button>`).join("");
+  return `<div class="lock-strip"><span class="lock-days" aria-hidden="true">🔒</span>${days}${tip("無料は週3日まで。曜日をタップで入れ替え")}<button type="button" class="lock-plus" data-action="life-plus-open" data-from="locked">✨ 毎日にする</button></div>`;
 }
-// 3日を使い切った週に、1回だけ出す案内（閉じたら、その週は出さない）。
+// 3日を使い切った週に、1回だけ出す1行（×で、その週は出さない）。
 function renderFreeUsedCard(plan = dailyPlan()) {
   if (!gatingOn() || plusActive() || isViewer()) return "";
   const locked = lockedDates(plan);
@@ -85,19 +87,15 @@ function renderFreeUsedCard(plan = dailyPlan()) {
   let seen = "";
   try { seen = localStorage.getItem("ripigochi-free-used") || ""; } catch {}
   if (used < FREE_DAYS || !lockedThisWeek || seen === w) return "";
-  return `<section class="panel plus-nudge"><p><b>今週の無料3日分、決まりました 🎉</b><small>あと${lockedThisWeek}日も、プラスなら毎日の献立が決まります。</small></p><div class="plus-nudge-actions">${dailyButton("life-plus-open", "プラスを見る", 'data-from="used"', true)}<button type="button" class="text-button" data-action="life-free-used-close" data-week="${w}">閉じる</button></div></section>`;
+  return `<div class="plus-nudge"><span>🎉 無料3日 決定・🔒あと${lockedThisWeek}日</span><button type="button" class="lock-plus" data-action="life-plus-open" data-from="used">✨ プラス</button><button type="button" class="tk-close" data-action="life-free-used-close" data-week="${w}" aria-label="閉じる">×</button></div>`;
 }
-// チケットが足りない時の案内（チケットの画面の中）。
+// チケットが足りない時の1行（チケットの画面の中）。
 function renderTicketPlusLine() {
   if (!gatingOn() || plusActive()) return "";
-  return `<button type="button" class="text-button tk-plus-line" data-action="life-plus-open" data-from="tickets">✨ プラスなら4週ごとにチケット30枚 ›</button>`;
+  return `<button type="button" class="text-button tk-plus-line" data-action="life-plus-open" data-from="tickets">✨ プラスなら30枚／4週 ›</button>`;
 }
-const PLUS_FROM = {
-  locked: { kicker: "毎日の献立は、プラスで", title: "1週間ぜんぶ、<br>献立が決まる" },
-  used: { kicker: "今週の3日分、決まりました", title: "のこりの日も、<br>献立におまかせ" },
-  tickets: { kicker: "チケットが足りない時も", title: "4週ごとに、<br>チケット30枚" },
-};
-const PLUS_PERKS = ["🗓 毎日の献立（無料は週3日分まで）", "🎟 4週ごとにチケット30枚（60枚まで貯められる）", "👫 同期している家族みんなで使える", "🔕 いつでもアプリから解約できる"];
+const PLUS_FROM = { locked: "🔒 毎日の献立はプラスで", used: "🎉 今週の3日分、決定！", tickets: "🎟 チケットが足りない？" };
+const PLUS_PERKS = [["🗓", "毎日の献立"], ["🎟", "30枚／4週"], ["👫", "家族で共有"], ["🔕", "いつでも解約"]];
 function openPlus(from) {
   if (!PLUS_FROM[from]) return;
   paywall = { plan: "year", from };

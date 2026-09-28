@@ -77,13 +77,14 @@ test('a locked day can be swapped into the 3; the plan confirms only free days',
 test('plus unlocks every day; the locked card and the upsell sheet', () => {
   const run = app();
   setup(run);
-  assert.match(run('renderDailyPlan()'), /プラスなら毎日の献立/);
+  assert.match(run('renderDailyPlan()'), /lock-strip/);
+  assert.equal((run('renderDailyPlan()').match(/class="lock-strip"/g) || []).length, run('(() => { const p = dailyPlan(), l = lockedDates(p); return p.filter((d, i) => l.has(d.date) && !(i > 0 && l.has(p[i - 1].date))).length; })()'), 'one line for each run of locked days');
   run('state.plus = { until: addDays(today(), 10) }');
   assert.equal(run('lockedDates().size'), 0);
-  assert.doesNotMatch(run('renderDailyPlan()'), /プラスなら毎日の献立/);
+  assert.doesNotMatch(run('renderDailyPlan()'), /lock-strip/);
   run('state.plus = null; handleDailyAction("life-plus-open", { from: "locked" })');
   const sheet = run('renderPaywall()');
-  assert.match(sheet, /毎日の献立は、プラスで/);
+  assert.match(sheet, /毎日の献立はプラスで/);
   assert.match(sheet, /600円/);
   assert.match(sheet, /6,000円/);
   assert.match(sheet, /利用規約/);

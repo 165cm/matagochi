@@ -89,9 +89,9 @@ function renderWeeklyStamps() {
   let foot;
   if (weeklyBusy === start) foot = '<p class="stamp-note" role="status">🎨 献立表を描いています…（1分ほど）</p>';
   else if (made.length) foot = `<div class="stamp-actions">${dailyButton("life-menu-open", "🍽 メニューを見る", `data-key="${escapeAttr(menuKey(made[0]))}"`, true)}${MENU_ENABLED ? dailyButton("life-menu-setup", "別の画風でも", `data-week="${start}"`) : ""}</div>`;
-  else if (r.complete && !MENU_ENABLED) foot = '<p class="stamp-note">🎉 今週の晩ごはん、写真でコンプ！ おつかれさまでした。</p>';
+  else if (r.complete && !MENU_ENABLED) foot = '<p class="stamp-note">🎉 コンプ！</p>';
   else if (r.complete) foot = dailyButton("life-menu-setup", `🎉 メニューにする <small>🎟${MENU_TICKETS}枚</small>`, `data-week="${start}"`, true);
-  else foot = `<p class="stamp-note">${noPhoto ? "📷 のマスをタップして写真を足すと、スタンプになります。" : `あと${left}日、作った料理の写真でコンプ。${MENU_ENABLED ? "<b>カフェ風の献立表</b>が作れます。" : ""}`}</p>`;
+  else foot = `<p class="stamp-note">${noPhoto ? "📷 をタップで写真を追加" : `あと${left}日でコンプ`}</p>`;
   return `<section class="panel stamp-card" aria-label="${last ? "先週" : "今週"}のスタンプ">
     <div class="stamp-head"><b>📸 ${last ? "先週" : "今週"}のスタンプ</b><span class="stamp-count${r.complete ? " is-comp" : ""}">${r.complete ? "コンプ！ " : ""}${r.got}/${r.target}</span></div>
     <div class="stamp-row">${cells}</div>${foot}${weeklyError && !menuSetup ? `<p class="form-error">${escapeHtml(weeklyError)}</p>` : ""}</section>`;
