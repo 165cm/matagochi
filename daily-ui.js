@@ -453,7 +453,7 @@ function renderDailyPlan() {
     return head + html + foot;
   }).join("");
   const ready = plan.filter((d) => d.candidate && !locks.has(d.date)).length;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${renderTicketNudge("plan")}${renderRhythmInvite()}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderShareInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${renderTicketNudge("plan")}${renderRhythmInvite()}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderShareInvite()}`;
 }
 let swapShowAll = false;
 // 好きの度合い（評価）：「明日でも」がいちばん。家族の中でいちばん低い評価で比べる。
@@ -588,7 +588,7 @@ function renderToday() {
   const tomorrow = plan[1];
   const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
-  return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt() || renderRatingNudge()}
+  return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt() || renderRoundReview()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div>
     ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", /好物|日ぶり/.test(reason) ? "" : bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
@@ -649,29 +649,54 @@ function raterNames() {
   if (dailyProfile().servings >= 2 && names.length < 2) names.push("いっしょに食べた人");
   return names;
 }
-// ⭐ 評価まち：作ってから7日以内で、まだ評価していない人がいる料理（いちばん新しい1品）。
-function ratingNudge() {
-  const from = addDays(today(), -7);
+// ⭐ まとめて評価：作った料理は、献立のひと回りが終わった時にまとめて評価する（毎日は聞かない）。
+// 並べて比べられるように、全部の料理を1枚に。人ごとにタブで切り替える。
+const REVIEW_DAYS = 14, REVIEW_MAX = 7;
+let reviewWho = "", reviewLater = false;
+const reviewSeen = new Set(); // 表示中に評価し終えた料理も、比べられるように並べたままにする
+function reviewPending({ withSeen = false } = {}) {
+  const from = addDays(today(), -REVIEW_DAYS);
   const names = raterNames();
   return state.evaluations
-    .filter((e) => e.preferencePending && !e.nudgeDismissed && e.id !== preferencePromptId && (e.cookedAt || "") >= from)
-    .map((e) => ({ e, missing: names.filter((n) => !e.familyRepeatCycles?.[n]) }))
-    .filter((x) => x.missing.length)
-    .sort((a, b) => b.e.cookedAt.localeCompare(a.e.cookedAt))[0] || null;
+    .filter((e) => (e.cookedAt || "") >= from && ((withSeen && reviewSeen.has(e.id)) || (e.preferencePending && !e.nudgeDismissed && names.some((n) => !e.familyRepeatCycles?.[n]))))
+    .sort((a, b) => a.cookedAt.localeCompare(b.cookedAt))
+    .slice(-REVIEW_MAX);
 }
-function renderRatingNudge() {
-  const x = ratingNudge();
-  if (!x || isViewer()) return "";
-  const { e, missing } = x;
-  const solo = raterNames().length <= 1;
-  const who = missing.length === 1 ? missing[0] : "みんな";
-  const rows = missing.map((name) => renderCyclePicker(name, "", (cycle) => `data-action="life-rate" data-id="${escapeAttr(e.id)}" data-member="${escapeAttr(name)}" data-cycle="${cycle}"`)).join("");
-  return `<section class="panel rate-card rate-nudge${missing.length === 1 ? " is-one" : ""}" role="region" aria-label="評価まち"><div class="rate-nudge-head"><h3>⭐ ${solo ? "" : `${escapeHtml(who)}の`}評価まだ</h3><button type="button" class="round-icon" data-action="life-rate-dismiss" data-id="${escapeAttr(e.id)}" aria-label="閉じる">×</button></div>
-    <p class="muted small">${escapeHtml(e.recipeTitle)} · ${dayWordFor(e.cookedAt)}</p>${rows}
-    ${solo ? "" : `<button type="button" class="text-button" data-action="life-rate-ask" data-id="${escapeAttr(e.id)}">💬 ${escapeHtml(who)}に聞いてみる</button>`}</section>`;
+// ひと回りの終わり：これから作る確定の献立が残っていない。または3品以上たまって、今夜の分は作り終えた。
+function reviewDue(pending = reviewPending()) {
+  if (!pending.length || reviewLater) return false;
+  const t = today();
+  const slots = Object.values(state.mealSlots || {});
+  const upcoming = slots.some((s) => s.status === "confirmed" && s.date >= t);
+  const tonight = state.mealSlots?.[t];
+  return !upcoming || (pending.length >= 3 && (!tonight || tonight.status === "cooked"));
 }
-async function askRating(e) {
-  const text = `🍳 ${e.recipeTitle}（${formatDate(e.cookedAt)}）\n次はいつ食べたい？\n明日でも／毎週／月2回／月1回／しばらくいい`;
+const REVIEW_CHOICES = [["tomorrow", "😍", "明日でも"], ["weekly", "😋", "毎週"], ["twice_month", "🙂", "月2回"], ["monthly", "😌", "月1回"], ["pause", "💤", "しばらく"], ["never", "🙅", "もう"]];
+function renderRoundReview({ where = "today" } = {}) {
+  if (isViewer()) return "";
+  const open = reviewPending();
+  if (!open.length || (where === "today" && !reviewDue(open))) { reviewSeen.clear(); return ""; }
+  const pending = reviewPending({ withSeen: true });
+  pending.forEach((e) => reviewSeen.add(e.id));
+  const names = raterNames();
+  const solo = names.length <= 1;
+  const done = (n) => pending.every((e) => e.familyRepeatCycles?.[n]);
+  if (!names.includes(reviewWho) || done(reviewWho)) reviewWho = names.find((n) => !done(n)) || names[0];
+  const who = reviewWho;
+  const tabs = solo ? "" : `<div class="rv-tabs" role="tablist">${names.map((n) => `<button type="button" role="tab" class="rv-tab" data-action="life-review-who" data-member="${escapeAttr(n)}" aria-selected="${n === who}">${done(n) ? "✓ " : ""}${escapeHtml(n)}</button>`).join("")}</div>`;
+  const rows = pending.map((e) => {
+    const r = recipeById(e.recipeId) || { id: e.recipeId, title: e.recipeTitle, ingredients: [] };
+    const cur = e.familyRepeatCycles?.[who];
+    return `<li class="rv-row"><div class="rv-dish">${planThumb(r)}<span><b>${escapeHtml(e.recipeTitle)}</b><small>${formatDate(e.cookedAt)}（${weekdayLabel(e.cookedAt)}）</small></span></div>
+      <div class="rv-chips" role="group" aria-label="${escapeAttr(`${who}：${e.recipeTitle}を次に食べたい頃`)}">${REVIEW_CHOICES.map(([c, icon, label]) => `<button type="button" class="rv-chip" data-action="life-rate" data-batch="1" data-id="${escapeAttr(e.id)}" data-member="${escapeAttr(who)}" data-cycle="${c}" aria-pressed="${cur === c}"><span aria-hidden="true">${icon}</span><small>${label}</small></button>`).join("")}</div></li>`;
+  }).join("");
+  const ask = solo ? "" : `<button type="button" class="text-button" data-action="life-rate-ask">💬 LINEなどで聞く</button>`;
+  return `<section class="panel rv-card" role="region" aria-label="まとめて評価"><div class="rv-head"><h3>⭐ ${where === "plan" ? "前回" : "今回"}の${pending.length}品、また食べたい？ ${tip("比べながら、次に食べたい頃を。評価は次の献立に効きます")}</h3><button type="button" class="round-icon" data-action="life-review-later" aria-label="あとで">×</button></div>
+    ${tabs}<ul class="rv-list">${rows}</ul>${ask}</section>`;
+}
+async function askRating() {
+  const list = reviewPending().map((e) => `・${e.recipeTitle}`).join("\n");
+  const text = `🍳 最近の晩ごはん、次はいつ食べたい？\n${list}\n（明日でも／毎週／月2回／月1回／しばらくいい）`;
   const url = `${location.origin}${location.pathname}`;
   try {
     if (navigator.share) { await navigator.share({ text, url }); return; }
@@ -911,7 +936,6 @@ function dailyRecord(slot) {
   const id = `meal-${slot.date}`;
   if (!state.evaluations.some((e) => e.id === id)) {
     const before = cookStats();
-    preferencePromptId = id;
     state.evaluations.unshift({
       id,
       recipeId: own.id,
@@ -1262,8 +1286,9 @@ function handleDailyAction(action, data) {
     state.view = "today";
   }
   if (action === "life-frequency-close") preferencePromptId = "";
-  if (action === "life-rate-dismiss") { const e = state.evaluations.find((x) => x.id === data.id); if (e) { e.nudgeDismissed = true; e.updatedAt = nowIso(); } }
-  if (action === "life-rate-ask") { const e = state.evaluations.find((x) => x.id === data.id); if (e) askRating(e); return true; }
+  if (action === "life-review-who") reviewWho = data.member || "";
+  if (action === "life-review-later") { reviewLater = true; showToast("献立を決める時に、また出します"); }
+  if (action === "life-rate-ask") { askRating(); return true; }
   if (action === "life-rate") {
     const e = state.evaluations.find(e=>e.id===data.id);
     if (e?.preferencePending && CYCLE_CHOICES.some(r=>r.cycle===data.cycle) && raterNames().includes(data.member)) {
@@ -1272,8 +1297,8 @@ function handleDailyAction(action, data) {
       e.updatedAt = nowIso();
       trackDaily("meal_rated");
       const left = raterNames().filter((n) => !e.familyRepeatCycles[n]);
-      if (left.length && preferencePromptId !== e.id) showToast(`👍 あとは${left.length === 1 ? left[0] : `${left.length}人`}の分`);
-      if (!left.length) {
+      if (!left.length && data.batch) { e.personalPreference = true; e.preferencePending = false; if (!reviewPending().length) showToast("🎉 評価しました。次の献立に反映します"); }
+      else if (!left.length) {
         e.personalPreference = true; e.preferencePending = false;
         preferencePromptId = "";
         showToast(bothLike({id:e.recipeId}) ? "ふたりとも好き！ちょうどいい頃に、また提案します。" : "記録しました。えらんだ頃に、また提案します。");
