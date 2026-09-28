@@ -49,11 +49,12 @@ test('eat-out days do not count and dish names come from the record', () => {
 
 test('menu album is normalized, capped and kept out of sync', () => {
   const run = app();
-  const album = Array.from({ length: 15 }, (_, i) => ({ id: `2026-0${1 + (i % 9)}-0${1 + (i % 7)}`, mode: i % 2 ? 'each' : 'one', total: 5, days: [{ date: '2026-09-28', dish: 'カレー' }], art: [PHOTO], at: '' }));
+  const album = Array.from({ length: 15 }, (_, i) => ({ id: `2026-0${1 + (i % 9)}-0${1 + (i % 7)}`, style: i % 2 ? 'anime' : 'nope', total: 5, days: [{ date: '2026-09-28', dish: 'カレー' }], art: [PHOTO], at: '' }));
   album.push({ id: 'bad', art: [PHOTO] }, { id: '2026-09-28', art: ['https://x'] });
   run(`state = normalizeState({ ...clone(demoState), menuAlbum: ${JSON.stringify(album)} })`);
   assert.equal(run('state.menuAlbum.length'), 12);
-  assert.equal(run('state.menuAlbum[1].mode'), 'each');
+  assert.equal(run('state.menuAlbum[1].style'), 'anime');
+  assert.equal(run('state.menuAlbum[0].style'), 'watercolor', 'unknown styles fall back');
   assert.equal(run('"menuAlbum" in buildSyncPayload()'), false);
 });
 
@@ -62,9 +63,9 @@ test('stamp card shows the make button only when complete, and the badge follows
   setupWeek(run, ['photo', 'photo', 'photo', 'none', 'none', 'none', 'none']);
   run('state.menuAlbum = []');
   const html = run('renderWeeklyStamps()');
-  assert.match(html, /life-menu-make/);
+  assert.match(html, /life-menu-setup/);
   assert.match(html, /3\/3/);
   assert.equal(run('cookStats().comp'), true);
   setupWeek(run, ['photo', 'cooked', 'planned', 'none', 'none', 'none', 'none']);
-  assert.doesNotMatch(run('renderWeeklyStamps()'), /life-menu-make/);
+  assert.doesNotMatch(run('renderWeeklyStamps()'), /life-menu-setup/);
 });

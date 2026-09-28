@@ -8,7 +8,7 @@ import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawIllustration, drawWeeklyMenu } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawIllustration, drawMenuDish, describeMenu } from "./analyzer.js";
 import { createIllustrator, createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createPushDesk } from "./push.js";
@@ -50,7 +50,7 @@ export function createApp(env = process.env, deps = {}) {
   const illustrator = createIllustrator(recipeStore, { draw: deps.drawIllustration || ((image, dish) => drawIllustration(image, dish, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
-  const weeklyMenu = createWeeklyMenu(recipeStore, { drawOne: deps.drawWeeklyMenu || ((images, dishes) => drawWeeklyMenu(images, dishes, env)), drawEach: deps.drawIllustration || ((image, dish) => drawIllustration(image, dish, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
+  const weeklyMenu = createWeeklyMenu(recipeStore, { drawDish: deps.drawMenuDish || ((image, dish, opts) => drawMenuDish(image, dish, opts, env)), describe: deps.describeMenu || ((dishes) => describeMenu(dishes, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
@@ -131,8 +131,8 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     const unlimited = unlimitedOf(req);
     try {
-      const { mode, images, wallet } = await weeklyMenu.make(req.body || {}, householdOf(req), { unlimited });
-      res.json({ mode, images, tickets: wallet ? tickets.view(wallet, unlimited) : await ticketsView(req) });
+      const { style, images, notes, wallet } = await weeklyMenu.make(req.body || {}, householdOf(req), { unlimited });
+      res.json({ style, images, notes, tickets: wallet ? tickets.view(wallet, unlimited) : await ticketsView(req) });
     } catch (error) {
       const { status, body } = toErrorResponse(error);
       res.status(status).json({ ...body, ...(error.wallet ? { tickets: tickets.view(error.wallet, unlimited) } : {}) });

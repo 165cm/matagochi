@@ -3595,6 +3595,24 @@ button.stamp { cursor: pointer; }
 .menu-actions > * { flex: 1 1 0; }
 .album-row { display: grid; grid-auto-flow: column; grid-auto-columns: 30%; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
 .album-tile { display: grid; gap: 4px; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
-.album-tile img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 12px; }
+.album-art { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 6px; aspect-ratio: 4 / 5; align-content: center; border-radius: 12px; background: var(--paper, #faf5ec); box-shadow: inset 0 0 0 1px var(--line); }
+.album-art img { width: 100%; aspect-ratio: 1; object-fit: cover; mix-blend-mode: multiply; }
 .album-tile small { font-size: 11px; color: var(--muted); }
 .menu-album { margin-bottom: 18px; }
+.menu-setup { gap: 12px; overflow-y: auto; }
+.menu-setup .menu-top b { font-size: 17px; }
+.style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.style-card { display: grid; justify-items: start; gap: 2px; padding: 10px 12px; border: 2px solid transparent; border-radius: 16px; background: var(--paper); color: var(--ink); font: inherit; text-align: left; cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.style-card span { font-size: 22px; line-height: 1.2; }
+.style-card b { font-size: 15px; color: var(--accent); }
+.style-card small { font-size: 11.5px; opacity: .75; }
+.style-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 6px 16px rgba(90, 60, 30, .14); }
+.menu-wish { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.wish-chips, .menu-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.wish-chip, .opt-chip { padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.opt-chip[aria-pressed="true"] { border-color: var(--sage); background: #fde9e2; color: var(--sage-dark); font-weight: 700; }
+.opt-chip[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
+.menu-name { font-size: 14px; }
+.menu-sheet .primary-button small { font-size: 12px; opacity: .85; }
+.menu-sheet { overflow-y: auto; }
+.menu-frame img { max-height: calc(100dvh - 250px); }
