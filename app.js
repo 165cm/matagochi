@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-rate";
+const APP_VERSION = "20260928-easy";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1096,7 +1096,7 @@ function renderRecipeEntry() {
       ${playlistAvailable ? '<button class="text-button paste-inline" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加</button>' : ""}
       </div>
       ${state.fetchStatus ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
-      ${canReadDraftVideo() ? `<button type="button" class="secondary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>${draftVideoBusy ? "動画を読んでいます…（最大2分）" : `🎬 動画から作り方を読む${ticketPrice()}`}</button>` : ""}
+      ${canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>${draftVideoBusy ? "動画を読んでいます…（最大2分）" : `🎬 動画から作り方を読む${ticketPrice()}`}</button>` : ""}
     </section>`;
   return `${entry}
     ${!editing && entryMethod === "image" ? renderImageImport() : ""}
@@ -1152,7 +1152,7 @@ function renderSourceServingsPicker() {
     <input id="source-servings" type="hidden" value="${escapeAttr(n ?? "")}">
     <p><b>元のレシピは何人分？</b>${n != null && state.draft.servingsDetected ? '<small>動画から読み取り</small>' : ""}</p>
     <div class="servings-options" role="group" aria-label="元のレシピの人数">${options.map((k) => `<button type="button" class="choice-button" data-action="set-source-servings" data-count="${k}" aria-pressed="${n === k}">${k}</button>`).join("")}<button type="button" class="choice-button" data-action="set-source-servings" data-count="" aria-pressed="${n == null}">不明</button></div>
-    ${n == null ? `<p class="servings-warn">不明だと分量を合わせられません ${tip("動画の「材料（◯人分）」を確かめてください")}</p>` : ""}
+    ${n == null ? `<p class="servings-warn">わかれば選ぶ ${tip("選ぶと、家族の人数に合わせて分量を直します。不明なら分量はそのまま")}</p>` : ""}
   </div>`;
 }
 
@@ -2473,17 +2473,15 @@ async function handleAction(event) {
       const result = await importRecipeFromYouTube(importingUrl);
       if (state.draft.videoUrl !== importingUrl) return;
       applyImportedRecipe(result);
-      state.fetchStatus = !state.extractedSteps.length && result.videoSkipped
-        ? "説明文に作り方がありませんでした。AIが動画を見て読み取れます（チケット1枚）。あとで献立から読んでもOK。"
-        : result.analysis?.ok === false
-        ? `${state.extractedSteps.length ? "AIでの読み取りに失敗したため、説明文から直接読み取りました。材料と作り方を確かめてください。" : "説明文から作り方を見つけられませんでした。材料は説明文から入れています。"}`
-        : result.analyzedFrom === "video-clip"
-          ? "説明文に作り方がなかったので、動画の最初の10分の音声と画面から読み取りました。材料と作り方を確かめてください。"
-          : result.analyzedFrom === "video"
-          ? "説明文に作り方がなかったので、動画の音声と画面から読み取りました。材料と作り方を確かめてください。"
-          : `${result.cacheHit ? "分析済みのレシピを再利用しました。" : "YouTubeの説明文から材料メモを作成しました。"} 保存前に内容を確認してください。`;
+      // 伝えることだけ短く。作り方がない時は、すぐ下の「🎬 動画から読む」へ。
+      state.fetchStatus = !state.extractedSteps.length
+        ? "📝 説明欄に作り方がありません。🎬 で動画から読めます（あとで献立からでもOK）"
+        : result.analyzedFrom === "video-clip" || result.analyzedFrom === "video"
+          ? "🎬 動画から読み取りました。確かめて保存"
+          : result.analysis?.ok === false
+          ? "📝 説明欄から読み取りました。確かめて保存"
+          : result.cacheHit ? "✅ 読み取り済みのレシピです。確かめて保存" : "✅ 読み取りました。確かめて保存";
       saveState();
-      showToast("材料メモを作成しました。");
     } catch (error) {
       if (state.draft.videoUrl !== importingUrl) return;
       state.fetchStatus = `${error.message || "読み取れませんでした。"} 動画の説明文をコピーして「出典・メモ・本文」の説明文欄に貼ると、そこから読み取れます。`;
@@ -2683,14 +2681,15 @@ async function handleAction(event) {
     if (!state.draft.planning) state.draft.planning = Lifestyle.suggestPlanning({ingredients:state.extractedIngredients,steps:state.extractedSteps});
     trackDaily("recipe_saved");
     const planning = state.draft.planning;
-    if (state.draft.mealType === "dinner" && !saveUnreviewed && !isViewer() &&
-        (!planning?.conditionsConfirmed || !planning.minutes || planning.easy == null ||
-         !(planning.equipment?.length || planning.noEquipment) || !planning.ingredientsVerified)) {
+    // 「確認した」にチェックしていなければ、未確認のまま保存する（止めない）。チェックしたのに条件が欠けている時だけ知らせる。
+    const unchecked = !planning?.conditionsConfirmed || !planning?.ingredientsVerified;
+    if (state.draft.mealType === "dinner" && !saveUnreviewed && !isViewer() && !unchecked &&
+        (!planning.minutes || planning.easy == null || !(planning.equipment?.length || planning.noEquipment))) {
       showToast("献立に使う時間・器具・食材区分を確認してください。未確認のまま保存することもできます。");
       document.querySelector("#planning-panel")?.scrollIntoView({block:"start",behavior:"smooth"});
       return;
     }
-    if ((saveUnreviewed || isViewer()) && planning) { planning.conditionsConfirmed=false; planning.ingredientsVerified=false; }
+    if ((saveUnreviewed || isViewer() || unchecked) && planning) { planning.conditionsConfirmed=false; planning.ingredientsVerified=false; }
     const ingredients = clone(state.extractedIngredients);
     const originalIngredients = state.originalIngredients.length ? clone(state.originalIngredients) : clone(ingredients);
     const steps = state.extractedSteps;
@@ -3408,7 +3407,7 @@ function parseIngredients(caption) {
     return ingredient(name, amount, category);
   }).filter((item) => item.name);
 
-  return parsed.length ? parsed : [ingredient("材料メモ", "キャプションを確認", "その他")];
+  return parsed;
 }
 
 // numberedOnly：サーバーが手順なしと判断した説明文から、感想や宣伝を手順として拾わない。

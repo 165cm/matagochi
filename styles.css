@@ -2704,8 +2704,8 @@ body.has-page-title .page-title { display: block; }
 .servings-pick p small { margin-left: 6px; color: var(--sage-dark, #3f7a35); font-weight: 700; }
 .servings-options { display: flex; gap: 4px; flex-wrap: wrap; }
 .servings-options .choice-button { min-width: 40px; min-height: 36px; padding: 0 8px; }
-.servings-pick.is-unknown { background: #fff0ee; border: 1.5px solid #e2574c; }
-.servings-warn { margin: 6px 0 0 !important; color: #c0392b; font-size: 12px !important; font-weight: 700; }
+.servings-pick.is-unknown { background: var(--surface-soft); }
+.servings-warn { margin: 6px 0 0 !important; color: var(--muted); font-size: 12px !important; }
 .ingredient-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; }
 .ingredient-head h3 { margin: 0; font-size: 15px; }
 .ingredient-head h3 small { font-size: 11px; font-weight: 700; }
