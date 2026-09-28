@@ -14,12 +14,13 @@ const CookMode = (() => {
     return base + (half ? (unit === "時間" ? 1800 : unit === "分" ? 30 : 0) : 0) + (sec ? Number(sec) : 0);
   }
   // 手順の文（エスケープ済みにして返す）。時間の所をタイマーのボタンにする。
-  function stepHtml(step, label = "") {
+  // thumb：料理モードでは「⏰3分👍」（👍 の合図でも始められる）。
+  function stepHtml(step, label = "", { thumb = false } = {}) {
     const text = escapeHtml(String(step || "").normalize("NFKC"));
     return text.replace(TIME, (m, a, _b, unit, half, sec) => {
       const s = seconds(a, unit, half, sec);
       if (!s || s > MAX) return m;
-      return `<button type="button" class="cook-timer-chip" data-cook-timer="${s}" data-label="${escapeAttr(label || String(step).slice(0, 16))}" aria-label="${escapeAttr(`${m}のタイマーを始める`)}">⏱${m}</button>`;
+      return `<button type="button" class="cook-timer-chip" data-cook-timer="${s}" data-label="${escapeAttr(label || String(step).slice(0, 16))}" aria-label="${escapeAttr(`${m}のタイマーを始める`)}">⏰${m}${thumb ? '<i class="g" data-g="Thumb_Up" aria-hidden="true">👍</i>' : ""}</button>`;
     });
   }
   const timesIn = (step) => [...String(step || "").normalize("NFKC").matchAll(TIME)].map((m) => seconds(m[1], m[3], m[4], m[5])).filter((s) => s && s <= MAX);
@@ -180,9 +181,9 @@ const CookMode = (() => {
       const seg = segment(at);
       const origin = globalThis.location?.origin ? `&origin=${encodeURIComponent(location.origin)}` : "";
       el.innerHTML = `<div class="cm-video ${recipe.shorts ? "is-shorts" : ""}">${hasVideo() ? `<iframe src="https://www.youtube.com/embed/${recipe.videoId}?playsinline=1&rel=0&enablejsapi=1&autoplay=1${seg ? `&start=${Math.floor(seg.start)}` : ""}${origin}" title="レシピ動画" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` : '<div class="cm-novideo">🍳</div>'}</div>
-        <div class="cm-side"><div class="cm-top"><b class="cm-count"></b><span class="cm-title">${escapeHtml(recipe.title || "")}</span><button type="button" class="cm-close" data-cook-mode="close" aria-label="料理モードを閉じる">✕</button></div>
+        <div class="cm-side"><div class="cm-top"><b class="cm-count"></b><span class="cm-title">${escapeHtml(recipe.title || "")}</span><span class="cm-hand"></span><button type="button" class="cm-close" data-cook-mode="close" aria-label="料理モードを閉じる">✕</button></div>
           <div class="cm-dots" aria-hidden="true"></div><div class="cm-body"></div></div>
-        <div class="cm-foot"><div class="cm-hand"></div><div class="cm-nav"><button type="button" class="secondary-button" data-cook-mode="prev">◀ 前へ</button>${hasVideo() ? '<button type="button" class="cm-loop" data-cook-mode="loop"></button>' : ""}<button type="button" class="primary-button" data-cook-mode="next"></button></div></div>`;
+        <div class="cm-foot"><div class="cm-nav"><button type="button" class="secondary-button" data-cook-mode="prev">◀ 前へ<i class="g" data-g="Victory" aria-hidden="true">✌️</i></button>${hasVideo() ? '<button type="button" class="cm-loop" data-cook-mode="loop"></button>' : ""}<button type="button" class="primary-button" data-cook-mode="next"></button></div></div>`;
       document.body.append(el);
       document.body.classList.add("cook-mode-open");
       frame = el.querySelector("iframe");
@@ -197,12 +198,12 @@ const CookMode = (() => {
     const amount = recipe.amountOf || ((x) => x.amount || "");
     const usesList = [...u.items.map((x) => `<li><span>${escapeHtml(x.name)}</span><b>${escapeHtml(amount(x))}</b></li>`),
       ...u.groups.map((g) => `<li class="cm-group"><p>🥣 ${escapeHtml(groupLabel(g.group))}</p><ul>${g.items.map((x) => `<li><span>${escapeHtml(x.name)}</span><b>${escapeHtml(amount(x))}</b></li>`).join("")}</ul></li>`)].join("");
-    el.querySelector(".cm-body").innerHTML = `<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`)}</p>
+    el.querySelector(".cm-body").innerHTML = `<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`, { thumb: true })}</p>
       ${showAll ? `<div class="cm-uses is-all"><p class="cm-uses-head">📋 材料ぜんぶ <button type="button" class="link-inline" data-cook-mode="uses">この手順だけ</button></p>${ingredientsHtml(recipe.ingredients, amount, "cm-list")}</div>`
         : `<div class="cm-uses">${usesList ? `<p class="cm-uses-head">🥄 この手順で使う <button type="button" class="link-inline" data-cook-mode="all">ぜんぶ</button></p><ul class="cm-list">${usesList}</ul>` : `<p class="cm-uses-head">🥄 <button type="button" class="link-inline" data-cook-mode="all">材料をぜんぶ見る</button></p>`}</div>`}`;
     el.querySelector('[data-cook-mode="prev"]').disabled = at === 0;
     drawHand();
-    el.querySelector('[data-cook-mode="next"]').textContent = last ? "✓ できた！" : "次へ ▶";
+    el.querySelector('[data-cook-mode="next"]').innerHTML = `${last ? "✓ できた！" : "次へ ▶"}<i class="g" data-g="Open_Palm" aria-hidden="true">✋</i>`;
     const loopBtn = el.querySelector(".cm-loop");
     if (loopBtn) { const seg = segment(at); loopBtn.disabled = !seg; loopBtn.textContent = seg ? (loop ? "🔁 くり返す" : "➡️ 流す") : "▶ 場面なし"; loopBtn.setAttribute("aria-pressed", String(loop && !!seg)); }
     if (!first) seekTo(at);
@@ -319,22 +320,26 @@ const CookMode = (() => {
     const f = document.createElement("div"); f.className = "hg-flash"; f.textContent = text; box.append(f);
     setTimeout(() => f.remove(), 900);
   }
+  // ✋ のオン・オフは見出しの ✕ の左。合図は各ボタンの中の絵文字（◀ 前へ✌️・次へ ▶✋・⏰3分👍）。
   function drawHand() {
-    const box = document.querySelector("#cook-mode .cm-hand");
+    const el = document.getElementById("cook-mode");
+    const box = el?.querySelector(".cm-hand");
     if (!box) return;
-    const legend = Object.entries(GESTURES).map(([k, g]) => `<i data-g="${k}">${g.icon}<small>${g.label}</small></i>`).join("");
-    const privacy = typeof tip === "function" ? tip("カメラの映像はスマホの中だけで使い、外には送りません。料理モードを閉じると止まります") : "";
-    box.className = `cm-hand is-${hand.status}`;
-    box.innerHTML = hand.status === "loading" ? `<span class="cm-hand-msg">⏳ 手の認識を準備中…（初回だけ数MB）</span>`
-      : `<button type="button" class="cm-hand-btn" data-cook-mode="hand" aria-pressed="${hand.on}" aria-label="${hand.on ? "手で操作をやめる" : "手の形で操作する"}">✋<span class="hb-text">${hand.on ? " 手で操作中" : " 手で操作"}</span></button><span class="cm-hand-legend" aria-label="手の形の合図">${legend}</span>${privacy}${hand.status === "error" ? `<span class="cm-hand-msg is-error">📷 ${escapeHtml(hand.msg)}</span>` : ""}`;
+    el.classList.toggle("hand-on", hand.on && hand.status === "ready");
+    const privacy = typeof tip === "function" ? tip("✋ 手の形で操作：✋次へ・✌️戻る・👍タイマー。カメラの映像はスマホの中だけで使い、外には送りません") : "";
+    box.innerHTML = `<button type="button" class="cm-hand-btn" data-cook-mode="hand" aria-pressed="${hand.on}" aria-label="${hand.on ? "手で操作をやめる" : "手の形で操作する"}" ${hand.status === "loading" ? "disabled" : ""}>${hand.status === "loading" ? "⏳" : "✋"}</button>${privacy}`;
+    el.querySelector(".cm-video .hg-wait")?.remove();
+    if (hand.status === "loading") { const w = document.createElement("div"); w.className = "hg-flash hg-wait"; w.textContent = "⏳ 手の認識を準備中…（初回だけ数MB）"; el.querySelector(".cm-video")?.append(w); }
+    if (hand.status === "error" && hand.msg) { flash(`📷 ${hand.msg}`); hand.msg = ""; }
     drawHandLive();
   }
-  // いま見えている形を光らせ、見せ続けた長さをバーで出す。
+  // いま見えている形のボタンを光らせ、見せ続けた長さをバーで出す。
   function drawHandLive() {
-    document.querySelectorAll("#cook-mode .cm-hand-legend i").forEach((i) => {
-      const on = hand.on && i.dataset.g === hand.name;
-      i.classList.toggle("is-seen", on);
-      i.style.setProperty("--hold", on ? String(Math.min(1, hand.n / HOLD_FRAMES)) : "0");
+    document.querySelectorAll("#cook-mode [data-g]").forEach((g) => {
+      const btn = g.closest("button") || g;
+      const on = hand.on && g.dataset.g === hand.name;
+      btn.classList.toggle("is-seen", on);
+      btn.style.setProperty("--hold", on ? String(Math.min(1, hand.n / HOLD_FRAMES)) : "0");
     });
   }
 

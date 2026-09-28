@@ -3815,7 +3815,7 @@ body.cook-mode-open { overflow: hidden; }
 .cm-close { flex: none; border: 0; background: var(--surface); border-radius: 999px; width: 38px; height: 38px; font-size: 17px; cursor: pointer; }
 .cm-dots { display: flex; gap: 3px; margin: 6px 0 0; }
 .cm-dots i { flex: 1; height: 4px; border-radius: 99px; background: var(--line); }
-.cm-dots i.is-done { background: #8fc27f; } .cm-dots i.is-now { background: var(--tomato); }
+.cm-dots i.is-done { background: #b7aea3; } .cm-dots i.is-now { background: var(--tomato); }
 .cm-step { margin: 10px 0; font-size: clamp(19px, 5.2vw, 24px); line-height: 1.6; font-weight: 700; color: var(--ink); }
 .cm-uses { margin-top: auto; padding: 8px 12px; border-radius: 14px; background: #fff7e8; }
 .cm-uses-head { margin: 0 0 4px; font-size: 12.5px; font-weight: 800; color: #7a5a1c; display: flex; gap: 8px; align-items: center; }
@@ -3837,13 +3837,6 @@ body.cook-mode-open { overflow: hidden; }
   .cm-side { grid-column: 2; }
   .cm-foot { grid-column: 2; }
   .cm-nav { padding: 4px 8px 8px; }
-  .cm-hand { padding: 6px 8px 0; }
-  .cm-hand-legend i { padding: 2px 5px; font-size: 14px; }
-  .cm-hand-legend i small { font-size: 10px; }
-  .cm-hand-btn { padding: 5px 9px; font-size: 13px; }
-  .cm-hand-btn .hb-text { display: none; }
-  .cm-hand-legend i { font-size: 15px; }
-  .cm-hand-legend i small { font-size: 11px; }
   .cm-nav button { min-height: 44px; font-size: 14px; }
   .cm-step { font-size: 18px; margin: 6px 0; }
   .cm-list li { font-size: 14px; }
@@ -3854,19 +3847,16 @@ body.cook-mode-open { overflow: hidden; }
 .cook-mode-cta { display: grid; justify-items: end; gap: 2px; flex: none; }
 .cook-mode-cta small { font-size: 11px; color: var(--muted); }
 .cm-video { position: relative; }
-.cm-hand { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px 0; }
-.cm-hand-btn { flex: none; border: 1.5px solid var(--tomato); background: var(--surface); color: var(--tomato); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
-.cm-hand-btn[aria-pressed="true"] { background: var(--tomato); color: #fff; }
-.cm-hand-btn[aria-pressed="true"]::after { content: " ●"; animation: hg-blink 1.2s infinite; }
-@keyframes hg-blink { 50% { opacity: .2; } }
-.cm-hand-legend { display: flex; gap: 4px; flex: 1; min-width: 0; }
-.cm-hand-legend i { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 2px; padding: 3px 8px; border-radius: 10px; background: var(--surface-soft); font-style: normal; font-size: 16px; opacity: .75; }
-.cm-hand-legend i small { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
-.cm-hand.is-ready .cm-hand-legend i { opacity: 1; }
-.cm-hand-legend i::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: calc(var(--hold, 0) * 100%); background: var(--tomato); transition: width .1s linear; }
-.cm-hand-legend i.is-seen { background: #fff0e8; outline: 2px solid var(--tomato); }
-.cm-hand-msg { font-size: 12.5px; color: var(--muted); }
-.cm-hand-msg.is-error { color: #b3443a; flex-basis: 100%; }
+.cm-hand { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.cm-hand-btn { flex: none; width: 38px; height: 38px; border: 1.5px solid var(--tomato); background: var(--surface); border-radius: 999px; font-size: 18px; cursor: pointer; padding: 0; }
+.cm-hand-btn[aria-pressed="true"] { background: var(--tomato); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 30%, transparent); animation: hg-glow 1.6s infinite; }
+@keyframes hg-glow { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--tomato) 12%, transparent); } }
+/* 合図の絵文字：ボタンの中。✋ がオンの時ははっきり、オフの時は控えめに */
+i.g { font-style: normal; margin-left: 4px; opacity: .45; }
+#cook-mode.hand-on i.g { opacity: 1; }
+#cook-mode .cook-timer-chip i.g { margin-left: 2px; }
+#cook-mode .is-seen { position: relative; overflow: hidden; outline: 3px solid var(--tomato); outline-offset: 1px; }
+#cook-mode .is-seen::after { content: ""; position: absolute; left: 0; bottom: 0; height: 4px; width: calc(var(--hold, 0) * 100%); background: #2b2825; transition: width .1s linear; }
 .cm-cam { position: absolute; right: 8px; bottom: 8px; width: 84px; height: 112px; object-fit: cover; border-radius: 12px; border: 2px solid #fff; transform: scaleX(-1); box-shadow: 0 4px 12px rgba(0,0,0,.3); z-index: 2; background: #222; }
 .hg-flash { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; padding: 12px 22px; border-radius: 20px; background: rgba(0,0,0,.72); color: #fff; font-size: 26px; font-weight: 800; white-space: nowrap; animation: hg-pop .9s ease both; pointer-events: none; }
 @keyframes hg-pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.8); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 80% { opacity: 1; } 100% { opacity: 0; } }
