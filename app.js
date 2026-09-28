@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-cook";
+const APP_VERSION = "20260928-cook2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -181,8 +181,8 @@ let syncQueued = false;
 let lastSyncedFingerprint = "";
 let syncRuntimeStatus = "";
 
-function ingredient(name, amount, category) {
-  return { name, amount, category };
+function ingredient(name, amount, category, group = "") {
+  return group ? { name, amount, category, group } : { name, amount, category };
 }
 
 function clone(value) {
@@ -1315,7 +1315,7 @@ function renderServingStepper(servingCount) {
 }
 
 function renderIngredientEditorRow(item, index) {
-  return `<div class="ingredient-editor-row" data-index="${index}" data-category="${escapeAttr(item.category || "")}">
+  return `<div class="ingredient-editor-row" data-index="${index}" data-category="${escapeAttr(item.category || "")}" data-group="${escapeAttr(item.group || "")}">
       <input id="ingredient-name-${index}" class="input ingredient-name-input" data-index="${index}" value="${escapeAttr(item.name)}" placeholder="材料名" aria-label="材料名">
       <input class="input ingredient-amount-select" data-index="${index}" value="${escapeAttr(item.amount)}" placeholder="分量" aria-label="${escapeAttr(item.name)}の分量">
       <button class="ingredient-delete-button" type="button" data-action="remove-ingredient" data-index="${index}" aria-label="${escapeAttr(item.name)}を削除">✕</button>
@@ -3115,7 +3115,7 @@ function captureIngredientEdits() {
       const name = row.querySelector(".ingredient-name-input")?.value.trim() || "";
       const amount = row.querySelector(".ingredient-amount-select")?.value.trim() || "適量";
       const category = row.dataset.category || "その他";
-      return ingredient(name, amount, category);
+      return ingredient(name, amount, category, row.dataset.group || "");
     })
     .filter((item) => item.name);
 }
@@ -3710,7 +3710,7 @@ function applyImportedRecipe(result) {
 function normalizeImportedIngredients(items) {
   if (!Array.isArray(items) || !items.length) return parseIngredients(state.draft.caption);
   return items
-    .map((item) => ingredient(item.name || "", item.amount || "適量", item.category || "その他"))
+    .map((item) => ingredient(item.name || "", item.amount || "適量", item.category || "その他", String(item.group || "").slice(0, 12)))
     .filter((item) => item.name);
 }
 
@@ -3792,8 +3792,14 @@ function scaleAmountForServings(amount, servingCount, sourceServings = 1) {
   });
 }
 
+// 1より小さい量は、レシピでよく使う分数に（0.125→1/8、0.5→1/2、0.33→1/3）。
+const NICE_FRACTIONS = [[1, 8], [1, 4], [1, 3], [1, 2], [2, 3], [3, 4]];
 function formatScaledNumber(value) {
   if (!Number.isFinite(value)) return "";
+  if (value > 0 && value < 1) {
+    const hit = NICE_FRACTIONS.find(([n, d]) => Math.abs(value - n / d) < 0.02);
+    if (hit) return `${hit[0]}/${hit[1]}`;
+  }
   const rounded = Math.round(value * 100) / 100;
   return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/\.?0+$/, "");
 }

@@ -799,7 +799,8 @@ function renderCooking() {
   if (!recipe)
     return `<section class="panel"><h2>料理を選び直してください</h2>${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</section>`;
   const servings = slot?.servings || dailyProfile().servings;
-  CookMode.setSteps(recipe.steps);
+  const amountOf = (x) => scaleAmountForServings(x.amount, servings, recipe.sourceServings);
+  CookMode.setRecipe({ title: recipe.title, steps: recipe.steps, timesOf: () => recipeStepTimes(recipe), videoId: youtubeVideoId(recipe.videoUrl), shorts: /youtube\.com\/shorts\//i.test(recipe.videoUrl || ""), ingredients: recipe.ingredients, amountOf });
   const meta = [`${servings}人分`, recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分（炊飯は別）` : "時間は未確認", recipe.planning?.equipment?.length ? `器具：${recipe.planning.equipment.join("・")}` : ""].filter(Boolean).join(" · ");
   const primary = slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った！", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : "";
   return `<section class="hero-card cooking-card"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p>${CookMode.supported() ? `<p class="wake-chip">🔆 画面つけっぱなし ${tip("作る画面の間は、スマホの画面が消えません")}</p>` : ""}</div></div>
@@ -807,8 +808,8 @@ function renderCooking() {
   ${renderCreatorCredit(recipe)}
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
-  <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま・" : ""}タップで✓</small></h3><ul class="cooking-ingredients cooking-check">${recipe.ingredients.map((i, index) => `<li><label>${cookingCheck("ingredient", index, recipe, servings)}<span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, recipe.sourceServings))}</span></label></li>`).join("")}</ul>
-  <div class="cooking-steps-head"><h3>作り方 <small class="muted">タップで✓${recipe.steps.some((st) => CookMode.timesIn(st).length) ? "・⏱でタイマー" : ""}${timecodeHintHtml(recipe, "・")}</small></h3>${recipe.steps.length ? '<button type="button" class="primary-button cook-focus-open" data-cook-focus="open">▶ 1手順ずつ</button>' : ""}</div><ol class="cooking-steps cooking-check" data-steps-of="${escapeAttr(recipe.id)}">${recipe.steps.map((st, index) => `<li><label>${cookingCheck("step", index, recipe, servings)}<span>${stepTimeSlot(recipe, index)}${CookMode.stepHtml(st, `${index + 1}. ${String(st).slice(0, 12)}`)}</span></label></li>`).join("")}</ol>${timeFixBar(recipe)}
+  <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${CookMode.ingredientsHtml(recipe.ingredients, amountOf)}
+  <div class="cooking-steps-head"><h3>作り方 <small class="muted">${recipe.steps.some((st) => CookMode.timesIn(st).length) ? "⏱でタイマー" : ""}${timecodeHintHtml(recipe, recipe.steps.some((st) => CookMode.timesIn(st).length) ? "・" : "")}</small></h3>${recipe.steps.length ? '<button type="button" class="primary-button cook-mode-open" data-cook-mode="open">🍳 料理モード</button>' : ""}</div><ol class="cooking-steps cook-list" data-steps-of="${escapeAttr(recipe.id)}">${recipe.steps.map((st, index) => `<li><div class="cs-text">${stepTimeSlot(recipe, index)}${CookMode.stepHtml(st, `${index + 1}. ${String(st).slice(0, 12)}`)}</div>${CookMode.usesHtml(st, recipe.ingredients, amountOf)}</li>`).join("")}</ol>${timeFixBar(recipe)}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
 // ----- 記録の編集（食べた日・次に食べたい頃・写真・メモ） -----

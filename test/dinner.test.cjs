@@ -23,7 +23,9 @@ test('dinner plan excludes other meal types and incompatible overrides without d
 test('scales source portions without assuming unknown serves one; qualitative amounts stay intact', () => {
   const run = app();
   assert.equal(run(`scaleAmountForServings('300g', 1, 2)`), '150g');
-  assert.equal(run(`scaleAmountForServings('大さじ1/2', 2, 4)`), '大さじ0.25');
+  assert.equal(run(`scaleAmountForServings('大さじ1/2', 2, 4)`), '大さじ1/4');
+  assert.equal(run(`scaleAmountForServings('1/4個', 1, 2)`), '1/8個');
+  assert.equal(run(`scaleAmountForServings('小さじ1', 1, 2)`), '小さじ1/2');
   assert.equal(run(`scaleAmountForServings('適量', 2, 2)`), '適量');
   assert.equal(run(`scaleAmountForServings('300g', 2, null)`), '300g');
   assert.equal(run(`scaleAmountForServings('300g', 2)`), '600g');

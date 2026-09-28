@@ -119,7 +119,9 @@ function normalizeIngredients(value) {
       name: cleanText(item?.name),
       // 海外の単位（cup・oz など）は日本の単位に。AIが換算し忘れた分の取りこぼし対策。
       amount: localizeAmount(cleanText(item?.amount || "適量")),
-      category: cleanText(item?.category || DEFAULT_CATEGORY)
+      category: cleanText(item?.category || DEFAULT_CATEGORY),
+      // タレ・合わせ調味料など、まとめて使う材料の印（"A"・"☆"・"タレ"）。なければ付けない。
+      ...(cleanText(item?.group) ? { group: cleanText(item.group).slice(0, 12) } : {})
     }))
     .filter((item) => item.name && !NUTRITION.test(`${item.name} ${item.amount}`))
     .slice(0, 20);
