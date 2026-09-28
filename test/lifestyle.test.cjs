@@ -575,7 +575,7 @@ test("rotation: pasta the day before yesterday leads to a rice dish with a frien
   const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, history });
   const first = plan[0].candidate;
   assert.notEqual(L.traits(first.recipe).staple, "noodle");
-  assert.ok(first.reasons[0].startsWith("一昨日はパスタだったので、"), first.reasons[0]);
+  assert.ok(first.reasons[0].startsWith("一昨日はパスタ → "), first.reasons[0]);
 });
 
 test("rotation: consecutive plan days avoid the same staple when alternatives exist", () => {
@@ -629,10 +629,14 @@ test("repeat cycle: the household waits for the longest cycle; before that the d
   assert.ok(early.score < 0);
   const due = L.repeatFit(dish, start, ate(15), gap, cycles);
   assert.equal(due.due, true);
-  assert.match(due.reason, /^ちょうどいい頃（15日ぶり）/);
-  assert.match(L.repeatFit(dish, start, ate(30), gap, cycles).reason, /^久しぶり/);
+  const plain = { パパ: "twice_month", むすめ: "twice_month" };
+  assert.match(L.repeatFit(dish, start, ate(15), gap, plain).reason, /^ちょうどいい頃（15日ぶり）/);
+  assert.match(L.repeatFit(dish, start, ate(30), gap, plain).reason, /^久しぶり/);
   assert.equal(L.repeatFit(dish, start, ate(30), gap, { パパ: "weekly", むすめ: "never" }).exclude, true);
-  assert.match(L.repeatFit(dish, start, ate(8), gap, { パパ: "weekly", むすめ: "weekly" }).reason, /^ふたりとも好き/);
+  assert.equal(L.repeatFit(dish, start, ate(8), gap, { パパ: "weekly", むすめ: "weekly" }).reason, "ふたりの好物・8日ぶり");
+  assert.equal(L.repeatFit(dish, start, ate(15), gap, { パパ: "weekly", むすめ: "twice_month" }).reason, "パパの好物・15日ぶり");
+  assert.equal(L.repeatFit(dish, start, ate(9), gap, { パパ: "weekly" }).reason, "大好物・9日ぶり");
+  assert.equal(L.repeatFit(dish, start, ate(9), gap, { パパ: "weekly", ママ: "tomorrow", むすめ: "weekly" }).reason, "みんなの好物・9日ぶり");
 });
 
 test("repeat cycle: a due favourite comes back; a dish nobody wants again never does", () => {
@@ -644,7 +648,7 @@ test("repeat cycle: a due favourite comes back; a dish nobody wants again never 
   assert.ok(ids.includes(fav.id), "favourite is back");
   assert.ok(!ids.includes(stop.id), "never is excluded");
   const day = plan.find((d) => d.candidate?.recipe.id === fav.id);
-  assert.ok(day.candidate.reasons.some((r) => /ふたりとも好き/.test(r)));
+  assert.ok(day.candidate.reasons.some((r) => /^ふたりの好物・\d+日ぶり$/.test(r)), day.candidate.reasons.join());
 });
 
 test("requests go into the plan first with the requester's name", () => {
@@ -1206,4 +1210,20 @@ test("trend recipes are listed unless they contain avoided foods, even when time
     const item = (id, title, ing) => ({ videoId: id, title, videoUrl: "https://www.youtube.com/watch?v=" + id, expiresAt: new Date(Date.now() + 86400000 * 5).toISOString(), ingredients: ing.map((name) => ({ name, amount: "適量" })), steps: ["切る", "焼く"], planning: { minutes: 30, equipment: ["フライパン"], tastes: ["和風"] } });
     discover = { trends: [item("aaaaaaaaaaa", "豚の生姜焼き", ["豚こま", "しょうが", "しょうゆ"]), item("bbbbbbbbbbb", "ふわとろ卵丼", ["卵", "ごはん", "だし"])], popular: [], savedAt: new Date().toISOString() };`);
   assert.equal(run("starterRecipeList().filter((r) => r.discover).map((r) => r.title).join()"), "豚の生姜焼き");
+});
+
+test("reason: meat two days running → fish, said in one line", () => {
+  const meat = { id: "m", title: "豚のしょうが焼き", ingredients: [{ name: "豚こま" }] };
+  const fish = { id: "f", title: "鮭のムニエル", ingredients: [{ name: "生鮭" }] };
+  const tl = [{ date: addDays(start, -1), recipe: meat }, { date: addDays(start, -2), recipe: { ...meat, id: "m2", title: "鶏の照り焼き" } }];
+  assert.equal(L.rotation(fish, start, tl, gap).reason, "肉続き → 魚");
+  assert.equal(L.rotation(fish, start, tl.slice(0, 1), gap).reason, "昨日は肉 → 魚");
+});
+
+test("reason: season adds a small nudge and a short label", () => {
+  const dish = { title: "さんまの塩焼き", ingredients: [{ name: "さんま" }] };
+  assert.deepEqual(L.season(dish, "2026-10-01"), { score: 2, reason: "🍂 旬のさんま" });
+  assert.equal(L.season(dish, "2026-05-01").reason, "");
+  assert.equal(L.season({ ingredients: [{ name: "冷凍かぼちゃ" }] }, "2026-10-01").reason, "");
+  assert.equal(L.season({ ingredients: [{ name: "片栗粉" }] }, "2026-10-01").reason, "");
 });
