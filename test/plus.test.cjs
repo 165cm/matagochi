@@ -116,3 +116,18 @@ test('in the beta, a pay button says thank you and invites feedback for a 3-mont
   run('openPaywall(); handleDailyAction("life-pay-start", {})');
   assert.equal(run('feedbackSheet'), null);
 });
+
+test('usage summary: only today, only known events, days since the start; nothing personal', () => {
+  const run = app();
+  setup(run);
+  run(`state.trialFrom = addDays(today(), -8); state.experienceEvents = [
+    { name: "meal_cooked", at: new Date().toISOString() },
+    { name: "meal_rated", at: new Date().toISOString() },
+    { name: "meal_rated", at: new Date().toISOString() },
+    { name: "profile_started", at: new Date().toISOString() },
+    { name: "meal_cooked", at: new Date(Date.now() - 3 * 86400000).toISOString() }]`);
+  const s = JSON.parse(run('JSON.stringify(usageSummary())'));
+  assert.equal(s.n, 8);
+  assert.deepEqual(s.events, { meal_cooked: 1, meal_rated: 2 });
+  assert.deepEqual(Object.keys(s).sort(), ['anon', 'day', 'events', 'members', 'n', 'recipes', 'synced', 'v']);
+});

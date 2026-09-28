@@ -153,6 +153,7 @@ function renderFeedbackSheet() {
   return `<div class="quota-sheet fb-sheet" role="dialog" aria-modal="true" aria-label="意見を送る"><div class="quota-card">${body}</div></div>`;
 }
 function handleFeedbackAction(action, data) {
+  if (action === "life-usage-toggle") { try { localStorage.setItem("ripigochi-usage", usageOn() ? "off" : "on"); } catch {} render(); return true; }
   if (!action.startsWith("life-fb")) return false;
   if (action === "life-fb-open") openFeedback(data.from || "settings", "form");
   else if (action === "life-fb-thanks") openFeedback(data.from || "", "thanks");
@@ -160,4 +161,37 @@ function handleFeedbackAction(action, data) {
   else if (action === "life-fb-send") sendFeedback();
   else if (action === "life-fb-close") { feedbackSheet = null; render(); }
   return true;
+}
+
+// ── 使われ方の集計（個人・家庭を特定しない）。端末ごとのランダムな番号で、その日に起きたことの回数だけを送る。設定で止められる。
+const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick"];
+const usageOn = () => { try { return localStorage.getItem("ripigochi-usage") !== "off"; } catch { return false; } };
+function anonId() {
+  try {
+    let id = localStorage.getItem("ripigochi-anon");
+    if (!/^[a-z0-9]{8,40}$/.test(id || "")) { id = (Math.random().toString(36).slice(2) + Date.now().toString(36)).replace(/[^a-z0-9]/g, "").slice(0, 24); localStorage.setItem("ripigochi-anon", id); }
+    return id;
+  } catch { return ""; }
+}
+const localDay = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+function usageSummary(day = today()) {
+  const start = state.trialFrom || day;
+  const events = {};
+  for (const e of state.experienceEvents || []) if (USAGE_EVENTS.includes(e?.name) && e.at && localDay(e.at) === day) events[e.name] = (events[e.name] || 0) + 1;
+  return { anon: anonId(), day, n: Math.max(0, daysBetween(start, day)), events, synced: typeof syncEnabled === "function" && syncEnabled(), members: (state.family || []).length || 1, recipes: (state.recipes || []).length, v: APP_VERSION };
+}
+let usageTimer = null;
+function queueUsage(delay = 8000) {
+  if (!API_BASE_URL || !state?.onboarded || !usageOn() || isViewer?.()) return;
+  clearTimeout(usageTimer);
+  usageTimer = setTimeout(async () => {
+    const body = usageSummary();
+    if (!body.anon) return;
+    const hash = JSON.stringify(body);
+    try { if (localStorage.getItem("ripigochi-usage-sent") === hash) return; } catch {}
+    try {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/api/usage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: hash }, 10_000);
+      if (response.ok) try { localStorage.setItem("ripigochi-usage-sent", hash); } catch {}
+    } catch {}
+  }, delay);
 }

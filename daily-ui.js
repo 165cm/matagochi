@@ -1146,6 +1146,7 @@ function handleDailyAction(action, data) {
     swapDate = "";
   }
   if (action === "life-cook") {
+    trackDaily("cooking_opened");
     cookingDate = data.date;
     state.view = "cooking";
   }
@@ -1174,6 +1175,7 @@ function handleDailyAction(action, data) {
       if (!state.family.includes(data.member)) state.family.push(data.member);
       e.familyRepeatCycles = {...e.familyRepeatCycles, [data.member]:data.cycle};
       e.updatedAt = nowIso();
+      trackDaily("meal_rated");
       if (raterNames().every(n => e.familyRepeatCycles[n])) {
         e.personalPreference = true; e.preferencePending = false;
         preferencePromptId = "";
