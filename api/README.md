@@ -22,7 +22,7 @@ npm start
 - `VIDEO_ANALYSIS_ENABLED`（既定 true。`false` で動画の映像・音声からの読み取りを止める）
 - `VIDEO_MAX_SECONDS`（既定 600＝10分。これより長い動画は最初の10分だけを読み、作り方がその中で完結した時だけ使う）
 - `GEMINI_VIDEO_MODEL`（任意。動画の読み取りだけ別のモデルにする時）
-- `GEMINI_MENU_MODEL`（任意。1週間コンプのメニューの絵。既定 gemini-3.1-flash-lite-image・場所は `GEMINI_MENU_LOCATION`、既定 global）
+- `GEMINI_MENU_MODEL`（任意。1週間コンプの献立表の絵。既定 gemini-3.1-flash-image・場所は `GEMINI_MENU_LOCATION`、既定 global。開発コードの見比べ用に `GEMINI_MENU_LITE_MODEL`、既定 gemini-3.1-flash-lite-image）
 - `VIDEO_DAILY_LIMIT`（既定 3。動画の読み取りを家庭ごとに1日何本まで許すか。家庭はアプリが送る `X-Household`＝同期ルームIDか端末ID）
 - `DEV_UNLOCK_CODE`（既定 886。アプリから `X-Dev-Code` で送ると動画の読み取り枠が無制限になる開発用コード。リポジトリが公開のため、本番運用前に変更すること）
 - `SYNC_STORE=memory`（ローカル開発用。バケットの代わりにメモリへ保存し、再起動で消える）

@@ -8,7 +8,7 @@ import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawMenuSheet, describeMenu } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu } from "./analyzer.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createPushDesk } from "./push.js";
@@ -49,7 +49,7 @@ export function createApp(env = process.env, deps = {}) {
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
-  const weeklyMenu = createWeeklyMenu(recipeStore, { drawSheet: deps.drawMenuSheet || ((images, dishes, opts) => drawMenuSheet(images, dishes, opts, env)), describe: deps.describeMenu || ((dishes) => describeMenu(dishes, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
+  const weeklyMenu = createWeeklyMenu(recipeStore, { drawBoard: deps.drawMenuBoard || ((images, spec) => drawMenuBoard(images, spec, env)), check: deps.checkMenuBoard !== undefined ? deps.checkMenuBoard : ((image) => checkMenuBoard(image, env)), describe: deps.describeMenu || ((dishes) => describeMenu(dishes, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
@@ -81,7 +81,7 @@ export function createApp(env = process.env, deps = {}) {
 
   app.get("/health", (req, res) => {
     res.json({ ok: true, capabilities: { playlistImport: true, videoAnalysis: env.VIDEO_ANALYSIS_ENABLED !== "false" },
-      models: { text: env.GEMINI_MODEL || "gemini-2.5-flash", video: env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash", menu: env.GEMINI_MENU_MODEL || "gemini-3.1-flash-lite-image" } });
+      models: { text: env.GEMINI_MODEL || "gemini-2.5-flash", video: env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash", menu: env.GEMINI_MENU_MODEL || "gemini-3.1-flash-image" } });
   });
 
   // 家庭の識別子（同期ルームIDか端末ID）と、開発用コード。動画読み取りのチケットに使う。
@@ -130,8 +130,8 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     const unlimited = unlimitedOf(req);
     try {
-      const { style, images, notes, wallet } = await weeklyMenu.make(req.body || {}, householdOf(req), { unlimited });
-      res.json({ style, images, notes, tickets: wallet ? tickets.view(wallet, unlimited) : await ticketsView(req) });
+      const { wallet, ...menu } = await weeklyMenu.make(req.body || {}, householdOf(req), { unlimited });
+      res.json({ ...menu, tickets: wallet ? tickets.view(wallet, unlimited) : await ticketsView(req) });
     } catch (error) {
       const { status, body } = toErrorResponse(error);
       res.status(status).json({ ...body, ...(error.wallet ? { tickets: tickets.view(error.wallet, unlimited) } : {}) });

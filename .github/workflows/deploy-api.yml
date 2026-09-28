@@ -20,7 +20,7 @@ env:
   # AIモデルはここで固定する。提供終了の案内が来たら、この3行を書き換えてマージすれば切り替わる。
   GEMINI_MODEL: gemini-2.5-flash
   GEMINI_VIDEO_MODEL: gemini-2.5-flash
-  GEMINI_MENU_MODEL: gemini-3.1-flash-lite-image
+  GEMINI_MENU_MODEL: gemini-3.1-flash-image
 jobs:
   test:
     runs-on: ubuntu-latest

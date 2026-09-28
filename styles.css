@@ -3616,3 +3616,12 @@ button.stamp { cursor: pointer; }
 .menu-sheet .primary-button small { font-size: 12px; opacity: .85; }
 .menu-sheet { overflow-y: auto; }
 .menu-frame img { max-height: calc(100dvh - 250px); }
+.album-tile > img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+.menu-field { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.menu-field .segmented { margin: 0; }
+.menu-field .choice-button { display: grid; justify-items: center; line-height: 1.25; }
+.menu-field .choice-button small { font-size: 10.5px; font-weight: 500; opacity: .75; }
+.style-grid .style-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.menu-setup .style-card { padding: 8px 12px; }
+.menu-setup .style-card span { font-size: 18px; }
+.menu-field .choice-button { font-size: 13.5px; padding-left: 6px; padding-right: 6px; }

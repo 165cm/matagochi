@@ -54,7 +54,8 @@ test('menu album is normalized, capped and kept out of sync', () => {
   run(`state = normalizeState({ ...clone(demoState), menuAlbum: ${JSON.stringify(album)} })`);
   assert.equal(run('state.menuAlbum.length'), 12);
   assert.equal(run('state.menuAlbum[1].style'), 'anime');
-  assert.equal(run('state.menuAlbum[0].style'), 'watercolor', 'unknown styles fall back');
+  assert.equal(run('state.menuAlbum[0].style'), 'chalk', 'unknown styles fall back');
+  assert.equal(run('state.menuAlbum[0].art.length'), 1);
   assert.equal(run('"menuAlbum" in buildSyncPayload()'), false);
 });
 
