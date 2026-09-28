@@ -107,3 +107,57 @@ function handlePlusAction(action, data) {
   if (action === "life-free-used-close") { try { localStorage.setItem("ripigochi-free-used", data.week || ""); } catch {} render(); return true; }
   return false;
 }
+
+// ── β版のあいだ：課金ボタンを押してくれた人に「お気持ちありがとう」。意見を送ってくれた人には、正式版で3か月無料の招待コードを届ける。
+const BETA = !GATING_LIVE;
+let feedbackSheet = null; // { step: "thanks" | "form" | "sent", from, busy, error }
+function openFeedback(from = "", step = "form") { feedbackSheet = { step, from, busy: false, error: "" }; paywall = null; if (typeof ticketSheet !== "undefined") ticketSheet = null; trackDaily("feedback_open", { from, step }); render(); }
+async function sendFeedback() {
+  if (!feedbackSheet || feedbackSheet.busy) return;
+  const message = String(document.querySelector("#fb-message")?.value || "").trim();
+  const contact = String(document.querySelector("#fb-contact")?.value || "").trim();
+  if (message.length < 2) { feedbackSheet.error = "ご意見を入力してください。"; render(); return; }
+  feedbackSheet = { ...feedbackSheet, busy: true, error: "", message, contact };
+  render();
+  try {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api/feedback`, { method: "POST", headers: { "Content-Type": "application/json", ...ticketHeaders() }, body: JSON.stringify({ message, contact, where: feedbackSheet.from, version: APP_VERSION }) }, 15_000);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error?.message || "送れませんでした。");
+    feedbackSheet = { step: "sent", from: feedbackSheet.from, withContact: !!contact };
+    trackDaily("feedback_sent", { from: feedbackSheet.from });
+  } catch (error) {
+    feedbackSheet = { ...feedbackSheet, busy: false, error: error.message || "送れませんでした。" };
+  }
+  render();
+}
+function renderFeedbackSheet() {
+  const f = feedbackSheet;
+  if (!f) return "";
+  const close = '<button type="button" class="tk-close" data-action="life-fb-close" aria-label="閉じる">×</button>';
+  let body;
+  if (f.step === "thanks") body = `<div class="fb-head"><p class="fb-title">💐 お気持ち、ありがとう！</p>${close}</div>
+    <p class="fb-lead">いまはβ版。<b>ぜんぶ無料</b>でお使いください。</p>
+    <p class="fb-gift">🎁 改善してほしいことを送ってくれた方に、正式版で<b>3か月無料</b>の招待コードを。</p>
+    <button type="button" class="primary-button full-button" data-action="life-fb-form">✍️ 意見を送る</button>
+    <button type="button" class="text-button full-button" data-action="life-fb-close">閉じる</button>`;
+  else if (f.step === "sent") body = `<div class="fb-head"><p class="fb-title">✅ 届きました！</p>${close}</div>
+    <p class="fb-lead">ありがとうございます。いただいた声で、リピごちを良くしていきます。</p>
+    ${f.withContact ? '<p class="fb-gift">🎁 招待コードは、正式版の公開時にメールでお届けします。</p>' : '<p class="fb-gift">🎁 招待コードは、正式版の公開時にこのアプリでお知らせします。</p>'}
+    <button type="button" class="primary-button full-button" data-action="life-fb-close">OK</button>`;
+  else body = `<div class="fb-head"><p class="fb-title">💬 意見・お問い合わせ</p>${close}</div>
+    <textarea id="fb-message" class="input fb-message" maxlength="2000" rows="5" placeholder="使いにくいところ、ほしい機能、うれしかったこと…">${escapeHtml(f.message || "")}</textarea>
+    <label class="fb-contact"><span>メール（任意） ${tip("招待コードや、お返事の連絡先に使います")}</span><input id="fb-contact" class="input" type="email" inputmode="email" autocomplete="email" maxlength="254" placeholder="you@example.com" value="${escapeAttr(f.contact || "")}"></label>
+    ${f.error ? `<p class="form-error">${escapeHtml(f.error)}</p>` : ""}
+    <button type="button" class="primary-button full-button" data-action="life-fb-send" ${f.busy ? "disabled" : ""}>${f.busy ? "送っています…" : "送る"}</button>
+    ${BETA ? '<p class="muted small fb-note">🎁 送ってくれた方に、正式版で3か月無料の招待コード</p>' : ""}`;
+  return `<div class="quota-sheet fb-sheet" role="dialog" aria-modal="true" aria-label="意見を送る"><div class="quota-card">${body}</div></div>`;
+}
+function handleFeedbackAction(action, data) {
+  if (!action.startsWith("life-fb")) return false;
+  if (action === "life-fb-open") openFeedback(data.from || "settings", "form");
+  else if (action === "life-fb-thanks") openFeedback(data.from || "", "thanks");
+  else if (action === "life-fb-form") { feedbackSheet = { ...feedbackSheet, step: "form" }; render(); }
+  else if (action === "life-fb-send") sendFeedback();
+  else if (action === "life-fb-close") { feedbackSheet = null; render(); }
+  return true;
+}

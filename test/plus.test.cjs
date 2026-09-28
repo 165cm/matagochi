@@ -98,3 +98,21 @@ test('the trial start is kept for existing users and set at the end of the first
   assert.equal(run('normalizeState({ ...clone(demoState), onboarded: true, trialFrom: "2026-09-01" }).trialFrom'), '2026-09-01');
   assert.deepEqual(JSON.parse(run('JSON.stringify(normalizeFreePicks({ "2026-09-28": ["2026-09-30", "x"], bad: [] }))')), { '2026-09-28': ['2026-09-30'] });
 });
+
+test('in the beta, a pay button says thank you and invites feedback for a 3-month code', () => {
+  const run = app();
+  setup(run);
+  run('handleDailyAction("life-plus-open", { from: "tickets" }); handleDailyAction("life-pay-start", {})');
+  assert.equal(run('paywall'), null);
+  assert.equal(run('feedbackSheet.step'), 'thanks');
+  const thanks = run('renderFeedbackSheet()');
+  assert.match(thanks, /お気持ち、ありがとう/);
+  assert.match(thanks, /3か月無料/);
+  run('handleDailyAction("life-fb-form", {})');
+  assert.match(run('renderFeedbackSheet()'), /id="fb-message"/);
+  run('handleDailyAction("life-fb-close", {})');
+  assert.equal(run('feedbackSheet'), null);
+  // 初回設定の「無料ではじめる」は、お礼ではなくそのまま閉じる
+  run('openPaywall(); handleDailyAction("life-pay-start", {})');
+  assert.equal(run('feedbackSheet'), null);
+});

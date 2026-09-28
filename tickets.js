@@ -202,7 +202,7 @@ function renderTicketPage() {
   } else if (ticketTab === "shop") {
     body = `<div class="shop-list">
       <article class="shop-card is-best"><span class="shop-badge">おすすめ</span><span class="ms-ic" aria-hidden="true">✨</span><div class="ms-body"><b>リピごちプラス</b><small>🎟30枚／4週（60枚まで）＋ 🗓毎日の献立</small></div><button type="button" class="shop-price" data-action="life-plus-open" data-from="tickets">600円<small>／4週</small></button></article>
-      <article class="shop-card"><span class="ms-ic" aria-hidden="true">🎟</span><div class="ms-body"><b>10枚パック</b><small>1枚25円</small></div><button type="button" class="shop-price" disabled>250円<small>準備中</small></button></article>
+      <article class="shop-card"><span class="ms-ic" aria-hidden="true">🎟</span><div class="ms-body"><b>10枚パック</b><small>1枚25円</small></div><button type="button" class="shop-price" data-action="life-fb-thanks" data-from="pack10">250円<small>10枚</small></button></article>
     </div><p class="tk-note muted">⏳ 購入とプラスの分は6か月で期限。期限の近いものから使います</p>`;
   } else {
     body = `<ul class="tk-rules">

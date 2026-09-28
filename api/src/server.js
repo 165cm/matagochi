@@ -13,6 +13,7 @@ import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
+import { createFeedbackDesk } from "./feedback.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { ApiError, toErrorResponse } from "./errors.js";
 import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
@@ -49,6 +50,7 @@ export function createApp(env = process.env, deps = {}) {
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
+  const feedbackDesk = createFeedbackDesk(recipeStore, { now: deps.now || Date.now });
   const weeklyMenu = createWeeklyMenu(recipeStore, { drawBoard: deps.drawMenuBoard || ((images, spec) => drawMenuBoard(images, spec, env)), check: deps.checkMenuBoard !== undefined ? deps.checkMenuBoard : ((image) => checkMenuBoard(image, env)), describe: deps.describeMenu || ((dishes) => describeMenu(dishes, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
@@ -234,10 +236,20 @@ export function createApp(env = process.env, deps = {}) {
     }
   });
 
-  app.post("/api/admin/corrections/:id/review", async (req, res) => {
+  const isAdmin = (req) => {
     const expected = Buffer.from(env.RECIPE_ADMIN_TOKEN || "");
     const supplied = Buffer.from(String(req.headers.authorization || "").replace(/^Bearer /, ""));
-    if (!expected.length || expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+    return expected.length > 0 && expected.length === supplied.length && timingSafeEqual(expected, supplied);
+  };
+  // ご意見・お問い合わせ（β版の「お気持ち」から。招待コードは正式版で）
+  app.post("/api/feedback", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, feedbackDesk.send(req.body || {}, householdOf(req))); });
+  app.get("/api/admin/feedback", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, feedbackDesk.list(String(req.query?.day || "")));
+  });
+  app.post("/api/admin/corrections/:id/review", async (req, res) => {
+    if (!isAdmin(req)) {
       return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     }
     try {
