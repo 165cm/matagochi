@@ -39,7 +39,7 @@ function cookStats() {
     if (sorted.filter((x) => x >= addDays(d, -6) && x <= d).length >= 5) week = true;
   });
   return { xp, ...levelOfXp(xp), count, kinds: Object.keys(kinds).length, maxRepeat: Math.max(0, ...Object.values(kinds)), photos, skills, streak, week, days: sorted,
-    avgXp: count >= 3 ? Math.round(xp / count) : 20, tested: !!state.skillProfile?.quizLevel, promoted: (state.skillProfile?.promoted || 0) > 0, art: !!state.skillPhoto?.illustration };
+    avgXp: count >= 3 ? Math.round(xp / count) : 20, tested: !!state.skillProfile?.quizLevel, promoted: (state.skillProfile?.promoted || 0) > 0, comp: typeof menuCompDone === "function" && menuCompDone() };
 }
 const BADGES = [
   { id: "first", icon: "🍳", name: "はじめの一皿", hint: "晩ごはんを1回作る", ok: (s) => s.count >= 1 },
@@ -54,7 +54,7 @@ const BADGES = [
   { id: "shape", icon: "🥟", name: "成形デビュー", hint: "練る・包む料理を作る", ok: (s) => !!s.skills.shape },
   { id: "fry", icon: "🍤", name: "揚げ物デビュー", hint: "揚げ物を作る", ok: (s) => !!s.skills.deepfry },
   { id: "promote", icon: "🎖", name: "昇級", hint: "昇級試験に合格する", ok: (s) => s.promoted },
-  { id: "art", icon: "🎨", name: "絵になる一皿", hint: "料理の写真をイラストにする", ok: (s) => s.art },
+  { id: "comp", icon: "🎨", name: "1週間コンプ", hint: "1週間の献立を写真でコンプする", ok: (s) => s.comp },
   { id: "d30", icon: "🏅", name: "30皿", hint: "30回作る", ok: (s) => s.count >= 30 },
   { id: "d100", icon: "👑", name: "100皿", hint: "100回作る", ok: (s) => s.count >= 100 },
 ];
@@ -99,42 +99,11 @@ function celebrateCook(before) {
     setTimeout(() => el.remove(), 3600);
   } catch {}
 }
-// ── イラスト：1週間達成で、診断の写真をチケット3枚で絵本風のイラストにする（写真もイラストもこの端末だけ）。
-const ILLUST_TICKETS = 3;
-let illust = { status: "idle", message: "" };
-async function makeIllustration() {
-  const photo = state.skillPhoto;
-  if (!photo || illust.status === "loading" || !API_BASE_URL) return;
-  illust = { status: "loading", message: "" };
-  render();
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/api/skill/illustrate`, { method: "POST", headers: { "Content-Type": "application/json", ...ticketHeaders() }, body: JSON.stringify({ image: { mimeType: photo.photo.slice(5, photo.photo.indexOf(";")), data: photo.photo.split(",")[1] }, dish: photo.dish }) }, 120_000);
-    const data = await response.json().catch(() => ({}));
-    if (data.tickets) setTickets(data.tickets);
-    if (!response.ok || !data.image?.data) throw new Error(data.error?.message || "イラストにできませんでした。チケットは戻しました。");
-    const before = cookStats();
-    state.skillPhoto = { ...state.skillPhoto, illustration: `data:${data.image.mimeType};base64,${data.image.data}` };
-    illust = { status: "idle", message: "" };
-    trackDaily("skill_illustrated");
-    saveState({ scheduleSync: false });
-    celebrateCook(before);
-  } catch (error) {
-    illust = { status: "error", message: error.message || "イラストにできませんでした。" };
-  }
-  render();
-}
-function renderIllustration(s) {
+// 診断に使った写真（この端末だけ）。
+function renderSkillPhoto() {
   const p = state.skillPhoto;
-  if (!p) return "";
-  const img = p.illustration
-    ? `<div class="illust-pair"><img src="${p.illustration}" alt="${escapeAttr(p.dish)}のイラスト"><img src="${p.photo}" alt="元の写真" class="is-small"></div><a class="text-button" href="${p.illustration}" download="ripigochi-${escapeAttr(p.dish)}.${p.illustration.startsWith("data:image/png") ? "png" : p.illustration.startsWith("data:image/jpeg") ? "jpg" : "webp"}">イラストを保存</a>`
-    : `<img src="${p.photo}" alt="診断に使った料理の写真">`;
-  const days = s.days.filter((d) => d >= addDays(today(), -6)).length;
-  const action = p.illustration ? "" : !s.week
-    ? `<p class="illust-lock">🔒 1週間の献立を達成（7日のうち5日作る）すると、<b>チケット${ILLUST_TICKETS}枚</b>で絵本風のイラストにできます。<small>この7日で${days}日・あと${Math.max(0, 5 - days)}日</small></p>`
-    : illust.status === "loading" ? `<p class="illust-lock" role="status">🎨 描いています…（30秒ほど）</p>`
-    : `${dailyButton("life-illustrate", `🎨 イラストにする（チケット${ILLUST_TICKETS}枚）`, "", true)}${illust.status === "error" ? `<p class="form-error">${escapeHtml(illust.message)}</p>` : ""}`;
-  return `<figure class="skill-photo">${img}<figcaption><b>${escapeHtml(p.dish)}</b>診断に使った写真（この端末だけに保存）</figcaption></figure>${action}`;
+  if (!p?.photo) return "";
+  return `<figure class="skill-photo"><img src="${p.photo}" alt="診断に使った料理の写真"><figcaption><b>${escapeHtml(p.dish)}</b>診断に使った写真（この端末だけに保存）</figcaption></figure>`;
 }
 function renderSkillSettings() {
   if (isViewer()) return "";
@@ -156,6 +125,6 @@ function renderSkillSettings() {
   const skillList = `<h4 class="skill-h">身についたスキル <small>${learned.length}/${Skills.SKILLS.length}</small></h4><div class="skill-chips">${learned.map((x) => `<span class="skill-chip lv${x.level}">${escapeHtml(x.label.replace(/（.*）/, ""))}<small>×${s.skills[x.id]}</small></span>`).join("")}${nextSkills.map((x) => `<span class="skill-chip is-locked">${escapeHtml(x.label.replace(/（.*）/, ""))}</span>`).join("")}${learned.length ? "" : '<span class="muted small">作った料理から、身についたスキルがここに並びます。</span>'}</div>`;
   const shelf = `<h4 class="skill-h">バッジ <small>${earned.size}/${BADGES.length}</small></h4><ul class="badge-shelf">${BADGES.map((b) => `<li class="${earned.has(b.id) ? "is-earned" : ""}" title="${escapeAttr(b.hint)}"><span aria-hidden="true">${earned.has(b.id) ? b.icon : "？"}</span><b>${earned.has(b.id) ? b.name : b.hint}</b></li>`).join("")}</ul>`;
   const growth = sp ? `<div class="segmented" role="group" aria-label="献立の方針">${[["steady", "今のレパートリーで"], ["grow", "少しずつレベルアップ"]].map(([v, l]) => `<button type="button" class="choice-button" data-action="life-skill-growth" data-value="${v}" aria-pressed="${sp.growth === v}">${l}</button>`).join("")}</div>` : "";
-  return `<section class="panel skill-settings">${lvCard}${next}${skillList}${shelf}${renderIllustration(s)}${growth}
+  return `<section class="panel skill-settings">${lvCard}${next}${skillList}${shelf}${renderSkillPhoto()}${growth}
     ${sp ? '<button type="button" class="text-button" data-action="life-quiz-start">料理スキル試験をもう一度受ける</button>' : `<p class="muted small">10問の試験で、作れる料理だけの献立になります。</p>${dailyButton("life-quiz-start", "料理スキル試験を受ける", "", true)}`}</section>`;
 }

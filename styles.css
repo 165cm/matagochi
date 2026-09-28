@@ -3419,14 +3419,6 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .badge-shelf li.is-earned { background: #fff1dc; box-shadow: inset 0 0 0 1.5px var(--egg); }
 .badge-shelf li.is-earned span { filter: none; opacity: 1; }
 .badge-shelf li.is-earned b { color: var(--ink); }
-.illust-pair { position: relative; }
-.illust-pair img:first-child { width: 100%; border-radius: 18px; }
-.illust-pair img.is-small { position: absolute; right: 8px; bottom: 8px; width: 28%; border: 3px solid #fff; border-radius: 12px; box-shadow: var(--shadow); }
-.illust-lock { margin: 0; padding: 10px 12px; border-radius: 14px; background: #f6efe6; font-size: 13px; line-height: 1.6; }
-.illust-lock small { display: block; color: var(--muted); }
-.skill-photo:has(.illust-pair) { grid-template-columns: minmax(0, 1fr); }
-.skill-photo .illust-pair img:first-child { width: 100%; height: auto; aspect-ratio: 1; }
-.skill-photo .illust-pair img.is-small { width: 28%; height: auto; aspect-ratio: 1; }
 
 /* ── 外食・中食にする（作れない日の逃げ道） ── */
 .skip-panel { display: grid; gap: 10px; margin: -4px 0 12px; padding: 14px; border: 1.5px solid var(--egg); border-radius: 20px; background: #fffaf0; }
@@ -3571,3 +3563,65 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .folder-pick-list span { display: grid; flex: 1; min-width: 0; font-size: 13px; }
 .folder-pick-list small { color: var(--muted); font-size: 11px; }
 .folder-pick-list .secondary-button { flex: none; min-height: 38px; padding: 0 12px; }
+/* 1週間コンプ：スタンプカード・メニュー・アルバム */
+.stamp-card { display: grid; gap: 10px; padding: 14px; }
+.stamp-head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+.stamp-count { font-weight: 900; font-size: 14px; color: var(--muted); }
+.stamp-count.is-comp { color: var(--sage-dark); }
+.stamp-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.stamp { display: grid; justify-items: center; gap: 3px; padding: 0; border: 0; background: none; font: inherit; color: var(--muted); min-width: 0; }
+button.stamp { cursor: pointer; }
+.stamp i { display: grid; place-items: center; width: 100%; max-width: 42px; aspect-ratio: 1; border-radius: 50%; border: 2px dashed var(--line); background: var(--surface); font-style: normal; font-size: 16px; overflow: hidden; }
+.stamp i img { width: 100%; height: 100%; object-fit: cover; }
+.stamp small { font-size: 11px; font-weight: 700; }
+.stamp.is-photo i { border: 2px solid var(--sage); }
+.stamp.is-cooked i { border-style: solid; border-color: var(--egg); background: #fff7dc; }
+.stamp.is-missed i { border-style: solid; background: var(--surface-soft); }
+.stamp.is-off i, .stamp.is-none i { border-color: transparent; background: var(--surface-soft); opacity: .6; }
+.stamp.is-today small { color: var(--sage-dark); }
+.stamp-note { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.stamp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.stamp-actions > * { flex: 1 1 0; }
+.stamp-card .primary-button small { font-size: 12px; opacity: .85; }
+.menu-viewer { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 12px; background: rgba(40, 25, 15, .55); }
+.menu-sheet { display: grid; gap: 10px; width: min(440px, 100%); max-height: calc(100dvh - 24px); padding: 12px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); }
+.menu-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.menu-top .segmented { flex: 1; margin: 0; }
+.menu-frame { display: grid; place-items: center; min-height: 0; overflow: hidden; border-radius: 14px; background: var(--surface-soft); color: var(--muted); font-size: 13px; }
+.menu-frame img { display: block; max-width: 100%; max-height: calc(100dvh - 170px); object-fit: contain; }
+.menu-frame.is-feed:not(:has(img)) { aspect-ratio: 4 / 5; }
+.menu-frame.is-story:not(:has(img)) { aspect-ratio: 9 / 16; max-height: calc(100dvh - 170px); }
+.menu-actions { display: flex; gap: 8px; }
+.menu-actions > * { flex: 1 1 0; }
+.album-row { display: grid; grid-auto-flow: column; grid-auto-columns: 30%; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.album-tile { display: grid; gap: 4px; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.album-art { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 6px; aspect-ratio: 4 / 5; align-content: center; border-radius: 12px; background: var(--paper, #faf5ec); box-shadow: inset 0 0 0 1px var(--line); }
+.album-art img { width: 100%; aspect-ratio: 1; object-fit: cover; mix-blend-mode: multiply; }
+.album-tile small { font-size: 11px; color: var(--muted); }
+.menu-album { margin-bottom: 18px; }
+.menu-setup { gap: 12px; overflow-y: auto; }
+.menu-setup .menu-top b { font-size: 17px; }
+.style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.style-card { display: grid; justify-items: start; gap: 2px; padding: 10px 12px; border: 2px solid transparent; border-radius: 16px; background: var(--paper); color: var(--ink); font: inherit; text-align: left; cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.style-card span { font-size: 22px; line-height: 1.2; }
+.style-card b { font-size: 15px; color: var(--accent); }
+.style-card small { font-size: 11.5px; opacity: .75; }
+.style-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 6px 16px rgba(90, 60, 30, .14); }
+.menu-wish { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.wish-chips, .menu-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.wish-chip, .opt-chip { padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.opt-chip[aria-pressed="true"] { border-color: var(--sage); background: #fde9e2; color: var(--sage-dark); font-weight: 700; }
+.opt-chip[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
+.menu-name { font-size: 14px; }
+.menu-sheet .primary-button small { font-size: 12px; opacity: .85; }
+.menu-sheet { overflow-y: auto; }
+.menu-frame img { max-height: calc(100dvh - 250px); }
+.album-tile > img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+.menu-field { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.menu-field .segmented { margin: 0; }
+.menu-field .choice-button { display: grid; justify-items: center; line-height: 1.25; }
+.menu-field .choice-button small { font-size: 10.5px; font-weight: 500; opacity: .75; }
+.style-grid .style-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.menu-setup .style-card { padding: 8px 12px; }
+.menu-setup .style-card span { font-size: 18px; }
+.menu-field .choice-button { font-size: 13.5px; padding-left: 6px; padding-right: 6px; }

@@ -30,43 +30,6 @@ function decodePhoto(image) {
   return buffer;
 }
 
-// 料理の写真を、絵本風のイラストにする（1週間の献立を達成した人が、チケット3枚で）。写真もイラストも保存しない（端末に返すだけ）。
-// 1家庭1日3枚まで。描けなかった時はチケットを戻す。
-export const ILLUSTRATIONS_PER_DAY = 3;
-export const ILLUSTRATION_TICKETS = 3;
-export function createIllustrator(store, { draw, tickets, reserveBudget, now = Date.now } = {}) {
-  return {
-    async illustrate(body, household = "", { unlimited = false } = {}) {
-      if (!store || !tickets) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。");
-      if (!household) throw new ApiError(400, "household_required", "家庭の識別子がありません。");
-      const buffer = decodePhoto(body?.image);
-      const dish = typeof body?.dish === "string" ? body.dish.trim().slice(0, 40) : "";
-      const dayKey = `illustrate-quota/${new Date(now()).toISOString().slice(0, 10)}/${household}`;
-      const quota = await store.get(dayKey);
-      const used = quota?.envelope.used || 0;
-      if (used >= ILLUSTRATIONS_PER_DAY) throw new ApiError(429, "illustrate_quota", "今日はここまでです。明日また試してください。");
-      const [prepared] = await prepareImages([{ buffer, mimeType: body.image.mimeType }]);
-      const spent = await tickets.spend(household, { unlimited, count: ILLUSTRATION_TICKETS });
-      try {
-        await reserveBudget();
-        await store.put(dayKey, { used: used + 1 }, { ifGeneration: quota?.generation ?? 0 }).catch(() => {});
-        const out = await draw(prepared, dish);
-        const raw = Buffer.from(String(out?.data || ""), "base64");
-        if (!raw.length) throw new ApiError(502, "illustration_failed", "イラストにできませんでした。チケットは戻しました。");
-        // 返ってきた画像も作り直して、軽くする（メタデータも消える）。
-        const bytes = await sharp(raw, { limitInputPixels: 20_000_000 }).resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toBuffer()
-          .catch(() => { throw new ApiError(502, "illustration_failed", "イラストにできませんでした。チケットは戻しました。"); });
-        return { image: { mimeType: "image/webp", data: bytes.toString("base64") }, wallet: spent };
-      } catch (error) {
-        const back = await tickets.refund(household, { unlimited, count: ILLUSTRATION_TICKETS }).catch(() => null);
-        const failure = error instanceof ApiError ? error : new ApiError(502, "illustration_failed", "イラストにできませんでした。チケットは戻しました。");
-        if (back) failure.wallet = back;
-        throw failure;
-      }
-    }
-  };
-}
-
 export function createSkillJudge(store, { judge, reserveBudget, now = Date.now } = {}) {
   return {
     async judge(body, household = "") {
