@@ -2119,6 +2119,10 @@ span.tile-photo { cursor: default; }
 .month-nav .round-icon { width: 40px; height: 40px; font-size: 20px; font-weight: 800; color: var(--ink); }
 .month-nav .round-icon:disabled { opacity: .35; cursor: default; }
 .month-nav strong { font-size: 15px; white-space: nowrap; }
+.insight-card { margin: 0 0 14px; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.insight-card h3 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: center; gap: 4px; }
+.insight-card ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; }
+.insight-card p { margin: 0; font-size: 13px; }
 .refl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
 .refl-stats p { margin: 0; padding: 12px 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
 .refl-stats strong { display: block; font-size: 24px; color: var(--tomato); }
