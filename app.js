@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-legal";
+const APP_VERSION = "20260928-plus3";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -73,6 +73,9 @@ const demoState = {
   skillProfile: null,
   skillPhoto: null,
   menuAlbum: [],
+  trialFrom: "",
+  freePicks: {},
+  plus: null,
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -314,6 +317,10 @@ function normalizeState(saved) {
     skillProfile: normalizeSkillProfile(saved.skillProfile),
     skillPhoto: normalizeSkillPhoto(saved.skillPhoto),
     menuAlbum: normalizeMenuAlbum(saved.menuAlbum),
+    // 無料期間のはじまり。今までの人は、この版を開いた日から数える。
+    trialFrom: normalizeDateInput(saved.trialFrom) || (saved.onboarded ? today() : ""),
+    freePicks: normalizeFreePicks(saved.freePicks),
+    plus: saved.plus && /^\d{4}-\d{2}-\d{2}$/.test(saved.plus.until || "") ? { until: saved.plus.until } : null,
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),

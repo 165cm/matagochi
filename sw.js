@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v90";
-const APP_VERSION = "20260928-legal";
+const CACHE_NAME = "ripigochi-v91";
+const APP_VERSION = "20260928-plus3";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -25,6 +25,7 @@ const CORE_ASSETS = [
   `./weekly.js?v=${APP_VERSION}`,
   `./cook-type.js?v=${APP_VERSION}`,
   `./plan-moves.js?v=${APP_VERSION}`,
+  `./plus.js?v=${APP_VERSION}`,
   `./folders.js?v=${APP_VERSION}`,
   `./install.js?v=${APP_VERSION}`,
   `./push.js?v=${APP_VERSION}`,
@@ -33,12 +34,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260928-legal",
-  "./icons/favicon-32.png?v=20260928-legal",
-  "./icons/icon-192.png?v=20260928-legal",
-  "./icons/icon-512.png?v=20260928-legal",
-  "./icons/icon-maskable-512.png?v=20260928-legal",
-  "./icons/apple-touch-icon.png?v=20260928-legal"
+  "./manifest.webmanifest?v=20260928-plus3",
+  "./icons/favicon-32.png?v=20260928-plus3",
+  "./icons/icon-192.png?v=20260928-plus3",
+  "./icons/icon-512.png?v=20260928-plus3",
+  "./icons/icon-maskable-512.png?v=20260928-plus3",
+  "./icons/apple-touch-icon.png?v=20260928-plus3"
 ];
 
 self.addEventListener("install", (event) => {

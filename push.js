@@ -34,7 +34,9 @@ function pushSchedule(info = pushInfo()) {
       if (info.shop && ["open", "decided"].includes(status)) add(`shop-${b.key}`, new Date(shopAt.getTime() - 30 * 60_000), `🛒 ${hm}は買い物の時間`, `${range}の分をまとめて。リストはアプリに。`, "?view=shopping");
     }
   }
-  for (const d of dailyPlan()) {
+  const plan = dailyPlan(), locks = typeof lockedDates === "function" ? lockedDates(plan) : new Set();
+  for (const d of plan) {
+    if (locks.has(d.date)) continue;
     const slot = d.slot, recipe = slot?.status === "confirmed" ? slot.recipe : !slot && !d.off ? d.candidate?.recipe : null;
     if (!recipe) continue;
     const f = typeof folderOfRecipe === "function" ? folderOfRecipe(recipe) : null;
