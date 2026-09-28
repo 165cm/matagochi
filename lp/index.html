@@ -19,18 +19,18 @@
     <meta name="twitter:image:alt" content="今夜、これ食べたい。次の買い物までの夜ごはんと、スマホ1画面の買い物リスト" />
     <meta name="theme-color" content="#fff8ee" />
     <link rel="canonical" href="https://165cm.github.io/matagochi/lp/" />
-    <link rel="icon" href="../icons/favicon-32.png?v=20260928-folders2" />
+    <link rel="icon" href="../icons/favicon-32.png?v=20260928-plus2" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Klee+One:wght@600&display=swap" />
     <link rel="preload" as="image" href="assets/screen-today.webp" />
-    <link rel="stylesheet" href="styles.css?v=20260928-folders2" />
+    <link rel="stylesheet" href="styles.css?v=20260928-plus2" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
         <a class="brand" href="#top" aria-label="リピごち トップへ">
-          <img class="brand-icon" src="../icons/icon-192.png?v=20260928-folders2" width="40" height="40" alt="" /><span class="logo">リピごち</span>
+          <img class="brand-icon" src="../icons/icon-192.png?v=20260928-plus2" width="40" height="40" alt="" /><span class="logo">リピごち</span>
           <span class="hand brand-note">また、これ食べたい。</span>
         </a>
         <a class="button button-small" href="#waitlist"><span class="wide-only">公開の</span>お知らせ登録</a>
@@ -339,7 +339,35 @@
             <article><span aria-hidden="true">✉️</span><h3>アプリは登録なし</h3><p>メールもパスワードも不要。ブラウザで開けばすぐ使えます。機種変更に備えるなら、Googleでログインも。</p></article>
             <article><span aria-hidden="true">🔒</span><h3>データは基本、端末の中</h3><p>家族との同期やAIを使ったときだけ、必要なデータをサーバーへ。スキル診断の料理写真は、判定したら保存しません。</p></article>
           </div>
-          <p class="center small muted">正式版では、無料お試しつきの有料プランを予定しています。料金と内容は始める前に必ずお知らせし、同意なく課金することはありません。レシピと記録の書き出し（バックアップ）は、プランにかかわらずいつでもできます。</p>
+          <p class="center small muted">レシピと記録の書き出し（バックアップ）は、プランにかかわらずいつでもできます。</p>
+
+          <div class="plus-card" id="plus">
+            <p class="plus-kicker">正式版の予定</p>
+            <h3 class="plus-title">リピごち<span class="plus-mark">プラス</span></h3>
+            <p class="plus-price"><b>4週 600円</b><small>（税込・予定）</small></p>
+            <p class="plus-catch hand">1週間あたり150円。<br />ペットボトル1本より安い。</p>
+            <ul class="plus-list">
+              <li>🗓 毎日の献立を、日数の制限なく（無料は週3日分まで）</li>
+              <li>🎟 動画の読み取りなどに使うチケットが<b>毎4週30枚</b></li>
+              <li>🔔 献立を決める日・買い物・今夜の一品の通知</li>
+              <li>📁 定番フォルダの食べ比べランキング、料理写真のイラスト化</li>
+            </ul>
+            <div class="plus-compare" role="table" aria-label="チケットだけ買う場合との比較">
+              <div role="row" class="pc-head"><span role="columnheader"></span><span role="columnheader">チケットだけ</span><span role="columnheader">プラス</span></div>
+              <div role="row"><span role="rowheader">料金</span><span role="cell">10枚 250円</span><span role="cell"><b>4週 600円</b></span></div>
+              <div role="row"><span role="rowheader">4週で30枚使うと</span><span role="cell">750円</span><span role="cell"><b>600円</b></span></div>
+              <div role="row"><span role="rowheader">献立</span><span role="cell">週3日分まで</span><span role="cell"><b>毎日</b></span></div>
+              <div role="row"><span role="rowheader">通知・フォルダのランキング</span><span role="cell">—</span><span role="cell"><b>ぜんぶ使える</b></span></div>
+            </div>
+            <p class="plus-note">チケットを4週で24枚以上使うなら、プラスの方がおトク。</p>
+            <ul class="plus-promise small">
+              <li>はじめは無料でお試し。終わる前に通知でお知らせします</li>
+              <li>アプリの中で、いつでも1タップで解約できます</li>
+              <li>解約しても、残ったチケットはそのまま使えます</li>
+              <li>年払い（年6,000円・予定）も選べます</li>
+            </ul>
+            <p class="small muted">価格と内容は予定で、変わることがあります。始める前に必ずお知らせし、お申し込みなしに課金することはありません。無料のままでも、週3日分の献立づくりと、保存したレシピ・記録は使えます（予定）。</p>
+          </div>
         </div>
       </section>
 
@@ -356,7 +384,7 @@
           </details>
           <details>
             <summary>本当に無料ですか？</summary>
-            <p>いまのβ版は、すべての機能を無料で提供しています。正式版では、無料お試しつきの有料プランを予定しています。料金と内容は始める前にお知らせし、お申し込みなしに課金されることはありません。レシピと記録の書き出し（バックアップ）は、いつでも無料でできます。</p>
+            <p>いまのβ版は、すべての機能を無料で提供しています。正式版では、無料お試しつきの「リピごちプラス」（4週600円・予定）と、足りない時に買い足せるチケット（10枚250円・予定）を用意する予定です。お試しのあとも、週3日分の献立づくりと、保存したレシピ・記録は無料で使えます（予定）。料金と内容は始める前にお知らせし、お申し込みなしに課金されることはありません。レシピと記録の書き出し（バックアップ）は、いつでも無料でできます。</p>
           </details>
           <details>
             <summary>SNSのレシピ動画は、どうやって保存しますか？</summary>

@@ -368,3 +368,23 @@ body.is-registered .sticky-cta { display: none; }
 /* 続けられる工夫（4枚） */
 @media (min-width: 720px) { .promise-grid-4 { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1040px) { .promise-grid-4 { grid-template-columns: repeat(4, 1fr); } }
+/* リピごちプラス（予定） */
+.plus-card { display: grid; gap: 12px; max-width: 560px; margin: 28px auto 0; padding: 26px 22px; border-radius: 28px; background: var(--paper); border: 2px solid var(--tomato); box-shadow: var(--shadow); }
+.plus-card > * { margin: 0; }
+.plus-kicker { font-size: 13px; font-weight: 800; color: var(--tomato-dark); letter-spacing: .06em; }
+.plus-title { font-size: 26px; }
+.plus-mark { margin-left: 6px; padding: 2px 12px; border-radius: 999px; background: var(--tomato); color: #fff; font-size: 18px; vertical-align: 3px; }
+.plus-price b { font-size: 34px; font-weight: 900; }
+.plus-price small { margin-left: 4px; color: var(--muted); font-size: 13px; }
+.plus-catch { font-size: 19px; color: var(--tomato-dark); line-height: 1.5; }
+.plus-list, .plus-promise { display: grid; gap: 6px; padding: 0; list-style: none; }
+.plus-list li { padding: 8px 12px; border-radius: 12px; background: var(--cream); font-size: 15px; }
+.plus-promise li::before { content: "✓ "; color: var(--tomato-dark); font-weight: 900; }
+.plus-compare { display: grid; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; font-size: 14px; }
+.plus-compare > div { display: grid; grid-template-columns: 1.3fr 1fr 1fr; }
+.plus-compare span { padding: 8px 10px; border-top: 1px solid var(--line); }
+.plus-compare .pc-head span { border-top: 0; background: var(--cream); font-size: 12px; font-weight: 800; color: var(--muted); }
+.plus-compare span:last-child { background: var(--yellow-soft); }
+.plus-compare .pc-head span:last-child { color: var(--tomato-dark); }
+.plus-note { font-weight: 800; }
+.plus-compare span:nth-child(2) { color: var(--muted); }
