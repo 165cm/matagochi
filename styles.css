@@ -3625,3 +3625,4 @@ button.stamp { cursor: pointer; }
 .menu-setup .style-card { padding: 8px 12px; }
 .menu-setup .style-card span { font-size: 18px; }
 .menu-field .choice-button { font-size: 13.5px; padding-left: 6px; padding-right: 6px; }
+.legal-links { margin: 0 0 6px; padding-left: 1.2em; } .legal-links li { margin: 4px 0; }
