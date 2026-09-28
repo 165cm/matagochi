@@ -128,6 +128,8 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/search/variants", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, variantSearch.find(req.body || {}, householdOf(req))); });
   app.post("/api/weekly/menu", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
+    // 献立表の生成は止めている（WEEKLY_MENU=on のときだけ動く）。
+    if (env.WEEKLY_MENU !== "on") return res.status(404).json({ error: { code: "feature_off", message: "この機能はお休み中です。" } });
     const unlimited = unlimitedOf(req);
     try {
       const { wallet, ...menu } = await weeklyMenu.make(req.body || {}, householdOf(req), { unlimited });

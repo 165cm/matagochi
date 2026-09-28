@@ -59,13 +59,16 @@ test('menu album is normalized, capped and kept out of sync', () => {
   assert.equal(run('"menuAlbum" in buildSyncPayload()'), false);
 });
 
-test('stamp card shows the make button only when complete, and the badge follows completion', () => {
+test('stamp card celebrates completion (the illustrated menu is switched off), and the badge follows completion', () => {
   const run = app();
   setupWeek(run, ['photo', 'photo', 'photo', 'none', 'none', 'none', 'none']);
   run('state.menuAlbum = []');
   const html = run('renderWeeklyStamps()');
-  assert.match(html, /life-menu-setup/);
+  assert.equal(run('MENU_ENABLED'), false);
+  assert.doesNotMatch(html, /life-menu-setup/);
+  assert.match(html, /コンプ！/);
   assert.match(html, /3\/3/);
+  assert.equal(run('handleWeeklyAction("life-menu-setup", { week: W }) && menuSetup'), null, 'setup does not open');
   assert.equal(run('cookStats().comp'), true);
   setupWeek(run, ['photo', 'cooked', 'planned', 'none', 'none', 'none', 'none']);
   assert.doesNotMatch(run('renderWeeklyStamps()'), /life-menu-setup/);

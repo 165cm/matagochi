@@ -152,7 +152,11 @@ test('weekly menu route: 3 tickets, one board, the wallet on failure too', async
   const sharp = (await import('sharp')).default;
   let fail = false;
   const sheet = await sharp({ create: { width: 1536, height: 1024, channels: 3, background: '#fff' } }).png().toBuffer();
-  const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null, describeMenu: async () => [], checkMenuBoard: null, drawMenuBoard: async () => { if (fail) throw new Error('x'); return { mimeType: 'image/png', data: sheet.toString('base64') }; } });
+  const deps = { recipeStore: createMemorySyncStore(), syncStore: null, describeMenu: async () => [], checkMenuBoard: null, drawMenuBoard: async () => { if (fail) throw new Error('x'); return { mimeType: 'image/png', data: sheet.toString('base64') }; } };
+  const off = createApp({}, deps).listen(0, '127.0.0.1'); await once(off, 'listening'); t.after(() => new Promise((r) => off.close(r)));
+  const offRes = await fetch(`http://127.0.0.1:${off.address().port}/api/weekly/menu`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Household': 'house-art-01' }, body: '{}' });
+  assert.equal(offRes.status, 404, 'off unless WEEKLY_MENU=on'); assert.equal((await offRes.json()).error.code, 'feature_off');
+  const app = createApp({ WEEKLY_MENU: 'on' }, deps);
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
   const base = `http://127.0.0.1:${server.address().port}`;
   const headers = { 'Content-Type': 'application/json', 'X-Household': 'house-art-01' };

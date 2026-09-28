@@ -3,7 +3,9 @@
    その週の写真をまとめて1回で、AIが文字入りの「カフェ風の献立表」1枚に描く（画風・文字の言語・カロリー等の添え書き・雰囲気を選べる）。
    サーバーが書く文字を先に決めて一字一句指定し、描けたら読み返して、違えば1回だけ描き直す。
    アプリは、その絵のまわりに「n/n コンプ」・合計・名前・Lv・ロゴとURLを足す（オン・オフは描き直さない）。
-   写真も絵も、この端末だけ（アルバムは同期しない・最大12件）。 */
+   写真も絵も、この端末だけ（アルバムは同期しない・最大12件）。
+   ※ 献立表の生成は、仕上がりの再現度が足りないので止めている（MENU_ENABLED）。スタンプカードとコンプのバッジだけ動く。 */
+const MENU_ENABLED = false;
 const MENU_TICKETS = 3;
 const MENU_MIN = 3;
 const ALBUM_MAX = 12;
@@ -86,9 +88,10 @@ function renderWeeklyStamps() {
   const left = r.target - r.got, noPhoto = stamps.filter((s) => s.kind === "cooked").length;
   let foot;
   if (weeklyBusy === start) foot = '<p class="stamp-note" role="status">🎨 献立表を描いています…（1分ほど）</p>';
-  else if (made.length) foot = `<div class="stamp-actions">${dailyButton("life-menu-open", "🍽 メニューを見る", `data-key="${escapeAttr(menuKey(made[0]))}"`, true)}${dailyButton("life-menu-setup", "別の画風でも", `data-week="${start}"`)}</div>`;
+  else if (made.length) foot = `<div class="stamp-actions">${dailyButton("life-menu-open", "🍽 メニューを見る", `data-key="${escapeAttr(menuKey(made[0]))}"`, true)}${MENU_ENABLED ? dailyButton("life-menu-setup", "別の画風でも", `data-week="${start}"`) : ""}</div>`;
+  else if (r.complete && !MENU_ENABLED) foot = '<p class="stamp-note">🎉 今週の晩ごはん、写真でコンプ！ おつかれさまでした。</p>';
   else if (r.complete) foot = dailyButton("life-menu-setup", `🎉 メニューにする <small>🎟${MENU_TICKETS}枚</small>`, `data-week="${start}"`, true);
-  else foot = `<p class="stamp-note">${noPhoto ? "📷 のマスをタップして写真を足すと、スタンプになります。" : `あと${left}日、作った料理の写真でコンプ。<b>カフェ風の献立表</b>が作れます。`}</p>`;
+  else foot = `<p class="stamp-note">${noPhoto ? "📷 のマスをタップして写真を足すと、スタンプになります。" : `あと${left}日、作った料理の写真でコンプ。${MENU_ENABLED ? "<b>カフェ風の献立表</b>が作れます。" : ""}`}</p>`;
   return `<section class="panel stamp-card" aria-label="${last ? "先週" : "今週"}のスタンプ">
     <div class="stamp-head"><b>📸 ${last ? "先週" : "今週"}のスタンプ</b><span class="stamp-count${r.complete ? " is-comp" : ""}">${r.complete ? "コンプ！ " : ""}${r.got}/${r.target}</span></div>
     <div class="stamp-row">${cells}</div>${foot}${weeklyError && !menuSetup ? `<p class="form-error">${escapeHtml(weeklyError)}</p>` : ""}</section>`;
@@ -312,6 +315,7 @@ const menuCompDone = () => (state.menuAlbum || []).length > 0 || [mondayOf(today
 const SETUP_KEYS = { style: Object.keys(MENU_STYLES), lang: MENU_LANGS.map(([v]) => v), info: MENU_INFOS.map(([v]) => v), model: ["standard", "lite"] };
 function handleWeeklyAction(action, data) {
   if (!action.startsWith("life-menu")) return false;
+  if (!MENU_ENABLED && ["life-menu-setup", "life-menu-pick", "life-menu-wish", "life-menu-make"].includes(action)) return true;
   if (action === "life-menu-setup") { const o = menuOpts(); weeklyError = ""; menuView = null; menuSetup = { week: data.week, style: MENU_STYLES[o.style] ? o.style : "chalk", lang: o.lang === "ja" ? "ja" : "en", info: SETUP_KEYS.info.includes(o.info) ? o.info : "none", prompt: "", model: "standard" }; render(); }
   else if (action === "life-menu-pick" && menuSetup && SETUP_KEYS[data.key]?.includes(data.value)) { readWish(); menuSetup[data.key] = data.value; render(); }
   else if (action === "life-menu-wish" && menuSetup) { readWish(); const w = data.wish; if (!menuSetup.prompt.includes(w)) menuSetup.prompt = [menuSetup.prompt, w].filter(Boolean).join("、").slice(0, 60); render(); }
