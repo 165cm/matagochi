@@ -587,9 +587,16 @@
       const pool = newCount >= MAX_NEW_PER_PLAN && favourites.length ? favourites : eligible;
       const dow = String(new Date(date + "T12:00:00").getDay());
       const pinned = !overrides[date] && pins[dow] ? candidates.find((x) => x.recipe.id === pins[dow] && free(x)) : null;
+      // 自分で決めた一皿（URLから入れた・選んだ料理）は、条件に合わなくてもその日に入れる。
+      const forcedRecipe = overrides[date] && !candidates.some((x) => x.recipe.id === overrides[date]) ? recipes.find((r) => r.id === overrides[date]) : null;
+      const forced = forcedRecipe
+        ? { recipe: forcedRecipe, ok: true, forced: true, warn: fit(forcedRecipe, p, date).reason === "避けたい食材を含みます" ? "⚠ 避けたい食材あり" : "", score: 0, reasons: [], rotation: rotation(forcedRecipe, date, timeline, between),
+            repeat: repeatFit(forcedRecipe, date, timeline, between, cyclesOf(forcedRecipe)), request: requestOf(forcedRecipe), fresh: freshness(forcedRecipe), season: season(forcedRecipe, date) }
+        : null;
       const selected =
-        pool.find((x) => x.recipe.id === overrides[date]) || candidates.find((x) => x.recipe.id === overrides[date]) || pinned || pool[0];
+        pool.find((x) => x.recipe.id === overrides[date]) || candidates.find((x) => x.recipe.id === overrides[date]) || forced || pinned || pool[0];
       if (selected) {
+        if (overrides[date] && selected.recipe.id === overrides[date]) selected.chosen = true;
         [selected.request ? `${selected.request.from}のリクエスト` : "", selected.repeat.reason, selected.rotation.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : "", selected.season.reason]
           .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
         if (pinned && selected === pinned) selected.reasons.unshift(`📌 毎週${WD[Number(dow)]}曜`);

@@ -164,7 +164,7 @@ function handleFeedbackAction(action, data) {
 }
 
 // ── 使われ方の集計（個人・家庭を特定しない）。端末ごとのランダムな番号で、その日に起きたことの回数だけを送る。設定で止められる。
-const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick"];
+const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "plan_url_inserted", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick"];
 const usageOn = () => { try { return localStorage.getItem("ripigochi-usage") !== "off"; } catch { return false; } };
 function anonId() {
   try {

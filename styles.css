@@ -3714,3 +3714,9 @@ button.stamp { cursor: pointer; }
 .fb-message { min-height: 110px; resize: vertical; font-size: 15px; }
 .fb-contact { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
 .fb-note { margin: 0; text-align: center; }
+
+/* 献立の入れ替え：🔗 動画のURLから入れる */
+.swap-url { display: flex; gap: 6px; align-items: center; margin: 0 0 10px; }
+.swap-url .input { flex: 1; min-width: 0; }
+.swap-url .primary-button { flex: none; padding: 10px 14px; min-height: 0; }
+.swap-url.is-busy { padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px dashed var(--line); font-size: 14px; }

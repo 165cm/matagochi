@@ -1249,3 +1249,17 @@ test("insights: shows how many more ratings are needed, then per-person likes, s
   const texts = L.insights({ evaluations, recipeOf: (id) => R[id], family }).items.map((x) => x.text);
   assert.deepEqual(texts, ["🍜 パパは麺が好き", "🏆 ふたりの定番：鮭の塩焼き", "🙅 1品は献立に出しません"]);
 });
+
+test("a dish the user decided on goes into that day even when it misses the conditions", () => {
+  const long = { id: "mine-long", title: "じっくり煮込みカレー", mealType: "dinner", ingredients: [{ name: "牛肉" }], steps: ["煮込む"], planning: { minutes: 120, easy: false, equipment: ["鍋"], tasks: [], conditionsConfirmed: true, ingredientsVerified: true } };
+  const recipes = [...L.curated, long];
+  const profile = L.profile({ restrictions: ["牛肉"] });
+  assert.equal(L.fit(long, profile, start).ok, false);
+  const plan = L.propose({ recipes, profile, start, length: 3, addDays, overrides: { [addDays(start, 1)]: long.id } });
+  const day = plan[1];
+  assert.equal(day.candidate.recipe.id, long.id);
+  assert.equal(day.candidate.forced, true);
+  assert.equal(day.candidate.chosen, true);
+  assert.equal(day.candidate.warn, "⚠ 避けたい食材あり");
+  assert.ok(!plan.filter((d, i) => i !== 1).some((d) => d.candidate?.recipe.id === long.id));
+});

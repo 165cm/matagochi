@@ -347,7 +347,7 @@ function renderMealCalendar() {
 function planReason(day) {
   const c = day.candidate;
   if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.repeat?.reason, day.rotation?.reason, day.season?.reason].find(Boolean) || "";
-  return c ? [c.request && `${c.request.from}のリクエスト`, c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.repeat?.reason, c.rotation?.reason, c.season?.reason].find(Boolean) || "" : "";
+  return c ? [c.request && `${c.request.from}のリクエスト`, c.warn, c.chosen && "✋ 自分で決めた一皿", c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.repeat?.reason, c.rotation?.reason, c.season?.reason].find(Boolean) || "" : "";
 }
 // The last time someone pressed 買い物完了. Meals confirmed before it were bought on that trip.
 function lastShoppedAt() {
@@ -464,6 +464,56 @@ function loveScore(r) {
 }
 // 「選択」：まだ作っていないレシピの上位3件 → 評価順のベスト3 → ほかの候補。
 // 定番フォルダの料理なら、フォルダの中の「まだ作っていない作り方」と「ランキング」。
+// 🔗 動画のURLから、その日の献立に入れる。YouTubeは説明文をその場で読む（チケットは使わない）。
+// ほかのURL（TikTokなど）は登録画面で読み取り、保存したらその日に入れる（urlInsertDate）。
+let urlInsert = { date: "", status: "idle", message: "" };
+let urlInsertDate = "";
+function placeOnDate(date, recipe) {
+  if (!date || !recipe) return;
+  const before = dailyShopping();
+  if (state.mealSlots[date]?.status === "confirmed") confirmDaily({ date }, recipe);
+  else state.planOverrides[date] = recipe.id;
+  changedShopping(before);
+  trackDaily("plan_url_inserted");
+}
+async function insertFromUrl(date, raw) {
+  const url = (String(raw || "").match(/https?:\/\/\S+/) || [""])[0];
+  if (!url) { urlInsert = { date, status: "error", message: "動画のURLを貼ってください" }; render(); return; }
+  const vid = youtubeVideoId(url);
+  const saved = state.recipes.find((r) => r.mealType === "dinner" && (r.videoUrl === url || (vid && youtubeVideoId(r.videoUrl) === vid)));
+  const done = (recipe, note = "") => {
+    placeOnDate(date, recipe);
+    urlInsert = { date: "", status: "idle", message: "" };
+    swapDate = "";
+    saveState(); render();
+    showToast(`${formatDate(date)}に「${recipe.title}」を入れました${note}`);
+  };
+  if (saved) return done(saved);
+  if (!vid || !API_BASE_URL) {
+    // YouTube以外：登録画面で読み取って、保存したらこの日に入れる。
+    if (!startRecipeFromText(url)) return;
+    urlInsertDate = date; urlInsert = { date: "", status: "idle", message: "" }; swapDate = "";
+    state.fetchStatus = "読み取っています…"; saveState(); render();
+    setTimeout(() => document.querySelector('[data-action="fetch-caption"]:not([disabled])')?.click(), 300);
+    return;
+  }
+  urlInsert = { date, status: "loading", message: "" }; render();
+  try {
+    const result = await importRecipeFromYouTube(url);
+    const videoId = result.videoId || vid;
+    const recipe = saveOwnRecipe(discoverRecipe({ ...result, videoUrl: result.videoUrl || url, videoId, thumbnailUrl: result.thumbnailUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` }, "url"));
+    done(recipe, (recipe.steps || []).length ? "" : "（作り方は、作る画面の📹で動画から読めます）");
+  } catch (error) {
+    urlInsert = { date, status: "error", message: error.code === "no_tickets" ? "チケットが足りません" : (error.message || "読み取れませんでした") };
+    render();
+  }
+}
+function renderUrlInsert() {
+  if (isViewer()) return "";
+  const u = urlInsert.date === swapDate ? urlInsert : { status: "idle" };
+  if (u.status === "loading") return `<div class="swap-url is-busy" aria-live="polite">🤖 動画を読んでいます…</div>`;
+  return `<div class="swap-url"><input id="swap-url" class="input" type="url" inputmode="url" placeholder="🔗 動画のURLを貼って入れる" aria-label="動画のURL"><button type="button" class="primary-button" data-action="life-url-insert" data-date="${swapDate}">入れる</button></div>${u.status === "error" ? `<p class="form-error small">${escapeHtml(u.message)}</p>` : ""}`;
+}
 function renderSwapChoices() {
   const p = dailyProfile();
   const current = dailyPlan().find((d) => d.date === swapDate);
@@ -501,7 +551,7 @@ function renderSwapChoices() {
   // 確認が必要な自分のレシピは、畳まずに見せる（確認すれば選べるので）。
   const shown = swapShowAll || !head ? rest.slice(0, swapShowAll ? 12 : 4) : rest.filter((x) => !x.fit.ok).slice(0, 2);
   const more = rest.length > shown.length ? `<button type="button" class="text-button" data-action="life-swap-more">${folder ? "別の料理にする" : "ほかの候補を見る"}（${rest.length - shown.length}品）</button>` : "";
-  return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ">${head}${shown.length ? `${head ? '<p class="swap-group">ほかの候補</p>' : ""}${shown.map((x) => option(x)).join("")}` : ""}${!head && !shown.length ? "<p>別の候補がありません。条件をゆるめるかレシピを追加してください。</p>" : ""}${more}</section>`;
+  return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ">${renderUrlInsert()}${head}${shown.length ? `${head ? '<p class="swap-group">ほかの候補</p>' : ""}${shown.map((x) => option(x)).join("")}` : ""}${!head && !shown.length ? "<p>別の候補がありません。条件をゆるめるかレシピを追加してください。</p>" : ""}${more}</section>`;
 }
 // Photo when we have one, otherwise a warm tile with a staple emoji (clearly labelled as an image).
 function dishTile(recipe, cls = "") {
@@ -986,6 +1036,7 @@ function handleDailyAction(action, data) {
   if (action === "life-eater") { const p = profileDraft(); const on = new Set(p.eaters || []); on.has(data.value) ? on.delete(data.value) : on.add(data.value); p.eaters = EATERS.map(([id]) => id).filter((id) => on.has(id)); }
   if (action === "life-remind-calendar") { downloadReminder(); profileDraft().remindAdded = true; trackDaily("funnel_reminder_added", { via: "ics" }); }
   if (action === "life-remind-google") { globalThis.open?.(googleCalendarUrl(), "_blank", "noopener"); profileDraft().remindAdded = true; trackDaily("funnel_reminder_added", { via: "google" }); }
+  if (action === "life-url-insert") { insertFromUrl(data.date, document.querySelector("#swap-url")?.value || ""); return true; }
   if (action === "life-demo-read") { runFunnelDemo(document.querySelector("#demo-url")?.value.trim() || ""); return true; }
   if (action === "life-funnel-dish") {
     const p = profileDraft();
@@ -1742,6 +1793,7 @@ function bindFunnel() {
     // キーボードで押した時は、長押しなしで進める。
     hold.addEventListener("click", (ev) => { if (ev.detail === 0) done(); });
   }
+  document.querySelector("#swap-url")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) document.querySelector('[data-action="life-url-insert"]')?.click(); });
   document.querySelector("#demo-url")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) document.querySelector('[data-action="life-demo-read"]')?.click(); });
   document.querySelectorAll("[data-chip-input]").forEach((el) => el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); addChip(el.dataset.chipInput); } }));
   bindTimeDial();
