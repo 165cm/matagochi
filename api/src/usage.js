@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 // 使われ方の集計（個人・家庭を特定しない）。端末ごとのランダムな番号で、1日1行：
 //   何日目か（使い始めた日から）・その日に起きたこと（献立を決めた・作った・評価した…の回数）・同期しているか・家族の人数・レシピ数。
 // 「1週間後にまた開いてくれているか」「ふたりの評価が何日目にたまるか」を確かめるため。設定から止められる。
-export const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick"];
+export const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "plan_url_inserted", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick"];
 const DAY_USERS = 20_000;
 const DAY = 86_400_000;
 const BUCKETS = [[0, 0], [1, 1], [2, 2], [3, 6], [7, 13], [14, 27], [28, 99999]];

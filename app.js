@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-learn";
+const APP_VERSION = "20260928-url";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2775,10 +2775,14 @@ async function handleAction(event) {
       state.fetchStatus = "";
       state.view = "collection";
       if (intoFolder) { recipeTab = "folders"; folderOpen = intoFolder.key; }
+      // 献立の🔗から来た時は、保存したらその日に入れて献立へ戻る。
+      const insertTo = urlInsertDate && recipe.mealType === "dinner" && !asRequest ? urlInsertDate : "";
+      urlInsertDate = "";
+      if (insertTo) { placeOnDate(insertTo, recipe); state.view = "plan"; }
       imageSession?.clear();
       imageFeedback = null;
       saveState();
-      showToast(intoFolder ? `「${intoFolder.name}」フォルダに入れました。` : asRequest ? `保存して、${deciderName()}に🙋リクエストしました。` : "レシピを保存しました。");
+      showToast(insertTo ? `${formatDate(insertTo)}の献立に入れました。` : intoFolder ? `「${intoFolder.name}」フォルダに入れました。` : asRequest ? `保存して、${deciderName()}に🙋リクエストしました。` : "レシピを保存しました。");
       render();
     }
   }
