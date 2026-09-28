@@ -3741,3 +3741,32 @@ button.stamp { cursor: pointer; }
 .rv-chip span { font-size: 18px; line-height: 1.2; }
 .rv-chip small { font-size: 10px; white-space: nowrap; }
 .rv-chip[aria-pressed="true"] { border-color: var(--tomato); background: color-mix(in srgb, var(--tomato) 14%, var(--surface)); }
+
+/* 読み取りの2段階（① 説明欄 → ② 動画AI） */
+.read-steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.rs { padding: 8px 10px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface); }
+.rs p { margin: 0; display: flex; align-items: baseline; gap: 6px; font-size: 14px; }
+.rs p small { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 700; }
+.rs em { display: block; font-style: normal; font-size: 13px; margin-top: 2px; }
+.rs.is-ok { border-color: #8fc27f; background: #f2faee; } .rs.is-ok em { color: #3f7a35; font-weight: 700; }
+.rs.is-part { border-color: #e7c35a; background: #fffaea; } .rs.is-part em { color: #9a6b00; font-weight: 700; }
+.rs.is-no { border-color: #e7a39b; background: #fff3f1; } .rs.is-no em { color: #b3443a; font-weight: 700; }
+.rs.is-todo { border-style: dashed; border-color: var(--tomato); } .rs.is-todo em { color: var(--ink); }
+.rs.is-skip em, .rs.is-run em { color: var(--muted); }
+.rs .draft-video { margin-top: 8px; }
+/* 🧩 レシピの完成度 */
+.ck-card { margin: 0 0 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-soft); border: 1px solid var(--line); }
+.ck-card.is-full { background: #f2faee; border-color: #8fc27f; }
+.ck-card.pop { animation: ck-pop .5s ease; }
+@keyframes ck-pop { 0% { transform: scale(1); } 40% { transform: scale(1.03); } 100% { transform: scale(1); } }
+.ck-head { display: flex; justify-content: space-between; font-size: 14px; }
+.ck-head span { font-weight: 800; color: var(--tomato); }
+.ck-bar { height: 6px; border-radius: 99px; background: var(--line); margin: 6px 0 8px; overflow: hidden; }
+.ck-bar i { display: block; height: 100%; background: linear-gradient(90deg, #f2a65a, var(--tomato)); border-radius: 99px; transition: width .3s ease; }
+.ck-card.is-full .ck-bar i { background: #6bb35a; }
+.ck-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.ck-chip { padding: 4px 9px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 700; border: 1.5px dashed var(--tomato); background: var(--surface); color: var(--tomato); cursor: pointer; }
+.ck-chip.is-done { border: 1.5px solid #8fc27f; background: #f2faee; color: #3f7a35; cursor: default; }
+.ck-hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.ck-flash { animation: ck-flash 1.2s ease; }
+@keyframes ck-flash { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 45%, transparent); } }

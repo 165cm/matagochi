@@ -1095,8 +1095,8 @@ function renderRecipeEntry() {
       ${state.draft.videoUrl ? "" : '<button type="button" class="text-button paste-inline" data-action="paste-recipe-url">📋 コピーしたURLを貼る</button>'}
       ${playlistAvailable ? '<button class="text-button paste-inline" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加</button>' : ""}
       </div>
-      ${state.fetchStatus ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
-      ${canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>${draftVideoBusy ? "動画を読んでいます…（最大2分）" : `🎬 動画から作り方を読む${ticketPrice()}`}</button>` : ""}
+      ${state.draft.readInfo && youtubeVideoId(state.draft.videoUrl) ? renderReadSteps(busy) : `${state.fetchStatus ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
+      ${canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>${draftVideoBusy ? "動画を読んでいます…（最大2分）" : `🎬 動画から作り方を読む${ticketPrice()}`}</button>` : ""}`}
     </section>`;
   return `${entry}
     ${!editing && entryMethod === "image" ? renderImageImport() : ""}
@@ -1104,6 +1104,7 @@ function renderRecipeEntry() {
     <section class="panel entry-detail-panel">
       ${editing && canRereadRecipe(recipeById(state.editingRecipeId)) ? `<div class="reread-row"><button type="button" class="secondary-button" data-action="life-reread" data-recipe="${escapeAttr(state.editingRecipeId)}" ${rereadingId ? "disabled" : ""}>${rereadingId ? "動画を読んでいます…（最大2分）" : `🎬 動画から読み直す${ticketPrice()}`}</button><small>作り方がおかしい時に。読み直した内容は、保存前にここで直せます。</small></div>` : ""}
       ${state.fetchStatus && editing ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
+      ${editing || isViewer() ? "" : '<div id="recipe-checklist"></div>'}
       <input id="recipe-title" class="input title-input" value="${escapeAttr(state.draft.title)}" placeholder="料理名" aria-label="料理名">
       ${state.draft.requiresImageReview ? `<p class="notice">${escapeHtml((state.draft.imageWarnings || []).join(" / ") || "AIは読み違えることがあります。元画像と材料・分量・手順を照合してください。")}</p>
       <label><input id="image-reviewed" type="checkbox" ${state.draft.imageReviewed ? "checked" : ""}> 元画像と材料・分量・手順を確認しました</label>` : ""}
@@ -1144,6 +1145,57 @@ function renderRecipeEntry() {
   `;
 }
 
+// 読み取りの2段階：① 説明欄（無料）→ ② 動画AI（🎟1）。どこまで読めたかを1目で。②は説明欄に作り方がない時だけ使う。
+function renderReadSteps(busy) {
+  const r = state.draft.readInfo || {};
+  const desc = { ok: ["is-ok", "✓ 材料と作り方"], ingredients: ["is-part", "△ 材料だけ（作り方なし）"], steps: ["is-part", "△ 作り方だけ（材料なし）"], none: ["is-no", "✗ 見つからず"], fail: ["is-no", "✗ 読めず"] }[r.desc] || ["", ""];
+  const needVideo = !state.extractedSteps.length;
+  const video = draftVideoBusy ? ["is-run", "⏳ 読んでいます…（最大2分）"]
+    : r.video === "done" ? ["is-ok", `✓ 作り方${state.extractedSteps.length}ステップを書き出し`]
+    : r.video === "fail" ? ["is-no", "✗ 読めず（🎟は戻しました）"]
+    : needVideo ? ["is-todo", "説明欄にない作り方を、AIが動画の音声と画面から書き出します"]
+    : ["is-skip", "— 必要なし"];
+  return `<ol class="read-steps" aria-label="読み取り">
+    <li class="rs ${desc[0]}"><p><b>① 📝 説明欄</b><small>無料</small></p><em>${desc[1]}</em></li>
+    <li class="rs ${video[0]}"><p><b>② 🎬 動画AI</b><small>🎟1</small></p><em>${video[1]}</em>
+      ${video[0] === "is-todo" && canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>🎬 動画から読む${ticketPrice()}</button>` : ""}</li>
+  </ol>`;
+}
+// 🧩 レシピの完成度：埋まった項目は ✓、足りない項目は ＋（タップでその欄へ）。それぞれ「埋めると何が良くなるか」を添える。
+const CHECK_ITEMS = [
+  { key: "title", icon: "🍳", label: "料理名", target: "#recipe-title", gain: "献立に名前で出ます" },
+  { key: "ingredients", icon: "🥕", label: "材料", target: '[data-action="add-ingredient"]', gain: "買い物リストに入ります" },
+  { key: "steps", icon: "📝", label: "作り方", target: "#recipe-steps", gain: "作る画面で見ながら作れます" },
+  { key: "servings", icon: "👥", label: "何人分", target: ".servings-pick", gain: "家族の人数に分量を合わせます" },
+  { key: "minutes", icon: "⏱", label: "時間", target: "#planning-panel", gain: "忙しい日に合う献立に入ります" },
+  { key: "equipment", icon: "🔧", label: "器具", target: ".planning-edit", gain: "持っている器具で作れる日に入ります" },
+];
+function checklistDone() {
+  const q = (sel) => document.querySelector(sel);
+  const rows = [...document.querySelectorAll(".ingredient-name-input")].filter((el) => el.value.trim()).length;
+  const steps = (q("#recipe-steps")?.value || "").split("\n").filter((l) => l.trim()).length;
+  const minutes = Number(q("#planning-minutes")?.value) > 0;
+  const equipment = !!q("#planning-no-equipment")?.checked || document.querySelectorAll('[data-planning-field="equipment"]:checked').length > 0;
+  return { title: !!q("#recipe-title")?.value.trim(), ingredients: rows > 0, steps: steps > 0, servings: !!q("#source-servings")?.value, minutes, equipment, counts: { ingredients: rows, steps } };
+}
+let checklistWasFull = false;
+function updateChecklist() {
+  const box = document.querySelector("#recipe-checklist");
+  if (!box) return;
+  const d = checklistDone();
+  const done = CHECK_ITEMS.filter((i) => d[i.key]).length, total = CHECK_ITEMS.length;
+  const next = CHECK_ITEMS.find((i) => !d[i.key]);
+  const count = (i) => (i.key === "ingredients" && d.counts.ingredients ? ` ${d.counts.ingredients}` : i.key === "steps" && d.counts.steps ? ` ${d.counts.steps}` : "");
+  const full = done === total;
+  box.innerHTML = `<div class="ck-card ${full ? "is-full" : ""}"><div class="ck-head"><b>🧩 レシピの完成度</b><span>${done}/${total}</span></div>
+    <div class="ck-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><i style="width:${Math.round((done / total) * 100)}%"></i></div>
+    <div class="ck-chips">${CHECK_ITEMS.map((i) => d[i.key]
+      ? `<span class="ck-chip is-done">✓ ${i.icon}${i.label}${count(i)}</span>`
+      : `<button type="button" class="ck-chip" data-action="checklist-go" data-target="${escapeAttr(i.target)}">＋ ${i.icon}${i.label}</button>`).join("")}</div>
+    <p class="ck-hint">${full ? "🎉 かんぺき！献立・買い物・分量がぜんぶ正確になります" : `${next.icon} ${next.label}を入れると、${next.gain}`}</p></div>`;
+  if (full && !checklistWasFull) box.querySelector(".ck-card")?.classList.add("pop");
+  checklistWasFull = full;
+}
 // 元レシピの人数：数字をタップ。読み取れた時はそれを選択済みにし、未確認の時だけ赤で知らせる。
 function renderSourceServingsPicker() {
   const n = state.draft.sourceServings;
@@ -2200,6 +2252,15 @@ function renderSyncPanel() {
 
 function bindEvents() {
   bindPushSettings();
+  // 🧩 完成度：入力・タップのたびに数え直す（画面は描き直さない）。
+  const checklist = document.querySelector("#recipe-checklist");
+  if (checklist) {
+    checklistWasFull = false;
+    updateChecklist();
+    const panel = checklist.closest("main") || document;
+    ["input", "change"].forEach((ev) => panel.addEventListener(ev, updateChecklist));
+    panel.addEventListener("click", () => setTimeout(updateChecklist, 0));
+  }
   bindFolderForms();
   document.querySelectorAll("details.setting-row").forEach((el) => el.addEventListener("toggle", () => {
     const id = el.id.replace("setting-", "");
@@ -2473,6 +2534,13 @@ async function handleAction(event) {
       const result = await importRecipeFromYouTube(importingUrl);
       if (state.draft.videoUrl !== importingUrl) return;
       applyImportedRecipe(result);
+      // 読み取りの2段階（① 説明欄 → ② 動画AI）のどこまで読めたか。
+      const hasIng = state.extractedIngredients.length > 0, hasSteps = state.extractedSteps.length > 0;
+      state.draft.readInfo = {
+        desc: hasIng && hasSteps ? "ok" : hasIng ? "ingredients" : hasSteps ? "steps" : "none",
+        video: String(result.analyzedFrom || "").startsWith("video") ? "done" : "todo",
+      };
+      if (state.draft.readInfo.video === "done") state.draft.readInfo.desc = "none";
       // 伝えることだけ短く。作り方がない時は、すぐ下の「🎬 動画から読む」へ。
       state.fetchStatus = !state.extractedSteps.length
         ? "📝 説明欄に作り方がありません。🎬 で動画から読めます（あとで献立からでもOK）"
@@ -2484,6 +2552,7 @@ async function handleAction(event) {
       saveState();
     } catch (error) {
       if (state.draft.videoUrl !== importingUrl) return;
+      state.draft.readInfo = { desc: "fail", video: "todo" };
       state.fetchStatus = `${error.message || "読み取れませんでした。"} 動画の説明文をコピーして「出典・メモ・本文」の説明文欄に貼ると、そこから読み取れます。`;
       state.extractedIngredients = parseIngredients(state.draft.caption);
       detectDraftServings();
@@ -2570,6 +2639,15 @@ async function handleAction(event) {
     return;
   }
 
+  if (action === "checklist-go") {
+    const el = document.querySelector(event.currentTarget.dataset.target);
+    if (el?.tagName === "DETAILS") el.open = true;
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) setTimeout(() => el.focus({ preventScroll: true }), 300);
+    else if (el?.dataset?.action === "add-ingredient") el.click();
+    el?.closest(".servings-pick, #planning-panel")?.classList.add("ck-flash");
+    return;
+  }
   if (action === "add-ingredient") {
     captureDraft();
     state.draftExpanded = true;
@@ -3561,7 +3639,9 @@ async function readDraftFromVideo() {
   try {
     const result = await importRecipeFromYouTube(url, { mode: "video" });
     if (state.draft.videoUrl !== url) return;
+    const info = state.draft.readInfo;
     applyImportedRecipe(result);
+    state.draft.readInfo = { desc: info?.desc || "none", video: result.analyzedFrom?.startsWith("video") && state.extractedSteps.length ? "done" : "fail" };
     state.fetchStatus = result.analyzedFrom?.startsWith("video")
       ? `${result.analyzedFrom === "video-clip" ? "動画の最初の10分から" : "動画の音声と画面から"}読み取りました。材料と作り方を確かめてください。${ticketNote(result)}`
       : "動画からも作り方を読み取れませんでした（チケットは戻しました）。動画を見ながら入力してください。";
