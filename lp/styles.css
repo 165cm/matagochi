@@ -388,3 +388,6 @@ body.is-registered .sticky-cta { display: none; }
 .plus-compare .pc-head span:last-child { color: var(--tomato-dark); }
 .plus-note { font-weight: 800; }
 .plus-compare span:nth-child(2) { color: var(--muted); }
+.promise { margin: 10px 0 4px; font-size: clamp(20px, 5.6vw, 26px); font-weight: 900; line-height: 1.5; color: var(--ink, #2a2420); }
+.import-kinds li b { margin-right: 2px; }
+.hero-copy .promise { margin: -6px 0 -6px; }

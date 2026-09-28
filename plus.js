@@ -107,3 +107,91 @@ function handlePlusAction(action, data) {
   if (action === "life-free-used-close") { try { localStorage.setItem("ripigochi-free-used", data.week || ""); } catch {} render(); return true; }
   return false;
 }
+
+// ── β版のあいだ：課金ボタンを押してくれた人に「お気持ちありがとう」。意見を送ってくれた人には、正式版で3か月無料の招待コードを届ける。
+const BETA = !GATING_LIVE;
+let feedbackSheet = null; // { step: "thanks" | "form" | "sent", from, busy, error }
+function openFeedback(from = "", step = "form") { feedbackSheet = { step, from, busy: false, error: "" }; paywall = null; if (typeof ticketSheet !== "undefined") ticketSheet = null; trackDaily("feedback_open", { from, step }); render(); }
+async function sendFeedback() {
+  if (!feedbackSheet || feedbackSheet.busy) return;
+  const message = String(document.querySelector("#fb-message")?.value || "").trim();
+  const contact = String(document.querySelector("#fb-contact")?.value || "").trim();
+  if (message.length < 2) { feedbackSheet.error = "ご意見を入力してください。"; render(); return; }
+  feedbackSheet = { ...feedbackSheet, busy: true, error: "", message, contact };
+  render();
+  try {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api/feedback`, { method: "POST", headers: { "Content-Type": "application/json", ...ticketHeaders() }, body: JSON.stringify({ message, contact, where: feedbackSheet.from, version: APP_VERSION }) }, 15_000);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error?.message || "送れませんでした。");
+    feedbackSheet = { step: "sent", from: feedbackSheet.from, withContact: !!contact };
+    trackDaily("feedback_sent", { from: feedbackSheet.from });
+  } catch (error) {
+    feedbackSheet = { ...feedbackSheet, busy: false, error: error.message || "送れませんでした。" };
+  }
+  render();
+}
+function renderFeedbackSheet() {
+  const f = feedbackSheet;
+  if (!f) return "";
+  const close = '<button type="button" class="tk-close" data-action="life-fb-close" aria-label="閉じる">×</button>';
+  let body;
+  if (f.step === "thanks") body = `<div class="fb-head"><p class="fb-title">💐 お気持ち、ありがとう！</p>${close}</div>
+    <p class="fb-lead">いまはβ版。<b>ぜんぶ無料</b>でお使いください。</p>
+    <p class="fb-gift">🎁 改善してほしいことを送ってくれた方に、正式版で<b>3か月無料</b>の招待コードを。</p>
+    <button type="button" class="primary-button full-button" data-action="life-fb-form">✍️ 意見を送る</button>
+    <button type="button" class="text-button full-button" data-action="life-fb-close">閉じる</button>`;
+  else if (f.step === "sent") body = `<div class="fb-head"><p class="fb-title">✅ 届きました！</p>${close}</div>
+    <p class="fb-lead">ありがとうございます。いただいた声で、リピごちを良くしていきます。</p>
+    ${f.withContact ? '<p class="fb-gift">🎁 招待コードは、正式版の公開時にメールでお届けします。</p>' : '<p class="fb-gift">🎁 招待コードは、正式版の公開時にこのアプリでお知らせします。</p>'}
+    <button type="button" class="primary-button full-button" data-action="life-fb-close">OK</button>`;
+  else body = `<div class="fb-head"><p class="fb-title">💬 意見・お問い合わせ</p>${close}</div>
+    <textarea id="fb-message" class="input fb-message" maxlength="2000" rows="5" placeholder="使いにくいところ、ほしい機能、うれしかったこと…">${escapeHtml(f.message || "")}</textarea>
+    <label class="fb-contact"><span>メール（任意） ${tip("招待コードや、お返事の連絡先に使います")}</span><input id="fb-contact" class="input" type="email" inputmode="email" autocomplete="email" maxlength="254" placeholder="you@example.com" value="${escapeAttr(f.contact || "")}"></label>
+    ${f.error ? `<p class="form-error">${escapeHtml(f.error)}</p>` : ""}
+    <button type="button" class="primary-button full-button" data-action="life-fb-send" ${f.busy ? "disabled" : ""}>${f.busy ? "送っています…" : "送る"}</button>
+    ${BETA ? '<p class="muted small fb-note">🎁 送ってくれた方に、正式版で3か月無料の招待コード</p>' : ""}`;
+  return `<div class="quota-sheet fb-sheet" role="dialog" aria-modal="true" aria-label="意見を送る"><div class="quota-card">${body}</div></div>`;
+}
+function handleFeedbackAction(action, data) {
+  if (action === "life-usage-toggle") { try { localStorage.setItem("ripigochi-usage", usageOn() ? "off" : "on"); } catch {} render(); return true; }
+  if (!action.startsWith("life-fb")) return false;
+  if (action === "life-fb-open") openFeedback(data.from || "settings", "form");
+  else if (action === "life-fb-thanks") openFeedback(data.from || "", "thanks");
+  else if (action === "life-fb-form") { feedbackSheet = { ...feedbackSheet, step: "form" }; render(); }
+  else if (action === "life-fb-send") sendFeedback();
+  else if (action === "life-fb-close") { feedbackSheet = null; render(); }
+  return true;
+}
+
+// ── 使われ方の集計（個人・家庭を特定しない）。端末ごとのランダムな番号で、その日に起きたことの回数だけを送る。設定で止められる。
+const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick"];
+const usageOn = () => { try { return localStorage.getItem("ripigochi-usage") !== "off"; } catch { return false; } };
+function anonId() {
+  try {
+    let id = localStorage.getItem("ripigochi-anon");
+    if (!/^[a-z0-9]{8,40}$/.test(id || "")) { id = (Math.random().toString(36).slice(2) + Date.now().toString(36)).replace(/[^a-z0-9]/g, "").slice(0, 24); localStorage.setItem("ripigochi-anon", id); }
+    return id;
+  } catch { return ""; }
+}
+const localDay = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+function usageSummary(day = today()) {
+  const start = state.trialFrom || day;
+  const events = {};
+  for (const e of state.experienceEvents || []) if (USAGE_EVENTS.includes(e?.name) && e.at && localDay(e.at) === day) events[e.name] = (events[e.name] || 0) + 1;
+  return { anon: anonId(), day, n: Math.max(0, daysBetween(start, day)), events, synced: typeof syncEnabled === "function" && syncEnabled(), members: (state.family || []).length || 1, recipes: (state.recipes || []).length, v: APP_VERSION };
+}
+let usageTimer = null;
+function queueUsage(delay = 8000) {
+  if (!API_BASE_URL || !state?.onboarded || !usageOn() || isViewer?.()) return;
+  clearTimeout(usageTimer);
+  usageTimer = setTimeout(async () => {
+    const body = usageSummary();
+    if (!body.anon) return;
+    const hash = JSON.stringify(body);
+    try { if (localStorage.getItem("ripigochi-usage-sent") === hash) return; } catch {}
+    try {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/api/usage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: hash }, 10_000);
+      if (response.ok) try { localStorage.setItem("ripigochi-usage-sent", hash); } catch {}
+    } catch {}
+  }, delay);
+}

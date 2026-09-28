@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>リピごち | かぶらない、飽きない、また食べたい。ふたりの夜ごはん</title>
-    <meta name="description" content="最近食べたもの、ふたりの「また食べたい」、料理の腕前を覚えて、買い物の日に合わせて、かぶらない夜ごはんを。傷みやすい食材から先に使う献立、スマホ1画面の買い物リスト、SNSのレシピ動画の保存まで。ひとり暮らしから家族まで使える夜ごはんアプリ「リピごち」。公開のお知らせをメールで受け取れます。" />
+    <title>リピごち | 「今日なに食べる？」を、もう考えない。ふたりの夜ごはん</title>
+    <meta name="description" content="「今日なに食べる？」を、もう考えない。最近食べたものと、ふたりの「また食べたい」を覚えて、買い物の日までの夜ごはんを決めるアプリ。いまのβ版は無料。" />
     <meta property="og:title" content="リピごち | かぶらない、飽きない、また食べたい。" />
-    <meta property="og:description" content="最近食べたものと、ふたりの「また食べたい」を覚えて、買い物の日に合わせて、かぶらない夜ごはんを。いまのβ版は無料。" />
+    <meta property="og:description" content="「今日なに食べる？」を、もう考えない。最近食べたものと、ふたりの「また食べたい」を覚えて、買い物の日までの夜ごはんを決めます。いまのβ版は無料。" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://165cm.github.io/matagochi/lp/" />
     <meta property="og:image" content="https://165cm.github.io/matagochi/lp/assets/ogp-20260924.jpg" />
@@ -24,7 +24,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Klee+One:wght@600&display=swap" />
     <link rel="preload" as="image" href="assets/screen-today.webp" />
-    <link rel="stylesheet" href="styles.css?v=20260928-plus2" />
+    <link rel="stylesheet" href="styles.css?v=20260928-today" />
   </head>
   <body>
     <header class="site-header">
@@ -44,7 +44,8 @@
           <div class="hero-copy">
             <p class="pill">ふたり暮らし・ひとり暮らしの夜ごはんアプリ</p>
             <h1>かぶらない、<br />飽きない、<br /><span class="marker nobr">また食べたい。</span></h1>
-            <p class="lead"><span class="nobr">最近食べたもの、</span><span class="nobr">ふたりの「また食べたい」、</span><span class="nobr">料理の腕前まで覚えて、</span><span class="nobr">次の買い物までの夜ごはんを。</span></p>
+            <p class="promise">「今日なに食べる？」を、<span class="nobr">もう考えない。</span></p>
+            <p class="lead"><span class="nobr">最近食べたものと、</span><span class="nobr">ふたりの「また食べたい」を覚えて、</span><span class="nobr">買い物の日までの夜ごはんを決めます。</span></p>
             <form class="waitlist-form waitlist-inline" data-source="hero" novalidate>
               <label class="sr-only" for="wl-email-hero">メールアドレス</label>
               <input id="wl-email-hero" class="wl-email" type="email" name="email" inputmode="email" autocomplete="email" placeholder="メールアドレス" required />
@@ -243,13 +244,17 @@
       <section class="recipes">
         <div class="container split">
           <div class="split-copy">
-            <p class="kicker">レシピ</p>
-            <h2>保存しただけの<br /><span class="marker nobr">レシピ動画も、</span><span class="marker nobr">献立に。</span></h2>
-            <p>YouTube・TikTok・Instagramで見つけたレシピは、リンクをコピーして📋ボタンでそのまま保存（Androidは共有メニューからも）。説明文から、材料・作り方・何人分かを読み取ります。保存したレシピも、かぶらないように献立に入ります。</p>
+            <p class="kicker">レシピを足す</p>
+            <h2>好きなレシピ動画も、<br /><span class="marker nobr">献立の候補に。</span></h2>
+            <p>見つけたレシピは、リンクをコピーして📋ボタンで保存（Androidは共有メニューからも）。足したレシピも、かぶらないように献立に入ります。</p>
+            <ul class="checks import-kinds">
+              <li><b>YouTube</b>：AIが説明文から材料と作り方を下書き。書かれていない時は、動画からも読み取れます（チケット1枚）</li>
+              <li><b>TikTok</b>：投稿の文章から下書き</li>
+              <li><b>Instagram</b>：リンクを保存。材料はスクショからAIで読み取り</li>
+            </ul>
             <ul class="checks">
               <li>チャンネル・アカウントごとに、保存したレシピを一覧</li>
               <li>主食・素材・気分の色分けタグで、すぐ絞り込み</li>
-              <li>スクショからAIが下書き。確認してから保存</li>
               <li>YouTubeの再生リストからまとめて追加</li>
               <li>手順の「▶」から、動画のその場面をすぐ再生</li>
               <li>最初から、すぐ作れるオリジナルレシピ入り</li>
@@ -388,7 +393,7 @@
           </details>
           <details>
             <summary>SNSのレシピ動画は、どうやって保存しますか？</summary>
-            <p>YouTube・TikTok・Instagramで動画の「共有 → リンクをコピー」をして、リピごちのレシピ画面の「📋 コピーしたURLから保存」を押すだけです。Androidでホーム画面に追加している場合は、共有メニューに出る「リピごち」からも保存できます。説明文に材料が書かれていない動画は、スクショや手入力で補えます。</p>
+            <p>動画の「共有 → リンクをコピー」をして、リピごちのレシピ画面の「📋 コピーしたURLから保存」を押すだけです（Androidでホーム画面に追加していれば、共有メニューの「リピごち」からも）。YouTubeはAIが説明文から材料と作り方を下書きし、書かれていない時はチケット1枚で動画からも読み取れます。TikTokは投稿の文章から下書きします。Instagramはリンクを保存し、材料はスクショからAIで読み取るか、手入力で補えます。</p>
           </details>
           <details>
             <summary>ふたりで使うには、どうすればいいですか？</summary>

@@ -929,6 +929,7 @@ function handleDailyAction(action, data) {
   if (handleInstallAction(action)) return true;
   if (handlePushAction(action)) return true;
   if (handleWeeklyAction(action, data)) return true;
+  if (handleFeedbackAction(action, data)) return true;
   if (handlePlusAction(action, data)) return true;
   if (handlePaywallAction(action, data)) return true;
   if (["life-ratio", "life-staple", "life-chain", "life-priority", "life-photo-retry", "life-type-share"].includes(action)) { if (handleCookTypeAction(action, data)) return true; saveState({ scheduleSync: false }); render(); return true; }
@@ -1145,6 +1146,7 @@ function handleDailyAction(action, data) {
     swapDate = "";
   }
   if (action === "life-cook") {
+    trackDaily("cooking_opened");
     cookingDate = data.date;
     state.view = "cooking";
   }
@@ -1173,6 +1175,7 @@ function handleDailyAction(action, data) {
       if (!state.family.includes(data.member)) state.family.push(data.member);
       e.familyRepeatCycles = {...e.familyRepeatCycles, [data.member]:data.cycle};
       e.updatedAt = nowIso();
+      trackDaily("meal_rated");
       if (raterNames().every(n => e.familyRepeatCycles[n])) {
         e.personalPreference = true; e.preferencePending = false;
         preferencePromptId = "";
@@ -1831,7 +1834,11 @@ function handlePaywallAction(action, data) {
   if (!action.startsWith("life-pay-") || !paywall) return false;
   if (action === "life-pay-plan") paywall.plan = data.plan === "four" ? "four" : "year";
   if (action === "life-pay-close") { trackDaily("paywall_closed"); paywall = null; }
-  if (action === "life-pay-start") { trackDaily("paywall_start", { plan: paywall.plan }); showToast("プレビューです。決済はまだ準備中です。"); paywall = null; }
+  if (action === "life-pay-start") {
+    trackDaily("paywall_start", { plan: paywall.plan, from: paywall.from || "" });
+    if (paywall.from && BETA) { openFeedback(`plus-${paywall.plan}`, "thanks"); return true; }
+    showToast("プレビューです。決済はまだ準備中です。"); paywall = null;
+  }
   render();
   return true;
 }

@@ -3701,3 +3701,12 @@ button.stamp { cursor: pointer; }
 .tk-history b { margin-left: auto; color: var(--sage-dark); }
 .tk-hero .tk-next-line b { font-size: inherit; line-height: inherit; }
 .shop-list { padding-top: 10px; }
+/* β版の「お気持ちありがとう」と意見フォーム */
+.fb-sheet .quota-card { display: grid; gap: 10px; }
+.fb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fb-title { margin: 0; font-size: 18px; font-weight: 900; }
+.fb-lead { margin: 0; font-size: 14.5px; }
+.fb-gift { margin: 0; padding: 10px 12px; border-radius: 14px; background: #fff4e6; font-size: 13.5px; line-height: 1.6; }
+.fb-message { min-height: 110px; resize: vertical; font-size: 15px; }
+.fb-contact { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.fb-note { margin: 0; text-align: center; }
