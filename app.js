@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-plus3";
+const APP_VERSION = "20260928-words";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -983,8 +983,8 @@ function renderSaveGuide() {
     : isInstalledApp()
       ? ["YouTube・TikTok・Instagramで、動画の<b>「共有」</b>", "一覧から <b>リピごち</b> を選ぶ（「リンクをコピー」→ 📋 でもOK）", "材料と作り方を確かめて保存"]
       : ["YouTube・TikTok・Instagramで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"];
-  const tip = !ios && !isInstalledApp() ? '<p class="save-guide-tip">ブラウザのメニューから「ホーム画面に追加」すると、SNSの共有メニューに<b>リピごち</b>が出ます。</p>' : "";
-  return `<section class="save-guide" aria-label="レシピの保存のしかた"><p class="save-guide-title">見つけたレシピ動画を、そのまま保存</p><ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>${tip}<div class="save-guide-actions"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button" data-action="save-guide-done">わかった</button></div>${pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : ""}</section>`;
+  const homeTip = !ios && !isInstalledApp() ? `<p class="save-guide-tip">${tip("ホーム画面に追加すると、SNSの共有メニューにリピごちが出ます")}</p>` : "";
+  return `<section class="save-guide" aria-label="レシピの保存のしかた"><p class="save-guide-title">📋 レシピ動画を保存</p><ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>${homeTip}<div class="save-guide-actions"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button" data-action="save-guide-done">わかった</button></div>${pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : ""}</section>`;
 }
 
 function setView(view) {
@@ -1109,7 +1109,7 @@ function renderRecipeEntry() {
       <div class="ingredient-head"><h3>材料 <small class="muted">元レシピの分量のまま</small></h3>
         <span><button class="text-button" type="button" data-action="add-ingredient">＋ 追加</button>${getOriginalIngredients().length ? '<button class="text-button" type="button" data-action="reset-ingredients">取得時に戻す</button>' : ""}</span></div>
       <div class="ingredient-editor-list">
-        ${extracted.map((item, index) => renderIngredientEditorRow(item, index)).join("") || '<p class="muted small">＋ 追加 から材料を入れてください。</p>'}
+        ${extracted.map((item, index) => renderIngredientEditorRow(item, index)).join("") || ''}
       </div>
       <h3 class="subhead">作り方</h3>
       <textarea id="recipe-steps" class="textarea steps-input" placeholder="1行に1つずつ" aria-label="作り方（1行に1つ）">${escapeHtml(steps.join("\n"))}</textarea>
@@ -1150,7 +1150,7 @@ function renderSourceServingsPicker() {
     <input id="source-servings" type="hidden" value="${escapeAttr(n ?? "")}">
     <p><b>元のレシピは何人分？</b>${n != null && state.draft.servingsDetected ? '<small>動画から読み取り</small>' : ""}</p>
     <div class="servings-options" role="group" aria-label="元のレシピの人数">${options.map((k) => `<button type="button" class="choice-button" data-action="set-source-servings" data-count="${k}" aria-pressed="${n === k}">${k}</button>`).join("")}<button type="button" class="choice-button" data-action="set-source-servings" data-count="" aria-pressed="${n == null}">不明</button></div>
-    ${n == null ? '<p class="servings-warn">わからないと、分量を人数に合わせられません。動画の「材料（◯人分）」を確かめてください。</p>' : ""}
+    ${n == null ? `<p class="servings-warn">不明だと分量を合わせられません ${tip("動画の「材料（◯人分）」を確かめてください")}</p>` : ""}
   </div>`;
 }
 

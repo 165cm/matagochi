@@ -198,7 +198,7 @@ function renderTicketSheet() {
   const daysLeft = start ? Math.max(0, daysBetween(today(), addDays(start, Tickets.WEEKS * 7 - 1)) + 1) : 0;
   const head = ticketSheet.need
     ? `<div class="tk-balance"><p class="quota-title">🎟 チケットがあと1枚いります</p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div><p class="small">動画1本の作り方をAIが読むのに、チケットを1枚使います。${g ? `<b>${goalText(g)} +${Tickets.REWARD}枚</b>もらえます。` : ""}</p>${typeof renderTicketPlusLine === "function" ? renderTicketPlusLine() : ""}`
-    : `<div class="tk-balance"><span class="tk-ticket" aria-hidden="true">🎟</span><p><b>${t?.unlimited ? "∞" : t ? fmtTickets(t.balance) : "…"}</b><small>枚</small></p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div><p class="small tk-what">1枚で、動画1本の作り方をAIが読み取ります。<b>読み取り済みの動画は0枚</b>で、自動で見分けます。</p>`;
+    : `<div class="tk-balance"><span class="tk-ticket" aria-hidden="true">🎟</span><p><b>${t?.unlimited ? "∞" : t ? fmtTickets(t.balance) : "…"}</b><small>枚</small></p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div><p class="small tk-what">🎬 1枚＝動画1本をAIが読み取り（<b>読み取り済みは0枚</b>）</p>`;
   const challenge = !t || !start ? "" : `<section class="tk-challenge" aria-label="はじめての4週間チャレンジ">
       <p class="tk-title"><b>はじめての4週間チャレンジ</b><span>${live ? `のこり${daysLeft}日` : "おわり"}</span></p>
       <div class="tk-meter"><progress max="${max}" value="${earned}" aria-label="獲得したチケット"></progress><span><b>${fmtTickets(earned)}</b> / ${max}枚</span></div>
