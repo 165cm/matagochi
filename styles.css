@@ -3862,9 +3862,22 @@ body.cook-mode-open { overflow: hidden; }
 .cook-mode-cta small { font-size: 11px; color: var(--muted); }
 .cm-video { position: relative; }
 .cm-hand { display: inline-flex; align-items: center; gap: 2px; flex: none; }
-.cm-hand-btn { flex: none; width: 38px; height: 38px; border: 1.5px solid var(--tomato); background: var(--surface); border-radius: 999px; font-size: 18px; cursor: pointer; padding: 0; }
-.cm-hand-btn[aria-pressed="true"] { background: var(--tomato); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 30%, transparent); animation: hg-glow 1.6s infinite; }
+.cm-hand-btn { flex: none; height: 38px; padding: 0 12px; border: 1.5px solid var(--tomato); background: var(--surface); color: var(--tomato); border-radius: 999px; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.cm-hand-btn[aria-pressed="true"] { background: var(--tomato); color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 30%, transparent); animation: hg-glow 1.6s infinite; }
 @keyframes hg-glow { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--tomato) 12%, transparent); } }
+.cm-nav.no-loop { grid-template-columns: 1fr 1.6fr; }
+/* はじめて料理モードを開いた時の説明（1回だけ） */
+.cm-coach { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 16px; background: rgba(30, 24, 20, .55); animation: fd-in .25s ease-out both; }
+.cc-card { width: min(100%, 380px); max-height: 100%; overflow-y: auto; padding: 18px 18px 12px; border-radius: 22px; background: var(--bg, #fffaf3); box-shadow: 0 12px 40px rgba(0,0,0,.3); display: grid; gap: 8px; text-align: center; }
+.cc-kicker { margin: 0; font-size: 12px; font-weight: 800; color: var(--muted); }
+.cc-card h3 { margin: 0; font-size: 20px; }
+.cc-signs { list-style: none; margin: 4px 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cc-signs li { display: grid; gap: 2px; padding: 10px 4px; border-radius: 16px; background: #fff0e8; }
+.cc-signs b { font-size: 34px; line-height: 1.1; }
+.cc-signs span { font-size: 14px; font-weight: 800; color: var(--tomato); }
+.cc-note { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+.cc-card .primary-button { min-height: 50px; }
+.cc-card .text-button { font-size: 12.5px; }
 /* 合図の絵文字：ボタンの中。✋ がオンの時ははっきり、オフの時は控えめに */
 i.g { font-style: normal; margin-left: 4px; opacity: .45; }
 #cook-mode.hand-on i.g { opacity: 1; }
