@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-words";
+const APP_VERSION = "20260928-tickets";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -276,7 +276,7 @@ function normalizeState(saved) {
   const base = clone(demoState);
   const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
   const savedView = saved.view === "ratings" ? "repeat" : saved.view;
-  const view = ["today", "register", "playlist", "collection", "recipe", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings", "pantry"].includes(savedView) ? savedView : base.view;
+  const view = ["today", "register", "playlist", "collection", "recipe", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings", "pantry", "tickets"].includes(savedView) ? savedView : base.view;
   return {
     ...base,
     ...saved,
@@ -1044,7 +1044,8 @@ function render() {
     plan: renderDailyPlan,
     repeat: renderReflection,
     settings: renderSettings,
-    pantry: renderPantryPage
+    pantry: renderPantryPage,
+    tickets: renderTicketPage
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
   document.querySelector("#app").innerHTML = views[state.view]() + renderTicketSheet() + renderTicketAsk() + renderMenuViewer() + (paywall ? renderPaywall() : renderTicketParty());
@@ -1055,7 +1056,7 @@ function render() {
 }
 
 // App-bar pattern: the logo on 今日, the page name elsewhere; a page's own buttons sit at the right.
-const PAGE_TITLES = { plan: "献立", shopping: "買い物", collection: "レシピ", recipe: "レシピ", register: "レシピを追加", playlist: "まとめて追加", repeat: "ふりかえり", recordDetails: "記録", cooking: "作る", settings: "設定", pantry: "常備品" };
+const PAGE_TITLES = { plan: "献立", shopping: "買い物", collection: "レシピ", recipe: "レシピ", register: "レシピを追加", playlist: "まとめて追加", repeat: "ふりかえり", recordDetails: "記録", cooking: "作る", settings: "設定", pantry: "常備品", tickets: "チケット" };
 function placePageChrome() {
   const title = state.view === "register" && state.editingRecipeId ? "レシピを編集" : PAGE_TITLES[state.view] || "";
   const el = document.querySelector("#page-title");
@@ -3931,7 +3932,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 document.querySelector("#profile-button")?.addEventListener("click", () => setView("settings"));
-document.querySelector("#ticket-chip")?.addEventListener("click", () => openTicketSheet());
+document.querySelector("#ticket-chip")?.addEventListener("click", () => openTicketPage());
 
 document.addEventListener("visibilitychange", () => {
   // アプリに戻ってきたら、他の端末の変更を取り込む

@@ -3643,3 +3643,61 @@ button.stamp { cursor: pointer; }
 .tip { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; vertical-align: middle; }
 .tip:focus::after, .tip:hover::after { content: attr(data-tip); position: absolute; z-index: 20; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 220px; padding: 7px 10px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.5; text-align: left; white-space: normal; box-shadow: var(--shadow); }
 .plan-foot { margin: 4px 0 0; text-align: right; }
+.tk-bonus { margin: 8px 0 0; padding: 8px 10px; border-radius: 12px; background: #fff4e6; font-size: 13px; }
+.tk-bonus .tk-dots { display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle; }
+/* チケットのページ */
+.tk-page { display: grid; gap: 6px; }
+.tk-hero { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 16px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.tk-hero p { margin: 0; display: flex; align-items: baseline; gap: 4px; }
+.tk-hero p b { font-size: 40px; line-height: 1; }
+.tk-exp { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.tk-h { margin: 14px 0 2px; font-size: 14px; color: var(--muted); }
+.tk-rules { margin: 0; padding: 0; list-style: none; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.tk-rules li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.tk-rules li:last-child { border-bottom: 0; }
+.tk-rules .tk-ic { font-size: 18px; text-align: center; }
+.tk-rules p { margin: 0; display: grid; gap: 2px; min-width: 0; }
+.tk-rules p b { font-size: 14px; }
+.tk-rules small { font-size: 12px; color: var(--muted); }
+.tk-rules em { font-style: normal; font-weight: 800; font-size: 14px; color: var(--sage-dark); white-space: nowrap; }
+.tk-rules li.is-now { background: #fff4e6; }
+.tk-rules li.is-done em, .tk-rules li.is-past { color: var(--muted); }
+.tk-rules li.is-past { opacity: .6; }
+.tk-rules .tk-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
+.tk-note { margin: 0; font-size: 13px; }
+/* チケットのページ：タブ・ミッション・ショップ */
+.tk-next-line { flex-basis: 100%; margin: 4px 0 0; padding: 6px 10px; border-radius: 10px; background: #fff4e6; font-size: 13px; }
+.tk-next-line b { color: var(--sage-dark); }
+.tk-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; padding: 4px; border-radius: 16px; background: var(--surface-soft); }
+.tk-tab { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 9px 4px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.tk-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 2px 8px rgba(90, 60, 30, .12); }
+.tk-panel { margin-top: 8px; }
+.ms-list, .shop-list { display: grid; gap: 8px; }
+.ms-card, .shop-card { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 12px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.ms-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--surface-soft); font-size: 22px; }
+.ms-body { display: grid; gap: 3px; min-width: 0; }
+.ms-body b { font-size: 15px; }
+.ms-body small { font-size: 12px; color: var(--muted); }
+.ms-bar { height: 8px; margin-top: 4px; border-radius: 99px; background: var(--surface-soft); overflow: hidden; }
+.ms-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #f6b24b, var(--sage)); }
+.ms-count { justify-self: end; margin-top: -2px; }
+.ms-week { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.ms-week .tk-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
+.ms-reward { display: grid; place-items: center; min-width: 56px; padding: 6px 8px; border-radius: 12px; background: #fff4e6; font-size: 13px; color: var(--sage-dark); }
+.ms-reward b { font-size: 17px; }
+.ms-stamp { font-style: normal; font-weight: 900; font-size: 13px; color: var(--sage-dark); border: 2px solid currentColor; border-radius: 8px; padding: 2px 6px; transform: rotate(-8deg); }
+.ms-card.is-now { box-shadow: inset 0 0 0 2px #f6c07a; }
+.ms-card.is-later, .ms-card.is-past { opacity: .6; }
+.ms-card.is-done { background: var(--surface-soft); }
+.ms-card.is-done .ms-reward { background: none; }
+.shop-card.is-best { box-shadow: inset 0 0 0 2px var(--sage); background: #fff7f2; }
+.shop-badge { position: absolute; top: -9px; left: 12px; padding: 1px 8px; border-radius: 99px; background: var(--sage); color: #fff; font-size: 11px; font-weight: 800; }
+.shop-price { display: grid; justify-items: center; min-width: 76px; padding: 8px 10px; border: 0; border-radius: 12px; background: var(--sage); color: #fff; font: inherit; font-weight: 900; font-size: 15px; cursor: pointer; }
+.shop-price small { font-size: 10.5px; font-weight: 700; opacity: .9; }
+.shop-price:disabled { background: var(--line); color: var(--muted); cursor: default; }
+.tk-history { margin: 0; padding: 0; list-style: none; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.tk-history li { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.tk-history li:last-child { border-bottom: 0; }
+.tk-history b { margin-left: auto; color: var(--sage-dark); }
+.tk-hero .tk-next-line b { font-size: inherit; line-height: inherit; }
+.shop-list { padding-top: 10px; }

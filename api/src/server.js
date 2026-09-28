@@ -1,7 +1,7 @@
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
-import { createTicketBook } from "./tickets.js";
+import { createTicketBook, START_TICKETS } from "./tickets.js";
 import { createAuth } from "./auth.js";
 import { createTrendBook } from "./trends.js";
 import { createPopularBook } from "./popular.js";
@@ -28,7 +28,7 @@ export function createApp(env = process.env, deps = {}) {
   const photoStore = "photoStore" in deps ? deps.photoStore : createPhotoStore(env);
   const recipeStore = deps.recipeStore ?? createRecipeStore(env);
   const auth = createAuth(recipeStore, env, { sendMail: deps.sendMail, fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
-  const tickets = recipeStore ? createTicketBook(recipeStore, { now: deps.now || Date.now, startTickets: Number(env.START_TICKETS || 25) }) : null;
+  const tickets = recipeStore ? createTicketBook(recipeStore, { now: deps.now || Date.now, startTickets: Number(env.START_TICKETS || START_TICKETS) }) : null;
   const catalog = createRecipeCatalog(recipeStore,
     deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
       analyzeRecipeVideo: env.VIDEO_ANALYSIS_ENABLED === "false" ? undefined : (videoUrl, snippet, videoOptions) => analyzeRecipeVideo(videoUrl, snippet, env, videoOptions),
@@ -89,7 +89,7 @@ export function createApp(env = process.env, deps = {}) {
   const idOf = (value) => { const h = String(value || ""); return /^[\w-]{8,80}$/.test(h) ? h : ""; };
   const householdOf = (req) => idOf(req.get("x-household"));
   const unlimitedOf = (req) => !!devCode && String(req.get("x-dev-code") || "") === devCode;
-  // 新しい財布（25枚）を作れるのは、1つの接続元から1日10個まで。
+  // 新しい財布（10枚）を作れるのは、1つの接続元から1日10個まで。
   const walletCreations = new Map();
   const walletFor = async (req) => {
     const household = householdOf(req), unlimited = unlimitedOf(req);
@@ -171,6 +171,8 @@ export function createApp(env = process.env, deps = {}) {
     const quota = () => ticketsView(req);
     try {
       const result = await catalog.import(req.body?.url, { forceVideo: req.body?.mode === "video", household, unlimited });
+      // はじめの3日の取り込みボーナスのために、取り込んだ動画を数える。
+      if (tickets && household) await tickets.noteImport(household, result.videoId || (() => { try { return extractYouTubeVideoId(req.body?.url); } catch { return ""; } })());
       res.json({ ...result, tickets: await quota() });
     } catch (error) {
       // AI分析が失敗・上限・停止中でも、動画のタイトルと説明文は返す。材料はアプリ側で説明文から読み取る。
