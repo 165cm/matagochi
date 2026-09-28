@@ -3626,3 +3626,19 @@ button.stamp { cursor: pointer; }
 .menu-setup .style-card span { font-size: 18px; }
 .menu-field .choice-button { font-size: 13.5px; padding-left: 6px; padding-right: 6px; }
 .legal-links { margin: 0 0 6px; padding-left: 1.2em; } .legal-links li { margin: 4px 0; }
+/* 無料とプラス：ロックの日・3日を使い切った案内・プラスでできること */
+.plan-card.is-locked .plan-photo { position: relative; overflow: hidden; }
+.plan-card.is-locked .plan-photo .dish-tile { filter: blur(6px) saturate(.7); transform: scale(1.08); }
+.lock-veil { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; background: rgba(255, 248, 238, .35); }
+.plan-card.is-locked .plan-title { font-size: 15px; color: var(--sage-dark); }
+.plan-card.is-locked .plan-controls { flex-wrap: wrap; gap: 6px; }
+.plus-nudge { display: grid; gap: 8px; padding: 12px 14px; background: #fff4e6; }
+.plus-nudge p { margin: 0; display: grid; gap: 2px; }
+.plus-nudge small { color: var(--muted); font-size: 12.5px; }
+.plus-nudge-actions { display: flex; align-items: center; gap: 10px; }
+.pw-perks { margin: 4px 0 10px; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+.pw-perks li { padding: 8px 10px; border-radius: 12px; background: var(--surface-soft); }
+.tk-plus-line { display: block; margin-top: 6px; }
+.plan-card.is-locked .plan-controls { position: static; justify-content: flex-start; margin-top: 6px; }
+.plan-card.is-locked .plan-controls .plan-icon { width: auto; padding: 6px 10px; font-size: 12.5px; }
+.plan-card.is-locked .plan-controls { flex-wrap: nowrap; }
