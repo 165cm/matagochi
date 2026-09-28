@@ -3770,3 +3770,73 @@ button.stamp { cursor: pointer; }
 .ck-hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 .ck-flash { animation: ck-flash 1.2s ease; }
 @keyframes ck-flash { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 45%, transparent); } }
+
+/* 作る画面：画面つけっぱなし・⏱タイマー・1手順ずつ */
+.wake-chip { margin: 4px 0 0; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.cooking-steps-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cooking-steps-head h3 { margin: 0; }
+.cook-mode-open { flex: none; padding: 8px 12px; min-height: 0; font-size: 14px; }
+.cook-timer-chip { display: inline-flex; align-items: center; gap: 1px; margin: 0 2px; padding: 1px 8px; border-radius: 999px; border: 1.5px solid var(--tomato); background: color-mix(in srgb, var(--tomato) 10%, var(--surface)); color: var(--tomato); font: inherit; font-weight: 800; cursor: pointer; line-height: 1.5; }
+#cook-timer-bar { position: fixed; left: 8px; right: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 60; display: grid; gap: 6px; max-width: 520px; margin: 0 auto; }
+body.cook-mode-open #cook-timer-bar { bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 90; }
+.ctb-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 14px; background: #2b2825; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+.ctb-time { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 58px; }
+.ctb-label { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
+.ctb-item button { flex: none; border: 0; border-radius: 10px; padding: 6px 9px; background: rgba(255,255,255,.14); color: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.ctb-item.is-paused .ctb-time { opacity: .6; }
+.ctb-item.is-done { background: var(--tomato); animation: ctb-ring 1s ease-in-out infinite; }
+.ctb-item.is-done .ctb-label { opacity: 1; font-weight: 800; font-size: 15px; }
+@keyframes ctb-ring { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } }
+
+
+/* 作る画面：手順ごとの材料・タレのまとまり */
+.cook-list { list-style: none; counter-reset: step; padding: 0; margin: 6px 0 0; }
+.cook-list > li { display: block; padding: 10px 0; margin: 0; border-bottom: 1px solid var(--line); line-height: 1.7; }
+.cook-list .cs-text { font-size: 16px; }
+.cook-list .cs-text::before { counter-increment: step; content: counter(step) ". "; font-weight: 800; color: var(--tomato); }
+.step-uses { margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 12.5px; color: var(--muted); }
+.step-uses b { color: var(--ink); font-weight: 700; }
+.step-uses .su-group { padding: 1px 8px; border-radius: 8px; background: #fff3dc; color: #7a5a1c; }
+.ing-group { margin: 6px 0 4px; padding: 4px 10px 2px; border-radius: 12px; background: #fff7e8; }
+.ing-group > p { margin: 4px 0 0; font-size: 13px; font-weight: 800; color: #7a5a1c; }
+.ing-group .cooking-ingredients li:last-child { border-bottom: 0; }
+
+/* 🍳 料理モード：横持ちは 左に動画｜右に手順と材料、縦持ちは 上に動画・下に手順と材料 */
+#cook-mode { position: fixed; inset: 0; z-index: 80; background: var(--bg, #fffaf3); display: grid; grid-template-rows: auto 1fr auto; padding-bottom: env(safe-area-inset-bottom); }
+body.cook-mode-open { overflow: hidden; }
+.cm-video { background: #000; aspect-ratio: 16 / 9; width: 100%; }
+.cm-video.is-shorts { aspect-ratio: auto; height: 42vh; }
+.cm-video iframe { width: 100%; height: 100%; border: 0; display: block; }
+.cm-novideo { height: 100%; display: grid; place-items: center; font-size: 48px; background: var(--surface-soft); }
+.cm-side { min-height: 0; overflow-y: auto; padding: 10px 16px 8px; display: flex; flex-direction: column; }
+.cm-top { display: flex; align-items: center; gap: 8px; }
+.cm-count { font-size: 15px; color: var(--tomato); white-space: nowrap; }
+.cm-title { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-close { flex: none; border: 0; background: var(--surface); border-radius: 999px; width: 38px; height: 38px; font-size: 17px; cursor: pointer; }
+.cm-dots { display: flex; gap: 3px; margin: 6px 0 0; }
+.cm-dots i { flex: 1; height: 4px; border-radius: 99px; background: var(--line); }
+.cm-dots i.is-done { background: #8fc27f; } .cm-dots i.is-now { background: var(--tomato); }
+.cm-step { margin: 10px 0; font-size: clamp(19px, 5.2vw, 24px); line-height: 1.6; font-weight: 700; color: var(--ink); }
+.cm-uses { margin-top: auto; padding: 8px 12px; border-radius: 14px; background: #fff7e8; }
+.cm-uses-head { margin: 0 0 4px; font-size: 12.5px; font-weight: 800; color: #7a5a1c; display: flex; gap: 8px; align-items: center; }
+.cm-list, .cm-list ul { list-style: none; margin: 0; padding: 0; }
+.cm-list li { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 16px; border-bottom: 1px dashed #efdcb8; }
+.cm-list li:last-child { border-bottom: 0; }
+.cm-list li b { white-space: nowrap; }
+.cm-list li.cm-group { display: block; }
+.cm-list li.cm-group > p { margin: 4px 0 0; font-size: 13px; font-weight: 800; color: #7a5a1c; }
+.cm-uses.is-all .ing-group { background: #fff; }
+.cm-nav { display: grid; grid-template-columns: 1fr auto 1.6fr; gap: 8px; padding: 8px 12px 10px; border-top: 1px solid var(--line); background: var(--bg, #fffaf3); }
+.cm-nav button { min-height: 52px; font-size: 16px; }
+.cm-loop { border: 1.5px solid var(--line); background: var(--surface); border-radius: 14px; padding: 0 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--ink); }
+.cm-loop[aria-pressed="true"] { border-color: var(--tomato); color: var(--tomato); }
+@media (orientation: landscape) and (max-height: 600px) {
+  #cook-mode { grid-template-columns: 58% 1fr; grid-template-rows: 1fr auto; }
+  .cm-video, .cm-video.is-shorts { grid-row: 1 / 3; aspect-ratio: auto; height: 100vh; height: 100dvh; }
+  .cm-side { grid-column: 2; }
+  .cm-nav { grid-column: 2; padding: 6px 8px 8px; }
+  .cm-nav button { min-height: 44px; font-size: 14px; }
+  .cm-step { font-size: 18px; margin: 6px 0; }
+  .cm-list li { font-size: 14px; }
+  body.cook-mode-open #cook-timer-bar { left: 8px; right: auto; width: calc(58% - 16px); bottom: 8px; margin: 0; }
+}

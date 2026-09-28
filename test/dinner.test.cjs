@@ -6,7 +6,7 @@ const fullSource = fs.readFileSync(require('node:path').join(__dirname, '../app.
 const source = fullSource.slice(0, fullSource.lastIndexOf('document.querySelectorAll(".tab")'));
 function app() {
   const context = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] } });
-  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','skills.js','aisles.js','lifestyle.js','daily-ui.js','playlist-import.js','household.js','skill-quiz.js','cook-level.js','weekly.js','cook-type.js','plan-moves.js','plus.js','folders.js','install.js','push.js','tickets.js','account.js','discover.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
+  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','skills.js','aisles.js','lifestyle.js','daily-ui.js','playlist-import.js','household.js','skill-quiz.js','cook-level.js','weekly.js','cook-type.js','plan-moves.js','plus.js','cook-mode.js','folders.js','install.js','push.js','tickets.js','account.js','discover.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
   vm.runInContext(source, context);
   return (code) => vm.runInContext(code, context);
 }
@@ -23,7 +23,9 @@ test('dinner plan excludes other meal types and incompatible overrides without d
 test('scales source portions without assuming unknown serves one; qualitative amounts stay intact', () => {
   const run = app();
   assert.equal(run(`scaleAmountForServings('300g', 1, 2)`), '150g');
-  assert.equal(run(`scaleAmountForServings('大さじ1/2', 2, 4)`), '大さじ0.25');
+  assert.equal(run(`scaleAmountForServings('大さじ1/2', 2, 4)`), '大さじ1/4');
+  assert.equal(run(`scaleAmountForServings('1/4個', 1, 2)`), '1/8個');
+  assert.equal(run(`scaleAmountForServings('小さじ1', 1, 2)`), '小さじ1/2');
   assert.equal(run(`scaleAmountForServings('適量', 2, 2)`), '適量');
   assert.equal(run(`scaleAmountForServings('300g', 2, null)`), '300g');
   assert.equal(run(`scaleAmountForServings('300g', 2)`), '600g');
