@@ -1227,3 +1227,25 @@ test("reason: season adds a small nudge and a short label", () => {
   assert.equal(L.season({ ingredients: [{ name: "冷凍かぼちゃ" }] }, "2026-10-01").reason, "");
   assert.equal(L.season({ ingredients: [{ name: "片栗粉" }] }, "2026-10-01").reason, "");
 });
+
+test("insights: shows how many more ratings are needed, then per-person likes, staples and exclusions", () => {
+  const R = {
+    a: { id: "a", title: "ざるうどん", ingredients: [{ name: "うどん" }] },
+    b: { id: "b", title: "焼きそば", ingredients: [{ name: "中華麺" }, { name: "豚こま" }] },
+    c: { id: "c", title: "鮭の塩焼き", ingredients: [{ name: "生鮭" }] },
+    d: { id: "d", title: "ゴーヤチャンプルー", ingredients: [{ name: "ゴーヤ" }] },
+  };
+  const ev = (recipeId, day, cycles) => ({ recipeId, cookedAt: `2026-09-${day}`, familyRepeatCycles: cycles });
+  const family = ["パパ", "ママ"];
+  const few = L.insights({ evaluations: [ev("a", "01", { パパ: "weekly", ママ: "monthly" })], recipeOf: (id) => R[id], family });
+  assert.equal(few.left, 2);
+  const evaluations = [
+    ev("a", "01", { パパ: "weekly", ママ: "monthly" }),
+    ev("b", "03", { パパ: "tomorrow", ママ: "twice_month" }),
+    ev("c", "05", { パパ: "weekly", ママ: "weekly" }),
+    ev("c", "12", { パパ: "weekly", ママ: "weekly" }),
+    ev("d", "07", { パパ: "monthly", ママ: "never" }),
+  ];
+  const texts = L.insights({ evaluations, recipeOf: (id) => R[id], family }).items.map((x) => x.text);
+  assert.deepEqual(texts, ["🍜 パパは麺が好き", "🏆 ふたりの定番：鮭の塩焼き", "🙅 1品は献立に出しません"]);
+});

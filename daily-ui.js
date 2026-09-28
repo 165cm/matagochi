@@ -741,6 +741,16 @@ function reflectionMonth() {
   const d = new Date(y, m - 1 + reflMonth, 1);
   return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: d.getFullYear() === new Date().getFullYear() ? `${d.getMonth() + 1}月` : `${d.getFullYear()}年${d.getMonth() + 1}月` };
 }
+// わかってきたこと：評価から見えた好み。まだ少ないうちは、あと何品かだけ出す。
+function renderInsights(recipeOf, favId = "") {
+  if (!state.evaluations.length) return "";
+  let { left, items } = Lifestyle.insights({ evaluations: state.evaluations, recipeOf: (id) => recipeOf({ recipeId: id }), family: state.family || [] });
+  items = items.filter((x) => !(x.kind === "staple" && x.recipeId === favId)); // 今月の偏愛と同じ料理は重ねない
+  const body = left ? `<p class="muted">あと<b>${left}品</b>「また食べたい」をつけると見えてきます</p>`
+    : items.length ? `<ul>${items.map((x) => `<li>${escapeHtml(x.text)}</li>`).join("")}</ul>` : "";
+  if (!body) return "";
+  return `<section class="insight-card"><h3>💡 わかってきたこと ${tip("評価から見えた好み。献立の提案にも使っています")}</h3>${body}</section>`;
+}
 function renderReflection() {
   const month = reflectionMonth();
   const recipeOf = (e) => recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || { id: e.recipeId, title: e.recipeTitle || "保存済みの料理", ingredients: [] };
@@ -765,6 +775,7 @@ function renderReflection() {
   }).join("");
   return `<div class="page-actions">${nav}</div>
   ${list.length ? `<div class="refl-stats"><p><strong>${list.length}</strong><small>回つくった</small></p><p><strong>${tally.size}</strong><small>種類の料理</small></p><p><strong>${lovedCount}</strong><small>また食べたい</small></p></div>` : ""}
+  ${reflMonth === 0 ? renderInsights(recipeOf, favRecipe?.id) : ""}
   ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
   ${reflMonth === 0 ? renderMenuAlbum() : ""}
   <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3>${list.length ? '<small class="muted">タップで編集</small>' : ""}</div>

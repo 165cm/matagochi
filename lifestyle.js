@@ -1013,6 +1013,51 @@
     curated: { version: 2, role: r.role },
     note: "調理時間は目安です。炊飯・解凍は別途。市販品の原材料表示を確認してください。",
   })));
+  // ----- わかってきたこと：評価から見えた好み（ふりかえりに3行まで） -----
+  // evaluations: [{recipeId, cookedAt, familyRepeatCycles, preferencePending}]、recipeOf(id) → レシピ。
+  const LIKE_LABEL = {
+    noodle: ["🍜", "麺"], rice: ["🍚", "ごはんもの"], bread: ["🍞", "パン"],
+    meat: ["🍖", "肉"], fish: ["🐟", "魚"], eggtofu: ["🥚", "卵・豆腐"],
+    spicy: ["🌶", "ピリ辛"], light: ["🍋", "さっぱり"], rich: ["🧈", "こってり"],
+    chinese: ["🥟", "中華"], western: ["🍝", "洋風"],
+  };
+  const INSIGHT_MIN = 3; // 評価がこれだけたまるまでは、あと何回かを出す
+  function insights({ evaluations = [], recipeOf = () => null, family = [] } = {}) {
+    const rated = evaluations.filter((e) => !e.preferencePending && Object.values(e.familyRepeatCycles || {}).some(Boolean))
+      .sort((a, b) => String(b.cookedAt).localeCompare(String(a.cookedAt)));
+    const latest = new Map(); // 料理ごとに、いちばん新しい評価
+    const times = new Map();
+    for (const e of evaluations) times.set(e.recipeId, (times.get(e.recipeId) || 0) + 1);
+    for (const e of rated) if (!latest.has(e.recipeId)) latest.set(e.recipeId, e);
+    if (latest.size < INSIGHT_MIN) return { left: INSIGHT_MIN - latest.size, items: [] };
+    const items = [];
+    const solo = family.length <= 1;
+    // 1) 人ごとの好きな系統（好きと言った料理の半分以上・2品以上）
+    for (const name of family) {
+      const loved = [...latest.values()].filter((e) => LOVED.includes(e.familyRepeatCycles?.[name])).map((e) => recipeOf(e.recipeId)).filter(Boolean);
+      if (loved.length < 2) continue;
+      const count = new Map();
+      for (const r of loved) {
+        const t = traits(r);
+        const keys = new Set([t.staple, t.protein, t.cuisine, ...tags(r).filter((x) => ["spicy", "light", "rich"].includes(x))]);
+        keys.forEach((k) => LIKE_LABEL[k] && count.set(k, (count.get(k) || 0) + 1));
+      }
+      const [k, n] = [...count.entries()].sort((a, b) => b[1] - a[1])[0] || [];
+      if (k && n >= 2 && n / loved.length >= 0.5) items.push({ kind: "like", text: `${LIKE_LABEL[k][0]} ${solo ? "" : `${name}は`}${LIKE_LABEL[k][1]}が好き` });
+    }
+    // 2) みんなが好き＆2回以上つくった定番
+    if (!solo) {
+      const staples = [...latest.values()]
+        .filter((e) => family.every((n) => LOVED.includes(e.familyRepeatCycles?.[n])) && (times.get(e.recipeId) || 0) >= 2)
+        .sort((a, b) => times.get(b.recipeId) - times.get(a.recipeId));
+      const r = staples[0] && recipeOf(staples[0].recipeId);
+      if (r) items.push({ kind: "staple", recipeId: r.id, text: `🏆 ${family.length === 2 ? "ふたり" : "みんな"}の定番：${r.title}` });
+    }
+    // 3) もう作らない
+    const never = [...latest.values()].filter((e) => Object.values(e.familyRepeatCycles || {}).includes("never")).length;
+    if (never) items.push({ kind: "never", text: `🙅 ${never}品は献立に出しません` });
+    return { left: 0, items: items.slice(0, 3) };
+  }
   const api = {
     profile,
     suggestPlanning,
@@ -1040,6 +1085,7 @@
     sameDish,
     CYCLE_DAYS,
     season,
+    insights,
     copy,
   };
   root.Lifestyle = api;
