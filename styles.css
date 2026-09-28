@@ -3720,3 +3720,10 @@ button.stamp { cursor: pointer; }
 .swap-url .input { flex: 1; min-width: 0; }
 .swap-url .primary-button { flex: none; padding: 10px 14px; min-height: 0; }
 .swap-url.is-busy { padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px dashed var(--line); font-size: 14px; }
+
+/* ⭐ 評価まち（今日） */
+.rate-nudge-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rate-nudge-head h3 { margin: 0; font-size: 16px; }
+.rate-nudge .muted.small { margin: 2px 0 8px; }
+.rate-nudge .text-button { margin-top: 6px; }
+.rate-nudge.is-one .rate-name { display: none; }

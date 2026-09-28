@@ -1263,3 +1263,11 @@ test("a dish the user decided on goes into that day even when it misses the cond
   assert.equal(day.candidate.warn, "⚠ 避けたい食材あり");
   assert.ok(!plan.filter((d, i) => i !== 1).some((d) => d.candidate?.recipe.id === long.id));
 });
+
+test("insights: a half-finished rating (only one person so far) still counts", () => {
+  const R = { a: { id: "a", title: "ざるうどん", ingredients: [{ name: "うどん" }] }, b: { id: "b", title: "焼きそば", ingredients: [{ name: "中華麺" }] }, c: { id: "c", title: "鮭の塩焼き", ingredients: [{ name: "生鮭" }] } };
+  const ev = (recipeId, cycles) => ({ recipeId, cookedAt: "2026-09-01", preferencePending: true, familyRepeatCycles: cycles });
+  const out = L.insights({ evaluations: [ev("a", { パパ: "weekly" }), ev("b", { パパ: "weekly" }), ev("c", { パパ: "monthly" })], recipeOf: (id) => R[id], family: ["パパ", "ママ"] });
+  assert.equal(out.left, 0);
+  assert.deepEqual(out.items.map((x) => x.text), ["🍜 パパは麺が好き"]);
+});

@@ -588,7 +588,7 @@ function renderToday() {
   const tomorrow = plan[1];
   const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
-  return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt()}
+  return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt() || renderRatingNudge()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div>
     ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", /好物|日ぶり/.test(reason) ? "" : bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
@@ -649,6 +649,36 @@ function raterNames() {
   if (dailyProfile().servings >= 2 && names.length < 2) names.push("いっしょに食べた人");
   return names;
 }
+// ⭐ 評価まち：作ってから7日以内で、まだ評価していない人がいる料理（いちばん新しい1品）。
+function ratingNudge() {
+  const from = addDays(today(), -7);
+  const names = raterNames();
+  return state.evaluations
+    .filter((e) => e.preferencePending && !e.nudgeDismissed && e.id !== preferencePromptId && (e.cookedAt || "") >= from)
+    .map((e) => ({ e, missing: names.filter((n) => !e.familyRepeatCycles?.[n]) }))
+    .filter((x) => x.missing.length)
+    .sort((a, b) => b.e.cookedAt.localeCompare(a.e.cookedAt))[0] || null;
+}
+function renderRatingNudge() {
+  const x = ratingNudge();
+  if (!x || isViewer()) return "";
+  const { e, missing } = x;
+  const solo = raterNames().length <= 1;
+  const who = missing.length === 1 ? missing[0] : "みんな";
+  const rows = missing.map((name) => renderCyclePicker(name, "", (cycle) => `data-action="life-rate" data-id="${escapeAttr(e.id)}" data-member="${escapeAttr(name)}" data-cycle="${cycle}"`)).join("");
+  return `<section class="panel rate-card rate-nudge${missing.length === 1 ? " is-one" : ""}" role="region" aria-label="評価まち"><div class="rate-nudge-head"><h3>⭐ ${solo ? "" : `${escapeHtml(who)}の`}評価まだ</h3><button type="button" class="round-icon" data-action="life-rate-dismiss" data-id="${escapeAttr(e.id)}" aria-label="閉じる">×</button></div>
+    <p class="muted small">${escapeHtml(e.recipeTitle)} · ${dayWordFor(e.cookedAt)}</p>${rows}
+    ${solo ? "" : `<button type="button" class="text-button" data-action="life-rate-ask" data-id="${escapeAttr(e.id)}">💬 ${escapeHtml(who)}に聞いてみる</button>`}</section>`;
+}
+async function askRating(e) {
+  const text = `🍳 ${e.recipeTitle}（${formatDate(e.cookedAt)}）\n次はいつ食べたい？\n明日でも／毎週／月2回／月1回／しばらくいい`;
+  const url = `${location.origin}${location.pathname}`;
+  try {
+    if (navigator.share) { await navigator.share({ text, url }); return; }
+  } catch (error) { if (error?.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(`${text}\n${url}`); showToast("📋 コピーしました。LINEなどに貼ってください"); }
+  catch { showToast("共有できませんでした"); }
+}
 function renderPreferencePrompt() {
   const e = state.evaluations.find(e=>e.id===preferencePromptId && e.preferencePending);
   if (!e) return "";
@@ -660,7 +690,8 @@ function renderPreferencePrompt() {
 function recipeRatings(recipe) {
   const ids = new Set([recipe.id, recipe.starterId].filter(Boolean));
   state.recipes.forEach((r) => { if (r.starterId === recipe.id) ids.add(r.id); });
-  const e = state.evaluations.filter((x) => ids.has(x.recipeId) && !x.preferencePending).sort((a, b) => b.cookedAt.localeCompare(a.cookedAt))[0];
+  // 途中まで（ひとりだけ）の評価も使う。
+  const e = state.evaluations.filter((x) => ids.has(x.recipeId) && Object.keys(x.familyRepeatCycles || {}).length).sort((a, b) => b.cookedAt.localeCompare(a.cookedAt))[0];
   return e?.familyRepeatCycles || {};
 }
 function bothLike(recipe) {
@@ -1231,6 +1262,8 @@ function handleDailyAction(action, data) {
     state.view = "today";
   }
   if (action === "life-frequency-close") preferencePromptId = "";
+  if (action === "life-rate-dismiss") { const e = state.evaluations.find((x) => x.id === data.id); if (e) { e.nudgeDismissed = true; e.updatedAt = nowIso(); } }
+  if (action === "life-rate-ask") { const e = state.evaluations.find((x) => x.id === data.id); if (e) askRating(e); return true; }
   if (action === "life-rate") {
     const e = state.evaluations.find(e=>e.id===data.id);
     if (e?.preferencePending && CYCLE_CHOICES.some(r=>r.cycle===data.cycle) && raterNames().includes(data.member)) {
@@ -1238,7 +1271,9 @@ function handleDailyAction(action, data) {
       e.familyRepeatCycles = {...e.familyRepeatCycles, [data.member]:data.cycle};
       e.updatedAt = nowIso();
       trackDaily("meal_rated");
-      if (raterNames().every(n => e.familyRepeatCycles[n])) {
+      const left = raterNames().filter((n) => !e.familyRepeatCycles[n]);
+      if (left.length && preferencePromptId !== e.id) showToast(`👍 あとは${left.length === 1 ? left[0] : `${left.length}人`}の分`);
+      if (!left.length) {
         e.personalPreference = true; e.preferencePending = false;
         preferencePromptId = "";
         showToast(bothLike({id:e.recipeId}) ? "ふたりとも好き！ちょうどいい頃に、また提案します。" : "記録しました。えらんだ頃に、また提案します。");
