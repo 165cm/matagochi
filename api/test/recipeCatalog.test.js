@@ -136,7 +136,7 @@ test('re-reading from the video re-runs a description result once, then serves t
   const cached = await catalog.import(url, { forceVideo: true, household: 'h1' });
   assert.equal(cached.cacheHit, true, 'no second paid video read'); assert.equal(cached.ticketUsed, undefined);
   assert.equal(calls, 2); assert.deepEqual(seen, [false, true]);
-  assert.equal((await tickets.get('h1')).balance, 24, 'one ticket for one new video read');
+  assert.equal((await tickets.get('h1')).balance, 9, 'one ticket for one new video read');
 });
 
 test('importing keeps a result without steps (the video is read on request); a video read costs a ticket, refunded when it fails', async () => {

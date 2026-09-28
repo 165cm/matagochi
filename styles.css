@@ -3643,3 +3643,5 @@ button.stamp { cursor: pointer; }
 .tip { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; vertical-align: middle; }
 .tip:focus::after, .tip:hover::after { content: attr(data-tip); position: absolute; z-index: 20; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 220px; padding: 7px 10px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.5; text-align: left; white-space: normal; box-shadow: var(--shadow); }
 .plan-foot { margin: 4px 0 0; text-align: right; }
+.tk-bonus { margin: 8px 0 0; padding: 8px 10px; border-radius: 12px; background: #fff4e6; font-size: 13px; }
+.tk-bonus .tk-dots { display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle; }
