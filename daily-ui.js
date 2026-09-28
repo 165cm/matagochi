@@ -791,6 +791,19 @@ function cookingCheck(kind, index, recipe, servings) {
   const key = JSON.stringify([cookingDate, recipe.id, servings, kind, index, kind === "ingredient" ? recipe.ingredients[index] : recipe.steps[index]]);
   return `<input type="checkbox" data-cooking-check="${escapeAttr(key)}" ${cookingProgress[key] ? "checked" : ""}>`;
 }
+// 作る画面とレシピの詳細で同じ：材料（タレはまとめて）・作り方（⏰タイマー・手順ごとの材料）・🍳 料理モード。
+function cookSections(recipe, servings) {
+  const amountOf = (x) => scaleAmountForServings(x.amount, servings, recipe.sourceServings);
+  const steps = recipe.steps || [];
+  CookMode.setRecipe({ title: recipe.title, steps, timesOf: () => recipeStepTimes(recipe), videoId: youtubeVideoId(recipe.videoUrl), shorts: /youtube\.com\/shorts\//i.test(recipe.videoUrl || ""), ingredients: recipe.ingredients || [], amountOf });
+  const timed = steps.some((st) => CookMode.timesIn(st).length);
+  return {
+    ingredients: (recipe.ingredients || []).length ? CookMode.ingredientsHtml(recipe.ingredients, amountOf) : '<p class="muted small">材料が登録されていません。</p>',
+    steps: `<div class="cooking-steps-head"><h3>作り方 <small class="muted">${timed ? "⏰でタイマー" : ""}${timecodeHintHtml(recipe, timed ? "・" : "")}</small></h3>${steps.length ? '<div class="cook-mode-cta"><button type="button" class="primary-button cook-mode-open" data-cook-mode="open">🍳 料理モード</button><small>✋ 手をかざして進める</small></div>' : ""}</div>
+      ${steps.length ? `<ol class="cooking-steps cook-list" data-steps-of="${escapeAttr(recipe.id)}">${steps.map((st, index) => `<li><div class="cs-text">${stepTimeSlot(recipe, index)}${CookMode.stepHtml(st, `${index + 1}. ${String(st).slice(0, 12)}`)}</div>${CookMode.usesHtml(st, recipe.ingredients || [], amountOf)}</li>`).join("")}</ol>${timeFixBar(recipe)}`
+        : '<p class="muted small">作り方がまだありません。動画から読み取ると、🍳 料理モードが使えます。</p>'}`,
+  };
+}
 function renderCooking() {
   const day = dailyPlan().find((d) => d.date === cookingDate);
   const slot = state.mealSlots?.[cookingDate];
@@ -799,8 +812,7 @@ function renderCooking() {
   if (!recipe)
     return `<section class="panel"><h2>料理を選び直してください</h2>${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</section>`;
   const servings = slot?.servings || dailyProfile().servings;
-  const amountOf = (x) => scaleAmountForServings(x.amount, servings, recipe.sourceServings);
-  CookMode.setRecipe({ title: recipe.title, steps: recipe.steps, timesOf: () => recipeStepTimes(recipe), videoId: youtubeVideoId(recipe.videoUrl), shorts: /youtube\.com\/shorts\//i.test(recipe.videoUrl || ""), ingredients: recipe.ingredients, amountOf });
+  const cook = cookSections(recipe, servings);
   const meta = [`${servings}人分`, recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分（炊飯は別）` : "時間は未確認", recipe.planning?.equipment?.length ? `器具：${recipe.planning.equipment.join("・")}` : ""].filter(Boolean).join(" · ");
   const primary = slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った！", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : "";
   return `<section class="hero-card cooking-card"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p>${CookMode.supported() ? `<p class="wake-chip">🔆 画面つけっぱなし ${tip("作る画面の間は、スマホの画面が消えません")}</p>` : ""}</div></div>
@@ -808,8 +820,8 @@ function renderCooking() {
   ${renderCreatorCredit(recipe)}
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
-  <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${CookMode.ingredientsHtml(recipe.ingredients, amountOf)}
-  <div class="cooking-steps-head"><h3>作り方 <small class="muted">${recipe.steps.some((st) => CookMode.timesIn(st).length) ? "⏰でタイマー" : ""}${timecodeHintHtml(recipe, recipe.steps.some((st) => CookMode.timesIn(st).length) ? "・" : "")}</small></h3>${recipe.steps.length ? '<div class="cook-mode-cta"><button type="button" class="primary-button cook-mode-open" data-cook-mode="open">🍳 料理モード</button><small>✋ 手をかざして進める</small></div>' : ""}</div><ol class="cooking-steps cook-list" data-steps-of="${escapeAttr(recipe.id)}">${recipe.steps.map((st, index) => `<li><div class="cs-text">${stepTimeSlot(recipe, index)}${CookMode.stepHtml(st, `${index + 1}. ${String(st).slice(0, 12)}`)}</div>${CookMode.usesHtml(st, recipe.ingredients, amountOf)}</li>`).join("")}</ol>${timeFixBar(recipe)}
+  <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${cook.ingredients}
+  ${cook.steps}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
 // ----- 記録の編集（食べた日・次に食べたい頃・写真・メモ） -----
@@ -2155,6 +2167,7 @@ function renderRecipeDetail() {
   if (!r) return `<section class="panel"><p>レシピが見つかりません。</p>${dailyButton("go-view", "レシピ一覧へ", 'data-view="collection"')}</section>`;
   const saved = !r.curated;
   const servings = dailyProfile().servings;
+  const cook = cookSections(r, servings);
   const ratings = recipeRatings(r);
   const cycleLabel = (c) => CYCLE_CHOICES.find((x) => x.cycle === c)?.label || "";
   const meta = [r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", r.planning?.equipment?.length ? r.planning.equipment.join("・") : "", r.author ? `@${r.author}` : "", saved ? r.source : "おすすめ"].filter(Boolean);
@@ -2173,9 +2186,8 @@ function renderRecipeDetail() {
     ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? `🎬 作り方がおかしい？動画から読み直す${ticketPrice()}` : `🎬 動画から読み取る${ticketPrice()}`}</button></div>` : ""}
     ${servingsUnknownBanner(r, saved && edit)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
-    ${r.ingredients?.length ? `<ul class="detail-ingredients">${r.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</span></li>`).join("")}</ul>` : '<p class="muted small">材料が登録されていません。</p>'}
-    <h3 class="detail-h">作り方 <small class="muted">${timecodeHintHtml(r)}</small></h3>
-    ${r.steps?.length ? `<ol class="detail-steps" data-steps-of="${escapeAttr(r.id)}">${r.steps.map((s, i) => `<li>${stepTimeSlot(r, i)}${escapeHtml(s)}</li>`).join("")}</ol>${timeFixBar(r)}` : '<p class="muted small">作り方が登録されていません。</p>'}
+    ${cook.ingredients}
+    ${cook.steps}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
     ${edit && saved ? `<div class="detail-foot">${dailyButton("life-new-record", "作った記録をつける", `data-recipe="${escapeAttr(r.id)}"`)}<button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button></div>` : ""}
   </section>`;

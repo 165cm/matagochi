@@ -96,10 +96,12 @@ const CookMode = (() => {
     try { lock = await navigator.wakeLock.request("screen"); lock.addEventListener?.("release", () => { lock = null; }); } catch { lock = null; }
   }
   function release() { try { lock?.release(); } catch {} lock = null; }
-  // 描き直しのたびに呼ぶ：作る画面の間だけ、画面をつけたままにする。
+  // 描き直しのたびに呼ぶ：作る画面の間と、料理モードを開いている間は、画面をつけたまま。
+  // 料理モードはレシピの詳細からも開ける（ほかの画面へ移ったら閉じる）。
   function sync() {
-    wanted = state.view === "cooking";
-    if (wanted) acquire(); else { release(); closeMode(); }
+    if (!["cooking", "recipe"].includes(state.view)) closeMode();
+    wanted = state.view === "cooking" || at >= 0;
+    if (wanted) acquire(); else release();
   }
   globalThis.document?.addEventListener?.("visibilitychange", () => { if (wanted && document.visibilityState === "visible") acquire(); });
 
@@ -183,7 +185,7 @@ const CookMode = (() => {
       el.innerHTML = `<div class="cm-video ${recipe.shorts ? "is-shorts" : ""}">${hasVideo() ? `<iframe src="https://www.youtube.com/embed/${recipe.videoId}?playsinline=1&rel=0&enablejsapi=1&autoplay=1${seg ? `&start=${Math.floor(seg.start)}` : ""}${origin}" title="レシピ動画" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` : '<div class="cm-novideo">🍳</div>'}</div>
         <div class="cm-side"><div class="cm-top"><b class="cm-count"></b><span class="cm-title">${escapeHtml(recipe.title || "")}</span><span class="cm-hand"></span><button type="button" class="cm-close" data-cook-mode="close" aria-label="料理モードを閉じる">✕</button></div>
           <div class="cm-dots" aria-hidden="true"></div><div class="cm-body"></div></div>
-        <div class="cm-foot"><div class="cm-nav"><button type="button" class="secondary-button" data-cook-mode="prev">◀ 前へ<i class="g" data-g="Victory" aria-hidden="true">✌️</i></button>${hasVideo() ? '<button type="button" class="cm-loop" data-cook-mode="loop"></button>' : ""}<button type="button" class="primary-button" data-cook-mode="next"></button></div></div>`;
+        <div class="cm-foot"><div class="cm-nav${hasVideo() ? "" : " no-loop"}"><button type="button" class="secondary-button" data-cook-mode="prev">◀ 前へ<i class="g" data-g="Victory" aria-hidden="true">✌️</i></button>${hasVideo() ? '<button type="button" class="cm-loop" data-cook-mode="loop"></button>' : ""}<button type="button" class="primary-button" data-cook-mode="next"></button></div></div>`;
       document.body.append(el);
       document.body.classList.add("cook-mode-open");
       frame = el.querySelector("iframe");
@@ -213,6 +215,8 @@ const CookMode = (() => {
     at = 0; showAll = false;
     try { playerCommand?.("pauseVideo"); } catch {}
     drawMode();
+    wanted = true; acquire();
+    if (!seenCoach()) drawCoach();
     try { trackDaily("cook_mode_opened"); } catch {}
   }
   function closeMode() { if (at < 0) return; handStop(); at = -1; drawMode(); }
@@ -224,6 +228,7 @@ const CookMode = (() => {
     if (kind === "next") { if (at >= n - 1) { closeMode(); try { showToast("🎉 おつかれさま！「作った！」で記録"); } catch {} return; } at += 1; }
     if (kind === "loop") { loop = !loop; }
     if (kind === "hand") { hand.on ? handStop() : handStart(); return; }
+    if (kind === "coach-start" || kind === "coach-later") { markCoach(); document.querySelector("#cook-mode .cm-coach")?.remove(); if (kind === "coach-start") handStart(); return; }
     if (kind === "all") showAll = true;
     if (kind === "uses") showAll = false;
     drawMode();
@@ -327,11 +332,27 @@ const CookMode = (() => {
     if (!box) return;
     el.classList.toggle("hand-on", hand.on && hand.status === "ready");
     const privacy = typeof tip === "function" ? tip("✋ 手の形で操作：✋次へ・✌️戻る・👍タイマー。カメラの映像はスマホの中だけで使い、外には送りません") : "";
-    box.innerHTML = `<button type="button" class="cm-hand-btn" data-cook-mode="hand" aria-pressed="${hand.on}" aria-label="${hand.on ? "手で操作をやめる" : "手の形で操作する"}" ${hand.status === "loading" ? "disabled" : ""}>${hand.status === "loading" ? "⏳" : "✋"}</button>${privacy}`;
+    box.innerHTML = `<button type="button" class="cm-hand-btn" data-cook-mode="hand" aria-pressed="${hand.on}" aria-label="${hand.on ? "手で操作をやめる" : "手の形で操作する"}" ${hand.status === "loading" ? "disabled" : ""}>${hand.status === "loading" ? "⏳ 準備中" : hand.on ? "✋ 操作中" : "✋ 手で操作"}</button>${privacy}`;
     el.querySelector(".cm-video .hg-wait")?.remove();
     if (hand.status === "loading") { const w = document.createElement("div"); w.className = "hg-flash hg-wait"; w.textContent = "⏳ 手の認識を準備中…（初回だけ数MB）"; el.querySelector(".cm-video")?.append(w); }
     if (hand.status === "error" && hand.msg) { flash(`📷 ${hand.msg}`); hand.msg = ""; }
     drawHandLive();
+  }
+  // はじめて料理モードを開いた時だけ：手の形で操作できることを、合図の絵つきで1枚で。
+  const COACH_KEY = "ripigochi-hand-coach";
+  function seenCoach() { try { return localStorage.getItem(COACH_KEY) === "1"; } catch { return true; } }
+  function markCoach() { try { localStorage.setItem(COACH_KEY, "1"); } catch {} }
+  function drawCoach() {
+    const el = document.getElementById("cook-mode");
+    if (!el || el.querySelector(".cm-coach")) return;
+    const c = document.createElement("div");
+    c.className = "cm-coach"; c.setAttribute("role", "dialog"); c.setAttribute("aria-label", "手の形で操作");
+    c.innerHTML = `<div class="cc-card"><p class="cc-kicker">料理中、手がふさがっていても</p><h3>✋ 手をかざして操作できます</h3>
+      <ul class="cc-signs"><li><b>✋</b><span>次へ</span></li><li><b>✌️</b><span>戻る</span></li><li><b>👍</b><span>タイマー</span></li></ul>
+      <p class="cc-note">スマホから30cm〜1mで、約0.5秒見せると動きます。<br>カメラの映像はスマホの中だけで使い、外には送りません。</p>
+      <button type="button" class="primary-button" data-cook-mode="coach-start">✋ 手で操作をはじめる</button>
+      <button type="button" class="text-button" data-cook-mode="coach-later">あとで（右上の「✋ 手で操作」からいつでも）</button></div>`;
+    el.append(c);
   }
   // いま見えている形のボタンを光らせ、見せ続けた長さをバーで出す。
   function drawHandLive() {
@@ -370,6 +391,6 @@ const CookMode = (() => {
     else if (ev.key === "Escape") closeMode();
   });
 
-  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, _timers: () => timers, _mode: () => ({ at, loop, showAll }), _hand: () => hand, _see: seeGesture };
+  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, _timers: () => timers, _mode: () => ({ at, loop, showAll }), _hand: () => hand, _see: seeGesture, openMode, closeMode };
 })();
 if (typeof module !== "undefined") module.exports = CookMode;
