@@ -1797,10 +1797,10 @@ function renderPaywall() {
     <button type="button" class="pw-close" data-action="life-pay-close" aria-label="閉じる">×</button>
     <p class="pw-kicker">あなた専用の献立ができました</p>
     <h2>${goal.icon} この献立で、<br><span class="marker">${escapeHtml(goal.label.replace(/、/, ""))}</span></h2>
-    <ol class="pw-timeline"><li><b>今日</b><span>すべての機能を無料ではじめる</span></li><li><b>${md(t.start)}〜${md(t.end)}</b><span>まるごと2週間、無料で献立づくり</span></li><li><b>${md(t.notify)}</b><span>無料期間が終わる前に、お知らせします</span></li><li><b>${md(t.charge)}</b><span>ここから料金がかかります（いつでも解約OK）</span></li></ol>
+    <ol class="pw-timeline"><li><b>今日</b><span>すべての機能を無料ではじめる</span></li><li><b>${md(t.start)}〜${md(t.end)}</b><span>まるごと2週間、無料で献立づくり</span></li><li><b>${md(t.notify)}</b><span>無料期間が終わる前に、お知らせします</span></li><li><b>${md(t.charge)}</b><span>ここからは献立が週3日分まで。毎日ならプラスへ</span></li></ol>
     <div class="pw-plans">${plan("year")}${plan("four")}</div>
     <button type="button" class="primary-button full-button pw-start" data-action="life-pay-start">無料ではじめる</button>
-    <p class="muted small pw-fine">${md(t.end)}までに解約すれば、料金はかかりません。${paywallPreview() ? "（プレビュー：決済はまだ準備中です）" : ""}</p></div></div>`;
+    <p class="muted small pw-fine">カードの登録は不要です。無料期間のあと、自動で料金がかかることはありません。${paywallPreview() ? "（プレビュー：決済はまだ準備中です）" : ""}<br><a href="legal/terms.html" target="_blank" rel="noopener">利用規約</a>・<a href="legal/tokushoho.html" target="_blank" rel="noopener">特定商取引法に基づく表記</a></p></div></div>`;
 }
 function handlePaywallAction(action, data) {
   if (!action.startsWith("life-pay-") || !paywall) return false;

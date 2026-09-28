@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v89";
-const APP_VERSION = "20260928-comp";
+const CACHE_NAME = "ripigochi-v90";
+const APP_VERSION = "20260928-legal";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -33,12 +33,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260928-comp",
-  "./icons/favicon-32.png?v=20260928-comp",
-  "./icons/icon-192.png?v=20260928-comp",
-  "./icons/icon-512.png?v=20260928-comp",
-  "./icons/icon-maskable-512.png?v=20260928-comp",
-  "./icons/apple-touch-icon.png?v=20260928-comp"
+  "./manifest.webmanifest?v=20260928-legal",
+  "./icons/favicon-32.png?v=20260928-legal",
+  "./icons/icon-192.png?v=20260928-legal",
+  "./icons/icon-512.png?v=20260928-legal",
+  "./icons/icon-maskable-512.png?v=20260928-legal",
+  "./icons/apple-touch-icon.png?v=20260928-legal"
 ];
 
 self.addEventListener("install", (event) => {
@@ -67,6 +67,9 @@ self.addEventListener("fetch", (event) => {
   // 動画は部分取得（Range）で読むので、ブラウザにまかせてキャッシュしない。
   if (request.destination === "video" || request.headers.has("range")) return;
 
+  // アプリ以外のページ（LP・規約など）は、ブラウザにまかせる（アプリのシェルとして覚えない）。
+  const base = new URL("./", self.location).pathname;
+  if (request.mode === "navigate" && url.pathname !== base && url.pathname !== `${base}index.html`) return;
   // 共有シート経由(?url=...)を含むページ遷移はネットワーク優先、オフライン時はキャッシュのシェルを返す
   if (request.mode === "navigate") {
     event.respondWith(
