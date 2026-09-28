@@ -1030,7 +1030,7 @@
   };
   const INSIGHT_MIN = 3; // 評価がこれだけたまるまでは、あと何回かを出す
   function insights({ evaluations = [], recipeOf = () => null, family = [] } = {}) {
-    const rated = evaluations.filter((e) => !e.preferencePending && Object.values(e.familyRepeatCycles || {}).some(Boolean))
+    const rated = evaluations.filter((e) => Object.values(e.familyRepeatCycles || {}).some(Boolean))
       .sort((a, b) => String(b.cookedAt).localeCompare(String(a.cookedAt)));
     const latest = new Map(); // 料理ごとに、いちばん新しい評価
     const times = new Map();

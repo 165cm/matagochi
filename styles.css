@@ -3720,3 +3720,24 @@ button.stamp { cursor: pointer; }
 .swap-url .input { flex: 1; min-width: 0; }
 .swap-url .primary-button { flex: none; padding: 10px 14px; min-height: 0; }
 .swap-url.is-busy { padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px dashed var(--line); font-size: 14px; }
+
+/* ⭐ まとめて評価（今日・献立の上） */
+.rv-card { padding: 12px 12px 8px; }
+.rv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.rv-head h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.rv-tabs { display: flex; gap: 6px; margin: 10px 0 4px; }
+.rv-tab { flex: 1; padding: 7px 8px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.rv-tab[aria-selected="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+.rv-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.rv-row { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px dashed var(--line); }
+.rv-row:last-child { border-bottom: 0; }
+.rv-dish { display: flex; align-items: center; gap: 8px; }
+.rv-dish .dish-tile { flex: none; width: 44px !important; height: 44px !important; min-width: 0; border-radius: 10px; object-fit: cover; }
+.rv-dish > span:not(.dish-tile) { display: grid; min-width: 0; }
+.rv-dish b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-dish small { font-size: 12px; color: var(--muted); }
+.rv-chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.rv-chip { display: grid; place-items: center; gap: 0; padding: 4px 0; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); font: inherit; cursor: pointer; color: var(--ink); }
+.rv-chip span { font-size: 18px; line-height: 1.2; }
+.rv-chip small { font-size: 10px; white-space: nowrap; }
+.rv-chip[aria-pressed="true"] { border-color: var(--tomato); background: color-mix(in srgb, var(--tomato) 14%, var(--surface)); }

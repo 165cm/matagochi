@@ -415,10 +415,13 @@ test("past three days are recordable once, future and older slots are not", () =
   run('const yesterday=addDays(today(),-1);confirmDaily({date:yesterday},Lifestyle.curated[0]);dailyRecord(state.mealSlots[yesterday]);dailyRecord(state.mealSlots[yesterday]);');
   assert.equal(run('state.evaluations.length'),1);
   assert.equal(run('state.evaluations[0].cookedAt===yesterday'),true);
-  assert.equal(run('renderPreferencePrompt().includes("次はいつ食べたい")'),true);
-  run('handleDailyAction("life-rate",{id:state.evaluations[0].id,member:state.family[0],cycle:"monthly"})');
-  assert.equal(run('state.evaluations[0].familyRepeatCycles[state.family[0]]'),"monthly");
+  // 作った直後には聞かない。献立のひと回りが終わったら（確定の献立が残っていない）、まとめて評価に出る。
   assert.equal(run('renderPreferencePrompt()'),"");
+  assert.equal(run('renderRoundReview().includes("また食べたい")'),true);
+  run('raterNames().forEach((n)=>handleDailyAction("life-rate",{id:state.evaluations[0].id,member:n,cycle:"monthly",batch:"1"}))');
+  assert.equal(run('state.evaluations[0].familyRepeatCycles[state.family[0]]'),"monthly");
+  assert.equal(run('state.evaluations[0].preferencePending'),false);
+  assert.equal(run('renderRoundReview()'),"");
   assert.equal(run('canRecordDate(addDays(today(),-3))'),true);
   assert.equal(run('canRecordDate(addDays(today(),-4))'),false);
   run('confirmDaily({date:addDays(today(),1)},Lifestyle.curated[0]);dailyRecord(state.mealSlots[addDays(today(),1)])');
@@ -1262,4 +1265,24 @@ test("a dish the user decided on goes into that day even when it misses the cond
   assert.equal(day.candidate.chosen, true);
   assert.equal(day.candidate.warn, "⚠ 避けたい食材あり");
   assert.ok(!plan.filter((d, i) => i !== 1).some((d) => d.candidate?.recipe.id === long.id));
+});
+
+test("insights: a half-finished rating (only one person so far) still counts", () => {
+  const R = { a: { id: "a", title: "ざるうどん", ingredients: [{ name: "うどん" }] }, b: { id: "b", title: "焼きそば", ingredients: [{ name: "中華麺" }] }, c: { id: "c", title: "鮭の塩焼き", ingredients: [{ name: "生鮭" }] } };
+  const ev = (recipeId, cycles) => ({ recipeId, cookedAt: "2026-09-01", preferencePending: true, familyRepeatCycles: cycles });
+  const out = L.insights({ evaluations: [ev("a", { パパ: "weekly" }), ev("b", { パパ: "weekly" }), ev("c", { パパ: "monthly" })], recipeOf: (id) => R[id], family: ["パパ", "ママ"] });
+  assert.equal(out.left, 0);
+  assert.deepEqual(out.items.map((x) => x.text), ["🍜 パパは麺が好き"]);
+});
+
+test("round review waits while tonight's dish is still ahead, and lists every dish of the round together", () => {
+  const run = app();
+  run('state.family=["パパ","ママ"];[-2,-1].forEach((k,i)=>{const d=addDays(today(),k);confirmDaily({date:d},Lifestyle.curated[i+1]);dailyRecord(state.mealSlots[d]);});confirmDaily({date:today()},Lifestyle.curated[5])');
+  assert.equal(run('reviewDue()'), false, "tonight is still to cook");
+  assert.ok(run('renderRoundReview({where:"plan"})').includes("前回の2品"));
+  run('dailyRecord(state.mealSlots[today()])');
+  assert.equal(run('reviewDue()'), true);
+  const html = run('renderRoundReview()');
+  assert.equal((html.match(/class="rv-row"/g) || []).length, 3);
+  assert.ok(html.includes('data-member="パパ" aria-selected="true"'));
 });
