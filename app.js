@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-easy";
+const APP_VERSION = "20260928-serv";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1199,7 +1199,8 @@ function updateChecklist() {
 // 元レシピの人数：数字をタップ。読み取れた時はそれを選択済みにし、未確認の時だけ赤で知らせる。
 function renderSourceServingsPicker() {
   const n = state.draft.sourceServings;
-  const options = [1, 2, 3, 4, 5, 6];
+  // 5人分以上のレシピはまれ。読み取れた時だけ、その数をボタンに足す。
+  const options = [1, 2, 3, 4, ...(n > 4 ? [n] : [])];
   return `<div class="servings-pick ${n == null ? "is-unknown" : ""}">
     <input id="source-servings" type="hidden" value="${escapeAttr(n ?? "")}">
     <p><b>元のレシピは何人分？</b>${n != null && state.draft.servingsDetected ? '<small>動画から読み取り</small>' : ""}</p>
@@ -3602,11 +3603,33 @@ async function importRecipeFromYouTube(videoUrl, { mode = "" } = {}) {
   return data;
 }
 
-// 「材料（2人分）」「2人前」などを本文・タイトルから読み取る。読めなければ未確認のまま。
+// 「材料（2人分）」「2人前」「二人分」「材料（2人）」などを本文・タイトルから読み取る。読めなければ未確認のまま。
+// サーバーの api/src/servings.js と同じルール。「1人分あたり◯kcal」など栄養の表示は読まない。材料の見出しの近くを優先。
+const SERVINGS_KANJI = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+const SERVINGS_NUM = "(\\d{1,2}|[一二三四五六七八九十])";
+const SERVINGS_PATTERNS = [
+  new RegExp(`${SERVINGS_NUM}\\s*(?:[〜~\\-－−–ー]\\s*${SERVINGS_NUM}\\s*)?(?:人|名)\\s*(?:分|前|份|用)`, "g"),
+  new RegExp(`材料\\s*[（(【\\[]\\s*${SERVINGS_NUM}\\s*(?:[〜~\\-－−–ー]\\s*${SERVINGS_NUM}\\s*)?(?:人|名)\\s*[）)】\\]]`, "g"),
+  /(ひとり|ふたり)\s*(?:分|前)/g,
+  /serves?\s*(\d{1,2})|(\d{1,2})\s*servings?/gi,
+];
 function detectSourceServings(text) {
-  const m = String(text || "").normalize("NFKC").match(/(\d{1,2})\s*(?:[〜~-]\s*\d{1,2}\s*)?(?:人分|人前|人份|servings?)/i);
-  const n = m ? Number(m[1]) : NaN;
-  return Number.isInteger(n) && n > 0 && n <= 20 ? n : null;
+  const t = String(text || "").normalize("NFKC");
+  const found = [];
+  for (const re of SERVINGS_PATTERNS) {
+    re.lastIndex = 0;
+    for (const m of t.matchAll(re)) {
+      const raw = m[1] || m[2];
+      const n = raw === "ひとり" ? 1 : raw === "ふたり" ? 2 : /^\d+$/.test(raw) ? Number(raw) : SERVINGS_KANJI[raw];
+      if (!n || n < 1 || n > 20) continue;
+      const before = t.slice(Math.max(0, m.index - 24), m.index);
+      const after = t.slice(m.index + m[0].length, m.index + m[0].length + 16);
+      if (/^\s*[)）】\]]?\s*(?:あたり|当たり|[:：]?\s*\d+(?:\.\d+)?\s*(?:kcal|キロカロリー|g\b))/i.test(after) || /(?:カロリー|kcal|栄養|糖質|塩分|たんぱく質|タンパク質|脂質)[^\n]{0,8}$/i.test(before)) continue;
+      found.push({ n, index: m.index, near: /材料|用意するもの|ingredients/i.test(before) });
+    }
+  }
+  found.sort((a, b) => Number(b.near) - Number(a.near) || a.index - b.index);
+  return found[0]?.n ?? null;
 }
 function detectDraftServings() {
   if (state.draft.sourceServings != null) return;

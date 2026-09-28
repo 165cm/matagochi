@@ -1286,3 +1286,15 @@ test("round review waits while tonight's dish is still ahead, and lists every di
   assert.equal((html.match(/class="rv-row"/g) || []).length, 3);
   assert.ok(html.includes('data-member="パパ" aria-selected="true"'));
 });
+
+test("servings are read from 二人分・材料（2人）, ignoring nutrition lines; the picker shows 1〜4", () => {
+  const run = app();
+  assert.equal(run('detectSourceServings("1人分あたり 420kcal\\n【材料】（二人分）\\n豚バラ")'), 2);
+  assert.equal(run('detectSourceServings("材料（2人）")'), 2);
+  assert.equal(run('detectSourceServings("カロリー（1人分）450kcal")'), null);
+  run('state.draft.sourceServings=null');
+  const html = run('renderSourceServingsPicker()');
+  assert.ok(html.includes('data-count="4"') && !html.includes('data-count="5"'));
+  run('state.draft.sourceServings=6');
+  assert.ok(run('renderSourceServingsPicker()').includes('data-count="6"'));
+});

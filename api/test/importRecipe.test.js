@@ -84,3 +84,11 @@ test("description timestamps set the step times, even after a video read", async
   assert.deepEqual(result.stepTimes, [35, 130, 242]);
   assert.equal(result.stepTimesFrom, "chapters");
 });
+
+test("when the AI misses the servings, the description's 材料（2人分） still fills it", async () => {
+  const result = await importYouTubeRecipe("https://www.youtube.com/watch?v=abcdefghijk", {
+    fetchYouTubeSnippet: async () => ({ title: "豚バラ大根", description: "1人分あたり 420kcal\n【材料】（二人分）\n豚バラ 200g\n大根 1/3本", channelTitle: "ch" }),
+    analyzeRecipeDescription: async () => ({ title: "豚バラ大根", sourceServings: null, ingredients: [{ name: "豚バラ", amount: "200g" }], steps: ["切る", "煮る"] }),
+  });
+  assert.equal(result.sourceServings, 2);
+});

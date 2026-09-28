@@ -2,6 +2,7 @@ import { localizeAmount, localizeStep } from "./units.js";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from "./youtube.js";
 import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
+import { detectServings } from "./servings.js";
 
 const DEFAULT_CATEGORY = "その他";
 const NUTRITION = /kcal|キロカロリー|カロリー|糖質|たんぱく質|タンパク質|脂質|炭水化物|食物繊維|塩分|PFC|1人前あたり|1人分あたり/i;
@@ -58,6 +59,11 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: times }; analyzedTimes = "chapters"; }
   }
 
+  // AIが人数を取りこぼした時は、説明文とタイトルから決まったルールで読む。
+  if (!Number.isInteger(analysis.sourceServings) || analysis.sourceServings < 1) {
+    const n = detectServings(`${snippet.description || ""}\n${snippet.title || ""}`);
+    if (n) analysis = { ...analysis, sourceServings: n };
+  }
   return {
     ...normalizeImportResult({
       ...analysis,
