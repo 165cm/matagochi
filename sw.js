@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v100";
-const APP_VERSION = "20260928-serv";
+const CACHE_NAME = "ripigochi-v101";
+const APP_VERSION = "20260928-cook";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -30,16 +30,17 @@ const CORE_ASSETS = [
   `./install.js?v=${APP_VERSION}`,
   `./push.js?v=${APP_VERSION}`,
   `./tickets.js?v=${APP_VERSION}`,
+  `./cook-mode.js?v=${APP_VERSION}`,
   `./account.js?v=${APP_VERSION}`,
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260928-serv",
-  "./icons/favicon-32.png?v=20260928-serv",
-  "./icons/icon-192.png?v=20260928-serv",
-  "./icons/icon-512.png?v=20260928-serv",
-  "./icons/icon-maskable-512.png?v=20260928-serv",
-  "./icons/apple-touch-icon.png?v=20260928-serv"
+  "./manifest.webmanifest?v=20260928-cook",
+  "./icons/favicon-32.png?v=20260928-cook",
+  "./icons/icon-192.png?v=20260928-cook",
+  "./icons/icon-512.png?v=20260928-cook",
+  "./icons/icon-maskable-512.png?v=20260928-cook",
+  "./icons/apple-touch-icon.png?v=20260928-cook"
 ];
 
 self.addEventListener("install", (event) => {

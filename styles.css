@@ -3770,3 +3770,32 @@ button.stamp { cursor: pointer; }
 .ck-hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 .ck-flash { animation: ck-flash 1.2s ease; }
 @keyframes ck-flash { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 45%, transparent); } }
+
+/* 作る画面：画面つけっぱなし・⏱タイマー・1手順ずつ */
+.wake-chip { margin: 4px 0 0; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.cooking-steps-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cooking-steps-head h3 { margin: 0; }
+.cook-focus-open { flex: none; padding: 8px 12px; min-height: 0; font-size: 14px; }
+.cook-timer-chip { display: inline-flex; align-items: center; gap: 1px; margin: 0 2px; padding: 1px 8px; border-radius: 999px; border: 1.5px solid var(--tomato); background: color-mix(in srgb, var(--tomato) 10%, var(--surface)); color: var(--tomato); font: inherit; font-weight: 800; cursor: pointer; line-height: 1.5; }
+#cook-timer-bar { position: fixed; left: 8px; right: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 60; display: grid; gap: 6px; max-width: 520px; margin: 0 auto; }
+body.cook-focus-open #cook-timer-bar { bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 90; }
+.ctb-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 14px; background: #2b2825; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+.ctb-time { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 58px; }
+.ctb-label { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
+.ctb-item button { flex: none; border: 0; border-radius: 10px; padding: 6px 9px; background: rgba(255,255,255,.14); color: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.ctb-item.is-paused .ctb-time { opacity: .6; }
+.ctb-item.is-done { background: var(--tomato); animation: ctb-ring 1s ease-in-out infinite; }
+.ctb-item.is-done .ctb-label { opacity: 1; font-weight: 800; font-size: 15px; }
+@keyframes ctb-ring { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } }
+#cook-focus { position: fixed; inset: 0; z-index: 80; background: var(--bg, #fffaf3); display: flex; flex-direction: column; padding: calc(14px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom)); }
+body.cook-focus-open { overflow: hidden; }
+.cf-head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; color: var(--muted); }
+.cf-head button { border: 0; background: var(--surface); border-radius: 999px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; }
+.cf-dots { display: flex; gap: 4px; margin: 10px 0 0; }
+.cf-dots i { flex: 1; height: 5px; border-radius: 99px; background: var(--line); }
+.cf-dots i.is-done { background: #8fc27f; } .cf-dots i.is-now { background: var(--tomato); }
+.cf-step { flex: 1; display: flex; align-items: center; overflow-y: auto; }
+.cf-step p { margin: 0; font-size: clamp(24px, 7vw, 34px); line-height: 1.6; font-weight: 700; color: var(--ink); }
+.cf-step .cook-timer-chip { font-size: .85em; padding: 2px 12px; }
+.cf-nav { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.cf-nav button { min-height: 56px; font-size: 17px; }

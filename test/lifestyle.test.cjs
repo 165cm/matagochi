@@ -17,7 +17,7 @@ function app() {
     Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
-  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "weekly.js", "cook-type.js", "plan-moves.js", "plus.js", "folders.js", "install.js", "push.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "weekly.js", "cook-type.js", "plan-moves.js", "plus.js", "cook-mode.js", "folders.js", "install.js", "push.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
     let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     if (f === "app.js")
       s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
@@ -1297,4 +1297,20 @@ test("servings are read from 二人分・材料（2人）, ignoring nutrition li
   assert.ok(html.includes('data-count="4"') && !html.includes('data-count="5"'));
   run('state.draft.sourceServings=6');
   assert.ok(run('renderSourceServingsPicker()').includes('data-count="6"'));
+});
+
+test("cook mode: step times become timer buttons, but 8分目 and 3分の1 do not", () => {
+  const run = app();
+  const t = (s) => JSON.parse(run(`JSON.stringify(CookMode.timesIn(${JSON.stringify(s)}))`));
+  assert.deepEqual(t("中火で8分焼く"), [480]);
+  assert.deepEqual(t("30秒レンジにかける"), [30]);
+  assert.deepEqual(t("1分30秒ゆでる"), [90]);
+  assert.deepEqual(t("5〜6分煮る"), [300]);
+  assert.deepEqual(t("２分半蒸す"), [150]);
+  assert.deepEqual(t("1時間漬ける"), [3600]);
+  assert.deepEqual(t("水を8分目まで入れ、大根は3分の1を使う"), []);
+  assert.deepEqual(t("4等分に切る"), []);
+  const html = run('CookMode.stepHtml("<b>中火で8分</b>焼く")');
+  assert.ok(html.includes('data-cook-timer="480"'));
+  assert.ok(html.includes("&lt;b&gt;"), "step text stays escaped");
 });
