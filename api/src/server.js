@@ -81,7 +81,7 @@ export function createApp(env = process.env, deps = {}) {
 
   app.get("/health", (req, res) => {
     res.json({ ok: true, capabilities: { playlistImport: true, videoAnalysis: env.VIDEO_ANALYSIS_ENABLED !== "false" },
-      models: { text: env.GEMINI_MODEL || "gemini-2.5-flash", video: env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash" } });
+      models: { text: env.GEMINI_MODEL || "gemini-2.5-flash", video: env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash", menu: env.GEMINI_MENU_MODEL || "gemini-3.1-flash-lite-image" } });
   });
 
   // 家庭の識別子（同期ルームIDか端末ID）と、開発用コード。動画読み取りのチケットに使う。

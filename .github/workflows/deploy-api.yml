@@ -17,9 +17,10 @@ env:
   PROJECT_NUMBER: "292190013809"
   REGION: us-central1
   SERVICE: matagochi-api
-  # AIモデルはここで固定する。提供終了の案内が来たら、この2行を書き換えてマージすれば切り替わる。
+  # AIモデルはここで固定する。提供終了の案内が来たら、この3行を書き換えてマージすれば切り替わる。
   GEMINI_MODEL: gemini-2.5-flash
   GEMINI_VIDEO_MODEL: gemini-2.5-flash
+  GEMINI_MENU_MODEL: gemini-3.1-flash-lite-image
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -51,6 +52,7 @@ jobs:
           env_vars: |-
             GEMINI_MODEL=${{ env.GEMINI_MODEL }}
             GEMINI_VIDEO_MODEL=${{ env.GEMINI_VIDEO_MODEL }}
+            GEMINI_MENU_MODEL=${{ env.GEMINI_MENU_MODEL }}
           env_vars_update_strategy: merge
       - name: Health check
         run: curl -fsS "${{ steps.deploy.outputs.url }}/health"
