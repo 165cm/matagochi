@@ -347,6 +347,7 @@
     return [...out];
   }
   const stapleLabel = { rice: "ごはんもの", noodle: "麺", bread: "パン", other: "おかず" };
+  const proteinLabel = { meat: "肉", fish: "魚", eggtofu: "卵・豆腐", veg: "野菜" };
   function stapleName(recipe) {
     const m = String(recipe?.title || "").match(/パスタ|うどん|そば|ラーメン|焼きそば|そうめん|カレー|チャーハン|丼/);
     if (m) return m[0] === "丼" ? "丼もの" : m[0];
@@ -376,7 +377,16 @@
       if (mt.cuisine === t.cuisine) penalty += 1 * w;
     }
     const prev = recent.find((m) => m.gap <= 2 && traits(m.recipe).staple !== t.staple && traits(m.recipe).staple !== "other");
-    if (prev && t.staple !== "other") reason = `${dayWord(prev.gap)}は${stapleName(prev.recipe)}だったので、${stapleLabel[t.staple]}に`;
+    if (prev && t.staple !== "other") reason = `${dayWord(prev.gap)}は${stapleName(prev.recipe)} → ${stapleLabel[t.staple]}`;
+    else {
+      // 主菜の素材：肉が続いたら魚、など。直近2日で見る。
+      const near = recent.filter((m) => m.gap <= 2).map((m) => ({ gap: m.gap, protein: traits(m.recipe).protein }));
+      const last = near[0];
+      if (last && last.protein !== t.protein && ["meat", "fish"].includes(last.protein)) {
+        const run = near.length >= 2 && near[1].protein === last.protein;
+        reason = run ? `${proteinLabel[last.protein]}続き → ${proteinLabel[t.protein]}` : `${dayWord(last.gap)}は${proteinLabel[last.protein]} → ${proteinLabel[t.protein]}`;
+      }
+    }
     return { penalty, reason, lastEatenDays, traits: t };
   }
   // Repeat cycles: how often each person wants a dish again (days).
@@ -394,16 +404,40 @@
     const last = gaps.length ? Math.min(...gaps) : null;
     let score = loves * 6;
     const bothLove = values.length >= 2 && loves === values.length;
-    if (last === null) return { exclude: false, known: false, due: false, interval, last, loves, bothLove, score, reason: bothLove ? "ふたりとも好き" : "" };
+    const who = values.length === 2 ? "ふたり" : "みんな";
+    if (last === null) return { exclude: false, known: false, due: false, interval, last, loves, bothLove, score, reason: bothLove ? `${who}の好物` : "" };
     const ratio = last / interval;
     let reason = "";
     if (ratio < 1) score -= 60 * (1 - ratio); // まだ早い
     else {
       score += 20 + Math.min(15, (ratio - 1) * 15);
-      reason = ratio >= 2 ? `久しぶり（${last}日ぶり）` : `ちょうどいい頃（${last}日ぶり）`;
-      if (bothLove) reason = `ふたりとも好き・${reason}`;
+      // だれが食べたいか ＋ 前回からの日数を1行で（献立カードで切れない長さ）。
+      const fans = Object.keys(cycles || {}).filter((k) => LOVED.includes(cycles[k]));
+      if (bothLove) reason = `${who}の${interval <= 1 ? "大" : ""}好物・${last}日ぶり`;
+      else if (fans.length && values.length === 1) reason = `大好物・${last}日ぶり`;
+      else if (fans.length) reason = `${fans.join("・")}の好物・${last}日ぶり`;
+      else reason = ratio >= 2 ? `久しぶり（${last}日ぶり）` : `ちょうどいい頃（${last}日ぶり）`;
     }
     return { exclude: false, known: true, due: ratio >= 1, interval, last, ratio, loves, bothLove, score, reason };
+  }
+  // 旬：月ごとに、その季節においしい食材。候補を少しだけ前へ出し、理由に添える。
+  const SEASONS = [
+    { months: [3, 4, 5], icon: "🌸", items: [[/たけのこ|筍/, "たけのこ"], [/菜の花/, "菜の花"], [/新玉/, "新玉ねぎ"], [/春キャベツ/, "春キャベツ"], [/アスパラ/, "アスパラ"], [/そら豆/, "そら豆"], [/あさり/, "あさり"]] },
+    { months: [6, 7, 8], icon: "🌻", items: [[/なす|茄子/, "なす"], [/トマト/, "トマト"], [/きゅうり/, "きゅうり"], [/ゴーヤ/, "ゴーヤ"], [/オクラ/, "オクラ"], [/とうもろこし|コーン(?!スターチ|フレーク)/, "とうもろこし"], [/ピーマン/, "ピーマン"], [/ズッキーニ/, "ズッキーニ"]] },
+    { months: [9, 10, 11], icon: "🍂", items: [[/さんま|秋刀魚/, "さんま"], [/鮭|さけ|秋鮭/, "鮭"], [/さつまいも/, "さつまいも"], [/かぼちゃ/, "かぼちゃ"], [/(?<!片)栗(?!粉)/, "栗"], [/しめじ|まいたけ|しいたけ|エリンギ|えのき|きのこ/, "きのこ"]] },
+    { months: [12, 1, 2], icon: "⛄", items: [[/白菜/, "白菜"], [/大根/, "大根"], [/ぶり|鰤/, "ぶり"], [/かぶ/, "かぶ"], [/牡蠣|カキ/, "牡蠣"], [/たら(?!こ)|鱈/, "たら"], [/春菊/, "春菊"], [/ほうれん草|ほうれんそう/, "ほうれん草"]] },
+  ];
+  function season(recipe = {}, date = "") {
+    const month = Number(String(date).slice(5, 7));
+    const s = SEASONS.find((x) => x.months.includes(month));
+    if (!s) return { score: 0, reason: "" };
+    for (const i of recipe.ingredients || []) {
+      const name = String(i?.name || "");
+      if (KEEPS.test(name)) continue;
+      const hit = s.items.find(([re]) => re.test(name));
+      if (hit) return { score: 2, reason: `${s.icon} 旬の${hit[1]}` };
+    }
+    return { score: 0, reason: "" };
   }
   const SCORE = { request: 80, saved: 5 };
   const MAX_NEW_PER_PLAN = 1;
@@ -500,7 +534,9 @@
           ingredients.add(key(x.name)),
         );
         if (slot.recipe) timeline.push({ date, recipe: slot.recipe });
-        return { date, slot, rotation: slot.recipe ? rotation(slot.recipe, date, timeline, between) : null };
+        return { date, slot, rotation: slot.recipe ? rotation(slot.recipe, date, timeline, between) : null,
+          repeat: slot.recipe ? repeatFit(slot.recipe, date, timeline, between, cyclesOf(slot.recipe)) : null,
+          season: slot.recipe ? season(slot.recipe, date) : null };
       }
       if (!slot && offUntil && date < offUntil) return { date, off: true, prestart: true };
       if (
@@ -519,6 +555,7 @@
           repeat: repeatFit(x.recipe, date, timeline, between, cyclesOf(x.recipe)),
           request: requestOf(x.recipe),
           fresh: freshness(x.recipe),
+          season: season(x.recipe, date),
         }))
         .filter((x) => !x.repeat.exclude)
         .map((x) => ({
@@ -531,6 +568,7 @@
             (x.recipe.curated ? 0 : SCORE.saved) -
             x.rotation.penalty +
             freshScore(x.fresh, dayInRound(date, i)) +
+            x.season.score +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
                   ingredients.has(key(n.name)),
@@ -552,7 +590,7 @@
       const selected =
         pool.find((x) => x.recipe.id === overrides[date]) || candidates.find((x) => x.recipe.id === overrides[date]) || pinned || pool[0];
       if (selected) {
-        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.rotation.reason, selected.repeat.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : ""]
+        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.repeat.reason, selected.rotation.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : "", selected.season.reason]
           .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
         if (pinned && selected === pinned) selected.reasons.unshift(`📌 毎週${WD[Number(dow)]}曜`);
         timeline.push({ date, recipe: selected.recipe });
@@ -1001,6 +1039,7 @@
     repeatFit,
     sameDish,
     CYCLE_DAYS,
+    season,
     copy,
   };
   root.Lifestyle = api;

@@ -343,11 +343,11 @@ function renderMealCalendar() {
     <div class="cal-grid">${cells}</div>
     <p class="cal-caption">${pickRecipe ? `${formatDate(calPick)}（${weekdayLabel(calPick)}）${calPick > t ? "の予定" : ""}：<b>${escapeHtml(pickRecipe.title)}</b>` : "写真をタップすると料理名が出ます。点線は予定です。"}</p></section>`;
 }
-// Why this dish on this day, most important first: request, variety, repeat timing.
+// Why this dish on this day, most important first: request, who wants it again (and when), variety, season.
 function planReason(day) {
   const c = day.candidate;
-  if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.rotation?.reason].find(Boolean) || "";
-  return c ? [c.request && `${c.request.from}のリクエスト`, c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.rotation?.reason, c.repeat?.reason].find(Boolean) || "" : "";
+  if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.repeat?.reason, day.rotation?.reason, day.season?.reason].find(Boolean) || "";
+  return c ? [c.request && `${c.request.from}のリクエスト`, c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.repeat?.reason, c.rotation?.reason, c.season?.reason].find(Boolean) || "" : "";
 }
 // The last time someone pressed 買い物完了. Meals confirmed before it were bought on that trip.
 function lastShoppedAt() {
@@ -540,7 +540,7 @@ function renderToday() {
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
   return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div>
-    ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
+    ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", /好物|日ぶり/.test(reason) ? "" : bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
     ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-skip" data-date="${today()}">🍽 今日は外食・中食にする</button>` : ""}</div>` : ""}</section>
   ${renderSkipPanel(today())}
