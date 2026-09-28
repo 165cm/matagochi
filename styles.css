@@ -3831,16 +3831,30 @@ body.cook-mode-open { overflow: hidden; }
 .cm-nav button { min-height: 52px; font-size: 16px; }
 .cm-loop { border: 1.5px solid var(--line); background: var(--surface); border-radius: 14px; padding: 0 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--ink); }
 .cm-loop[aria-pressed="true"] { border-color: var(--tomato); color: var(--tomato); }
-@media (orientation: landscape) and (max-height: 600px) {
-  #cook-mode { grid-template-columns: 58% 1fr; grid-template-rows: 1fr auto; }
-  .cm-video, .cm-video.is-shorts { grid-row: 1 / 3; aspect-ratio: auto; height: 100vh; height: 100dvh; }
+/* 横長の画面（スマホ横持ち・パソコン・タブレット）：左に動画｜右に手順と材料 */
+@media (orientation: landscape) {
+  #cook-mode { grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); grid-template-rows: 1fr auto; }
+  .cm-video, .cm-video.is-shorts { grid-row: 1 / 3; aspect-ratio: auto; height: 100vh; height: 100dvh; max-height: none; }
   .cm-side { grid-column: 2; }
   .cm-foot { grid-column: 2; }
+  body.cook-mode-open #cook-timer-bar { left: 8px; right: auto; width: calc(60% - 16px); max-width: 520px; bottom: 8px; margin: 0; }
+}
+/* スマホの横持ち（背が低い）：文字とボタンを詰める */
+@media (orientation: landscape) and (max-height: 600px) {
+  #cook-mode { grid-template-columns: 58% 1fr; }
+  body.cook-mode-open #cook-timer-bar { width: calc(58% - 16px); }
+  .cm-nav button { white-space: nowrap; }
   .cm-nav { padding: 4px 8px 8px; }
   .cm-nav button { min-height: 44px; font-size: 14px; }
   .cm-step { font-size: 18px; margin: 6px 0; }
   .cm-list li { font-size: 14px; }
-  body.cook-mode-open #cook-timer-bar { left: 8px; right: auto; width: calc(58% - 16px); bottom: 8px; margin: 0; }
+}
+/* パソコン・タブレット（広い横長）：手順を大きく */
+@media (orientation: landscape) and (min-height: 601px) {
+  .cm-side { padding: 18px 24px 12px; }
+  .cm-step { font-size: clamp(22px, 2vw, 30px); }
+  .cm-list li { font-size: 18px; }
+  .cm-nav { padding: 10px 24px 16px; }
 }
 
 /* ✋ 手の形で操作 */
