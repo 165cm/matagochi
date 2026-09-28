@@ -177,7 +177,7 @@ function typeStory(p, r) {
 }
 function normalizeSkillPhoto(raw) {
   const img = (x, max) => typeof x === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(x) && x.length < max;
-  return img(raw?.photo, 400_000) ? { photo: raw.photo, dish: String(raw.dish || "").slice(0, 40), level: [1, 2, 3, 4, 5].includes(raw.level) ? raw.level : null, at: String(raw.at || ""), ...(img(raw.illustration, 1_200_000) ? { illustration: raw.illustration } : {}) } : null;
+  return img(raw?.photo, 400_000) ? { photo: raw.photo, dish: String(raw.dish || "").slice(0, 40), level: [1, 2, 3, 4, 5].includes(raw.level) ? raw.level : null, at: String(raw.at || "") } : null;
 }
 // 献立に使う好みの味：選んだお店のジャンルから（和風・洋風・中華風）。
 function chainTastes(p) {

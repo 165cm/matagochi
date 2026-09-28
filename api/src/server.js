@@ -8,10 +8,11 @@ import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawIllustration } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawIllustration, drawWeeklyMenu } from "./analyzer.js";
 import { createIllustrator, createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createPushDesk } from "./push.js";
+import { createWeeklyMenu } from "./weeklyMenu.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./cors.js";
 import { ApiError, toErrorResponse } from "./errors.js";
 import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
@@ -49,6 +50,7 @@ export function createApp(env = process.env, deps = {}) {
   const illustrator = createIllustrator(recipeStore, { draw: deps.drawIllustration || ((image, dish) => drawIllustration(image, dish, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
+  const weeklyMenu = createWeeklyMenu(recipeStore, { drawOne: deps.drawWeeklyMenu || ((images, dishes) => drawWeeklyMenu(images, dishes, env)), drawEach: deps.drawIllustration || ((image, dish) => drawIllustration(image, dish, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
@@ -72,8 +74,9 @@ export function createApp(env = process.env, deps = {}) {
   // 同期データは料理写真(data URL)を含むため、同期ルートだけ上限を広げる
   const syncJson = express.json({ limit: "24mb" });
   const imageJson = express.json({ limit: "7mb" });
+  const menuJson = express.json({ limit: "10mb" });
   app.use((req, res, next) => {
-    const parser = ["/api/import/images", "/api/skill/photo", "/api/skill/illustrate"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
+    const parser = req.path === "/api/weekly/menu" ? menuJson : ["/api/import/images", "/api/skill/photo", "/api/skill/illustrate"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
     parser(req, res, next);
   });
 
@@ -124,6 +127,17 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/push/test", (req, res) => send(res, pushDesk.test(req.body || {})));
   app.post("/api/push/tick", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, pushDesk.tick()); });
   app.post("/api/search/variants", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, variantSearch.find(req.body || {}, householdOf(req))); });
+  app.post("/api/weekly/menu", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const unlimited = unlimitedOf(req);
+    try {
+      const { mode, images, wallet } = await weeklyMenu.make(req.body || {}, householdOf(req), { unlimited });
+      res.json({ mode, images, tickets: wallet ? tickets.view(wallet, unlimited) : await ticketsView(req) });
+    } catch (error) {
+      const { status, body } = toErrorResponse(error);
+      res.status(status).json({ ...body, ...(error.wallet ? { tickets: tickets.view(error.wallet, unlimited) } : {}) });
+    }
+  });
   app.post("/api/skill/illustrate", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     const unlimited = unlimitedOf(req);

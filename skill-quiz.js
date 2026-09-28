@@ -189,7 +189,6 @@ function renderSkillQuiz() {
   return skillQuiz.done ? renderQuizResult(skillQuiz) : renderQuizQuestion(skillQuiz);
 }
 function handleSkillQuizAction(action, data) {
-  if (action === "life-illustrate") { makeIllustration(); return true; }
   if (action === "life-exam-start") { if (examReady()) startSkillExam(); render(); globalThis.scrollTo?.({ top: 0 }); return true; }
   if (!action.startsWith("life-quiz") && action !== "life-exam-done") return false;
   if (action === "life-quiz-start") { startSkillQuiz(); render(); globalThis.scrollTo?.({ top: 0 }); return true; }

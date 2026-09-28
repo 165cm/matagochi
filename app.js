@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-plus2";
+const APP_VERSION = "20260928-comp";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -72,6 +72,7 @@ const demoState = {
   starterPref: { show: true, asked: false, updatedAt: "" },
   skillProfile: null,
   skillPhoto: null,
+  menuAlbum: [],
   sync: { code: "", roomId: "", lastSyncAt: "" },
   draft: {
     sourceServings: null,
@@ -312,6 +313,7 @@ function normalizeState(saved) {
     starterPref: normalizeStarterPref(saved.starterPref),
     skillProfile: normalizeSkillProfile(saved.skillProfile),
     skillPhoto: normalizeSkillPhoto(saved.skillPhoto),
+    menuAlbum: normalizeMenuAlbum(saved.menuAlbum),
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -1038,7 +1040,7 @@ function render() {
     pantry: renderPantryPage
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = views[state.view]() + renderTicketSheet() + renderTicketAsk() + (paywall ? renderPaywall() : renderTicketParty());
+  document.querySelector("#app").innerHTML = views[state.view]() + renderTicketSheet() + renderTicketAsk() + renderMenuViewer() + (paywall ? renderPaywall() : renderTicketParty());
   placePageChrome();
   renderTicketChip();
   bindEvents();
