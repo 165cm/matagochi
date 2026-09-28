@@ -387,3 +387,4 @@ body.is-registered .sticky-cta { display: none; }
 .plus-compare span:last-child { background: var(--yellow-soft); }
 .plus-compare .pc-head span:last-child { color: var(--tomato-dark); }
 .plus-note { font-weight: 800; }
+.plus-compare span:nth-child(2) { color: var(--muted); }
