@@ -8,8 +8,8 @@ import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawIllustration, drawMenuDish, describeMenu } from "./analyzer.js";
-import { createIllustrator, createSkillJudge } from "./skillPhoto.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawMenuSheet, describeMenu } from "./analyzer.js";
+import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
@@ -47,10 +47,9 @@ export function createApp(env = process.env, deps = {}) {
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100) });
   const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut() });
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
-  const illustrator = createIllustrator(recipeStore, { draw: deps.drawIllustration || ((image, dish) => drawIllustration(image, dish, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
-  const weeklyMenu = createWeeklyMenu(recipeStore, { drawDish: deps.drawMenuDish || ((image, dish, opts) => drawMenuDish(image, dish, opts, env)), describe: deps.describeMenu || ((dishes) => describeMenu(dishes, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
+  const weeklyMenu = createWeeklyMenu(recipeStore, { drawSheet: deps.drawMenuSheet || ((images, dishes, opts) => drawMenuSheet(images, dishes, opts, env)), describe: deps.describeMenu || ((dishes) => describeMenu(dishes, env)), tickets, reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const importImages = createImageImporter({ store: recipeStore, analyze: deps.analyzeImages || ((images) => analyzeRecipeImages(images, env)), reserveBudget: () => catalog.reserveAnalysisBudget() });
   // Bounded per-instance abuse guard; the catalog additionally enforces shared AI budgets.
   app.use(createCorsMiddleware(env));
@@ -76,7 +75,7 @@ export function createApp(env = process.env, deps = {}) {
   const imageJson = express.json({ limit: "7mb" });
   const menuJson = express.json({ limit: "10mb" });
   app.use((req, res, next) => {
-    const parser = req.path === "/api/weekly/menu" ? menuJson : ["/api/import/images", "/api/skill/photo", "/api/skill/illustrate"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
+    const parser = req.path === "/api/weekly/menu" ? menuJson : ["/api/import/images", "/api/skill/photo"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
     parser(req, res, next);
   });
 
@@ -133,17 +132,6 @@ export function createApp(env = process.env, deps = {}) {
     try {
       const { style, images, notes, wallet } = await weeklyMenu.make(req.body || {}, householdOf(req), { unlimited });
       res.json({ style, images, notes, tickets: wallet ? tickets.view(wallet, unlimited) : await ticketsView(req) });
-    } catch (error) {
-      const { status, body } = toErrorResponse(error);
-      res.status(status).json({ ...body, ...(error.wallet ? { tickets: tickets.view(error.wallet, unlimited) } : {}) });
-    }
-  });
-  app.post("/api/skill/illustrate", async (req, res) => {
-    res.setHeader("Cache-Control", "no-store");
-    const unlimited = unlimitedOf(req);
-    try {
-      const { image, wallet } = await illustrator.illustrate(req.body || {}, householdOf(req), { unlimited });
-      res.json({ image, tickets: wallet ? tickets.view(wallet, unlimited) : await ticketsView(req) });
     } catch (error) {
       const { status, body } = toErrorResponse(error);
       res.status(status).json({ ...body, ...(error.wallet ? { tickets: tickets.view(error.wallet, unlimited) } : {}) });

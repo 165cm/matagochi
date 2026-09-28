@@ -17,34 +17,4 @@ test('a cooked-dish photo gets a 1-5 skill level; not stored; limited per househ
   assert.throws(() => normalizeJudgement({ isFood: false }), { code: 'not_food' });
 });
 
-test('a dish photo becomes an illustration for 3 tickets; refunded when drawing fails; a few a day', async () => {
-  const { createIllustrator, ILLUSTRATIONS_PER_DAY } = await import('../src/skillPhoto.js');
-  const { createTicketBook } = await import('../src/tickets.js');
-  const store = createMemorySyncStore();
-  const tickets = createTicketBook(store, { startTickets: 10 });
-  await tickets.get('home-1');
-  const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: '#c86' } }).jpeg().toBuffer();
-  const png = await sharp({ create: { width: 1200, height: 1200, channels: 3, background: '#fed' } }).png().toBuffer();
-  let fail = false, prompt = '';
-  const art = createIllustrator(store, { tickets, reserveBudget: async () => {}, draw: async (image, dish) => { prompt = dish; if (fail) throw new Error('boom'); return { mimeType: 'image/png', data: png.toString('base64') }; } });
-  const photo = { mimeType: 'image/jpeg', data: jpeg.toString('base64') };
-  const r = await art.illustrate({ image: photo, dish: '肉じゃが' }, 'home-1');
-  assert.equal(r.image.mimeType, 'image/webp');
-  const meta = await sharp(Buffer.from(r.image.data, 'base64')).metadata();
-  assert.deepEqual([meta.format, meta.width], ['webp', 768], 're-encoded and made smaller');
-  assert.equal(prompt, '肉じゃが');
-  assert.equal(r.wallet.halves / 2, 7, '3 tickets spent');
-  fail = true;
-  await assert.rejects(art.illustrate({ image: photo }, 'home-1'), { code: 'illustration_failed' });
-  assert.equal((await tickets.get('home-1')).balance, 7, 'refunded');
-  fail = false;
-  assert.equal((await art.illustrate({ image: photo }, 'home-1')).wallet.halves / 2, 4);
-  await assert.rejects(art.illustrate({ image: photo }, 'home-1'), { code: 'illustrate_quota' }, `${ILLUSTRATIONS_PER_DAY} tries a day`);
-  assert.equal((await tickets.get('home-1')).balance, 4, 'the quota takes no tickets');
-  const poor = createTicketBook(store, { startTickets: 2 });
-  await poor.get('home-2');
-  const art2 = createIllustrator(store, { tickets: poor, reserveBudget: async () => {}, draw: async () => ({ data: png.toString('base64') }) });
-  await assert.rejects(art2.illustrate({ image: photo }, 'home-2'), { code: 'no_tickets', message: /3枚/ });
-  assert.equal((await poor.get('home-2')).balance, 2, 'not a single ticket taken when short');
-  await assert.rejects(art2.illustrate({ image: photo }, ''), { code: 'household_required' });
-});
+

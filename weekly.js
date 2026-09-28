@@ -1,6 +1,6 @@
 /* 1週間コンプ：その週（月〜日）に作った晩ごはんの写真が、スタンプのように1マスずつ埋まっていく。
    予定した日が全部（3日以上）写真でそろったら「メニューにする」（チケット3枚）。
-   AIは選んだ画風で料理を一皿ずつ描き、カロリー・材料費の目安とひとことを添える。並べ方・料理名・「5/5 コンプ」・
+   AIは今週の写真をまとめて1回で、選んだ画風の素材シートに描く（サーバーが一皿ずつ切り出す）。カロリー・材料費の目安とひとことも添える。並べ方・料理名・「5/5 コンプ」・
    名前やLv・ロゴとURLは、ここ（canvas）で重ねる。数字や名前は、あとからオン・オフできる（描き直さない）。
    写真も絵も、この端末だけ（アルバムは同期しない・最大12週）。 */
 const MENU_TICKETS = 3;
@@ -80,7 +80,7 @@ function renderWeeklyStamps() {
   }).join("");
   const left = r.target - r.got, noPhoto = stamps.filter((s) => s.kind === "cooked").length;
   let foot;
-  if (weeklyBusy === start) foot = '<p class="stamp-note" role="status">🎨 一皿ずつ描いています…（1分ほど）</p>';
+  if (weeklyBusy === start) foot = '<p class="stamp-note" role="status">🎨 まとめて描いています…（30秒ほど）</p>';
   else if (made.length) foot = `<div class="stamp-actions">${dailyButton("life-menu-open", "🍽 メニューを見る", `data-key="${escapeAttr(menuKey(made[0]))}"`, true)}${dailyButton("life-menu-setup", "別の画風でも", `data-week="${start}"`)}</div>`;
   else if (r.complete) foot = dailyButton("life-menu-setup", `🎉 メニューにする <small>🎟${MENU_TICKETS}枚</small>`, `data-week="${start}"`, true);
   else foot = `<p class="stamp-note">${noPhoto ? "📷 のマスをタップして写真を足すと、スタンプになります。" : `あと${left}日、作った料理の写真でコンプ。<b>イラストのメニュー</b>が作れます。`}</p>`;
@@ -98,7 +98,7 @@ function renderMenuSetup() {
     <div class="style-grid">${Object.entries(MENU_STYLES).map(([id, st]) => `<button type="button" class="style-card" data-action="life-menu-style" data-style="${id}" aria-pressed="${cur === id}" style="--paper:${st.paper};--ink:${st.ink};--accent:${st.accent}"><span aria-hidden="true">${st.icon}</span><b>${st.label}</b><small>${st.hint}</small></button>`).join("")}</div>
     <label class="menu-wish"><span>こんな感じに（なくてもOK）</span><input id="menu-prompt" class="input" maxlength="60" placeholder="例：木のテーブルで、秋っぽく" value="${escapeAttr(menuSetup.prompt)}"></label>
     <div class="wish-chips">${PROMPT_IDEAS.map((w) => `<button type="button" class="wish-chip" data-action="life-menu-wish" data-wish="${escapeAttr(w)}">+ ${w}</button>`).join("")}</div>
-    <p class="stamp-note">写真の料理を、AIが一皿ずつ描き直します。カロリー・材料費の目安とひとことも付きます。写真と絵はこの端末だけに保存。</p>
+    <p class="stamp-note">今週の料理を、AIがまとめて同じ画風で描き直します。カロリー・材料費の目安とひとことも付きます。写真と絵はこの端末だけに保存。</p>
     ${dailyButton("life-menu-make", `🎨 描く <small>🎟${MENU_TICKETS}枚${devCode() ? "（開発コード：無料）" : ""}</small>`, "", true)}</div></div>`;
 }
 const readWish = () => { const el = globalThis.document?.querySelector?.("#menu-prompt"); if (el && menuSetup) menuSetup.prompt = String(el.value || "").slice(0, 60); };

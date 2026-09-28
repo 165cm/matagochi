@@ -148,20 +148,20 @@ test('sync over HTTP: gzip, unchanged answers, gzip uploads and photos', async (
   assert.match(back.headers.get('cache-control'), /immutable/); assert.equal((await back.json()).data, photo);
 });
 
-test('illustration route: 3 tickets, a webp back, the wallet on failure too', async (t) => {
+test('weekly menu route: 3 tickets, one piece per dish, the wallet on failure too', async (t) => {
   const sharp = (await import('sharp')).default;
   let fail = false;
-  const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#fed' } }).png().toBuffer();
-  const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null, drawIllustration: async () => { if (fail) throw new Error('x'); return { mimeType: 'image/png', data: png.toString('base64') }; } });
+  const sheet = await sharp({ create: { width: 1536, height: 1024, channels: 3, background: '#fff' } }).png().toBuffer();
+  const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null, describeMenu: async () => [], drawMenuSheet: async () => { if (fail) throw new Error('x'); return { mimeType: 'image/png', data: sheet.toString('base64') }; } });
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
   const base = `http://127.0.0.1:${server.address().port}`;
   const headers = { 'Content-Type': 'application/json', 'X-Household': 'house-art-01' };
   await fetch(`${base}/api/tickets`, { headers });
   const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: '#c86' } }).jpeg().toBuffer();
-  const body = JSON.stringify({ image: { mimeType: 'image/jpeg', data: jpeg.toString('base64') }, dish: 'カレー' });
-  const ok = await fetch(`${base}/api/skill/illustrate`, { method: 'POST', headers, body }).then((r) => r.json());
-  assert.equal(ok.image?.mimeType, 'image/webp', JSON.stringify(ok).slice(0, 200)); assert.equal(ok.tickets.balance, 22);
+  const body = JSON.stringify({ style: 'retro', photos: [1, 2, 3, 4, 5, 6].map(() => ({ mimeType: 'image/jpeg', data: jpeg.toString('base64'), dish: 'カレー' })) });
+  const ok = await fetch(`${base}/api/weekly/menu`, { method: 'POST', headers, body }).then((r) => r.json());
+  assert.equal(ok.images?.length, 6, JSON.stringify(ok).slice(0, 200)); assert.equal(ok.style, 'retro'); assert.equal(ok.notes.length, 6); assert.equal(ok.tickets.balance, 22);
   fail = true;
-  const bad = await fetch(`${base}/api/skill/illustrate`, { method: 'POST', headers, body });
+  const bad = await fetch(`${base}/api/weekly/menu`, { method: 'POST', headers, body });
   assert.equal(bad.status, 502); assert.equal((await bad.json()).tickets.balance, 22, 'refunded, and the app hears the balance');
 });
