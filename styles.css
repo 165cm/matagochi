@@ -3645,3 +3645,23 @@ button.stamp { cursor: pointer; }
 .plan-foot { margin: 4px 0 0; text-align: right; }
 .tk-bonus { margin: 8px 0 0; padding: 8px 10px; border-radius: 12px; background: #fff4e6; font-size: 13px; }
 .tk-bonus .tk-dots { display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle; }
+/* チケットのページ */
+.tk-page { display: grid; gap: 6px; }
+.tk-hero { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 16px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.tk-hero p { margin: 0; display: flex; align-items: baseline; gap: 4px; }
+.tk-hero p b { font-size: 40px; line-height: 1; }
+.tk-exp { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.tk-h { margin: 14px 0 2px; font-size: 14px; color: var(--muted); }
+.tk-rules { margin: 0; padding: 0; list-style: none; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.tk-rules li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.tk-rules li:last-child { border-bottom: 0; }
+.tk-rules .tk-ic { font-size: 18px; text-align: center; }
+.tk-rules p { margin: 0; display: grid; gap: 2px; min-width: 0; }
+.tk-rules p b { font-size: 14px; }
+.tk-rules small { font-size: 12px; color: var(--muted); }
+.tk-rules em { font-style: normal; font-weight: 800; font-size: 14px; color: var(--sage-dark); white-space: nowrap; }
+.tk-rules li.is-now { background: #fff4e6; }
+.tk-rules li.is-done em, .tk-rules li.is-past { color: var(--muted); }
+.tk-rules li.is-past { opacity: .6; }
+.tk-rules .tk-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
+.tk-note { margin: 0; font-size: 13px; }

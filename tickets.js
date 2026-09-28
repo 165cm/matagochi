@@ -123,44 +123,71 @@ function renderTicketChip() {
   chip.innerHTML = `<span aria-hidden="true">🎟</span><b>${ticketState.unlimited ? "∞" : fmtTickets(ticketState.balance)}</b>${soon ? '<i class="ticket-dot" aria-hidden="true"></i>' : ""}`;
   chip.setAttribute("aria-label", `チケット ${ticketState.unlimited ? "無制限" : fmtTickets(ticketState.balance) + "枚"}`);
 }
+// 右上の残数・1行の後押しは、チケットのページを開く。足りない時だけ、小さな画面で知らせる。
+let ticketReturn = "";
 function openTicketSheet({ need = false, retry = null } = {}) {
-  ticketCodeWrong = need && !!devCode();
+  if (!need) return openTicketPage();
+  ticketCodeWrong = !!devCode();
   if (ticketCodeWrong) try { localStorage.removeItem("ripigochi-dev-code"); } catch {}
   ticketSheet = { need, retry }; ticketCode = ""; render();
-  if (!need) refreshTickets();
+}
+function openTicketPage() {
+  if (state.view !== "tickets") ticketReturn = state.view;
+  ticketSheet = null;
+  state.view = "tickets";
+  render();
+  globalThis.scrollTo?.({ top: 0 });
+  refreshTickets();
 }
 const tkDate = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+const tkDots = (n, max) => `<span class="tk-dots" aria-hidden="true">${Array.from({ length: max }, (_, i) => `<i class="tk-dot${i < n ? " on" : ""}"></i>`).join("")}</span>`;
+// 足りない時の小さな画面：いま何枚いるか・次にもらえる方法・くわしくはページで。
 function renderTicketSheet() {
   if (!ticketSheet) return "";
-  const t = ticketState;
+  const t = ticketState, line = t ? Tickets.nextLine(t) : "";
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
-  const start = ticketStart();
-  const c = t?.cook, ib = t?.importBonus;
-  const daysLeft = start ? Math.max(0, daysBetween(today(), addDays(start, Tickets.WEEKS * 7 - 1)) + 1) : 0;
-  const line = t ? Tickets.nextLine(t) : "";
-  const head = ticketSheet.need
-    ? `<div class="tk-balance"><p class="quota-title">🎟 チケットがあと1枚</p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div>${line ? `<p class="small tk-what">${line}</p>` : ""}${typeof renderTicketPlusLine === "function" ? renderTicketPlusLine() : ""}`
-    : `<div class="tk-balance"><span class="tk-ticket" aria-hidden="true">🎟</span><p><b>${t?.unlimited ? "∞" : t ? fmtTickets(t.balance) : "…"}</b><small>枚</small></p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div><p class="small tk-what">🎬 1枚＝動画1本をAIが読み取り（<b>読み取り済みは0枚</b>）</p>`;
-  const dots = (n, max) => Array.from({ length: max }, (_, i) => `<i class="tk-dot${i < n ? " on" : ""}" aria-hidden="true"></i>`).join("");
-  const earn = !t || !c ? "" : c.challenge
-    ? `<section class="tk-challenge" aria-label="作るたびにチケット">
-      <p class="tk-title"><b>🍳 作るたびに +1枚</b><span>のこり${daysLeft}日</span></p>
-      <div class="tk-meter"><progress max="${c.max}" value="${c.total}" aria-label="もらったチケット"></progress><span><b>${c.total}</b> / ${c.max}枚</span></div>
-      <p class="tk-line"><span class="tk-kind">今週</span><span class="tk-dots" role="img" aria-label="今週 ${c.weekGot} / ${c.perWeek}枚">${dots(c.weekGot, c.perWeek)}</span></p>
-    </section>`
-    : `<section class="tk-challenge" aria-label="作るとチケット"><p class="tk-title"><b>🍳 ${c.every}回作るごとに +1枚</b></p><p class="tk-line"><span class="tk-dots" role="img" aria-label="${c.towardNext} / ${c.every}回">${dots(c.towardNext, c.every)}</span></p></section>`;
-  const bonus = ib?.open ? `<p class="tk-bonus">📥 ${tkDate(ib.until)}までに動画を${ib.need}本取り込むと <b>+${ib.bonus}枚</b> <span class="tk-dots">${dots(Math.min(ib.have, ib.need), ib.need)}</span></p>` : "";
-  const expiring = t?.expiring ? `<p class="muted small">⏳ ${fmtTickets(t.expiring.n)}枚は${tkDate(t.expiring.at)}まで ${tip("購入分とプラスの分は、受け取ってから6か月で期限が切れます。期限の近いものから使います")}</p>` : "";
   return `<div class="quota-sheet ticket-sheet" role="dialog" aria-modal="true" aria-label="チケット"><div class="quota-card">
-    ${head}${ticketSheet.need ? "" : bonus + earn + expiring}
-    ${!ticketSheet.need && loginAvailable() && !account ? '<button type="button" class="text-button tk-login" data-action="tickets-login">🔐 ログインで機種変更しても引き継ぎ ›</button>' : ""}
-    ${ticketSheet.need ? "" : `<label class="tk-skip"><input type="checkbox" data-action="tickets-ask-toggle" ${ticketSkipAsk() ? "" : "checked"}> 使う前に確認する</label>`}
+    <div class="tk-balance"><p class="quota-title">🎟 チケットがあと1枚</p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div>
+    ${line ? `<p class="small tk-what">${line}</p>` : ""}${typeof renderTicketPlusLine === "function" ? renderTicketPlusLine() : ""}
+    <button type="button" class="text-button" data-action="tickets-open">くわしく ›</button>
     <details class="quota-dev" ${ticketCode || ticketCodeWrong ? "open" : ""}><summary>開発者コード</summary>
       ${ticketCodeWrong ? '<p class="quota-wrong">コードが違うようです。</p>' : ""}<p class="quota-code" aria-live="polite">${ticketCode ? "●".repeat(ticketCode.length) : "&nbsp;"}</p>
       <div class="quota-keys">${keys.map((k) => k ? `<button type="button" class="quota-key" data-action="tickets-key" data-key="${k}" aria-label="${k === "⌫" ? "1文字消す" : k}">${k}</button>` : "<span></span>").join("")}</div>
       <button type="button" class="primary-button full-button" data-action="tickets-unlock" ${ticketCode.length ? "" : "disabled"}>決定</button>
     </details>
   </div></div>`;
+}
+// チケットのページ：残り・つかう・もらう・期限・設定。ルールはここにまとめる（ほかの画面では1行だけ）。
+function renderTicketPage() {
+  const t = ticketState, c = t?.cook, ib = t?.importBonus;
+  const start = ticketStart();
+  const daysLeft = start ? Math.max(0, daysBetween(today(), addDays(start, Tickets.WEEKS * 7 - 1)) + 1) : 0;
+  const row = (icon, title, sub, value, cls = "") => `<li class="${cls}"><span class="tk-ic" aria-hidden="true">${icon}</span><p><b>${title}</b>${sub ? `<small>${sub}</small>` : ""}</p><em>${value}</em></li>`;
+  const importRow = !ib ? "" : ib.got ? row("📥", "3日で動画を3本取り込む", "もらいました", "+5枚 ✓", "is-done")
+    : ib.open ? row("📥", "3日で動画を3本取り込む", `${tkDate(ib.until)}まで ${tkDots(Math.min(ib.have, ib.need), ib.need)}`, `+${ib.bonus}枚`, "is-now")
+    : row("📥", "3日で動画を3本取り込む", "期間おわり", `+${ib.bonus}枚`, "is-past");
+  const cookRow = !c ? row("🍳", "最初の4週：作るたびに", "1週5枚・合計20枚まで", "+1枚")
+    : row("🍳", "最初の4週：作るたびに", c.challenge ? `のこり${daysLeft}日・<b>${c.total}</b>/${c.max}枚・今週 ${tkDots(c.weekGot, c.perWeek)}` : `もらった ${c.total}/${c.max}枚`, "+1枚", c.challenge ? "is-now" : "is-past");
+  const laterRow = row("🍳", `そのあと：${Tickets.EVERY}回作るごとに`, c && !c.challenge ? tkDots(c.towardNext, c.every) : "", "+1枚", c && !c.challenge ? "is-now" : "");
+  const balance = t?.unlimited ? "∞" : t ? fmtTickets(t.balance) : "…";
+  return `<div class="page-actions"><button type="button" class="text-button" data-action="tickets-back">‹ 戻る</button></div>
+  <section class="tk-page">
+    <div class="tk-hero"><span class="tk-ticket" aria-hidden="true">🎟</span><p><b>${balance}</b><small>枚</small></p>${t?.expiring ? `<span class="tk-exp">⏳ ${fmtTickets(t.expiring.n)}枚は${tkDate(t.expiring.at)}まで</span>` : ""}</div>
+    <h3 class="tk-h">つかう</h3>
+    <ul class="tk-rules">${row("🎬", "動画から作り方を読む", "AIが材料と手順を読み取り", "1枚")}${row("♻️", "読み取り済みの動画", "だれかが読んだ動画は自動で見分け", "0枚")}${row("↩️", "読めなかった時", "", "戻ります")}</ul>
+    <h3 class="tk-h">もらう</h3>
+    <ul class="tk-rules">${row("🎁", "はじめに", "", "10枚 ✓", "is-done")}${importRow}${cookRow}${laterRow}${row("✨", "リピごちプラス", "4週ごと・60枚まで", "+30枚")}${row("🛒", "10枚パック", "準備中", "250円")}</ul>
+    <h3 class="tk-h">期限</h3>
+    <p class="tk-note">購入とプラスの分は<b>6か月</b>。期限の近いものから使います。それ以外は期限なし。</p>
+    <h3 class="tk-h">設定</h3>
+    <label class="tk-skip"><input type="checkbox" data-action="tickets-ask-toggle" ${ticketSkipAsk() ? "" : "checked"}> 使う前に確認する</label>
+    ${loginAvailable() && !account ? '<button type="button" class="text-button tk-login" data-action="tickets-login">🔐 ログインで機種変更しても引き継ぎ ›</button>' : ""}
+    <details class="quota-dev" ${ticketCode || ticketCodeWrong ? "open" : ""}><summary>開発者コード</summary>
+      ${ticketCodeWrong ? '<p class="quota-wrong">コードが違うようです。</p>' : ""}<p class="quota-code" aria-live="polite">${ticketCode ? "●".repeat(ticketCode.length) : "&nbsp;"}</p>
+      <div class="quota-keys">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((k) => k ? `<button type="button" class="quota-key" data-action="tickets-key" data-key="${k}" aria-label="${k === "⌫" ? "1文字消す" : k}">${k}</button>` : "<span></span>").join("")}</div>
+      <button type="button" class="primary-button full-button" data-action="tickets-unlock" ${ticketCode.length ? "" : "disabled"}>決定</button>
+    </details>
+  </section>`;
 }
 // 達成の瞬間：スタンプがポンと押されて、チケットが増える。
 function renderTicketParty() {
@@ -177,7 +204,8 @@ function renderTicketParty() {
   return `<div class="ticket-party" role="dialog" aria-modal="true" aria-label="チケットをもらいました"><div class="tp-confetti" aria-hidden="true">${confetti}</div><div class="tp-card">${body}<button type="button" class="primary-button full-button" data-action="tickets-party-close">${party.welcome ? "OK" : "やった！"}</button></div></div>`;
 }
 function handleTicketAction(action, data) {
-  if (action === "tickets-open") { openTicketSheet(); return true; }
+  if (action === "tickets-open") { openTicketPage(); return true; }
+  if (action === "tickets-back") { state.view = ticketReturn && ticketReturn !== "tickets" ? ticketReturn : "today"; render(); return true; }
   if (action === "tickets-login") { ticketSheet = null; setView("settings"); return true; }
   if (action === "tickets-ask-yes") {
     const run = ticketAsk?.run;
