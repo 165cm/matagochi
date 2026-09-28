@@ -1482,7 +1482,7 @@ function renderPlanningFields() {
   const confirm = ai
     ? (restricted.length ? `<label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified ? "checked" : ""}>食べられないもの（${escapeHtml(restricted.join("・"))}）が入っていないか、材料と市販品の表示を確認した</label>` : "")
     : `<label class="profile-choice planning-confirm"><input id="planning-verified" type="checkbox" ${p.ingredientsVerified && p.conditionsConfirmed?"checked":""}>材料・市販品の表示と、上の条件を確認した</label>
-  <p class="muted small">わからなければ未確認でOK ${tip("未確認のレシピは自動の献立に使わず、入れ替える時に確認します")}</p><button type="button" class="text-button" data-action="save-recipe-unreviewed">未確認で保存する</button>`;
+  <p class="muted small">わからなければチェックなしで保存OK ${tip("未確認のレシピは自動の献立に使わず、入れ替える時に確認します")}</p>`;
   return `<section id="planning-panel" class="planning-panel ${ai ? "is-ai" : ""}">${ai ? '<input id="planning-ai" type="hidden" value="1">' : ""}<h3>${ai ? "🤖 献立に使う条件" : "🍳 献立に使う条件"}</h3><p class="muted small">${ai ? "AIが判定" : "材料と手順から判定"}・違う所だけ直す</p>
   <div class="planning-row"><span>時間</span><div class="planning-options">${[10,15,20,30,45,60].map(n=>`<button type="button" class="choice-button" data-planning-minute="${n}" aria-pressed="${p.minutes===n}">${n}分</button>`).join("")}</div></div>
   <div class="planning-row"><span>手間</span><div class="planning-options"><input id="planning-easy" type="hidden" value="${p.easy===true?"true":p.easy===false?"false":""}"><button type="button" class="choice-button" data-planning-easy="true" aria-pressed="${p.easy===true}">😊 かんたん</button><button type="button" class="choice-button" data-planning-easy="false" aria-pressed="${p.easy===false}">🍳 手間をかける</button></div></div>
