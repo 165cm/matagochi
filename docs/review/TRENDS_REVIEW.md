@@ -3,7 +3,8 @@
 指示書：`docs/PERSONALIZE_PLAN.md` §7.3・§12-2・§12-3・§12-7・§16。仕様：`docs/APP_MAP.md` §39。PR 3 の先行分②。
 
 ## 1. 対象
-- ブランチ：`claude/trends-collect-display`（`main` `b2f7b14` から。ほかのPRには積んでいない）
+- ブランチ：`claude/trends-collect-display`（`main` `b2f7b14` から。#96 の入った `main` `73f04a0` を取り込み済み。ほかのPRには積んでいない）
+- PR：https://github.com/165cm/matagochi/pull/97
 - 対象コミット：PR のコミット一覧を参照
 
 ## 2. 問題・変更後・含めない範囲
@@ -23,7 +24,7 @@
 - ユーザーの取り込み用予算を使い切らない：既存の「1日のAI上限の半分まで」をそのまま使う
 
 ## 4. テスト
-- `npm test --prefix api`：104件 成功（前は100件。trends 3件・recipeCatalog 1件追加。既存の trends テスト5件は「1回で10品」を前提にしていたため、`perDay: 10` を渡す形に直した）
+- `npm test --prefix api`：108件 成功（最新の main（#96 の4件）を取り込んだ後。取り込む前は104件、main の前は100件。trends 3件・recipeCatalog 1件追加。既存の trends テスト5件は「1回で10品」を前提にしていたため、`perDay: 10` を渡す形に直した）
 - `node --test test/*.test.cjs`：144件 成功（アプリは変えていない）
 - 画面：アプリの見た目は変わらないので、画面確認はしていない（答えの形は同じ）
 
