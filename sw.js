@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v110";
-const APP_VERSION = "20260929-pantry";
+const CACHE_NAME = "ripigochi-v111";
+const APP_VERSION = "20260929-talk";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -18,6 +18,8 @@ const CORE_ASSETS = [
   `./skills.js?v=${APP_VERSION}`,
   `./aisles.js?v=${APP_VERSION}`,
   `./lifestyle.js?v=${APP_VERSION}`,
+  `./profile-talk.js?v=${APP_VERSION}`,
+  `./talk-ui.js?v=${APP_VERSION}`,
   `./daily-ui.js?v=${APP_VERSION}`,
   `./playlist-import.js?v=${APP_VERSION}`,
   `./household.js?v=${APP_VERSION}`,
@@ -36,12 +38,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260929-pantry",
-  "./icons/favicon-32.png?v=20260929-pantry",
-  "./icons/icon-192.png?v=20260929-pantry",
-  "./icons/icon-512.png?v=20260929-pantry",
-  "./icons/icon-maskable-512.png?v=20260929-pantry",
-  "./icons/apple-touch-icon.png?v=20260929-pantry"
+  "./manifest.webmanifest?v=20260929-talk",
+  "./icons/favicon-32.png?v=20260929-talk",
+  "./icons/icon-192.png?v=20260929-talk",
+  "./icons/icon-512.png?v=20260929-talk",
+  "./icons/icon-maskable-512.png?v=20260929-talk",
+  "./icons/apple-touch-icon.png?v=20260929-talk"
 ];
 
 self.addEventListener("install", (event) => {

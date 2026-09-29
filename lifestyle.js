@@ -489,6 +489,9 @@
     rounds = null,
     // 曜日のピン留め：{ "2": recipeId }（毎週火曜はこのフォルダの作り方）。
     pins = {},
+    // わが家のごはん方針（profile-talk.js）で本人が確かめた好み → { score, reason } か null。
+    // 加点だけ。食べられないもの・時間・器具の条件（fit）はゆるめない。
+    preferenceOf = () => null,
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -556,6 +559,7 @@
           request: requestOf(x.recipe),
           fresh: freshness(x.recipe),
           season: season(x.recipe, date),
+          pref: preferenceOf(x.recipe),
         }))
         .filter((x) => !x.repeat.exclude)
         .map((x) => ({
@@ -569,6 +573,7 @@
             x.rotation.penalty +
             freshScore(x.fresh, dayInRound(date, i)) +
             x.season.score +
+            (x.pref?.score || 0) +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
                   ingredients.has(key(n.name)),
@@ -597,7 +602,7 @@
         pool.find((x) => x.recipe.id === overrides[date]) || candidates.find((x) => x.recipe.id === overrides[date]) || forced || pinned || pool[0];
       if (selected) {
         if (overrides[date] && selected.recipe.id === overrides[date]) selected.chosen = true;
-        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.repeat.reason, selected.rotation.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : "", selected.season.reason]
+        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.repeat.reason, selected.rotation.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : "", selected.season.reason, selected.pref?.reason]
           .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
         if (pinned && selected === pinned) selected.reasons.unshift(`📌 毎週${WD[Number(dow)]}曜`);
         timeline.push({ date, recipe: selected.recipe });
