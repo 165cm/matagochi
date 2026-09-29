@@ -3929,3 +3929,38 @@ i.g { font-style: normal; margin-left: 4px; opacity: .45; }
 .cc-yohaku { width: 88px; height: 88px; margin: -6px auto 0; }
 @media (prefers-reduced-motion: reduce) { .yohaku { animation: none !important; } }
 .empty-state { grid-column: 1 / -1; }
+
+/* ===== 2026-09-29 スマホ確認の直し ===== */
+/* ⏰ タイマー：左上から小さな札を順に並べる（作る画面は見出しの下、料理モードは動画の左上） */
+#cook-timer-bar, body.cook-mode-open #cook-timer-bar { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 60px); left: 8px; right: auto; bottom: auto; width: auto; max-width: calc(100% - 16px); margin: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; z-index: 60; }
+body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 8px); max-width: calc(100% - 128px); z-index: 90; }
+.ctb-item { display: inline-flex; align-items: center; gap: 0; padding: 0; border-radius: 999px; box-shadow: 0 3px 10px rgba(0,0,0,.22); }
+.ctb-item .ctb-main { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 11px; margin: 0; border: 0; border-radius: 999px; background: none; color: #fff; font: inherit; cursor: pointer; }
+.ctb-item .ctb-time { font-size: 15px; min-width: 0; }
+.ctb-item .ctb-label { flex: none; max-width: 7.5em; font-size: 12px; opacity: .9; }
+.ctb-item .ctb-sub { margin: 3px 3px 3px 0; padding: 4px 9px; border-radius: 999px; font-size: 12px; }
+.ctb-item.is-done .ctb-label { font-size: 13px; }
+/* 🍳 料理モード：「✕ 終わる」は動画の右上に、はっきり */
+.cm-exit { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; z-index: 95; border: 0; border-radius: 999px; padding: 9px 14px; background: rgba(30, 24, 20, .82); color: #fff; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,.28); }
+@media (orientation: landscape) { .cm-exit { right: auto; left: calc(60% - 8px); transform: translateX(-100%); } }
+@media (orientation: landscape) and (max-height: 600px) { .cm-exit { left: calc(58% - 8px); } }
+/* 前へ・次へ の2つだけ（くり返すボタンはなし・いつもその手順をくり返す） */
+.cm-nav, .cm-nav.no-loop { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+.cm-nav button { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 8px; padding-right: 8px; }
+/* ✋ 見せている間：ボタンが光り、ふちを一周する線で「あとどれくらい」 */
+#cook-mode .is-seen { position: relative; overflow: visible; outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 30%, transparent), 0 0 20px color-mix(in srgb, var(--tomato) 60%, transparent); }
+#cook-mode .is-seen::after { content: ""; position: absolute; inset: -6px; left: -6px; bottom: -6px; width: auto; height: auto; padding: 3px; border-radius: 999px; background: conic-gradient(from -90deg, var(--tomato) calc(var(--hold, 0) * 360deg), transparent 0); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; transition: none; }
+/* 今週のカレンダー：見出しの下に線を引き、よはくはその線の上に手をのせる（すきまを作らない） */
+.wk-top { padding-bottom: 6px; border-bottom: 1.5px solid var(--line); }
+.wk-yohaku { bottom: -2px; }
+/* 買い物：直近の1つを元に戻す（画面の下） */
+.shop-undo { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 55; display: flex; align-items: center; gap: 8px; width: min(calc(100% - 32px), 420px); padding: 8px 8px 8px 14px; border-radius: 16px; background: #2b2825; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 14px; animation: fd-in .2s ease-out both; }
+.shop-undo span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-undo button { flex: none; border: 0; border-radius: 10px; padding: 7px 10px; background: rgba(255,255,255,.16); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.shop-undo .shop-undo-x { background: none; padding: 7px 6px; opacity: .7; }
+/* 🧂 常備品：買い物リストの中でも見られる */
+.pantry-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pantry-chip { border: 1.5px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 13px; cursor: pointer; color: var(--ink); }
+.pantry-chip::after { content: " ✓"; color: #3f7a35; font-weight: 800; }
+.shop-pantry .text-button { font-size: 13px; }
+.shop-undo-space { height: 64px; }
