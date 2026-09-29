@@ -3900,3 +3900,22 @@ i.g { font-style: normal; margin-left: 4px; opacity: .45; }
   .cm-cam { width: 64px; height: 86px; }
   .cm-step { font-size: clamp(20px, 5.6vw, 26px); }
 }
+
+/* よはく：余白にこっそり住んでいる。文字やボタンに重ねず、ゆっくりゆれる（動きを減らす設定では止める） */
+.yohaku { display: block; width: 64px; height: 64px; object-fit: contain; pointer-events: none; user-select: none; animation: yh-float 3.6s ease-in-out infinite; }
+@keyframes yh-float { 50% { transform: translateY(-3px) rotate(-2deg); } }
+.empty-state .yohaku { width: 96px; height: 96px; margin: 8px auto 16px; }
+.yohaku-tile { display: grid; place-items: center; background: var(--surface-soft); }
+.yohaku-tile .yohaku { width: 72%; height: 72%; }
+/* 献立の最後：カードの列の左の端から、ひょこっとのぞく */
+.yohaku-peek-row { height: 72px; margin: 8px 0 24px; overflow: hidden; }
+.yohaku-peek { width: 72px; height: 72px; animation: yh-peek .9s ease-out both, yh-float 3.6s ease-in-out .9s infinite; }
+@keyframes yh-peek { from { transform: translateX(-45%); opacity: 0; } to { transform: none; opacity: 1; } }
+/* レシピの最後：右下の余白で手をふる */
+.yohaku-corner { display: flex; justify-content: flex-end; margin: 24px 8px 0; }
+.yohaku-wave { transform-origin: 50% 90%; animation: yh-wave 2.8s ease-in-out infinite; }
+@keyframes yh-wave { 0%, 60%, 100% { transform: rotate(0); } 70% { transform: rotate(-6deg); } 80% { transform: rotate(4deg); } 90% { transform: rotate(-3deg); } }
+.cc-yohaku { width: 88px; height: 88px; margin: -6px auto 0; }
+@media (prefers-reduced-motion: reduce) { .yohaku { animation: none !important; } }
+.empty-state { grid-column: 1 / -1; }
+.yohaku-peek-row { padding-left: 4px; }

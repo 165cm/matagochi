@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260928-photo";
+const APP_VERSION = "20260929-yohaku";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1340,7 +1340,7 @@ function renderCollection() {
     ...(recipeTab === "starter" ? [] : saved.map(renderRecipeTile)),
     ...shownStarters.map(renderStarterTile),
   ].join("");
-  const empty = query ? renderEmpty("一致するレシピはありません。") : recipeTab === "saved" ? '<p class="muted small">まだ保存したレシピはありません。おすすめの🔖で1タップ保存できます。</p>' : "";
+  const empty = query ? renderEmpty("一致するレシピはありません。") : recipeTab === "saved" ? renderEmpty("まだ保存したレシピはありません。おすすめの🔖で1タップ保存。") : "";
   return `
     ${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう。保存したレシピもリクエストになるよ</p>' : ""}${`<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
@@ -4018,7 +4018,7 @@ function formatDate(date) {
 }
 
 function renderEmpty(message) {
-  return `<div class="empty-state"><p>${message}</p></div>`;
+  return `<div class="empty-state">${typeof yohaku === "function" ? yohaku("normal") : ""}<p>${message}</p></div>`;
 }
 
 function escapeHtml(value) {

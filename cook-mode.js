@@ -347,7 +347,7 @@ const CookMode = (() => {
     if (!el || el.querySelector(".cm-coach")) return;
     const c = document.createElement("div");
     c.className = "cm-coach"; c.setAttribute("role", "dialog"); c.setAttribute("aria-label", "手の形で操作");
-    c.innerHTML = `<div class="cc-card"><p class="cc-kicker">料理中、手がふさがっていても</p><h3>✋ 手をかざして操作できます</h3>
+    c.innerHTML = `<div class="cc-card">${typeof yohaku === "function" ? yohaku("wave", "cc-yohaku") : ""}<p class="cc-kicker">料理中、手がふさがっていても</p><h3>✋ 手をかざして操作できます</h3>
       <ul class="cc-signs"><li><b>✋</b><span>次へ</span></li><li><b>✌️</b><span>戻る</span></li><li><b>👍</b><span>タイマー</span></li></ul>
       <p class="cc-note">スマホから30cm〜1mで、約0.5秒見せると動きます。<br>カメラの映像はスマホの中だけで使い、外には送りません。</p>
       <button type="button" class="primary-button" data-cook-mode="coach-start">✋ 手で操作をはじめる</button>

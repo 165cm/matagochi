@@ -428,7 +428,7 @@ function renderDailyPlan() {
         return renderLockStrip(run);
       }
       if (!recipe)
-        return `<article class="plan-card"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>🤔</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">条件に合う候補がありません</strong><p class="plan-time">時間・食材・器具をゆるめるか、レシピを追加してください。</p>${dailyButton("life-profile", "条件を確認")}</div></article>`;
+        return `<article class="plan-card"><div class="plan-photo yohaku-tile">${yohaku("normal")}${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">条件に合う候補がありません</strong><p class="plan-time">時間・食材・器具をゆるめるか、レシピを追加してください。</p>${dailyButton("life-profile", "条件を確認")}</div></article>`;
       const status = day.slot?.status === "cooked" ? "作った" : day.slot ? "確定" : "";
       const note = carryNote(day.slot) || planReason(day) || (bothLike(recipe) ? "ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe));
       const minutes = recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
@@ -453,7 +453,7 @@ function renderDailyPlan() {
     return head + html + foot;
   }).join("");
   const ready = plan.filter((d) => d.candidate && !locks.has(d.date)).length;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${renderTicketNudge("plan")}${renderRhythmInvite()}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderShareInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${renderTicketNudge("plan")}${renderRhythmInvite()}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}<section class="plan-list">${cards}${plan.length ? `<div class="yohaku-peek-row">${yohaku("peek")}</div>` : ""}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderShareInvite()}`;
 }
 let swapShowAll = false;
 // 好きの度合い（評価）：「明日でも」がいちばん。家族の中でいちばん低い評価で比べる。
@@ -554,6 +554,11 @@ function renderSwapChoices() {
   return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ">${renderUrlInsert()}${head}${shown.length ? `${head ? '<p class="swap-group">ほかの候補</p>' : ""}${shown.map((x) => option(x)).join("")}` : ""}${!head && !shown.length ? "<p>別の候補がありません。条件をゆるめるかレシピを追加してください。</p>" : ""}${more}</section>`;
 }
 // Photo when we have one, otherwise a warm tile with a staple emoji (clearly labelled as an image).
+// よはく：画面の余白にこっそり住んでいるキャラクター。1画面に1匹まで、文字やボタンには重ねない。
+const YOHAKU = { normal: "assets/yohaku/normal.webp", peek: "assets/yohaku/peek.webp", wave: "assets/yohaku/wave.webp" };
+function yohaku(pose, cls = "") {
+  return `<img class="yohaku yohaku-${pose} ${cls}" src="${YOHAKU[pose]}?v=${typeof APP_VERSION === "undefined" ? "" : APP_VERSION}" alt="" aria-hidden="true" decoding="async" draggable="false">`;
+}
 function dishTile(recipe, cls = "") {
   const photo = recipe ? recipeThumbnail(recipe) : "";
   if (photo) return `<img class="dish-tile ${cls}" src="${escapeAttr(photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
@@ -899,7 +904,7 @@ function renderReflection() {
   ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
   ${reflMonth === 0 ? renderMenuAlbum() : ""}
   <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3>${list.length ? '<small class="muted">タップで編集</small>' : ""}</div>
-  ${tiles ? `<div class="table-grid">${tiles}</div>` : `<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。好きな一品が、次の献立につながります。" : "この月の記録はありません。"}</p>`}</section>`;
+  ${tiles ? `<div class="table-grid">${tiles}</div>` : `<div class="empty-state">${yohaku("normal")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>`;
 }
 function saveOwnRecipe(recipe) {
   const existing = state.recipes.find(
@@ -2189,6 +2194,7 @@ function renderRecipeDetail() {
     ${cook.ingredients}
     ${cook.steps}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
+    <div class="yohaku-corner">${yohaku("wave")}</div>
     ${edit && saved ? `<div class="detail-foot">${dailyButton("life-new-record", "作った記録をつける", `data-recipe="${escapeAttr(r.id)}"`)}<button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button></div>` : ""}
   </section>`;
 }
