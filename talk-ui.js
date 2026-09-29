@@ -28,9 +28,11 @@ function openTalk(stage = "") {
   let next = p;
   later.filter((x) => x.text).forEach((x) => { next = ProfileTalk.setDraft(next, { member: s.member, q: x.q, text: x.text }); });
   if (later.length) talkSet({ ...next, answers: next.answers.filter((x) => !later.includes(x)) });
+  // ここから先は、「あとで」を外した後のプロフィールで判断する（外す前の p を見ると、聞くことが残っていないように見える）。
+  const now = talkProfile();
   if (stage) s.stage = stage;
   // 前に保存した方針があり、聞くことが残っていなければ、確認の画面から。
-  else if (fresh) s.stage = p.snapshots.some((x) => x.member === s.member) && !ProfileTalk.nextQuestion(p, s.member) ? "check" : "ask";
+  else if (fresh) s.stage = now.snapshots.some((x) => x.member === s.member) && !ProfileTalk.nextQuestion(now, s.member) ? "check" : "ask";
   // 続きから：聞くことが戻ってきたら、質問の画面へ（聞き返しの途中なら、そのまま）。
   else if (later.length && s.stage !== "confirm") { s.stage = "ask"; s.q = ""; }
   state.view = "talk";

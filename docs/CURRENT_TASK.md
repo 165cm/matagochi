@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude | 再レビュー待ち（Codex の指摘4件を修正済み） | `claude/optimistic-albattani-jg5211` | PR 1：診断・プロフィールの保存基盤（`docs/PERSONALIZE_PLAN.md` §13）。人ごとの評価集計の修正・「わが家のごはん方針」の最小一巡 | 新規 `profile-talk.js`・`talk-ui.js`・`test/profile-talk.test.cjs`・`docs/PERSONALIZE_PLAN.md`、`lifestyle.js`（`latestRatings`・`insights`・`propose` の `preferenceOf`）、`daily-ui.js`（`recipeRatings`・入口・`dailyPlan`）、`app.js`（state・画面・設定の1行）、`plus.js`・`api/src/usage.js`（集計の項目）、`index.html`・`sw.js`・`styles.css`、テストの読み込み一覧、`.github/workflows/test.yml`、`docs/*` |
+| Claude | 再レビュー待ち（Codex の指摘5件を修正済み） | `claude/optimistic-albattani-jg5211` | PR 1：診断・プロフィールの保存基盤（`docs/PERSONALIZE_PLAN.md` §13）。人ごとの評価集計の修正・「わが家のごはん方針」の最小一巡 | 新規 `profile-talk.js`・`talk-ui.js`・`test/profile-talk.test.cjs`・`docs/PERSONALIZE_PLAN.md`、`lifestyle.js`（`latestRatings`・`insights`・`propose` の `preferenceOf`）、`daily-ui.js`（`recipeRatings`・入口・`dailyPlan`）、`app.js`（state・画面・設定の1行）、`plus.js`・`api/src/usage.js`（集計の項目）、`index.html`・`sw.js`・`styles.css`、テストの読み込み一覧、`.github/workflows/test.yml`、`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

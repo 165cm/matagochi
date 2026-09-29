@@ -370,3 +370,23 @@ test("drafts are per person, cleared by '答えを消す' for that person only, 
   assert.deepEqual(JSON.parse(run("JSON.stringify(state.tasteProfile.drafts)")), { "ママ\u0000want": "肉" });
   assert.equal(run("JSON.stringify(buildSyncPayload()).includes('肉')"), false);
 });
+
+test("review fix 5: after saving the policy, reopening asks the 'later' question again (question screen, not the check screen)", () => {
+  const run = app();
+  // 1. 片付け・洗い物 → 2. 特にない → 3. 味の質問で「あとで」 → 4. この方針で保存 → 閉じる → 設定から開き直す
+  run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-pick',{q:'hard',value:'clean'});handleDailyAction('life-talk-pick',{q:'want',value:'none'})");
+  assert.ok(run("renderTalk()").includes("よく食べたい味は？"));
+  run("handleDailyAction('life-talk-pick',{q:'taste',value:'later'})");
+  assert.equal(run("state.tasteProfile.session.stage"), "check", "nothing else to ask in this talk");
+  run("handleDailyAction('life-talk-save',{});handleDailyAction('life-talk-close',{})");
+  assert.equal(run("state.tasteProfile.session"), null);
+  reload(run);
+  run("handleDailyAction('life-talk-open',{})");
+  assert.equal(run("state.tasteProfile.session.stage"), "ask");
+  assert.ok(run("renderTalk()").includes("よく食べたい味は？"), "the 'later' question is on screen");
+  // 「あとで」がなく、聞くことが残っていない時は、これまでどおり確認の画面から。
+  run("handleDailyAction('life-talk-toggle',{q:'taste',value:'light'});handleDailyAction('life-talk-multi-done',{q:'taste'});handleDailyAction('life-talk-save',{});handleDailyAction('life-talk-close',{})");
+  reload(run);
+  run("handleDailyAction('life-talk-open',{})");
+  assert.equal(run("state.tasteProfile.session.stage"), "check");
+});
