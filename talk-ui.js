@@ -25,8 +25,9 @@ function openTalk(stage = "") {
   if (fresh) trackDaily("talk_started");
   // 前に「あとで」にした質問は、開き直すたびにまた聞く（続きからの時も）。書いたひとことは、書きかけとして戻す。
   const later = p.answers.filter((x) => x.member === s.member && x.value === ProfileTalk.LATER);
-  later.filter((x) => x.text).forEach((x) => { s.notes = { ...(s.notes || {}), [x.q]: x.text }; });
-  if (later.length) p.answers = p.answers.filter((x) => !later.includes(x));
+  let next = p;
+  later.filter((x) => x.text).forEach((x) => { next = ProfileTalk.setDraft(next, { member: s.member, q: x.q, text: x.text }); });
+  if (later.length) talkSet({ ...next, answers: next.answers.filter((x) => !later.includes(x)) });
   if (stage) s.stage = stage;
   // 前に保存した方針があり、聞くことが残っていなければ、確認の画面から。
   else if (fresh) s.stage = p.snapshots.some((x) => x.member === s.member) && !ProfileTalk.nextQuestion(p, s.member) ? "check" : "ask";
@@ -59,7 +60,7 @@ function renderTalk() {
   const current = a[q.id];
   const picked = (v) => (Array.isArray(current) ? current.includes(v) : current === v);
   const picks = q.choices(a).map(([v, icon, label]) => `<button type="button" class="funnel-pick" data-action="${q.multi ? "life-talk-toggle" : "life-talk-pick"}" data-q="${q.id}" data-value="${v}" aria-pressed="${picked(v)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${escapeHtml(label)}</button>`).join("");
-  const note = s.notes?.[q.id] ?? (p.answers.find((x) => x.member === s.member && x.q === q.id)?.text || "");
+  const note = ProfileTalk.draftOf(p, s.member, q.id) ?? (p.answers.find((x) => x.member === s.member && x.q === q.id)?.text || "");
   const answered = Object.keys(a).length;
   const keep = s.q && current !== undefined && current !== ProfileTalk.LATER;
   return `<section class="hero-card talk-card" data-stage="ask" aria-labelledby="talk-q">
@@ -112,7 +113,7 @@ function renderTalkCheck() {
     ${locked.length ? `<ul class="talk-locked">${locked.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : `<p class="muted small">食べられないもの・苦手：なし</p>`}
     ${answers.length ? `<details class="talk-answers"><summary>💬 答えたこと（${answers.length}）</summary><ul>${answers.map((q) => `<li><span>${escapeHtml(q.ask(a))}</span><b>${escapeHtml(talkAnswerLabel(q, a[q.id], a))}</b><button type="button" class="link-inline" data-action="life-talk-edit" data-q="${q.id}">直す</button></li>`).join("")}</ul></details>` : ""}
     <div class="wizard-footer">${more ? `<button type="button" class="text-button" data-action="life-talk-ask">質問にもどる</button>` : `<span></span>`}<button type="button" class="primary-button" data-action="life-talk-save">この方針で保存</button></div>
-    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">保存して閉じる</button>${p.answers.some((x) => x.member === s.member) ? `<button type="button" class="text-button danger-text" data-action="life-talk-reset">答えを消す</button>` : ""}</div>
+    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">保存して閉じる</button>${p.answers.some((x) => x.member === s.member) || Object.keys(p.drafts || {}).some((k) => k.startsWith(`${s.member}\u0000`)) ? `<button type="button" class="text-button danger-text" data-action="life-talk-reset">答えを消す</button>` : ""}</div>
   </section>`;
 }
 // 最初の提案：いまの献立の決め方（条件はゆるめない）に、確かめた好みの加点を足した1品と、その理由。
@@ -161,7 +162,7 @@ function handleTalkAction(action, data) {
     talkEcho = "";
     // 答えを送る操作（選ぶ・決定）以外でも、書きかけのひとことを失わない（閉じる・戻る・このままでいい など）。
     if (!["life-talk-pick", "life-talk-toggle", "life-talk-multi-done"].includes(action)) keepTalkNote(document.querySelector?.("#talk-text"));
-    else if (s.notes?.[data.q] !== undefined) { const { [data.q]: _, ...rest } = s.notes; s.notes = rest; }
+    else talkSet(ProfileTalk.setDraft(talkProfile(), { member: s.member, q: data.q, text: "" }));
     if (action === "life-talk-pick") {
       const before = ProfileTalk.answersOf(talkProfile(), s.member)[data.q];
       talkSet(ProfileTalk.answer(talkProfile(), { member: s.member, q: data.q, value: data.value, text, at }));
@@ -236,7 +237,7 @@ function handleTalkAction(action, data) {
     if (action === "life-talk-reset") {
       if (globalThis.confirm && !globalThis.confirm("この端末の答えと方針を消します。献立・記録・設定はそのままです。")) return true;
       const p = talkProfile();
-      state.tasteProfile = { ...p, answers: p.answers.filter((x) => x.member !== s.member), decisions: Object.fromEntries(Object.entries(p.decisions).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), snapshots: p.snapshots.filter((x) => x.member !== s.member), session: null, updatedAt: at };
+      state.tasteProfile = { ...p, answers: p.answers.filter((x) => x.member !== s.member), decisions: Object.fromEntries(Object.entries(p.decisions).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), drafts: Object.fromEntries(Object.entries(p.drafts || {}).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), snapshots: p.snapshots.filter((x) => x.member !== s.member), session: null, updatedAt: at };
       state.view = "today";
     }
   }
@@ -246,7 +247,7 @@ function handleTalkAction(action, data) {
   globalThis.scrollTo?.({ top: 0, behavior: "instant" });
   return true;
 }
-// 書きかけのひとことを残す。答えた質問なら答えのひとことを直し、まだなら書きかけ（session.notes）に。
+// 書きかけのひとことを残す。答えた質問なら答えのひとことを直し、まだなら書きかけ（tasteProfile.drafts。会話が終わっても残る）に。
 function keepTalkNote(el) {
   const q = el?.dataset?.q;
   if (!ProfileTalk.isQuestion(q) || !talkProfile().session) return;
@@ -254,9 +255,8 @@ function keepTalkNote(el) {
   const answered = talkProfile().answers.find((x) => x.member === s.member && x.q === q);
   if (answered) {
     if ((answered.text || "") !== text) talkSet(ProfileTalk.answer(talkProfile(), { member: s.member, q, value: answered.value, text, at: nowIso() }));
-    if (s.notes?.[q] !== undefined) { const { [q]: _, ...rest } = s.notes; s.notes = rest; }
-  } else if (text) s.notes = { ...(s.notes || {}), [q]: text };
-  else if (s.notes?.[q] !== undefined) { const { [q]: _, ...rest } = s.notes; s.notes = rest; }
+    talkSet(ProfileTalk.setDraft(talkProfile(), { member: s.member, q, text: "" }));
+  } else talkSet(ProfileTalk.setDraft(talkProfile(), { member: s.member, q, text }));
 }
 // 書いている途中も、少し止まったら保存する（ボタンを押さずにアプリを閉じても残す）。
 let talkNoteTimer = null;

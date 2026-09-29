@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v112";
-const APP_VERSION = "20260929-talk2";
+const CACHE_NAME = "ripigochi-v113";
+const APP_VERSION = "20260929-talk3";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -38,12 +38,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260929-talk2",
-  "./icons/favicon-32.png?v=20260929-talk2",
-  "./icons/icon-192.png?v=20260929-talk2",
-  "./icons/icon-512.png?v=20260929-talk2",
-  "./icons/icon-maskable-512.png?v=20260929-talk2",
-  "./icons/apple-touch-icon.png?v=20260929-talk2"
+  "./manifest.webmanifest?v=20260929-talk3",
+  "./icons/favicon-32.png?v=20260929-talk3",
+  "./icons/icon-192.png?v=20260929-talk3",
+  "./icons/icon-512.png?v=20260929-talk3",
+  "./icons/icon-maskable-512.png?v=20260929-talk3",
+  "./icons/apple-touch-icon.png?v=20260929-talk3"
 ];
 
 self.addEventListener("install", (event) => {

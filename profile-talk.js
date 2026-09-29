@@ -66,7 +66,7 @@
   const str = (v, n = 40) => (typeof v === "string" ? v.slice(0, n) : "");
   const iso = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(v) ? v : "");
   function empty() {
-    return { v: VERSION, answers: [], decisions: {}, snapshots: [], session: null, share: { family: false, ai: false }, updatedAt: "" };
+    return { v: VERSION, answers: [], decisions: {}, drafts: {}, snapshots: [], session: null, share: { family: false, ai: false }, updatedAt: "" };
   }
   function validValue(q, value) {
     if (value === IDK || value === LATER) return true;
@@ -100,11 +100,15 @@
       .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit"].includes(s.reason) ? s.reason : "edit", items: s.items.filter((x) => x && isLean(x.id)).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
     const s = raw.session;
     if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest"].includes(s.stage) ? s.stage : "ask", confirmId: isLean(s.confirmId) ? s.confirmId : "", q: isQuestion(s.q) ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
-    // 答える前に書きかけたひとこと（質問ごと）。閉じても、開き直した時に戻す。
-    if (s && typeof s === "object" && s.notes && typeof s.notes === "object") {
-      const notes = Object.fromEntries(Object.entries(s.notes).filter(([q, t]) => isQuestion(q) && typeof t === "string" && t.trim()).map(([q, t]) => [q, t.slice(0, MAX_TEXT)]));
-      if (Object.keys(notes).length) out.session.notes = notes;
-    }
+    // 答える前に書きかけたひとこと（人・質問ごと）。会話（session）の外に置くので、方針を保存して会話が終わっても残る。
+    // 以前の形（session.notes）は、その会話の人の書きかけとして移す。
+    const addDraft = (member, q, t) => {
+      if (!isQuestion(q) || typeof t !== "string" || !t.trim()) return;
+      const k = `${str(member, 20)}\u0000${q}`;
+      if (!own(out.drafts, k) && Object.keys(out.drafts).length < MAX_ANSWERS) out.drafts[k] = t.trim().slice(0, MAX_TEXT);
+    };
+    for (const [k, t] of Object.entries(raw.drafts && typeof raw.drafts === "object" ? raw.drafts : {})) { const [member, q] = k.split("\u0000"); addDraft(member, q, t); }
+    if (s && typeof s === "object" && s.notes && typeof s.notes === "object") for (const [q, t] of Object.entries(s.notes)) addDraft(s.member, q, t);
     if (iso(raw.dismissedAt)) out.dismissedAt = iso(raw.dismissedAt);
     // 共有の範囲は、この版では「共有しない」だけ（家族共有とAIへの送信は別々に、本人が選ぶ形で後から足す）。
     out.share = { family: false, ai: false };
@@ -159,6 +163,16 @@
       ...(fp.dislikes || []).map((n) => ({ id: `dislike:${n}`, kind: "restriction", label: `🙅 ${n}（苦手）`, status: "confirmed", source: "settings", locked: true })),
     ];
     return [...items, ...locked];
+  }
+  // 書きかけのひとこと。空なら消す。
+  const draftOf = (p, member, q) => (p?.drafts && own(p.drafts, `${member}\u0000${q}`) ? p.drafts[`${member}\u0000${q}`] : undefined);
+  function setDraft(p, { member, q, text }) {
+    if (!isQuestion(q)) return p;
+    const k = `${member}\u0000${q}`, t = String(text || "").trim().slice(0, MAX_TEXT);
+    if ((draftOf(p, member, q) || "") === t) return p;
+    const drafts = { ...(p.drafts || {}) };
+    if (t) drafts[k] = t; else delete drafts[k];
+    return { ...p, drafts };
   }
   function decide(p, { member, id, status, at }) {
     if (!isLean(id)) return p;
@@ -222,7 +236,7 @@
       return { items: rules, fallback: true, error: error?.message === "timeout" ? "timeout" : "network" };
     } finally { clearTimeout(timer); }
   }
-  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, leaner, leanFor, aiPayload, fromAi, interpretWithAi };
+  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, leaner, leanFor, aiPayload, fromAi, interpretWithAi };
   root.ProfileTalk = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

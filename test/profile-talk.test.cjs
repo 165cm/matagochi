@@ -263,7 +263,8 @@ test("review fix 1: inherited names (constructor, toString, __proto__) never pas
   });
   assert.deepEqual([loaded.answers, loaded.decisions, loaded.snapshots[0].items], [[], {}, []]);
   assert.deepEqual([loaded.session.confirmId, loaded.session.q], ["", ""]);
-  assert.deepEqual(loaded.session.notes, { taste: "辛いのが好き" });
+  assert.deepEqual(loaded.drafts, { "わたし\u0000taste": "辛いのが好き" }, "old-format session notes move to the person's drafts");
+  assert.equal(loaded.session.notes, undefined);
   assert.equal(T.decide(T.empty(), { member: "わたし", id: "constructor", status: "confirmed", at: at() }).decisions["わたし\u0000constructor"], undefined);
   assert.equal(T.isLean("toString"), false); assert.equal(T.isQuestion("constructor"), false);
 });
@@ -304,7 +305,7 @@ test("review fix 2: a note typed before closing is kept and comes back (close, k
   withNote(run, "weeknight", "子どもが寝る前に早く");
   run("handleDailyAction('life-talk-pick',{q:'weeknight',value:'quick'})");
   assert.equal(run("state.tasteProfile.answers.find(a=>a.q==='weeknight').text"), "子どもが寝る前に早く");
-  assert.equal(run("JSON.stringify(state.tasteProfile.session.notes||{})"), "{}", "the draft is cleared once it is in the answer");
+  assert.equal(run("JSON.stringify(state.tasteProfile.drafts)"), "{}", "the draft is cleared once it is in the answer");
   // 「このままでいい」：答えたあとに直したひとことも残る。
   run("handleDailyAction('life-talk-edit',{q:'weeknight'})");
   withNote(run, "weeknight", "やっぱり15分以内");
@@ -331,4 +332,41 @@ test("review fix 3: '×' on today's row hides it and does not start a talk", () 
   reload(run);
   assert.equal(run("renderTalkTodo()"), "", "still hidden after reloading");
   assert.ok(run("renderTalkSetting().body").includes("話す"), "it can still be opened from the settings");
+});
+
+test("review fix 4: a note on an unanswered question survives saving the policy part-way (the talk ends, the draft stays)", () => {
+  const run = app();
+  // 1. 最初の質問に答える → 2. 次の質問で、選ばずにひとことを書く → 3. ここまでで確かめる → この方針で保存
+  run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-pick',{q:'hard',value:'think'})");
+  assert.ok(run("renderTalk()").includes("好きなのに、あまり作らないものは？"));
+  withNote(run, "want", "魚は好きだけど、骨がこわい");
+  run("handleDailyAction('life-talk-check',{})");
+  run("document.querySelector=()=>null;handleDailyAction('life-talk-save',{})");
+  assert.equal(run("state.tasteProfile.snapshots.length"), 1);
+  run("handleDailyAction('life-talk-close',{})");
+  assert.equal(run("state.tasteProfile.session"), null, "the talk is over");
+  // 4. 閉じて、設定から開き直す（再読み込みもはさむ）
+  reload(run);
+  assert.ok(run("renderTalkSetting().body").includes("life-talk-open"));
+  run("handleDailyAction('life-talk-open',{})");
+  const html = run("renderTalk()");
+  assert.ok(html.includes("好きなのに、あまり作らないものは？"), "the question is asked again");
+  assert.ok(html.includes("魚は好きだけど、骨がこわい"), "and the note is still there");
+  // 答えると、書きかけは答えのひとことになり、書きかけからは消える。
+  withNote(run, "want", "魚は好きだけど、骨がこわい");
+  run("handleDailyAction('life-talk-pick',{q:'want',value:'fish'})");
+  assert.equal(run("state.tasteProfile.answers.find(a=>a.q==='want').text"), "魚は好きだけど、骨がこわい");
+  assert.equal(run("JSON.stringify(state.tasteProfile.drafts)"), "{}");
+});
+
+test("drafts are per person, cleared by '答えを消す' for that person only, and kept out of family sync", () => {
+  let p = T.setDraft(T.empty(), { member: "パパ", q: "want", text: "魚" });
+  p = T.setDraft(p, { member: "ママ", q: "want", text: "肉" });
+  assert.deepEqual([T.draftOf(p, "パパ", "want"), T.draftOf(p, "ママ", "want"), T.draftOf(p, "パパ", "taste")], ["魚", "肉", undefined]);
+  assert.equal(T.setDraft(p, { member: "パパ", q: "constructor", text: "x" }), p, "unknown questions are ignored");
+  assert.equal(T.draftOf(T.setDraft(p, { member: "パパ", q: "want", text: "  " }), "パパ", "want"), undefined, "an empty note removes the draft");
+  const run = app();
+  run(`state.family=["パパ","ママ"];state.me="パパ";state.tasteProfile=${JSON.stringify(p)};handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-reset',{});`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.tasteProfile.drafts)")), { "ママ\u0000want": "肉" });
+  assert.equal(run("JSON.stringify(buildSyncPayload()).includes('肉')"), false);
 });
