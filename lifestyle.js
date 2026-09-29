@@ -1065,6 +1065,17 @@
     if (never) items.push({ kind: "never", text: `🙅 ${never}品は献立に出しません` });
     return { left: 0, items: items.slice(0, 3) };
   }
+  // 使ってもすぐにはなくならない物（調味料・油・粉・だし・乾物・缶詰）。「家にある」を押したら常備品として覚える。
+  // 肉・魚・野菜・卵・豆腐など使うとなくなる物は、その献立の時だけ。
+  const KEEP_RE = /しょうゆ|醤油|みそ|味噌|塩|砂糖|酢|みりん|料理酒|酒|油|こしょう|胡椒|スパイス|カレー粉|ケチャップ|ソース|マヨ|ドレッシング|つゆ|ポン酢|だし|出汁|コンソメ|鶏ガラ|ガラスープ|顆粒|粉|はちみつ|蜂蜜|ごま|胡麻|乾燥|干し|海苔|のり|缶|ルウ|ルー|チューブ|豆板醤|甜麺醤|コチュジャン|オイスター|ナンプラー|ラー油|わさび|からし|マスタード|バター|ジャム/;
+  const PERISH_RE = /肉|ひき肉|鮭|さけ|さば|魚|えび|いか|たら|豆腐|油揚げ|厚揚げ|卵|たまご|牛乳|生クリーム|ヨーグルト|ねぎ|キャベツ|もやし|玉ねぎ|にんじん|トマト|きのこ|しめじ|なす|ピーマン|レタス/;
+  function keeps(item = {}) {
+    const name = String(item.name || "");
+    const k = key(name);
+    if (Object.values(pantry).flat().some((p) => key(p) === k)) return true;
+    if (PERISH_RE.test(name) && !/缶|乾燥|干し|粉|顆粒/.test(name)) return false;
+    return item.category === "調味料" || KEEP_RE.test(name);
+  }
   const api = {
     profile,
     suggestPlanning,
@@ -1073,6 +1084,7 @@
     equipmentGroups,
     equipmentDefaults,
     pantry,
+    keeps,
     pantryCommon,
     pantryDefaults,
     restrictionOptions,

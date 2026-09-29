@@ -1340,3 +1340,25 @@ test("cook mode: each step loops from its time to the next step's time", () => {
   assert.equal(run("CookMode.segment(1)"), null);
   assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(2))")), { start: 40, end: null });
 });
+
+test("家にある: seasonings and dry goods are kept as pantry items, fresh food only for this plan", () => {
+  const k = (name, category) => L.keeps({ name, category });
+  for (const n of ["しょうゆ", "中濃ソース", "ごま油", "片栗粉", "鶏ガラスープの素", "ツナ缶", "カレールウ", "乾燥わかめ", "おろしにんにく（チューブ）"]) assert.equal(k(n), true, n);
+  for (const n of ["豚こま切れ肉", "塩鮭", "油揚げ", "卵", "キャベツ", "牛乳", "豆腐"]) assert.equal(k(n), false, n);
+  assert.equal(k("白だし", "調味料"), true);
+});
+
+test("家にある on a seasoning remembers it as a pantry item; 買う on a pantry item marks it as run out; both can be undone", () => {
+  const run = app();
+  run('state.foodProfile=Lifestyle.profile({completed:true});confirmDaily({date:today()},{...Lifestyle.curated[2],ingredients:[{name:"しょうゆ",amount:"大さじ1",category:"調味料"},{name:"キャベツ",amount:"1/4個",category:"野菜"}]})');
+  const id = (n) => run(`dailyShopping().find(i=>i.name==="${n}").id`);
+  run(`handleDailyAction("life-shopping-status",{id:"${id("しょうゆ")}",status:"have"})`);
+  assert.equal(run('dailyProfile().pantry["しょうゆ"]'), "have");
+  assert.match(run("shopUndo.text"), /常備品/);
+  run(`handleDailyAction("life-shopping-status",{id:"${id("キャベツ")}",status:"have"})`);
+  assert.equal(run('dailyProfile().pantry["キャベツ"]'), undefined, "fresh food is only for this plan");
+  run(`handleDailyAction("life-shopping-status",{id:"${id("しょうゆ")}",status:"buy"})`);
+  assert.equal(run('dailyProfile().pantry["しょうゆ"]'), "none");
+  run('handleDailyAction("life-shop-undo",{})');
+  assert.equal(run('dailyProfile().pantry["しょうゆ"]'), "have");
+});
