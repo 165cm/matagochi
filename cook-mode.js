@@ -17,11 +17,19 @@ const CookMode = (() => {
   // thumb：料理モードでは「⏰3分👍」（👍 の合図でも始められる）。
   function stepHtml(step, label = "", { thumb = false } = {}) {
     const text = escapeHtml(String(step || "").normalize("NFKC"));
-    return text.replace(TIME, (m, a, _b, unit, half, sec) => {
+    const num = (String(label).match(/^(\d+)/) || [])[1] || "";
+    return text.replace(TIME, (m, a, _b, unit, half, sec, offset) => {
       const s = seconds(a, unit, half, sec);
       if (!s || s > MAX) return m;
-      return `<button type="button" class="cook-timer-chip" data-cook-timer="${s}" data-label="${escapeAttr(label || String(step).slice(0, 16))}" aria-label="${escapeAttr(`${m}のタイマーを始める`)}">⏰${m}${thumb ? '<i class="g" data-g="Thumb_Up" aria-hidden="true">👍</i>' : ""}</button>`;
+      return `<button type="button" class="cook-timer-chip" data-cook-timer="${s}" data-label="${escapeAttr(`${num ? `${num} ` : ""}${timerName(text, offset, m.length)}`)}" aria-label="${escapeAttr(`${m}のタイマーを始める`)}">⏰${m}${thumb ? '<i class="g" data-g="Thumb_Up" aria-hidden="true">👍</i>' : ""}</button>`;
     });
+  }
+  // タイマーの短い名前：時間のすぐあとの動き（「3分炒める」→「炒める」）。なければ前の言葉。
+  function timerName(text, offset, len) {
+    const after = text.slice(offset + len).replace(/^[\s、]*(ほど|くらい|ぐらい|程度|以上|前後|ずつ|ほどで)?[\s、]*/, "").replace(/^(で|に|を|は)/, "");
+    let name = (after.match(/^[^、。,.\s（(]{1,8}/) || [""])[0];
+    if (!name) name = text.slice(0, offset).split(/[、。]/).pop().replace(/(中火|弱火|強火|で|に|を|は)+$/, "").slice(-6);
+    return (name || "タイマー").slice(0, 6);
   }
   const timesIn = (step) => [...String(step || "").normalize("NFKC").matchAll(TIME)].map((m) => seconds(m[1], m[3], m[4], m[5])).filter((s) => s && s <= MAX);
 
@@ -139,16 +147,16 @@ const CookMode = (() => {
     let bar = document.getElementById("cook-timer-bar");
     if (!timers.length) { bar?.remove(); return; }
     if (!bar) { bar = document.createElement("div"); bar.id = "cook-timer-bar"; bar.setAttribute("role", "status"); document.body.append(bar); }
+    // 小さな札を左上から順に：「⏰ 2:59 3 炒める ✕」。札を押すと一時停止・再開。鳴ったら「+1分」「OK」。
     bar.innerHTML = timers.map((t) => `<div class="ctb-item ${t.done ? "is-done" : ""} ${t.left != null ? "is-paused" : ""}">
-      <span class="ctb-time">${t.done ? "⏰" : fmt(leftOf(t))}</span><span class="ctb-label">${t.done ? "時間です！" : escapeHtml(t.label)}</span>
-      ${t.done ? "" : `<button type="button" data-cook-timer-op="plus" data-id="${t.id}" aria-label="1分のばす">+1分</button><button type="button" data-cook-timer-op="pause" data-id="${t.id}" aria-label="${t.left != null ? "再開" : "一時停止"}">${t.left != null ? "▶" : "Ⅱ"}</button>`}
-      <button type="button" data-cook-timer-op="stop" data-id="${t.id}" aria-label="タイマーを止める">${t.done ? "OK" : "✕"}</button></div>`).join("");
+      <button type="button" class="ctb-main" data-cook-timer-op="${t.done ? "stop" : "pause"}" data-id="${t.id}" aria-label="${escapeAttr(`${t.label} ${t.done ? "止める" : t.left != null ? "再開" : "一時停止"}`)}"><b class="ctb-time">${t.done ? "⏰" : t.left != null ? `Ⅱ ${fmt(leftOf(t))}` : fmt(leftOf(t))}</b><span class="ctb-label">${escapeHtml(t.label)}${t.done ? " 時間！" : ""}</span></button>
+      ${t.done ? `<button type="button" class="ctb-sub" data-cook-timer-op="plus" data-id="${t.id}" aria-label="1分のばす">+1分</button>` : ""}<button type="button" class="ctb-sub" data-cook-timer-op="stop" data-id="${t.id}" aria-label="タイマーを止める">${t.done ? "OK" : "✕"}</button></div>`).join("");
   }
   function op(kind, id) {
     const t = timers.find((x) => x.id === id);
     if (!t) return;
     if (kind === "stop") timers = timers.filter((x) => x !== t);
-    if (kind === "plus") { if (t.left != null) t.left += 60; else t.end += 60000; }
+    if (kind === "plus") { if (t.done) { t.done = false; t.left = null; t.end = Date.now() + 60000; } else if (t.left != null) t.left += 60; else t.end += 60000; }
     if (kind === "pause") { if (t.left != null) { t.end = Date.now() + t.left * 1000; t.left = null; } else t.left = leftOf(t); }
     tick();
   }
@@ -183,9 +191,10 @@ const CookMode = (() => {
       const seg = segment(at);
       const origin = globalThis.location?.origin ? `&origin=${encodeURIComponent(location.origin)}` : "";
       el.innerHTML = `<div class="cm-video ${recipe.shorts ? "is-shorts" : ""}">${hasVideo() ? `<iframe src="https://www.youtube.com/embed/${recipe.videoId}?playsinline=1&rel=0&enablejsapi=1&autoplay=1${seg ? `&start=${Math.floor(seg.start)}` : ""}${origin}" title="レシピ動画" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` : `<div class="cm-novideo">${recipe.photoHtml || "🍳"}</div>`}</div>
-        <div class="cm-side"><div class="cm-top"><b class="cm-count"></b><span class="cm-title">${escapeHtml(recipe.title || "")}</span><span class="cm-hand"></span><button type="button" class="cm-close" data-cook-mode="close" aria-label="料理モードを閉じる">✕</button></div>
+        <div class="cm-side"><div class="cm-top"><b class="cm-count"></b><span class="cm-title">${escapeHtml(recipe.title || "")}</span><span class="cm-hand"></span></div>
           <div class="cm-dots" aria-hidden="true"></div><div class="cm-body"></div></div>
-        <div class="cm-foot"><div class="cm-nav${hasVideo() ? "" : " no-loop"}"><button type="button" class="secondary-button" data-cook-mode="prev">◀ 前へ<i class="g" data-g="Victory" aria-hidden="true">✌️</i></button>${hasVideo() ? '<button type="button" class="cm-loop" data-cook-mode="loop"></button>' : ""}<button type="button" class="primary-button" data-cook-mode="next"></button></div></div>`;
+        <div class="cm-foot"><div class="cm-nav"><button type="button" class="secondary-button" data-cook-mode="prev">◀ 前へ<i class="g" data-g="Victory" aria-hidden="true">✌️</i></button><button type="button" class="primary-button" data-cook-mode="next"></button></div></div>
+        <button type="button" class="cm-exit" data-cook-mode="close" aria-label="料理モードを終わる">✕ 終わる</button>`;
       document.body.append(el);
       document.body.classList.add("cook-mode-open");
       frame = el.querySelector("iframe");
@@ -206,8 +215,6 @@ const CookMode = (() => {
     el.querySelector('[data-cook-mode="prev"]').disabled = at === 0;
     drawHand();
     el.querySelector('[data-cook-mode="next"]').innerHTML = `${last ? "✓ できた！" : "次へ ▶"}<i class="g" data-g="Open_Palm" aria-hidden="true">✋</i>`;
-    const loopBtn = el.querySelector(".cm-loop");
-    if (loopBtn) { const seg = segment(at); loopBtn.disabled = !seg; loopBtn.textContent = seg ? (loop ? "🔁 くり返す" : "➡️ 流す") : "▶ 場面なし"; loopBtn.setAttribute("aria-pressed", String(loop && !!seg)); }
     if (!first) seekTo(at);
   }
   function openMode() {
@@ -226,7 +233,6 @@ const CookMode = (() => {
     if (kind === "close") return closeMode();
     if (kind === "prev") at = Math.max(0, at - 1);
     if (kind === "next") { if (at >= n - 1) { closeMode(); try { showToast("🎉 おつかれさま！「作った！」で記録"); } catch {} return; } at += 1; }
-    if (kind === "loop") { loop = !loop; }
     if (kind === "hand") { hand.on ? handStop() : handStart(); return; }
     if (kind === "coach-start" || kind === "coach-later") { markCoach(); document.querySelector("#cook-mode .cm-coach")?.remove(); if (kind === "coach-start") handStart(); return; }
     if (kind === "all") showAll = true;
@@ -315,7 +321,8 @@ const CookMode = (() => {
     const ringing = timers.filter((t) => t.done);
     if (ringing.length) { ringing.forEach((t) => op("stop", t.id)); return; }
     const secs = timesIn(recipe?.steps?.[at]);
-    if (secs.length) start(secs[0], `${at + 1}. ${String(recipe.steps[at]).slice(0, 12)}`);
+    const label = (stepHtml(recipe.steps[at], String(at + 1)).match(/data-label="([^"]*)"/) || [])[1] || `${at + 1}`;
+    if (secs.length) start(secs[0], label.replace(/&amp;/g, "&"));
     else flash("⏱ この手順に時間はありません");
   }
   function flash(text) {

@@ -741,6 +741,15 @@ function useIcons(uses) {
     return photo ? `<img class="use-icon" src="${escapeAttr(photo)}" alt="" title="${escapeAttr(title)}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="use-icon use-letter" title="${escapeAttr(title)}">${escapeHtml([...title][0] || "")}</span>`;
   }).join("");
 }
+let shopUndo = null; // { text, undo() }：直近の1つだけ
+let shopPantryOpen = false; // 常備品の畳みを、描き直しても開いたままに
+// 🧂 常備品：家にいつもあるもの（調味料など）。買い物リストの中でも見られて、切れたらタップで外せる。
+function renderShopPantry() {
+  const have = Object.entries(dailyProfile().pantry || {}).filter(([, v]) => v === "have").map(([n]) => n);
+  return `<details class="shopping-fold shop-pantry" ${shopPantryOpen ? "open" : ""}><summary><h3>🧂 常備品 <span class="badge">${have.length}</span></h3><small class="muted">タップで「切れた」</small></summary>
+    <div class="pantry-chips">${have.map((n) => `<button type="button" class="pantry-chip" data-action="life-shop-pantry-out" data-name="${escapeAttr(n)}">${escapeHtml(n)}</button>`).join("") || '<p class="muted small">まだありません</p>'}</div>
+    <button type="button" class="text-button" data-action="life-pantry-open">＋ 常備品を登録・編集 ›</button></details>`;
+}
 function renderDailyShopping() {
   const items = dailyShopping();
   const aisle = (i) => Aisles.aisleLabel(Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}));
@@ -766,7 +775,7 @@ function renderDailyShopping() {
   ${aisleEdit ? '<button type="button" class="primary-button full-button" data-action="life-aisle-edit">売り場の直しを終える</button>' : ""}
   ${buy ? `<div class="shop-list">${groups("buy")}</div>` : ""}
   ${isViewer() ? "" : `<details class="shop-add"><summary>＋ 買い足す</summary><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></details>`}
-  ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "調味料は残量も確認してください")}${sheet}`;
+  ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "調味料は残量も確認してください")}${isViewer() ? "" : renderShopPantry()}${sheet}${shopUndo && !sheet ? `<div class="shop-undo" role="status"><span>${escapeHtml(shopUndo.text)}</span><button type="button" data-action="life-shop-undo">↩ 元に戻す</button><button type="button" class="shop-undo-x" data-action="life-shop-undo-close" aria-label="閉じる">✕</button></div><div class="shop-undo-space" aria-hidden="true"></div>` : ""}`;
 }
 // 常備品だけを直すページ。設定ウィザードと同じデータ（householdProfile / foodProfile / 下書き）を書き換える。
 let pantryReturn = "shopping";
@@ -982,6 +991,8 @@ function dailyRecord(slot) {
 }
 function bindDailyEvents() {
   if (typeof CookMode !== "undefined") CookMode.sync();
+  if (state.view !== "shopping") shopUndo = null;
+  document.querySelector(".shop-pantry")?.addEventListener("toggle", (ev) => { shopPantryOpen = ev.target.open; });
   document.querySelectorAll("[data-folder-pin]").forEach((el) => el.addEventListener("change", () => {
     setFolderPin(el.dataset.folderPin, el.value);
     saveState();
@@ -1043,6 +1054,9 @@ function bindDailyEvents() {
     el.addEventListener("change", () => {
       const item = dailyShopping().find((i) => i.id === el.dataset.shoppingId);
       if (!item) return;
+      // 直近の1つは、画面の下の「↩ 元に戻す」で戻せる（間違えて押した時に、購入済みを開き直さなくていい）。
+      const prev = state.shoppingMarks[item.id] ? { ...state.shoppingMarks[item.id] } : null;
+      shopUndo = { text: `${el.checked ? "✓" : "↺"} ${item.name}`, undo: () => { state.shoppingMarks[item.id] = prev ? { ...prev, updatedAt: nowIso() } : { status: "buy", signature: item.signature, updatedAt: nowIso() }; } };
       state.shoppingMarks[item.id] = {
         status: el.checked ? "purchased" : "buy",
         signature: item.signature,
@@ -1371,6 +1385,13 @@ function handleDailyAction(action, data) {
   if (action === "life-shop-later") shopDoneLater = true;
   if (action === "life-pantry-open") { pantryReturn = state.view === "pantry" ? pantryReturn : state.view; state.view = "pantry"; }
   if (action === "life-pantry-back") state.view = pantryReturn || "shopping";
+  if (action === "life-shop-undo") { shopUndo?.undo(); shopUndo = null; }
+  if (action === "life-shop-undo-close") shopUndo = null;
+  if (action === "life-shop-pantry-out" && data.name) {
+    const name = data.name;
+    setPantry(name, "none");
+    shopUndo = { text: `🧂 ${name}を「切れた」に`, undo: () => setPantry(name, "have") };
+  }
   if (action === "life-pantry-set") { const v = dailyProfile().pantry[data.name]; setPantry(data.name, v === "have" ? "none" : "have"); }
   if (action === "life-pantry-add") { const name = document.querySelector("#pantry-name")?.value.trim().slice(0, 99); if (name) setPantry(name, "have"); }
   if (action === "life-recipe-open") { recipeDetailId = data.recipe; state.view = "recipe"; }
