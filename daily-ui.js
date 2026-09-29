@@ -316,6 +316,8 @@ function dailyPlan() {
     // 1回の買い物で作る日。日持ちしない食材の料理を、買い物のすぐあとに回すのに使う。
     rounds: rhythmOn() ? currentBlocks().map((b) => b.dates) : null,
     pins: folderPins(),
+    // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みだけを加点に使う。
+    preferenceOf: state.tasteProfile ? ProfileTalk.leaner(state.tasteProfile, me()) : undefined,
   });
 }
 // ----- 最近のごはんカレンダー（日曜はじまり、今週を含む3週・今日まで写真、先は予定） -----
@@ -625,6 +627,8 @@ function renderTodayTodos() {
   if (toBuy && (shopToday || !rhythmOn())) rows.push(`<div class="todo-row"><span>🛒</span><p>買うもの <b>あと${toBuy}品</b></p>${dailyButton("go-view", "リストへ", 'data-view="shopping"')}</div>`);
   if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>スキル試験</b>（10問）→ 作れる料理だけに</p>${dailyButton("life-quiz-start", "受ける")}</div>`);
   else if (examReady()) rows.push(`<div class="todo-row"><span>🎖</span><p><b>★${skillProfile().level + 1}の昇級試験</b>が受けられます（5問）</p>${dailyButton("life-exam-start", "受ける")}</div>`);
+  const talk = renderTalkTodo();
+  if (talk) rows.push(talk);
   if (!state.foodProfile?.completed) rows.push(`<div class="todo-row"><span>✍️</span><p>好みとキッチンを教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`);
   return rows.length ? `<section class="today-todos" aria-label="今日やること"><h3 class="section-title"><span class="marker">今日やること</span></h3>${rows.join("")}</section>` : "";
 }
@@ -720,9 +724,9 @@ function renderPreferencePrompt() {
 function recipeRatings(recipe) {
   const ids = new Set([recipe.id, recipe.starterId].filter(Boolean));
   state.recipes.forEach((r) => { if (r.starterId === recipe.id) ids.add(r.id); });
-  // 途中まで（ひとりだけ）の評価も使う。
-  const e = state.evaluations.filter((x) => ids.has(x.recipeId) && Object.keys(x.familyRepeatCycles || {}).length).sort((a, b) => b.cookedAt.localeCompare(a.cookedAt))[0];
-  return e?.familyRepeatCycles || {};
+  // 途中まで（ひとりだけ）の評価も使う。人ごとに、その人のいちばん新しい評価（Lifestyle.latestRatings）。
+  const row = Lifestyle.latestRatings(state.evaluations.filter((x) => ids.has(x.recipeId)), () => "dish").get("dish");
+  return row ? { ...row.cycles } : {};
 }
 function bothLike(recipe) {
   const values = Object.values(recipeRatings(recipe));
@@ -1082,6 +1086,7 @@ function handleDailyAction(action, data) {
   if (handleFeedbackAction(action, data)) return true;
   if (handlePlusAction(action, data)) return true;
   if (handlePaywallAction(action, data)) return true;
+  if (handleTalkAction(action, data)) return true;
   if (["life-ratio", "life-staple", "life-chain", "life-priority", "life-photo-retry", "life-type-share"].includes(action)) { if (handleCookTypeAction(action, data)) return true; saveState({ scheduleSync: false }); render(); return true; }
   if (viewerBlocked(action)) return true;
   const before = dailyShopping();
