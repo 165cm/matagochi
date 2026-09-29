@@ -545,7 +545,7 @@ flowchart LR
 `docs/PERSONALIZE_PLAN.md` §7.3・§12-2・§12-3・§12-7。
 
 - **集める**（`POST /api/trends/refresh`・GitHub の定期実行が毎日ノック）：採用するのは1日に `TREND_PER_DAY`（既定 2）品、1週に `TREND_WEEK_MAX`（既定 14）品まで。**新しい日は、前の日から残っている候補より先に、登録チャンネルの新着を見て、新しい動画から試す**。キーワード検索（YouTube API の費用が大きい）は、候補が尽きた時だけ・1週3組まで。毎日必ず新着があるとは限らない
-- **AI の回数の上限**（採用数とは別）：新着集めが AI を呼んでよいのは1日 `TREND_AI_PER_DAY`（既定 6）回・1週 `TREND_AI_PER_WEEK`（既定 30）回まで。数えるのは、カタログが **AI を呼ぶ直前ごと**（説明欄・動画・チャプターとの対応付け。`catalog.import` の `aiGate`）。動画に切り替える時に説明欄をもう一度読む分、読めなかった動画、キャッチの作成も数える（保存済みの結果を返しただけ・枠で断られた時は数えない）。上限に達したら、その日はここまで（`limited: "trend_ai_budget"`、`done: true`）
+- **AI の回数の上限**（採用数とは別）：新着集めが AI を呼んでよいのは1日 `TREND_AI_PER_DAY`（既定 6）回・1週 `TREND_AI_PER_WEEK`（既定 30）回まで。数えるのは、カタログが **AI を呼ぶ直前ごと**（説明欄・動画・チャプターとの対応付け。`catalog.import` の `aiGate`）。動画の読み取りで接続先を切り替える時（Gemini API → Vertex の地域 → Vertex global）も、切り替えの直前ごとに通す（`generateFromVideo` の `beforeRetry`。断られたら次の接続先へ進まずに止める）。動画に切り替える時に説明欄をもう一度読む分、読めなかった動画、キャッチの作成も数える（保存済みの結果を返しただけ・枠で断られた時は数えない）。上限に達したら、その日はここまで（`limited: "trend_ai_budget"`、`done: true`）
 - **失敗の扱い**：
   - 検索の失敗（通信など）：その検索は「済み」にしない。次の実行でやり直す（`paused: "search_failed"`、`done: false`）
   - AI 全体の枠（利用者の分を残すため、1日の上限の半分まで）・設定の不足：その動画は試していない扱いに戻し、今日はここまで（`paused: "ai_budget"` / `"not_configured"`、`done: false`）

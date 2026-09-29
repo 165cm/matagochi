@@ -1,6 +1,16 @@
 # レビュー資料（Codex 向け）：新着の「集める」と「見せる」を分ける
 
-## 再レビュー2回目（Codex の指摘への対応、`eecb2b8` → この版）
+## 再レビュー3回目（Codex の指摘への対応、`11cd719` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`api/test/trendsReal.test.js`） |
+|---|---|---|
+| [P2] 動画の読み取りの接続先の切り替え（Gemini API → Vertex の地域 → Vertex global）が AI 回数に入らない | `generateFromVideo` に `beforeRetry` を足し、2つ目以降の接続先を呼ぶ直前ごとに予算を通す（1つ目は取り込み側の `reserveBudget` で通し済み）。この確認は `try` の外で行い、断られたら「接続の失敗」として次へ進まずにそのまま止める。`analyzeRecipeVideo` は、予算で断られたエラーを `video_analysis_failed` に包み直さない。`importYouTubeRecipe` は `options.reserveBudget`（カタログの `gate`）を `beforeRetry` として渡す | 「review fix 5」：本物の `analyzeRecipeVideo`・`generateFromVideo`（接続先だけ偽物）で、上限3 → 2つ目の接続先を呼ばずに止まり `limited`（`video_analysis_failed` ではない）。上限5 → 3つの接続先で1品・数えた5回＝実際5回。上限1〜11のどれでも、実際の回数＝数えた回数・上限以下。「video endpoints…」：予算で断られたら次の接続先を呼ばない／全部の接続先が本当に失敗した時は今までどおり `video_analysis_failed`、確認は切り替えの前ごとに2回 |
+
+- 2件とも `11cd719` では失敗することを確認。`npm test --prefix api`：123件 成功・`node --test test/*.test.cjs`：164件 成功
+- 利用者の取り込みへの影響：「動画から読む」で接続先を切り替える時も、全体の AI の枠を1つずつ使う（これまでは1回分しか数えていなかった）。枠がなければ、次の接続先を試さずに「混雑・上限」のエラーになる（チケットは戻す）
+- 手順の時刻を探す `analyzeStepTimes`（「▶ 2:15」用・新着集めでは使わない）も同じ `generateFromVideo` を使うが、この PR では `beforeRetry` を渡していない（これまでどおり）
+
+## 再レビュー2回目（Codex の指摘への対応、`eecb2b8` → `11cd719`）
 
 | 指摘 | 直したこと | 再現テスト |
 |---|---|---|

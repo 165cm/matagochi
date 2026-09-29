@@ -30,7 +30,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   if (weak && options.forceVideo && maxSeconds > 0 && typeof deps.analyzeRecipeVideo === "function") {
     try {
       await options.reserveBudget?.();
-      const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds });
+      // 接続先を切り替えて読み直す時も、その直前ごとに予算を通す（beforeRetry）。
+      const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds, beforeRetry: options.reserveBudget });
       const complete = video.stepsComplete !== false;
       const videoSteps = complete ? normalizeSteps(video.steps) : [];
       const videoIngredients = normalizeIngredients(video.ingredients);
