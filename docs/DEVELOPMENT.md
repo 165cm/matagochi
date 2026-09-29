@@ -30,8 +30,8 @@ git worktree add ../matagochi-codex  -b codex/<タスク名>  origin/main
 ## テスト
 
 ```
-node --test test/*.cjs                 # アプリ（vanilla JS）。今は 144件
-cd api && node --test                  # API（Node）。今は 100件
+node --test test/*.cjs                 # アプリ（vanilla JS）。今は 158件
+cd api && node --test                  # API（Node）。今は 101件
 ```
 
 - CI（`.github/workflows/test.yml`）は PR ごとに上の2つと `node --check`、`git diff --check` を回す
@@ -52,7 +52,7 @@ cd api && node --test                  # API（Node）。今は 100件
 
 1. `index.html` の `<script src="…?v=…">`
 2. `sw.js` の `CORE_ASSETS`
-3. テストの読み込み一覧：`test/dinner.test.cjs`・`test/weekly.test.cjs`・`test/plus.test.cjs`（シングルクォート）、`test/lifestyle.test.cjs`・`test/playlist.test.cjs`（ダブルクォート）
+3. テストの読み込み一覧：`test/dinner.test.cjs`・`test/weekly.test.cjs`・`test/plus.test.cjs`（シングルクォート）、`test/lifestyle.test.cjs`・`test/playlist.test.cjs`・`test/profile-talk.test.cjs`（ダブルクォート）
 4. テストは `document` の一部しか無い環境で動くので、`document.addEventListener` などは `?.` で守る
 
 ## デプロイ

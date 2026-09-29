@@ -1,0 +1,88 @@
+# PR 1 レビュー資料（Codex 向け）：診断・プロフィールの保存基盤
+
+指示書：`docs/PERSONALIZE_PLAN.md`（§13 PR 1・§16 レビュー資料）。仕様：`docs/APP_MAP.md` §37・§29。
+
+## 1. 対象
+
+- ブランチ：`claude/optimistic-albattani-jg5211`
+- 比較元：`main` `b2f7b142ad2b2d0ef6742d4048e36c1c04ed09fe`（指示書の調査基準と同じ。作業開始時に最新 main と一致を確認）
+- 対象コミット：PR のコミット一覧を参照（先頭は PR 本文に記載）
+- 先行する未マージの PR：なし（main の上に直接）
+
+## 2. 問題・変更後の動作・今回含めない範囲
+
+**直した問題**
+- 評価の集計が「料理ごとに最新の1記録」だったため、片方だけが答えた新しい記録で、もう片方の以前の評価が消えていた（指示書 §12-1）。`Lifestyle.latestRatings`（料理×人ごとの最新の有効な評価）に置き換え、`insights`（わかってきたこと）と `recipeRatings`（献立の周期・`bothLike`）で使う
+
+**足した動作（最小の一巡：答え → 解釈の確認 → 最初の提案）**
+- `profile-talk.js`（純粋な関数 `ProfileTalk`）：質問の分岐・答えの保存（人ごと・時刻つき・ひとこと任意）・ルールによる解釈（推測／合ってる／違う）・方針の版（`snapshots`）・献立の加点（`leaner`）・AIの境界（`aiPayload`／`fromAi`／`interpretWithAi`）・読み込み時の正規化（何度通しても同じ）
+- `talk-ui.js`：今日の「やること」の1行と設定の1行から開く画面。質問 → その場の聞き返し（例：魚×片付け →「蒸し焼きやレンジの魚料理を候補に入れてみます。合っていますか？」）→ 確かめる画面（推測と決めたものを分ける・🔒 設定のままの制限・答えを直す）→ 保存 → 最初の提案（理由つき）→ 今夜に入れる
+- `Lifestyle.propose` に `preferenceOf`（加点と理由だけ。`fit` の条件はゆるめない）
+- 集計：`talk_started` `talk_followup` `talk_fixed` `talk_saved`（回数だけ。アプリとAPIの許可リストに追加）
+
+**今回含めない範囲**
+- 初回設定（21段階 FUNNEL・16画面）の整理と、時間だけで進む「作成中」の置き換え → PR 2
+- サーバー側のAI（エンドポイント・予算・回数上限）→ PR 2 以降。この版は画面でも「AIは使っていません」と明示
+- 家族共有・AI送信の共有範囲の選択（この版は常に「共有しない」）→ PR 2
+- 2人目の参加の導線（今は各自の端末で答える形。本人不在で相手の好みを決めない）→ PR 2
+- YouTube・カタログ・3/3+3/5日・記録画面・試用 → PR 3〜7
+
+## 3. 満たした受け入れ条件（指示書 §14）
+
+| 条件 | どこで確かめたか |
+|---|---|
+| 旧 state・旧バックアップ・旧同期データを読み込み、料理・履歴・買い物が失われない | `test/profile-talk.test.cjs`「old saved data loads unchanged…」（`tasteProfile` のない state を `normalizeState`）。バックアップの読み込みも `normalizeState` を通る |
+| 移行を複数回行っても重複しない | 同テスト・「normalize is idempotent…」 |
+| 途中終了・再読み込みから再開できる | 「screen flow…」（閉じる → `normalizeState(JSON)` → 続きから）・Playwright で再読み込み後も版が残る |
+| 既存の保存キー・公開パス・`deriveSyncRoomId`・API互換を破壊しない | 変更なし。`tasteProfile` は `buildSyncPayload`／`mergeSyncPayloads` に入らない（テストあり）。APIは集計の許可リストに項目を足しただけ |
+| 同じ回答を繰り返し聞かず、理由によって次の質問と候補が変わる | 「questions branch on the reason…」「the reason changes the interpretation…」 |
+| 食材制限をAI出力で上書きしない／条件をゆるめない | 「a confirmed preference … never relaxes restrictions」「AI boundary…」 |
+| 推測を修正するとプロフィールと次の提案へ反映される | 「only confirmed interpretations move the menu…」「'少し違う' drops the guess…」「a confirmed preference changes the proposal…」 |
+| 片方の新しい未回答記録で、もう片方の以前の評価を失わない | `test/lifestyle.test.cjs` の3件（旧コードでは3件とも失敗することを確認済み） |
+| AIタイムアウト・不正出力・悪意ある自由記述を安全に扱える | 「AI boundary…」（時間切れ・壊れたJSON・通信失敗 → ルールに戻る・答えは消えない・許可外のIDや文言は捨てる・名前と制限は送らない） |
+| 確定済み献立を勝手に置換しない | 「a decided (confirmed) dinner is never replaced…」 |
+
+## 4. テスト
+
+| コマンド | 結果 |
+|---|---|
+| `npm ci --prefix api --ignore-scripts` | 成功 |
+| `npm test --prefix api` | 101件 成功（前は100件。集計の1件を追加） |
+| `node --test test/*.test.cjs` | 158件 成功（前は144件。`profile-talk.test.cjs` 11件・`lifestyle.test.cjs` 3件を追加） |
+| `node --check`（全 `*.js`）・`git diff --check` | 成功 |
+| Playwright（Chromium・API はモック・本番に書き込まない） | 390×844／844×390／1440×900 で、今日 → 話す → 質問（キーボードの Enter で選択）→ 聞き返し → 確かめる → 保存 → 提案 → 今夜に入れる → 再読み込み。ページのエラー・横スクロールなし |
+
+未実行：実機（iOS Safari・Android Chrome）、スクリーンリーダーでの読み上げ、本物の API との通信（モックのみ）。
+
+## 5. スクリーンショット（`docs/review/pr1/`）
+
+`{phone|land|pc}-{0-today|1-ask|2-why|3-confirm|4-check|5-suggest|6-after}.jpg`
+
+主な操作：今日の「💬 わが家のごはん方針」→ 話す → 片付け・洗い物 → 魚 → 片付け・におい →（聞き返し）👍 合ってる → さっぱり・ピリ辛 → これで決定 → この方針で保存 → 今夜に入れる。
+※ この画像フォルダはレビュー用。マージ前に消してもよい（アプリからは読み込まない。Service Worker のキャッシュにも入れていない）。
+
+## 6. 影響
+
+- **保存形式**：`state.tasteProfile`（版 `v:1`）を足しただけ。既存の項目名・形は変えていない。`view: "talk"` を足した（古い版のアプリは知らない view を「今日」に戻すので問題なし）
+- **移行**：`ProfileTalk.normalize` を `normalizeState` で通す。ないときは空。何度通しても同じ
+- **API**：`POST /api/usage` の許可する項目に4つ追加（形は同じ。古いアプリは送らないだけ）
+- **同期**：`tasteProfile` は同期しない（家族共有は本人が選ぶ形で後から）
+- **権限**：なし（端末の中だけ）
+- **AI原価**：0（この版はAIを呼ばない）
+- **献立**：✓ にした好みがある人だけ、候補の点数が最大＋12（リクエスト・周期・旬などの既存の加点と並ぶ大きさ）。制限・時間・器具・スキルの条件はそのまま
+- **キャッシュ**：`APP_VERSION` `20260929-talk`・`CACHE_NAME` `ripigochi-v111`・新しい2ファイルを `index.html`／`sw.js`／テストの読み込み一覧に追加
+
+## 7. コードだけでは完了できないこと
+
+- 本番公開（マージ）の判断：ユーザー
+- プライバシーポリシー：集計の項目が4つ増えた（回数だけで、既存の説明「その日の回数」の範囲内と判断。文言を足すかはユーザーの判断）
+- 参照画像（v2・v3 画面集）はこの環境から開けなかった
+
+## 8. ロールバックと既知の制約
+
+- **ロールバック**：この PR を revert すればよい。`tasteProfile` は古いアプリでは読まれないだけで、他のデータに影響しない（残っていても害はない）
+- **既知の制約**
+  - 質問は5問・解釈は18種類の固定の一覧。深掘り（平日と休日・同居人との違い）は PR 2
+  - 今夜に入れた料理の理由は、その後「✋ 自分で決めた一皿」になる（既存の決まり）。方針の理由は提案の画面と、自動の提案の理由に出る
+  - 家族の呼び名を変えた時、`tasteProfile` の `member` は追随しない（評価の `familyRepeatCycles` は追随する）。PR 2 で対応
+  - 最初からある定番38品の範囲では、「揚げずに」などの解釈に合う料理が少ない。その時は「合う料理が候補にない（条件はゆるめていない）」と出す
