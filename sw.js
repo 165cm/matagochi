@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v107";
-const APP_VERSION = "20260928-photo";
+const CACHE_NAME = "ripigochi-v108";
+const APP_VERSION = "20260929-yohaku";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -13,6 +13,7 @@ const CORE_ASSETS = [
   ...["teriyaki","tomato-pasta","porkkimchi","kinoko-udon","tofu-egg","tomato-cheese"].map(n => `./assets/dishes/${n}.webp`),
   ...["03","04","07","08","09","10","11","12","14","15","16","17","18","19","20","21","22","23","24","25","26","27","29","30","31","32","33","34","35","36","37","38"].map(n => `./assets/dishes/starter-${n}.webp`),
   ...["rice","noodle","bread","okazu"].map(n => `./assets/dishes/fallback-${n}.webp`),
+  ...["normal","wave","popup","open","wait","bowl","happy"].map(n => `./assets/yohaku/${n}.webp?v=${APP_VERSION}`),
   `./starter-recipes.js?v=${APP_VERSION}`,
   `./skills.js?v=${APP_VERSION}`,
   `./aisles.js?v=${APP_VERSION}`,
@@ -35,12 +36,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20260928-photo",
-  "./icons/favicon-32.png?v=20260928-photo",
-  "./icons/icon-192.png?v=20260928-photo",
-  "./icons/icon-512.png?v=20260928-photo",
-  "./icons/icon-maskable-512.png?v=20260928-photo",
-  "./icons/apple-touch-icon.png?v=20260928-photo"
+  "./manifest.webmanifest?v=20260929-yohaku",
+  "./icons/favicon-32.png?v=20260929-yohaku",
+  "./icons/icon-192.png?v=20260929-yohaku",
+  "./icons/icon-512.png?v=20260929-yohaku",
+  "./icons/icon-maskable-512.png?v=20260929-yohaku",
+  "./icons/apple-touch-icon.png?v=20260929-yohaku"
 ];
 
 self.addEventListener("install", (event) => {

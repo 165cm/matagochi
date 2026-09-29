@@ -863,7 +863,7 @@ function renderWeekBoard() {
   const week = loopWeek();
   const counter = week ? `<span class="wk-loop" title="${LOOP_WEEKS}週目ごろから「また食べたい」が回り始めます">${week}週目 ${Array.from({ length: LOOP_WEEKS }, (_, i) => `<i class="${i < Math.min(week, LOOP_WEEKS) ? "on" : ""}"></i>`).join("")}</span>` : "";
   return `<section class="week-board" aria-label="今週の献立">
-    <div class="wk-top"><button type="button" class="wk-nav" data-action="life-week" data-delta="-1" ${boardWeek <= -2 ? "disabled" : ""} aria-label="前の週">‹</button><strong>${boardWeek === 0 ? "今週" : boardWeek === 1 ? "来週" : `${-boardWeek}週前`}</strong><button type="button" class="wk-nav" data-action="life-week" data-delta="1" ${boardWeek >= 1 ? "disabled" : ""} aria-label="次の週">›</button>${counter}</div>
+    <div class="wk-top"><button type="button" class="wk-nav" data-action="life-week" data-delta="-1" ${boardWeek <= -2 ? "disabled" : ""} aria-label="前の週">‹</button><strong>${boardWeek === 0 ? "今週" : boardWeek === 1 ? "来週" : `${-boardWeek}週前`}</strong><button type="button" class="wk-nav" data-action="life-week" data-delta="1" ${boardWeek >= 1 ? "disabled" : ""} aria-label="次の週">›</button>${counter}${typeof yohaku === "function" ? `<span class="wk-yohaku">${yohaku("popup")}</span>` : ""}</div>
     <div class="wk-head">${[...WD].map((w) => `<span>${w}</span>`).join("")}</div>
     <div class="wk-grid">${cells}</div>
     ${bars ? `<div class="wk-bars">${bars}</div>` : ""}
