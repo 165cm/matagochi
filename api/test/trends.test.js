@@ -12,7 +12,7 @@ function fakeCatalog(overrides = {}) {
   const refreshed = [];
   return { calls, refreshed, async peek(url) { return ready.get(url.match(/v=([\w-]{11})/)[1]) || null; }, async refresh(url) { refreshed.push(url.match(/v=([\w-]{11})/)[1]); return true; },
     async import(url, o = {}) { const r = await this._import(url, o); ready.set(url.match(/v=([\w-]{11})/)[1], r); return r; },
-    async _import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw new Error('x'); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
+    async _import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw Object.assign(new Error('gone'), { code: 'video_not_found' }); if (overrides[id] === 'flaky') throw Object.assign(new Error('timeout'), { code: 'youtube_timeout', status: 504 }); if (overrides[id] === 'budget') throw Object.assign(new Error('budget'), { code: 'analysis_budget_exceeded', status: 429 }); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
 }
 const ids = Array.from({ length: 14 }, (_, i) => `vid${String(i).padStart(8, '0')}`);
 
@@ -21,7 +21,7 @@ test('weekly trends: 10 per week, a bounded number of tries, video read only whe
   const store = createMemorySyncStore();
   const catalog = fakeCatalog({ [ids[0]]: 'fail', [ids[1]]: { title: 'チョコケーキ' }, [ids[2]]: 'nosteps' });
   let searches = 0;
-  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 10, search: async () => { searches++; return ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })); } });
+  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, aiPerDay: 99, aiPerWeek: 99, weekMax: 10, search: async () => { searches++; return ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })); } });
   const first = await book.step();
   assert.equal(first.items, 10); assert.equal(first.done, true);
   assert.equal(searches, 3);
@@ -32,7 +32,7 @@ test('weekly trends: 10 per week, a bounded number of tries, video read only whe
   assert.equal(list.items.length, 10); assert.ok(!list.items.some((i) => i.title === 'チョコケーキ'));
   assert.match(list.items[0].thumbnailUrl, /i\.ytimg\.com/);
   now += 29 * DAY;
-  const later = createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 10, search: async () => [] });
+  const later = createTrendBook(store, { catalog, now: () => now, perDay: 10, aiPerDay: 99, aiPerWeek: 99, weekMax: 10, search: async () => [] });
   assert.equal((await later.list()).items.length, 0, 'weeks older than 28 days are not shown');
   await later.step();
   assert.equal((await store.get('trends/index')).envelope.weeks.some((w) => w.week === weekOf(Date.parse('2026-09-28T01:00:00Z'))), false, 'and are dropped from the index');
@@ -69,11 +69,11 @@ test('short videos without a description are read from the video; a thin week se
   const first = ids.slice(0, 4), second = ids.slice(4, 14);
   const catalog = fakeCatalog({ [ids[0]]: 'empty', [ids[1]]: 'fail' });
   const queries = [];
-  const book = createTrendBook(store, { catalog, perDay: 10, weekMax: 10, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async (q) => { queries.push(q); return (queries.length <= 3 ? first : second).map((videoId, i) => ({ videoId, channelId: `c${videoId}`, title: 'レシピ' })); } });
+  const book = createTrendBook(store, { catalog, perDay: 10, aiPerDay: 99, aiPerWeek: 99, weekMax: 10, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async (q) => { queries.push(q); return (queries.length <= 3 ? first : second).map((videoId, i) => ({ videoId, channelId: `c${videoId}`, title: 'レシピ' })); } });
   const r = await book.step();
   assert.ok(catalog.calls.some(([id, video]) => id === ids[0] && video), 'an empty description falls back to the video');
   assert.equal(r.items, 10); assert.equal(r.rounds, 3, 'after the channel round, a second set of search words filled the week');
-  assert.equal(r.skipped.error, 1);
+  assert.equal(r.skipped.video_not_found, 1);
 });
 
 test('trend collection stops at half of the daily AI limit so users can still import', async () => {
@@ -94,7 +94,7 @@ test('registered channels are found by name once; their new uploads come first; 
   const uploads = { [chA]: ids.slice(0, 6), [chB]: ids.slice(6, 12) };
   const catalog = fakeCatalog({ [ids[6]]: 'fail', [ids[7]]: 'fail' });
   let keyword = 0;
-  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 10,
+  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, aiPerDay: 99, aiPerWeek: 99, weekMax: 10,
     searchChannels: async (q) => { channelSearches.push(q); return q.startsWith('リュウジ') ? [{ channelId: chA, title: 'リュウジのバズレシピ' }] : q.startsWith('こっタソ') ? [{ channelId: chB, title: 'こっタソの自由気ままに' }] : [{ channelId: 'UC' + 'z'.repeat(22), title: '別の人' }]; },
     channelUploads: async (id) => (uploads[id] || []).map((videoId) => ({ videoId, channelId: id, title: 'レシピ', publishedAt: new Date(now - 86400000).toISOString() })),
     search: async () => { keyword++; return []; } });
@@ -144,7 +144,7 @@ test('trend items without a catch line get one from a single batched call, saved
   const catalog = fakeCatalog({ [ids[3]]: { catch: 'もとからある一言' } });
   let calls = 0, budget = 0;
   const writeCatches = async (items) => { calls++; return Object.fromEntries(items.map((i) => [i.videoId, `${i.title}の一言`])); };
-  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, reserveBudget: async () => { budget++; }, writeCatches, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
+  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, aiPerDay: 99, aiPerWeek: 99, reserveBudget: async () => { budget++; }, writeCatches, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
   await book.step();
   assert.equal(calls, 1, 'catches are written by the scheduled collection'); assert.equal(budget, 1);
   const list = await book.list();
@@ -220,4 +220,94 @@ test('the scheduled collection refreshes saved descriptions once a day; the list
   now += DAY;
   await createTrendBook(store, { catalog, now: () => now, search: async () => [] }).step();
   assert.ok(catalog.refreshed.length > n, 'again the next day');
+});
+
+test('review fix 1a: when every search fails, nothing is marked done and the same searches run again next time', async () => {
+  const store = createMemorySyncStore();
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  const catalog = fakeCatalog();
+  let down = true, keyword = 0;
+  const ch = 'UC' + 'c'.repeat(22);
+  const make = () => createTrendBook(store, { catalog, now: () => now,
+    searchChannels: async (q) => (q.startsWith('リュウジ') ? [{ channelId: ch, title: 'リュウジのバズレシピ' }] : []),
+    channelUploads: async () => { if (down) throw Object.assign(new Error('x'), { code: 'youtube_timeout' }); return ids.slice(0, 4).map((videoId) => ({ videoId, channelId: `c-${videoId}`, title: 'レシピ', publishedAt: new Date(now).toISOString() })); },
+    search: async () => { keyword++; if (down) throw new Error('network'); return []; } });
+  const r = await make().step();
+  assert.deepEqual([r.items, r.done, r.paused], [0, false, 'search_failed']);
+  const w = (await store.get('trends/index')).envelope.weeks[0];
+  assert.deepEqual([w.channelScan, w.kw], [false, 0], 'the failed channel check and search round are not counted as done');
+  assert.equal(keyword, 3, 'one failed search round is not repeated within the same run');
+  down = false;
+  const again = await make().step();
+  assert.equal(again.items, 2, 'the next run checks again and collects');
+  assert.equal(again.paused, undefined);
+});
+
+test('review fix 1b: the AI budget pauses the run (not done) and the video is tried again later', async () => {
+  const store = createMemorySyncStore();
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  const over = { [ids[0]]: 'budget' };
+  const catalog = fakeCatalog(over);
+  const make = () => createTrendBook(store, { catalog, now: () => now, search: async () => ids.slice(0, 3).map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) });
+  const r = await make().step();
+  assert.deepEqual([r.items, r.done, r.paused], [0, false, 'ai_budget']);
+  assert.equal(r.ai.today, 0, 'a refused call is not counted as an AI attempt');
+  assert.equal((await store.get('trends/index')).envelope.weeks[0].tried.includes(ids[0]), false, 'the video is not used up');
+  delete over[ids[0]];
+  const next = await make().step();
+  assert.equal(next.items, 2); assert.ok(catalog.calls.filter(([id]) => id === ids[0]).length >= 2, 'the same video is read on the next run');
+});
+
+test('review fix 1c: a temporary failure is retried on later runs (up to 3 times), and is not done meanwhile', async () => {
+  const store = createMemorySyncStore();
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  const catalog = fakeCatalog({ [ids[0]]: 'flaky' });
+  const make = () => createTrendBook(store, { catalog, now: () => now, search: async () => ids.slice(0, 3).map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) });
+  for (let i = 1; i <= 2; i++) {
+    const r = await make().step();
+    assert.deepEqual([r.items, r.done, r.paused], [0, false, 'temporary_error'], `run ${i}`);
+  }
+  const third = await make().step();
+  assert.equal(third.skipped.youtube_timeout, 1, 'after the third failure it is given up');
+  assert.equal(third.items, 2, 'and the others are collected');
+});
+
+test('review fix 2: on a new day, the channels are checked before yesterday\'s leftover candidates, and new uploads go first', async () => {
+  const store = createMemorySyncStore();
+  let now = Date.parse('2026-09-28T01:00:00Z');
+  const ch = 'UC' + 'c'.repeat(22);
+  const catalog = fakeCatalog();
+  let uploads = ids.slice(0, 8), channelCalls = 0;
+  const make = () => createTrendBook(store, { catalog, now: () => now, perDay: 2, aiPerDay: 99,
+    searchChannels: async (q) => (q.startsWith('リュウジ') ? [{ channelId: ch, title: 'リュウジのバズレシピ' }] : []),
+    channelUploads: async () => { channelCalls++; return uploads.map((videoId) => ({ videoId, channelId: `c-${videoId}`, title: 'レシピ', publishedAt: new Date(now - DAY).toISOString() })); },
+    search: async () => [] });
+  await make().step(); // 月曜：2品。残りの候補（6本）は明日へ
+  const left = (await store.get('trends/index')).envelope.weeks[0];
+  assert.ok(left.candidates.length - left.tried.length >= 2, 'leftover candidates remain');
+  now += DAY; uploads = [ids[12], ids[13]]; const before = channelCalls;
+  const tue = await make().step();
+  assert.ok(channelCalls > before, 'the channels were checked on the new day');
+  const w = (await store.get('trends/index')).envelope.weeks[0];
+  assert.deepEqual(w.items.filter((i) => i.day === tue.day).map((i) => i.videoId), [ids[12], ids[13]], "today's new uploads are tried before yesterday's leftovers");
+});
+
+test('the AI attempts for collecting have their own cap, counting failures, video fallbacks and catch writing', async () => {
+  const store = createMemorySyncStore();
+  let now = Date.parse('2026-09-28T01:00:00Z');
+  // 説明欄に作り方がない動画ばかり（1本で2回：説明欄→動画）。読めない動画も混ぜる。
+  const catalog = fakeCatalog(Object.fromEntries(ids.map((id, i) => [id, i % 3 === 0 ? 'fail' : 'nosteps'])));
+  let catchCalls = 0;
+  const make = () => createTrendBook(store, { catalog, now: () => now, perDay: 10, aiPerDay: 6, aiPerWeek: 8, writeCatches: async (items) => { catchCalls++; return Object.fromEntries(items.map((i) => [i.videoId, '一言'])); },
+    search: async () => ids.map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) });
+  const r = await make().step();
+  assert.ok(r.ai.today <= 6, `today ${r.ai.today}`);
+  assert.equal(r.limited, 'trend_ai_budget'); assert.equal(r.done, true, 'reaching our own cap is a normal stop for today');
+  const calls = catalog.calls.length;
+  assert.equal(calls, r.ai.today, 'every AI call is counted (including failures and video fallbacks)');
+  now += DAY;
+  const next = await make().step();
+  assert.ok(next.ai.week <= 8, 'the weekly cap holds');
+  assert.equal(next.limited, 'trend_ai_budget');
+  assert.equal(catalog.calls.length + catchCalls, next.ai.week, 'catch writing counts too');
 });

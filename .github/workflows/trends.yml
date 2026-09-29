@@ -2,7 +2,7 @@ name: Weekly trend recipes
 
 # サーバーは呼ばれた時しか動かないので、毎日1回ノックする（日本時間 朝5:17）。
 # その日の分（既定 2品・TREND_PER_DAY）がそろうまで続けて呼ぶ。そろっている日は「何もしない」がすぐ返る。
-# サーバー側は何回呼ばれても 1日・1週（既定 14品・TREND_WEEK_MAX）の上限を超えて読まないので、費用は上限で止まる。
+# サーバー側は何回呼ばれても、採用数（1日2品・1週14品）と、新着集めが AI を呼ぶ回数（1日6回・1週30回：TREND_AI_PER_DAY・TREND_AI_PER_WEEK）の上限を超えない。
 # 表示（GET /api/trends）は、ここで集めた結果を読み出すだけ。
 # 手動で試す時は Actions → Weekly trend recipes → Run workflow。
 on:
@@ -25,7 +25,10 @@ jobs:
               https://matagochi-api-292190013809.us-central1.run.app/api/trends/refresh || echo '{}')
             echo "Round $i: $out"
             echo "$out" | grep -q '"done":true' && exit 0
-            echo "$out" | grep -q '"paused"' && { echo "AIの今日の枠を利用者に残すため、続きは明日。"; exit 0; }
+            # AI全体の枠・設定の不足は、今日はここまで。通信や一時的な失敗は、少し待ってやり直す（done にはならない）。
+            echo "$out" | grep -q '"paused":"ai_budget"' && { echo "AIの今日の枠を利用者に残すため、続きは明日。"; exit 0; }
+            echo "$out" | grep -q '"paused":"not_configured"' && { echo "サーバーの設定が足りません（AI・YouTube APIキー）。"; exit 1; }
+            echo "$out" | grep -q '"paused":"\(search_failed\|temporary_error\)"' && sleep 60
             echo "$out" | grep -q '"busy":true' && sleep 60
             sleep 5
           done

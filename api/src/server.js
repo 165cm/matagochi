@@ -47,7 +47,8 @@ export function createApp(env = process.env, deps = {}) {
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now });
   const trendBook = createTrendBook(recipeStore, { catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
-    ...(Number(env.TREND_PER_DAY) > 0 ? { perDay: Number(env.TREND_PER_DAY) } : {}), ...(Number(env.TREND_WEEK_MAX) > 0 ? { weekMax: Number(env.TREND_WEEK_MAX) } : {}) });
+    ...(Number(env.TREND_PER_DAY) > 0 ? { perDay: Number(env.TREND_PER_DAY) } : {}), ...(Number(env.TREND_WEEK_MAX) > 0 ? { weekMax: Number(env.TREND_WEEK_MAX) } : {}),
+    ...(Number(env.TREND_AI_PER_DAY) > 0 ? { aiPerDay: Number(env.TREND_AI_PER_DAY) } : {}), ...(Number(env.TREND_AI_PER_WEEK) > 0 ? { aiPerWeek: Number(env.TREND_AI_PER_WEEK) } : {}) });
   const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut() });
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
