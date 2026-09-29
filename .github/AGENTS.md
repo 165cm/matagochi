@@ -1,25 +1,8 @@
 # Agent Guide
 
-このリポジトリは 165cm アカウントの公開MVPです。
-作業時は、このファイルと中央マニュアルを参照してください。
+このリポジトリの開発ガイドは、ルートの `AGENTS.md`（Claude Code は `CLAUDE.md`）と `docs/` にまとめています。そちらを参照してください。
 
-## 中央マニュアル
+- 中央マニュアル（アカウント共通の方針）: https://github.com/165cm/portfolio/blob/main/AGENTS.md
+- リポジトリ分類: Tier T1（趣味公開）／Category: family／Tech: vanilla-js, static-site + Node API（Cloud Run）
 
-- https://github.com/165cm/portfolio/blob/main/AGENTS.md
-- https://github.com/165cm/portfolio/tree/main/docs/standards
-
-## リポジトリ分類
-
-- Tier: T1（趣味公開）
-- Category: family
-- Tech: vanilla-js, static-site
-
-## 作業ルール
-
-- 小さく安全な変更を優先します。
-- README は一般ユーザー向けに保ち、内部実装の詳細を書きすぎません。
-- GitHub Pages は GitHub Actions からデプロイします。
-- コミットメッセージは Conventional Commits を使います。
-- MVP段階では、実装と検証が完了したら、ユーザーから別指示がない限りすぐにコミットして `main` へプッシュします。
-- コミット前に、ユーザー由来または今回作業外の未追跡・未コミット差分を混ぜないか確認します。
-- APIキー、トークン、`.env`、個人情報はコミットしません。
+※ 以前の「実装したらすぐ `main` へプッシュ」は廃止しました。いまは 1タスク＝1ブランチ → PR → ユーザーの確認後にマージ です（`docs/DEVELOPMENT.md`）。
