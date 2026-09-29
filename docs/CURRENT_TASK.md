@@ -11,7 +11,7 @@
 
 | 担当 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|
-| （なし） | | | |
+| Claude | `claude/optimistic-albattani-jg5211` | PR 1：診断・プロフィールの保存基盤（`docs/PERSONALIZE_PLAN.md` §13）。人ごとの評価集計の修正・「わが家のごはん方針」の最小一巡 | 新規 `profile-talk.js`・`test/profile-talk.test.cjs`・`docs/PERSONALIZE_PLAN.md`、`lifestyle.js`（`latestRatings`・`insights`・`propose` の好みの加点）、`daily-ui.js`（入口と画面）、`app.js`（state の読み込み）、`index.html`・`sw.js`・`styles.css`、テストの読み込み一覧、`docs/*` |
 
 ## 次のタスク（上から優先）
 
