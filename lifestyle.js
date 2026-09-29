@@ -1029,13 +1029,34 @@
     chinese: ["🥟", "中華"], western: ["🍝", "洋風"],
   };
   const INSIGHT_MIN = 3; // 評価がこれだけたまるまでは、あと何回かを出す
+  // 料理×人ごとに、いちばん新しい「答えのある」評価。
+  // 記録は料理ごとに1件ずつ増えるので、「料理ごとに最新の1件」だけを見ると、
+  // 片方だけが答えた新しい記録で、もう片方の以前の評価が消えてしまう（未回答と低評価は別物）。
+  // idOf：記録の料理ID → まとめる料理のキー（自分用のコピーと元の定番を同じ料理として数える時に使う）。
+  const evalStamp = (e) => String(e?.cookedAt || "") + "\u0000" + String(e?.updatedAt || "");
+  function latestRatings(evaluations = [], idOf = (id) => id) {
+    const out = new Map(); // key → { cycles: {名前: 周期}, at: {名前: 日付} }
+    const sorted = evaluations.filter((e) => e && e.recipeId && e.familyRepeatCycles && typeof e.familyRepeatCycles === "object")
+      .sort((a, b) => evalStamp(b).localeCompare(evalStamp(a)));
+    for (const e of sorted) {
+      const k = idOf(e.recipeId);
+      if (!k) continue;
+      const row = out.get(k) || { cycles: {}, at: {} };
+      for (const [name, cycle] of Object.entries(e.familyRepeatCycles)) {
+        if (!cycle || name in row.cycles) continue;
+        row.cycles[name] = cycle;
+        row.at[name] = e.cookedAt || "";
+      }
+      out.set(k, row);
+    }
+    for (const [k, row] of out) if (!Object.keys(row.cycles).length) out.delete(k);
+    return out;
+  }
   function insights({ evaluations = [], recipeOf = () => null, family = [] } = {}) {
-    const rated = evaluations.filter((e) => Object.values(e.familyRepeatCycles || {}).some(Boolean))
-      .sort((a, b) => String(b.cookedAt).localeCompare(String(a.cookedAt)));
-    const latest = new Map(); // 料理ごとに、いちばん新しい評価
     const times = new Map();
     for (const e of evaluations) times.set(e.recipeId, (times.get(e.recipeId) || 0) + 1);
-    for (const e of rated) if (!latest.has(e.recipeId)) latest.set(e.recipeId, e);
+    // 料理ごとに、人ごとの最新の評価をまとめた1行（以前の形 { recipeId, familyRepeatCycles } のまま使う）。
+    const latest = new Map([...latestRatings(evaluations)].map(([recipeId, row]) => [recipeId, { recipeId, familyRepeatCycles: row.cycles }]));
     if (latest.size < INSIGHT_MIN) return { left: INSIGHT_MIN - latest.size, items: [] };
     const items = [];
     const solo = family.length <= 1;
@@ -1105,6 +1126,7 @@
     CYCLE_DAYS,
     season,
     insights,
+    latestRatings,
     copy,
   };
   root.Lifestyle = api;

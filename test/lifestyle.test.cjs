@@ -1362,3 +1362,43 @@ test("家にある on a seasoning remembers it as a pantry item; 買う on a pan
   run('handleDailyAction("life-shop-undo",{})');
   assert.equal(run('dailyProfile().pantry["しょうゆ"]'), "have");
 });
+
+test("latestRatings: a newer record rated by one person keeps the other person's earlier rating", () => {
+  const ev = (recipeId, day, cycles, updatedAt = "") => ({ recipeId, cookedAt: `2026-09-${day}`, updatedAt, familyRepeatCycles: cycles });
+  const rows = L.latestRatings([
+    ev("a", "01", { パパ: "monthly", ママ: "weekly" }),
+    ev("a", "10", { パパ: "tomorrow" }), // ママはまだ答えていない（未回答は低評価ではない）
+    ev("a", "12", {}), // 作っただけ
+    ev("b", "05", {}),
+  ]);
+  assert.deepEqual(rows.get("a").cycles, { パパ: "tomorrow", ママ: "weekly" });
+  assert.deepEqual(rows.get("a").at, { パパ: "2026-09-10", ママ: "2026-09-01" });
+  assert.equal(rows.has("b"), false, "a dish nobody rated has no row");
+  // 同じ日の記録は、あとで直した方（updatedAt）を使う。
+  const same = L.latestRatings([ev("c", "03", { ママ: "never" }, "2026-09-03T10:00:00Z"), ev("c", "03", { ママ: "weekly" }, "2026-09-03T21:00:00Z")]);
+  assert.equal(same.get("c").cycles.ママ, "weekly");
+  // 自分用のコピーと元の定番をまとめる。
+  const merged = L.latestRatings([ev("starter-x", "01", { パパ: "weekly" }), ev("mine-x", "02", { ママ: "weekly" })], () => "x");
+  assert.deepEqual(merged.get("x").cycles, { パパ: "weekly", ママ: "weekly" });
+});
+
+test("insights: the other person's earlier 'love' is not lost when a newer record is only half rated", () => {
+  const R = { a: { id: "a", title: "鮭の塩焼き", ingredients: [{ name: "生鮭" }] }, b: { id: "b", title: "ざるうどん", ingredients: [{ name: "うどん" }] }, c: { id: "c", title: "焼きそば", ingredients: [{ name: "中華麺" }] } };
+  const ev = (recipeId, day, cycles) => ({ recipeId, cookedAt: `2026-09-${day}`, familyRepeatCycles: cycles });
+  const evaluations = [
+    ev("a", "01", { パパ: "weekly", ママ: "weekly" }),
+    ev("a", "08", { パパ: "weekly" }), // 新しい記録はパパだけ
+    ev("b", "02", { パパ: "monthly", ママ: "monthly" }),
+    ev("c", "03", { パパ: "monthly", ママ: "monthly" }),
+  ];
+  const texts = L.insights({ evaluations, recipeOf: (id) => R[id], family: ["パパ", "ママ"] }).items.map((x) => x.text);
+  assert.ok(texts.includes("🏆 ふたりの定番：鮭の塩焼き"), texts.join(" / "));
+});
+
+test("recipeRatings (献立の周期) uses each person's own latest rating across copies of the dish", () => {
+  const run = app();
+  run(`state.family=["パパ","ママ"]; const r=Lifestyle.curated[0]; state.recipes=[{...r,id:"mine-1",starterId:r.id}];
+    state.evaluations=[{id:"e1",recipeId:r.id,cookedAt:"2026-09-01",familyRepeatCycles:{パパ:"monthly",ママ:"weekly"}},{id:"e2",recipeId:"mine-1",cookedAt:"2026-09-10",familyRepeatCycles:{パパ:"tomorrow"}}];`);
+  assert.equal(run(`JSON.stringify(recipeRatings(Lifestyle.curated[0]))`), JSON.stringify({ パパ: "tomorrow", ママ: "weekly" }));
+  assert.equal(run(`bothLike(Lifestyle.curated[0])`), true);
+});

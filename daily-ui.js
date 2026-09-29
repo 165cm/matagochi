@@ -720,9 +720,9 @@ function renderPreferencePrompt() {
 function recipeRatings(recipe) {
   const ids = new Set([recipe.id, recipe.starterId].filter(Boolean));
   state.recipes.forEach((r) => { if (r.starterId === recipe.id) ids.add(r.id); });
-  // 途中まで（ひとりだけ）の評価も使う。
-  const e = state.evaluations.filter((x) => ids.has(x.recipeId) && Object.keys(x.familyRepeatCycles || {}).length).sort((a, b) => b.cookedAt.localeCompare(a.cookedAt))[0];
-  return e?.familyRepeatCycles || {};
+  // 途中まで（ひとりだけ）の評価も使う。人ごとに、その人のいちばん新しい評価（Lifestyle.latestRatings）。
+  const row = Lifestyle.latestRatings(state.evaluations.filter((x) => ids.has(x.recipeId)), () => "dish").get("dish");
+  return row ? { ...row.cycles } : {};
 }
 function bothLike(recipe) {
   const values = Object.values(recipeRatings(recipe));
