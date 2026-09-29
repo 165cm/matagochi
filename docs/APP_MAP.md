@@ -520,4 +520,15 @@ flowchart LR
 - 管理者（`Authorization: Bearer <RECIPE_ADMIN_TOKEN>`）：`GET /api/admin/creators`（確認待ち・確定・戻したの一覧。申し込みの回数と最後の日時つき）、`POST /api/admin/creators/:channelId/decide` `{ decision: "confirm" | "restore", note? }`
 - 申し込みの記録（`creators/requests/…`）には、状態・メッセージ・連絡先を残す。利用者が自分で保存したレシピには影響しない
 - 投稿者向けの説明では、再生回数・広告収益が「増える」「届く」と断定しない（反映は YouTube の仕組みによる）。アプリの中の数（保存・献立への採用・作った）は、YouTube の公式の再生数・登録者数とは別の数字として伝える
-- まだないもの（PR 3 の本体）：持ち主の確認（本人確認済みの投稿者が自分のチャンネルだけを管理できる仕組み）、参加申請、修正依頼、動画単位の停止
+- 持ち主の確認・参加申請・承認画面は §40。まだないもの：修正依頼、動画単位の停止
+
+## 40. 投稿者ご本人の確認・参加申請・承認画面（creators.html・admin/creators.html・api/src/creatorAuth.js）
+
+`docs/PERSONALIZE_PLAN.md` §8。2026-09-30 にユーザーが決めたこと：**本人確認は YouTube へのログインで行う**／**参加申請は承認画面を作り、運営（ユーザー）が手で確認する**。
+
+- **本人確認**（`POST /api/creators/verify`）：投稿者ページの「YouTubeでログイン」→ Google の画面で `youtube.readonly`（チャンネルを見るだけ）を許可 → サーバーが Google の `tokeninfo` で「リピごち用に発行された（`aud`/`azp` が `GOOGLE_CLIENT_ID`）・期限内・その許可がある」ことを確かめ、YouTube の `channels.list mine=true` で持ち主のチャンネルを聞く → 持ち主と分かったチャンネルIDだけを入れた2時間の合い鍵を返す。**Google のトークンは保存しない**
+- **持ち主だけができること**（`POST /api/creators/me/:channelId/{stop|resume|apply|withdraw}`、合い鍵が必要。合い鍵にないチャンネルは 403）：掲載の停止（確認待ちにせず、その場で確定。`by: "owner"`）・再開（第三者の申し込みで一時的に外れていても戻せる。戻したあとの第三者の申し込みは記録だけ）・参加申請・参加をやめる。`GET /api/creators/me` で掲載と申請の状態
+- **参加申請**：同意は5つを別々に持つ（`aiExtract` AIで書き出す／`store` 保存する／`summary` 短くまとめる／`scale` 人数に合わせて換算する／`publicCatalog` みんなが見る一覧に載せる）。**申請しただけでは提携済みにしない**。承認した同意だけが使える（`consentsFor`）。承認ずみの人が同意を減らした申請を出すと、承認を待たずに減らした分はすぐ使えなくなる（増やした分は承認まで使えない）。見送っても、前に承認した同意（のうち、いまも同意しているもの）はそのまま。「参加をやめる」ですべて取り消し。投稿者の許可と YouTube の利用規約は別物として扱う
+- **承認画面**（`admin/creators.html`、検索に出さない）：管理用の合言葉（`RECIPE_ADMIN_TOKEN`）を入れると、参加申請（同意の項目・メッセージ・連絡先）と掲載停止の申し込み（確認待ち・停止中・戻した）を一覧で見て、承認／見送り、停止を確定／掲載に戻す、を押せる。合言葉はそのタブの中だけ（`sessionStorage`）。申請の文章は外から来るので、画面には文字としてだけ入れる（HTML として解釈しない）
+- 管理 API：`GET /api/admin/creators/applications`・`POST /api/admin/creators/applications/:channelId/decide` `{ decision: "approve" | "reject", note? }`（§38 の停止の管理と同じ合言葉）
+- **まだないもの**：同意を実際のカタログの公開に使うこと（PR 4）、修正依頼の窓口、投稿者向けの数字のレポート

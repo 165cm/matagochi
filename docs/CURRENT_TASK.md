@@ -11,7 +11,7 @@
 
 | 担当 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|
-| Claude | `claude/creators-takedown` | PR 3 の先行分①：掲載停止を「確認待ち→確定／戻す」に・投稿者向けの断定表現の修正（`docs/APP_MAP.md` §38） | `api/src/creators.js`・`api/src/server.js`（管理のルート）・`api/test/creators.test.js`・`creators.html`・`discover.js`（コメント）・`docs/APP_MAP.md`・`docs/PRODUCT.md`・`docs/CURRENT_TASK.md` |
+| Claude | `claude/creator-verify` | PR 3 の本体①：投稿者の本人確認（YouTubeでログイン）・参加申請・承認画面（`docs/APP_MAP.md` §40） | 新規 `api/src/creatorAuth.js`・`api/test/creatorVerify.test.js`・`admin/creators.html`、`api/src/creators.js`・`api/src/server.js`・`creators.html`・`docs/*` |
 
 ## 次のタスク（上から優先）
 
@@ -24,6 +24,7 @@
 
 ## 最近終わったこと（新しい順）
 
+- #96 掲載停止の申し込みは「確認待ち」に（運営が確かめて確定／戻す）・投稿者向けの断定表現を直す（APP_MAP §38）
 - #93 「家にある」を押した調味料は常備品として覚える／「買う」に戻すと切れた（`Lifestyle.keeps`）
 - #92 スマホ確認の直し：買い物の「↩ 元に戻す」・買い物リストの中の🧂常備品・小さなタイマーの札・料理モードの「✕ 終わる」・✋のふちを一周する光
 - #91 キャラクター「よはく」を余白に（7ポーズ）
@@ -35,6 +36,7 @@
 
 ## 大事な決めごと
 
+- 投稿者の本人確認は YouTube へのログインで行う。参加申請は承認画面で運営（ユーザー）が手で確認する（2026-09-30 決定。APP_MAP §40）
 - 文字は最小限・説明は ⓘ・絵文字＋短い言葉（`docs/UI_RULES.md`）
 - よはくは1画面に1匹・UIとの間24px以上・高さを取らない
 - 評価は毎日聞かない（ひと回りでまとめて）

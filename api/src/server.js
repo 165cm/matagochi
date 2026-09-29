@@ -6,6 +6,7 @@ import { createAuth } from "./auth.js";
 import { createTrendBook } from "./trends.js";
 import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
+import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu } from "./analyzer.js";
@@ -44,6 +45,7 @@ export function createApp(env = process.env, deps = {}) {
   const timecodeBook = createTimecodeBook(recipeStore, { analyze: deps.analyzeStepTimes || ((url, steps, o) => analyzeStepTimes(url, steps, env, o)), reserveBudget: () => catalog.reserveAnalysisBudget(),
     matchChapters: deps.matchStepsToChapters || ((steps, chapters) => matchStepsToChapters(steps, chapters, env)),
     snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.VIDEO_MAX_SECONDS || 600), now: deps.now || Date.now });
+  const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now });
   const trendBook = createTrendBook(recipeStore, { catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100) });
@@ -146,6 +148,17 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/import/youtube/timecodes", (req, res) => send(res, timecodeBook.find(req.body || {}, householdOf(req))));
   app.put("/api/import/youtube/timecodes", (req, res) => send(res, timecodeBook.fix(req.body || {}, householdOf(req))));
   app.post("/api/creators/request", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, creatorDesk.request(req.body || {})); });
+  // 投稿者ご本人（YouTubeでログイン）：本人確認 → 自分のチャンネルだけ、停止・再開・参加申請・参加をやめる。APP_MAP §40。
+  const ownedBy = (req) => creatorAuth.channelsOf(req.get("authorization"));
+  app.post("/api/creators/verify", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, creatorAuth.verify(req.body?.accessToken)); });
+  app.get("/api/creators/me", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, ownedBy(req).then((owned) => creatorDesk.mine(owned))); });
+  const ownerAction = { stop: (id, owned, body) => creatorDesk.ownerStop(id, owned, body), resume: (id, owned) => creatorDesk.ownerResume(id, owned), apply: (id, owned, body) => creatorDesk.apply(id, owned, body), withdraw: (id, owned) => creatorDesk.withdraw(id, owned) };
+  app.post("/api/creators/me/:channelId/:action", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const act = Object.prototype.hasOwnProperty.call(ownerAction, req.params.action) ? ownerAction[req.params.action] : null;
+    if (!act) return res.status(404).json({ error: { code: "not_found", message: "見つかりません。" } });
+    send(res, ownedBy(req).then((owned) => act(req.params.channelId, owned, req.body || {})));
+  });
   app.get("/api/popular", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, popularBook.top(String(req.query?.segment || "any-0"))); });
   app.post("/api/popular/event", (req, res) => send(res, popularBook.record(req.body || {}, req.ip)));
   app.get("/api/tickets", async (req, res) => {
@@ -261,6 +274,16 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, creatorDesk.list());
+  });
+  app.get("/api/admin/creators/applications", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, creatorDesk.applications());
+  });
+  app.post("/api/admin/creators/applications/:channelId/decide", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, creatorDesk.decideApplication(req.params.channelId, req.body || {}));
   });
   app.post("/api/admin/creators/:channelId/decide", (req, res) => {
     res.setHeader("Cache-Control", "no-store");

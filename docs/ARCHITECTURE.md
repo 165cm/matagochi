@@ -60,6 +60,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | ログイン | `/api/auth/google`・`/api/auth/email/start`・`/api/auth/email/verify`・`/api/auth/me` |
 | 通知 | `/api/push/*` |
 | チケット | `GET /api/tickets`・`POST /api/tickets/claim` |
+| 投稿者 | `POST /api/creators/request`（掲載停止の申し込み）・`/api/creators/verify`（YouTubeでログイン）・`/api/creators/me`（持ち主の操作）・管理 `/api/admin/creators*`（承認画面 `admin/creators.html`） |
 | おすすめ | `/api/trends`・`/api/popular` |
 | 意見・集計 | `POST /api/feedback`・`POST /api/usage`（管理：`/api/admin/*` は `RECIPE_ADMIN_TOKEN`） |
 | その他 | `/api/skill/photo`・`/api/search/variants`・`/api/weekly/menu`（`WEEKLY_MENU=on` の時だけ）・`/api/recipes/*`・`/health` |

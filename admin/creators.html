@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>投稿者の承認｜リピごち 管理</title>
+<link rel="icon" href="../icons/favicon-32.png">
+<style>
+  /* 運営だけが使う承認画面（APP_MAP §40）。管理用の合言葉がないと、何も読めない・変えられない。 */
+  :root { --bg: #fff8ee; --surface: #fffdf8; --ink: #2a2420; --muted: #7a6e64; --line: #efe4d6; --tomato: #ee6a4c; --ok: #2f7d4f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Hiragino Maru Gothic ProN", "Zen Maru Gothic", system-ui, sans-serif; line-height: 1.7; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; display: grid; gap: 16px; }
+  h1 { font-size: 22px; margin: 0; } h2 { font-size: 17px; margin: 0 0 8px; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  label { display: grid; gap: 4px; font-weight: 700; font-size: 14px; }
+  input, textarea { font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; width: 100%; }
+  button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--tomato); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+  button.quiet { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+  button:disabled { opacity: .6; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .item { border: 1.5px solid var(--line); border-radius: 14px; padding: 12px; margin-top: 10px; }
+  .item.is-pending { border-color: var(--tomato); }
+  .item h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: 13px; margin: 2px 0 0; overflow-wrap: anywhere; }
+  .msg { white-space: pre-wrap; background: #fff; border-radius: 10px; padding: 8px 10px; margin: 8px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+  .consents { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 2px; font-size: 14px; }
+  .tag { display: inline-block; padding: 1px 10px; border-radius: 999px; background: #fff1ec; font-size: 12px; font-weight: 700; }
+  .empty { color: var(--muted); margin: 0; }
+  #status { font-weight: 700; margin: 8px 0 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>投稿者の承認（管理）</h1>
+  <section>
+    <form id="login" class="row">
+      <label style="flex:1 1 260px">管理用の合言葉（RECIPE_ADMIN_TOKEN）<input id="token" type="password" autocomplete="off" required></label>
+      <button type="submit">読み込む</button>
+      <button type="button" class="quiet" id="logout" hidden>合言葉を消す</button>
+    </form>
+    <p class="meta">合言葉はこのタブの中だけに置きます（閉じると消えます）。</p>
+    <p id="status" role="status" aria-live="polite"></p>
+  </section>
+  <section aria-labelledby="apps-h"><h2 id="apps-h">参加の申請</h2><div id="apps"><p class="empty">合言葉を入れると表示します。</p></div></section>
+  <section aria-labelledby="stops-h"><h2 id="stops-h">掲載停止の申し込み</h2><div id="stops"><p class="empty">合言葉を入れると表示します。</p></div></section>
+</main>
+<script>
+  const API = "https://matagochi-api-292190013809.us-central1.run.app";
+  const CONSENTS = { aiExtract: "AIで材料・作り方を書き出す", store: "サーバーに保存する", summary: "作り方を短くまとめる", scale: "分量を人数に合わせて換算する", publicCatalog: "みんなが見る一覧に載せる" };
+  const APP_STATE = { pending: "確認待ち", approved: "承認ずみ", rejected: "見送り", withdrawn: "参加をやめた" };
+  const status = document.getElementById("status");
+  let token = "";
+  try { token = sessionStorage.getItem("ripigochi-admin") || ""; } catch {}
+  // 申請の中身は外から送られた文章なので、HTML として入れない（textContent だけで組み立てる）。
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = String(text); if (cls) e.className = cls; return e; };
+  async function api(path, body) {
+    const response = await fetch(`${API}${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 403) throw new Error("合言葉が違います。");
+    if (!response.ok) throw new Error(data.error?.message || `うまくいきませんでした（${response.status}）`);
+    return data;
+  }
+  const channelLink = (id, title) => { const a = el("a", title || id); a.href = `https://www.youtube.com/channel/${encodeURIComponent(id)}`; a.target = "_blank"; a.rel = "noopener"; return a; };
+  function decideButtons(item, choices, send) {
+    const note = el("input"); note.placeholder = "メモ（任意・申請者には見せません）"; note.setAttribute("aria-label", "メモ");
+    const row = el("div", undefined, "row");
+    row.append(note);
+    for (const [value, label, quiet] of choices) {
+      const b = el("button", label, quiet ? "quiet" : ""); b.type = "button";
+      b.addEventListener("click", async () => {
+        row.querySelectorAll("button").forEach((x) => (x.disabled = true));
+        // 一覧を読み直した後に、押した結果を出す（読み直しの件数表示で消さない）。
+        try { await send(value, note.value); await load(); status.textContent = `✓ ${label}しました。${status.textContent}`; }
+        catch (error) { status.textContent = error.message; row.querySelectorAll("button").forEach((x) => (x.disabled = false)); }
+      });
+      row.append(b);
+    }
+    item.append(row);
+  }
+  function renderApps(items) {
+    const box = document.getElementById("apps"); box.textContent = "";
+    if (!items.length) return box.append(el("p", "申請はありません。", "empty"));
+    for (const a of items) {
+      const item = el("article", undefined, `item${a.status === "pending" ? " is-pending" : ""}`);
+      const h = el("h3"); h.append(channelLink(a.channelId, a.title)); item.append(h);
+      item.append(el("p", `${APP_STATE[a.status] || a.status}・申請 ${String(a.at || "").slice(0, 16).replace("T", " ")}${a.decidedAt ? `・決定 ${String(a.decidedAt).slice(0, 16).replace("T", " ")}` : ""}`, "meta"));
+      const ul = el("ul", undefined, "consents");
+      for (const [k, label] of Object.entries(CONSENTS)) ul.append(el("li", `${a.consents?.[k] ? "✓" : "—"} ${label}${a.effective?.[k] ? "（いま有効）" : ""}`));
+      item.append(ul);
+      if (a.message) item.append(el("p", a.message, "msg"));
+      if (a.contact) item.append(el("p", `連絡先：${a.contact}`, "meta"));
+      if (a.note) item.append(el("p", `メモ：${a.note}`, "meta"));
+      if (a.status === "pending") decideButtons(item, [["approve", "承認"], ["reject", "見送り", true]], (decision, note) => api(`/api/admin/creators/applications/${encodeURIComponent(a.channelId)}/decide`, { decision, note }));
+      box.append(item);
+    }
+  }
+  function renderStops(data) {
+    const box = document.getElementById("stops"); box.textContent = "";
+    const groups = [["pending", "確認待ち（一時的に外している）", [["confirm", "停止を確定"], ["restore", "掲載に戻す", true]]], ["confirmed", "停止中", [["restore", "掲載に戻す", true]]], ["restored", "掲載に戻した", [["confirm", "停止を確定", true]]]];
+    let any = false;
+    for (const [key, label, choices] of groups) {
+      for (const r of data[key] || []) {
+        any = true;
+        const item = el("article", undefined, `item${key === "pending" ? " is-pending" : ""}`);
+        const h = el("h3"); h.append(channelLink(r.channelId, r.title)); item.append(h);
+        item.append(el("p", `${label}${r.by === "owner" ? "・ご本人の操作" : ""}${r.requests ? `・申し込み ${r.requests}回` : ""}・${String(r.lastAt || r.confirmedAt || r.restoredAt || r.at || "").slice(0, 16).replace("T", " ")}`, "meta"));
+        if (r.note) item.append(el("p", `メモ：${r.note}`, "meta"));
+        decideButtons(item, choices, (decision, note) => api(`/api/admin/creators/${encodeURIComponent(r.channelId)}/decide`, { decision, note }));
+        box.append(item);
+      }
+    }
+    if (!any) box.append(el("p", "申し込みはありません。", "empty"));
+  }
+  async function load() {
+    if (!token) return;
+    status.textContent = "読み込んでいます…";
+    try {
+      const [apps, stops] = await Promise.all([api("/api/admin/creators/applications"), api("/api/admin/creators")]);
+      renderApps(apps.items || []); renderStops(stops);
+      document.getElementById("logout").hidden = false;
+      status.textContent = `確認待ち：参加 ${(apps.items || []).filter((a) => a.status === "pending").length}件・停止 ${(stops.pending || []).length}件`;
+    } catch (error) { status.textContent = error.message; }
+  }
+  document.getElementById("login").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    token = document.getElementById("token").value.trim();
+    try { sessionStorage.setItem("ripigochi-admin", token); } catch {}
+    document.getElementById("token").value = "";
+    load();
+  });
+  document.getElementById("logout").addEventListener("click", () => {
+    token = ""; try { sessionStorage.removeItem("ripigochi-admin"); } catch {}
+    document.getElementById("apps").textContent = ""; document.getElementById("stops").textContent = "";
+    status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;
+  });
+  load();
+</script>
+</body>
+</html>
