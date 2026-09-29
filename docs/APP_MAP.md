@@ -523,3 +523,19 @@ flowchart LR
 - **許可リスト**：質問・解釈のIDは、一覧に自分で書いた項目だけを認める（`ProfileTalk.isLean`・`isQuestion`。`constructor` `toString` `__proto__` など継承した名前は、AIの出力でも保存データでも通さない）
 - **AI**：この版は使わない（画面の ⓘ にもそう書く）。サーバーのAIをつなぐ時のため、`ProfileTalk.aiPayload`（答えの値とひとことだけ。名前・食べられないものは渡さない）・`fromAi`（許可した解釈IDだけを「推測」として受け取る。文言はこちらの一覧。制限の追加・解除や状態の書きかえは受け付けない）・`interpretWithAi`（時間切れ・通信失敗・不正なJSONはルールの解釈に戻る。答えは消えない）を用意
 - **集計**：`talk_started` `talk_followup` `talk_fixed` `talk_saved` の回数だけ（答え・ひとこと・料理名は送らない）
+
+## 38. 投稿者の窓口と掲載停止（creators.html・api/src/creators.js）
+
+`docs/PERSONALIZE_PLAN.md` §8・§12-4・§12-5。フォームから送った人がチャンネルの持ち主かは確かめられないので、**申し込みだけでは停止を確定しない**。
+
+| 状態 | 意味 | 新着・みんなの定番 |
+|---|---|---|
+| 確認待ち（`pending`） | 申し込みがあった。運営が確かめる前 | 念のため一時的に外す |
+| 確定（`channels`） | 運営が確かめて停止を確定した。以前の版で外したチャンネルもここ | 外す |
+| 戻した（`restored`） | 運営が確かめて掲載に戻した。このあとの確認前の申し込みは記録だけ（自動では外さない） | 出す |
+
+- 公開のフォーム `POST /api/creators/request` は、状態を「確認待ち」にすることしかできない（送られた `status` などは無視）。答えは `{ channelId, title, status: "pending" | "confirmed" | "review", removed }`（`removed` は以前の画面との互換）
+- 管理者（`Authorization: Bearer <RECIPE_ADMIN_TOKEN>`）：`GET /api/admin/creators`（確認待ち・確定・戻したの一覧。申し込みの回数と最後の日時つき）、`POST /api/admin/creators/:channelId/decide` `{ decision: "confirm" | "restore", note? }`
+- 申し込みの記録（`creators/requests/…`）には、状態・メッセージ・連絡先を残す。利用者が自分で保存したレシピには影響しない
+- 投稿者向けの説明では、再生回数・広告収益が「増える」「届く」と断定しない（反映は YouTube の仕組みによる）。アプリの中の数（保存・献立への採用・作った）は、YouTube の公式の再生数・登録者数とは別の数字として伝える
+- まだないもの（PR 3 の本体）：持ち主の確認（本人確認済みの投稿者が自分のチャンネルだけを管理できる仕組み）、参加申請、修正依頼、動画単位の停止
