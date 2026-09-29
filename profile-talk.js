@@ -23,12 +23,14 @@
   const QUESTIONS = [
     { id: "hard", ask: () => "夜ごはんで、いちばん大変なのは？", choices: () => [["think", "🤔", "何を作るか考える"], ["shop", "🛒", "買い物"], ["clean", "🧽", "片付け・洗い物"], ["time", "⏰", "作る時間がない"]] },
     { id: "want", ask: () => "好きなのに、あまり作らないものは？", choices: () => [["fish", "🐟", "魚"], ["fried", "🍤", "揚げもの"], ["stew", "🍲", "煮込み"], ["veg", "🥬", "野菜のおかず"], ["none", "🙆", "特にない"]] },
-    { id: "why", ask: (a) => `${WANT_OF[a.want]}を作らないのは、どれが気になるから？`, when: (a) => !!WHY[a.want], choices: (a) => WHY[a.want] },
+    { id: "why", ask: (a) => `${WANT_OF[a.want]}を作らないのは、どれが気になるから？`, when: (a) => own(WHY, a.want), choices: (a) => WHY[a.want] },
     { id: "taste", multi: true, ask: () => "よく食べたい味は？（いくつでも）", choices: () => [["sweet", "🍯", "甘辛"], ["light", "🍋", "さっぱり"], ["spicy", "🌶", "ピリ辛"], ["rich", "🧈", "こってり"], ["gentle", "🍵", "やさしい味"]] },
     // 「片付けが大変」と答えた人には、洗い物のことはもう聞かない（同じことを2度聞かない）。
     { id: "weeknight", ask: () => "平日の夜、ゆずれないのは？", when: (a) => a.hard !== "clean", choices: () => [["quick", "⚡", "早くできる"], ["onepan", "🍳", "洗い物が少ない"], ["knife", "🔪", "包丁をあまり使わない"], ["any", "🙆", "こだわらない"]] },
   ];
   const QUESTION = Object.fromEntries(QUESTIONS.map((q) => [q.id, q]));
+  // 一覧に自分で書いた項目だけを認める（"constructor" "toString" "__proto__" など、継承した名前を通さない）。
+  const own = (obj, key) => typeof key === "string" && Object.prototype.hasOwnProperty.call(obj, key);
 
   // 解釈の一覧（許可した項目だけ。AIもこの中からしか選べない）。
   // match(recipe) が真の料理に、確かめた解釈ぶん加点する。short は献立カードの理由（約12文字）。
@@ -58,6 +60,8 @@
     "life-shop": { kind: "life", label: "🛒 買い物が大変 → 買う回数と品数を減らしたい" },
   };
   const LEAN_SCORE = 6, LEAN_MAX = 12;
+  const isLean = (id) => own(LEANS, id);
+  const isQuestion = (id) => own(QUESTION, id);
 
   const str = (v, n = 40) => (typeof v === "string" ? v.slice(0, n) : "");
   const iso = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(v) ? v : "");
@@ -76,7 +80,7 @@
     const seen = new Set();
     // 新しい順。同じ人・同じ質問は最新だけ。
     (Array.isArray(raw.answers) ? raw.answers : [])
-      .filter((a) => a && QUESTION[a.q] && validValue(QUESTION[a.q], a.value))
+      .filter((a) => a && isQuestion(a.q) && validValue(QUESTION[a.q], a.value))
       .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
       .forEach((a) => {
         const member = str(a.member, 20);
@@ -87,15 +91,20 @@
       });
     for (const [k, d] of Object.entries(raw.decisions && typeof raw.decisions === "object" ? raw.decisions : {})) {
       const [member, id] = k.split("\u0000");
-      if (!LEANS[id] || !d || !["confirmed", "rejected"].includes(d.status)) continue;
+      if (!isLean(id) || !d || !["confirmed", "rejected"].includes(d.status)) continue;
       out.decisions[`${str(member, 20)}\u0000${id}`] = { status: d.status, at: iso(d.at) };
     }
     out.snapshots = (Array.isArray(raw.snapshots) ? raw.snapshots : [])
       .filter((s) => s && Number.isInteger(s.v) && s.v > 0 && Array.isArray(s.items))
       .slice(-MAX_SNAPSHOTS)
-      .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit"].includes(s.reason) ? s.reason : "edit", items: s.items.filter((x) => x && LEANS[x.id]).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
+      .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit"].includes(s.reason) ? s.reason : "edit", items: s.items.filter((x) => x && isLean(x.id)).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
     const s = raw.session;
-    if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest"].includes(s.stage) ? s.stage : "ask", confirmId: LEANS[s.confirmId] ? s.confirmId : "", q: QUESTION[s.q] ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
+    if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest"].includes(s.stage) ? s.stage : "ask", confirmId: isLean(s.confirmId) ? s.confirmId : "", q: isQuestion(s.q) ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
+    // 答える前に書きかけたひとこと（質問ごと）。閉じても、開き直した時に戻す。
+    if (s && typeof s === "object" && s.notes && typeof s.notes === "object") {
+      const notes = Object.fromEntries(Object.entries(s.notes).filter(([q, t]) => isQuestion(q) && typeof t === "string" && t.trim()).map(([q, t]) => [q, t.slice(0, MAX_TEXT)]));
+      if (Object.keys(notes).length) out.session.notes = notes;
+    }
     if (iso(raw.dismissedAt)) out.dismissedAt = iso(raw.dismissedAt);
     // 共有の範囲は、この版では「共有しない」だけ（家族共有とAIへの送信は別々に、本人が選ぶ形で後から足す）。
     out.share = { family: false, ai: false };
@@ -108,14 +117,14 @@
     return QUESTIONS.filter((q) => !q.when || q.when(a));
   }
   // その答えが、いまの前の答えに合っているか（「魚」の理由のまま「揚げもの」に変えた時など）。
-  const fits = (a, q) => q.id !== "why" || [IDK, LATER].includes(a.why) || (WHY[a.want] || []).some((c) => c[0] === a.why);
+  const fits = (a, q) => q.id !== "why" || [IDK, LATER].includes(a.why) || (own(WHY, a.want) ? WHY[a.want] : []).some((c) => c[0] === a.why);
   // 次に聞く質問。答えた質問（わからない・あとでを含む）は聞かない。
   function nextQuestion(p, member) {
     const a = answersOf(p, member);
     return asked(p, member).find((q) => !(q.id in a) || !fits(a, q)) || null;
   }
   function answer(p, { member, q, value, text = "", at }) {
-    if (!QUESTION[q] || !validValue(QUESTION[q], value)) return p;
+    if (!isQuestion(q) || !validValue(QUESTION[q], value)) return p;
     // 「好きなのに作らないもの」を変えたら、その理由は聞き直す。
     const prev = answersOf(p, member)[q];
     const drop = q === "want" && prev !== undefined && prev !== value ? ["why"] : [];
@@ -128,7 +137,7 @@
     const a = answersOf(p, member);
     if (!fits(a, QUESTION.why)) delete a.why;
     const ids = [];
-    const add = (id, from) => { if (LEANS[id] && !ids.some((x) => x.id === id)) ids.push({ id, from }); };
+    const add = (id, from) => { if (isLean(id) && !ids.some((x) => x.id === id)) ids.push({ id, from }); };
     if (a.want === "fish") add({ bones: "fish-noprep", clean: "fish-easy", doneness: "fish-pan", price: "fish-cheap" }[a.why] || "", ["want", "why"]);
     if (a.want === "fried" && WHY.fried.some((c) => c[0] === a.why)) add("fried-pan", ["want", "why"]);
     if (a.want === "stew" && WHY.stew.some((c) => c[0] === a.why)) add("stew-quick", ["want", "why"]);
@@ -152,7 +161,7 @@
     return [...items, ...locked];
   }
   function decide(p, { member, id, status, at }) {
-    if (!LEANS[id]) return p;
+    if (!isLean(id)) return p;
     const decisions = { ...p.decisions };
     if (status === "guess") delete decisions[`${member}\u0000${id}`];
     else if (["confirmed", "rejected"].includes(status)) decisions[`${member}\u0000${id}`] = { status, at };
@@ -168,7 +177,7 @@
   // 献立の加点。本人が「合ってる」と確かめた解釈だけを使う（推測や「違う」は使わない）。
   // 献立を作るたびに料理の数だけ呼ぶので、確かめた解釈を先に1度だけ数える。
   function leaner(p, member) {
-    const sure = p ? interpret(p, member).filter((x) => x.status === "confirmed" && LEANS[x.id]?.match) : [];
+    const sure = p ? interpret(p, member).filter((x) => x.status === "confirmed" && isLean(x.id) && LEANS[x.id].match) : [];
     return (recipe) => {
       if (!sure.length || !recipe) return null;
       const hits = sure.filter((x) => LEANS[x.id].match(recipe));
@@ -190,7 +199,7 @@
     const items = [];
     for (const x of data.items.slice(0, 12)) {
       const id = typeof x === "string" ? x : x?.id;
-      if (typeof id !== "string" || !LEANS[id] || items.includes(id)) continue;
+      if (!isLean(id) || items.includes(id)) continue;
       items.push(id);
     }
     return { ok: true, items: items.slice(0, 8), dropped: data.items.length - Math.min(8, items.length) };
@@ -213,7 +222,7 @@
       return { items: rules, fallback: true, error: error?.message === "timeout" ? "timeout" : "network" };
     } finally { clearTimeout(timer); }
   }
-  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, leaner, leanFor, aiPayload, fromAi, interpretWithAi };
+  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, leaner, leanFor, aiPayload, fromAi, interpretWithAi };
   root.ProfileTalk = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

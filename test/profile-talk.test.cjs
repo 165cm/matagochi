@@ -244,3 +244,91 @@ test("'少し違う' drops the guess and goes back to the reason, which can be k
   assert.equal(run("state.tasteProfile.session.confirmId"), "fish-cheap", "the new reason is asked back");
   assert.equal(run("Object.values(state.tasteProfile.decisions).map(d=>d.status).join()"), "rejected");
 });
+
+test("review fix 1: inherited names (constructor, toString, __proto__) never pass the allow-list, from the AI or from saved data", async () => {
+  const bad = ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"];
+  assert.deepEqual(T.fromAi({ items: [...bad, "taste-light"] }).items, ["taste-light"]);
+  assert.deepEqual(T.fromAi(JSON.stringify({ items: bad.map((id) => ({ id })) })).items, []);
+  const p = say(T.empty(), "taste", ["spicy"]);
+  const out = await T.interpretWithAi(p, "わたし", async () => ({ items: bad }));
+  assert.equal(out.fallback, false);
+  assert.deepEqual(ids(out.items), ["taste-spicy"], "nothing without a label or kind");
+  assert.ok(out.items.every((x) => typeof x.label === "string" && x.label && typeof x.kind === "string"));
+  // 保存データ：継承した名前の質問・解釈・版・会話は捨てる（落ちない）。
+  const loaded = T.normalize({
+    answers: [{ member: "わたし", q: "constructor", value: "x" }, { member: "わたし", q: "__proto__", value: "y" }, { member: "わたし", q: "toString", value: T.IDK }],
+    decisions: Object.fromEntries(bad.map((id) => [`わたし\u0000${id}`, { status: "confirmed" }])),
+    snapshots: [{ v: 1, items: bad.map((id) => ({ id, status: "confirmed" })) }],
+    session: { member: "わたし", stage: "confirm", confirmId: "constructor", q: "toString", notes: { constructor: "a", __proto__: "b", taste: "辛いのが好き" } },
+  });
+  assert.deepEqual([loaded.answers, loaded.decisions, loaded.snapshots[0].items], [[], {}, []]);
+  assert.deepEqual([loaded.session.confirmId, loaded.session.q], ["", ""]);
+  assert.deepEqual(loaded.session.notes, { taste: "辛いのが好き" });
+  assert.equal(T.decide(T.empty(), { member: "わたし", id: "constructor", status: "confirmed", at: at() }).decisions["わたし\u0000constructor"], undefined);
+  assert.equal(T.isLean("toString"), false); assert.equal(T.isQuestion("constructor"), false);
+});
+
+// 画面のテスト用：書きかけのひとこと欄を、実際の画面と同じ id と data-q で置く。
+function withNote(run, q, value) {
+  run(`document.querySelector = (k) => k === "#talk-text" ? { value: ${JSON.stringify(value)}, dataset: { q: ${JSON.stringify(q)} } } : null;`);
+}
+const reload = (run) => run("state=normalizeState(JSON.parse(JSON.stringify(state)));saveState=()=>{};render=()=>{};document.querySelector=()=>null;");
+
+test("review fix 2: a note typed before closing is kept and comes back (close, keep as is, back, 'later')", () => {
+  const run = app();
+  // 「片付け」以外なら、平日の質問も聞く。
+  run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-pick',{q:'hard',value:'think'});handleDailyAction('life-talk-pick',{q:'want',value:'none'});");
+  // 味を選ぶ → ひとことを書く → 保存して閉じる
+  run("handleDailyAction('life-talk-toggle',{q:'taste',value:'spicy'})");
+  withNote(run, "taste", "辛さは控えめがいい");
+  run("handleDailyAction('life-talk-close',{})");
+  reload(run);
+  assert.equal(JSON.parse(run("JSON.stringify(ProfileTalk.answersOf(state.tasteProfile, me()))")).taste[0], "spicy");
+  assert.equal(run("state.tasteProfile.answers.find(a=>a.q==='taste').text"), "辛さは控えめがいい", "the note is saved with the answer");
+  run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-edit',{q:'taste'})");
+  assert.ok(run("renderTalk()").includes("辛さは控えめがいい"), "and shown again on that question");
+  // まだ答えていない質問で書いて閉じた時も、書きかけとして戻る。
+  withNote(run, "taste", "辛さは控えめがいい");
+  run("handleDailyAction('life-talk-multi-done',{q:'taste'})");
+  assert.ok(run("renderTalk()").includes("平日の夜、ゆずれないのは？"));
+  withNote(run, "weeknight", "子どもが寝る前に");
+  run("handleDailyAction('life-talk-close',{})");
+  reload(run);
+  run("handleDailyAction('life-talk-open',{})");
+  assert.ok(run("renderTalk()").includes("子どもが寝る前に"));
+  // 戻る：書きかけは残り、答えを選ぶとそのひとことが答えに入る。
+  withNote(run, "weeknight", "子どもが寝る前に早く");
+  run("handleDailyAction('life-talk-back',{})");
+  run("handleDailyAction('life-talk-ask',{})");
+  assert.ok(run("renderTalk()").includes("子どもが寝る前に早く"));
+  withNote(run, "weeknight", "子どもが寝る前に早く");
+  run("handleDailyAction('life-talk-pick',{q:'weeknight',value:'quick'})");
+  assert.equal(run("state.tasteProfile.answers.find(a=>a.q==='weeknight').text"), "子どもが寝る前に早く");
+  assert.equal(run("JSON.stringify(state.tasteProfile.session.notes||{})"), "{}", "the draft is cleared once it is in the answer");
+  // 「このままでいい」：答えたあとに直したひとことも残る。
+  run("handleDailyAction('life-talk-edit',{q:'weeknight'})");
+  withNote(run, "weeknight", "やっぱり15分以内");
+  run("handleDailyAction('life-talk-keep',{})");
+  assert.equal(run("state.tasteProfile.answers.find(a=>a.q==='weeknight').text"), "やっぱり15分以内");
+  // 「あとで」にしたひとことも、開き直した時に書きかけとして戻る。
+  run("handleDailyAction('life-talk-edit',{q:'hard'})");
+  withNote(run, "hard", "日による");
+  run("handleDailyAction('life-talk-pick',{q:'hard',value:'later'});handleDailyAction('life-talk-close',{})");
+  reload(run);
+  run("handleDailyAction('life-talk-open',{})");
+  const html = run("renderTalk()");
+  assert.ok(html.includes("夜ごはんで、いちばん大変なのは？") && html.includes("日による"));
+});
+
+test("review fix 3: '×' on today's row hides it and does not start a talk", () => {
+  const run = app();
+  run("state.view='today'");
+  assert.ok(run("renderTalkTodo()").includes('data-action="life-talk-dismiss"'));
+  run("handleDailyAction('life-talk-dismiss',{})");
+  assert.equal(run("state.tasteProfile.session"), null, "no session is created");
+  assert.equal(run("renderTalkTodo()"), "");
+  assert.equal(run("state.view"), "today");
+  reload(run);
+  assert.equal(run("renderTalkTodo()"), "", "still hidden after reloading");
+  assert.ok(run("renderTalkSetting().body").includes("話す"), "it can still be opened from the settings");
+});
