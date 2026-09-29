@@ -8,7 +8,11 @@ const DAY = 86_400_000;
 const recipe = (id, extra = {}) => ({ title: `料理${id}`, videoUrl: `https://www.youtube.com/watch?v=${id}`, ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps: ['切る', '炒める'], tags: [], ...extra });
 function fakeCatalog(overrides = {}) {
   const calls = [], read = new Set();
-  return { calls, async import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw new Error('x'); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
+  const ready = new Map(); // 読み取り済み（peek で読み出せる）
+  const refreshed = [];
+  return { calls, refreshed, async peek(url) { return ready.get(url.match(/v=([\w-]{11})/)[1]) || null; }, async refresh(url) { refreshed.push(url.match(/v=([\w-]{11})/)[1]); return true; },
+    async import(url, o = {}) { const r = await this._import(url, o); ready.set(url.match(/v=([\w-]{11})/)[1], r); return r; },
+    async _import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw new Error('x'); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
 }
 const ids = Array.from({ length: 14 }, (_, i) => `vid${String(i).padStart(8, '0')}`);
 
@@ -17,7 +21,7 @@ test('weekly trends: 10 per week, a bounded number of tries, video read only whe
   const store = createMemorySyncStore();
   const catalog = fakeCatalog({ [ids[0]]: 'fail', [ids[1]]: { title: 'チョコケーキ' }, [ids[2]]: 'nosteps' });
   let searches = 0;
-  const book = createTrendBook(store, { catalog, now: () => now, search: async () => { searches++; return ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })); } });
+  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 10, search: async () => { searches++; return ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })); } });
   const first = await book.step();
   assert.equal(first.items, 10); assert.equal(first.done, true);
   assert.equal(searches, 3);
@@ -28,7 +32,7 @@ test('weekly trends: 10 per week, a bounded number of tries, video read only whe
   assert.equal(list.items.length, 10); assert.ok(!list.items.some((i) => i.title === 'チョコケーキ'));
   assert.match(list.items[0].thumbnailUrl, /i\.ytimg\.com/);
   now += 29 * DAY;
-  const later = createTrendBook(store, { catalog, now: () => now, search: async () => [] });
+  const later = createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 10, search: async () => [] });
   assert.equal((await later.list()).items.length, 0, 'weeks older than 28 days are not shown');
   await later.step();
   assert.equal((await store.get('trends/index')).envelope.weeks.some((w) => w.week === weekOf(Date.parse('2026-09-28T01:00:00Z'))), false, 'and are dropped from the index');
@@ -42,7 +46,10 @@ test('weeks start on Monday in Japan; dinner filter', () => {
 });
 
 test('popular: anonymous counts, one per source a day, similar tastes first, small counts hidden', async () => {
-  const book = createPopularBook(createMemorySyncStore(), { catalog: fakeCatalog(), now: () => Date.parse('2026-09-28T01:00:00Z') });
+  const catalog = fakeCatalog();
+  for (const id of ids.slice(0, 3)) await catalog.import(`https://www.youtube.com/watch?v=${id}`);
+  const before = catalog.calls.length;
+  const book = createPopularBook(createMemorySyncStore(), { catalog, now: () => Date.parse('2026-09-28T01:00:00Z') });
   await assert.rejects(book.record({ videoId: 'bad', segment: 'LLL-3', kind: 'cooked' }), { code: 'invalid_event' });
   for (let i = 0; i < 3; i++) await book.record({ videoId: ids[0], segment: 'RRR-2', kind: 'planned' }, `ip${i}`);
   assert.equal((await book.record({ videoId: ids[0], segment: 'RRR-2', kind: 'planned' }, 'ip0')).counted, false);
@@ -51,6 +58,10 @@ test('popular: anonymous counts, one per source a day, similar tastes first, sma
   await book.record({ videoId: ids[2], segment: 'LLL-3', kind: 'planned' }, 'c');
   const top = await book.top('LLL-3');
   assert.deepEqual(top.items.map((i) => i.videoId), [ids[1], ids[0]], 'same taste first; one planning alone is too few to show');
+  assert.equal(catalog.calls.length, before, 'showing the list reads saved results only');
+  for (let i = 0; i < 3; i++) await book.record({ videoId: ids[9], segment: 'LLL-3', kind: 'planned' }, `x${i}`);
+  assert.equal((await book.top('any-0')).items.some((i) => i.videoId === ids[9]), false, 'an unread video is left out');
+  assert.equal(catalog.calls.length, before, 'a video nobody has read yet is not sent to the AI from GET /api/popular');
 });
 
 test('short videos without a description are read from the video; a thin week searches again with other words', async () => {
@@ -58,7 +69,7 @@ test('short videos without a description are read from the video; a thin week se
   const first = ids.slice(0, 4), second = ids.slice(4, 14);
   const catalog = fakeCatalog({ [ids[0]]: 'empty', [ids[1]]: 'fail' });
   const queries = [];
-  const book = createTrendBook(store, { catalog, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async (q) => { queries.push(q); return (queries.length <= 3 ? first : second).map((videoId, i) => ({ videoId, channelId: `c${videoId}`, title: 'レシピ' })); } });
+  const book = createTrendBook(store, { catalog, perDay: 10, weekMax: 10, now: () => Date.parse('2026-09-28T01:00:00Z'), search: async (q) => { queries.push(q); return (queries.length <= 3 ? first : second).map((videoId, i) => ({ videoId, channelId: `c${videoId}`, title: 'レシピ' })); } });
   const r = await book.step();
   assert.ok(catalog.calls.some(([id, video]) => id === ids[0] && video), 'an empty description falls back to the video');
   assert.equal(r.items, 10); assert.equal(r.rounds, 3, 'after the channel round, a second set of search words filled the week');
@@ -83,7 +94,7 @@ test('registered channels are found by name once; their new uploads come first; 
   const uploads = { [chA]: ids.slice(0, 6), [chB]: ids.slice(6, 12) };
   const catalog = fakeCatalog({ [ids[6]]: 'fail', [ids[7]]: 'fail' });
   let keyword = 0;
-  const book = createTrendBook(store, { catalog, now: () => now,
+  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 10,
     searchChannels: async (q) => { channelSearches.push(q); return q.startsWith('リュウジ') ? [{ channelId: chA, title: 'リュウジのバズレシピ' }] : q.startsWith('こっタソ') ? [{ channelId: chB, title: 'こっタソの自由気ままに' }] : [{ channelId: 'UC' + 'z'.repeat(22), title: '別の人' }]; },
     channelUploads: async (id) => (uploads[id] || []).map((videoId) => ({ videoId, channelId: id, title: 'レシピ', publishedAt: new Date(now - 86400000).toISOString() })),
     search: async () => { keyword++; return []; } });
@@ -133,12 +144,80 @@ test('trend items without a catch line get one from a single batched call, saved
   const catalog = fakeCatalog({ [ids[3]]: { catch: 'もとからある一言' } });
   let calls = 0, budget = 0;
   const writeCatches = async (items) => { calls++; return Object.fromEntries(items.map((i) => [i.videoId, `${i.title}の一言`])); };
-  const book = createTrendBook(store, { catalog, now: () => now, reserveBudget: async () => { budget++; }, writeCatches, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
+  const book = createTrendBook(store, { catalog, now: () => now, perDay: 10, reserveBudget: async () => { budget++; }, writeCatches, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
   await book.step();
+  assert.equal(calls, 1, 'catches are written by the scheduled collection'); assert.equal(budget, 1);
   const list = await book.list();
-  assert.equal(calls, 1); assert.equal(budget, 1);
+  assert.equal(calls, 1, 'not by showing the list');
   assert.ok(list.items.every((i) => i.catch));
   assert.equal(list.items.find((i) => i.videoId === ids[3]).catch, 'もとからある一言', 'a catch from the reading is kept');
   const again = createTrendBook(store, { catalog, now: () => now, writeCatches, search: async () => [] });
   assert.ok((await again.list()).items.every((i) => i.catch)); assert.equal(calls, 1, 'saved catches are reused');
+});
+
+test('collecting and showing are separate: a few a day even after 10 are shown, a new day looks at new uploads, the list shows at most 10 a week and never calls the AI', async () => {
+  let now = Date.parse('2026-09-28T01:00:00Z'); // 月曜 10:00 JST
+  const store = createMemorySyncStore();
+  const ch = 'UC' + 'c'.repeat(22);
+  const catalog = fakeCatalog();
+  let uploads = ids.slice(0, 6), channelCalls = 0, keyword = 0;
+  const make = () => createTrendBook(store, { catalog, now: () => now, perDay: 4, weekMax: 12,
+    searchChannels: async (q) => (q.startsWith('リュウジ') ? [{ channelId: ch, title: 'リュウジのバズレシピ' }] : []),
+    channelUploads: async () => { channelCalls++; return uploads.map((videoId) => ({ videoId, channelId: `c-${videoId}`, title: 'レシピ', publishedAt: new Date(now - DAY).toISOString() })); },
+    search: async () => { keyword++; return []; } });
+  let book = make();
+  const mon = await book.step();
+  assert.deepEqual([mon.today, mon.items, mon.done], [4, 4, true], "today's quota");
+  const calls = catalog.calls.length;
+  assert.equal((await book.step()).today, 4); assert.equal(catalog.calls.length, calls, 'nothing more today');
+  // 火曜：新しい動画が上がった → その日の分として拾う（週の初めにそろっても止まらない）。
+  now += DAY; uploads = ids.slice(6, 14); book = make();
+  const tue = await book.step();
+  assert.deepEqual([tue.today, tue.items], [4, 8]);
+  assert.equal(channelCalls >= 2, true, 'the registered channels are checked again on a new day');
+  now += DAY; book = make();
+  const wed = await book.step();
+  assert.equal(wed.items, 12, 'up to the weekly maximum');
+  now += DAY; book = make();
+  const thu = await book.step();
+  assert.deepEqual([thu.items, thu.today, thu.done], [12, 0, true], 'the weekly maximum bounds the AI cost');
+  // 見せる：1週10品まで、新しい順。読み出すだけ。
+  const before = catalog.calls.length;
+  const list = await make().list();
+  assert.equal(list.items.length, 10);
+  assert.equal(list.items[0].videoId, (await store.get('trends/index')).envelope.weeks[0].items.at(-1).videoId, 'newest first');
+  assert.equal(catalog.calls.length, before, 'GET /api/trends does not start any reading');
+  assert.equal(keyword, 0, 'keyword searches (costly) only when the channels run out');
+});
+
+test('a failed or paused collection is never reported as done; old-format weeks keep working', async () => {
+  const store = createMemorySyncStore();
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), rounds: 4, candidates: [], tried: [], items: [{ videoId: ids[0] }], skipped: {} }] }, { ifGeneration: 0 });
+  const catalog = fakeCatalog();
+  await catalog.import(`https://www.youtube.com/watch?v=${ids[0]}`);
+  const book = createTrendBook(store, { catalog, now: () => now, search: async () => [] });
+  const r = await book.step();
+  assert.equal(r.items, 1, 'the old week is kept');
+  assert.equal(r.done, true, 'an old week whose keyword rounds were used up does not search again');
+  assert.equal((await book.list()).items[0].videoId, ids[0]);
+  const store2 = createMemorySyncStore();
+  await store2.put(`usage/${new Date(now).toISOString().slice(0, 10)}`, { used: 99 }, { ifGeneration: 0 });
+  const paused = await createTrendBook(store2, { catalog: fakeCatalog(), now: () => now, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) }).step();
+  assert.deepEqual([paused.paused, paused.done], ['ai_budget', false]);
+});
+
+test('the scheduled collection refreshes saved descriptions once a day; the list does not', async () => {
+  const store = createMemorySyncStore();
+  let now = Date.parse('2026-09-28T01:00:00Z');
+  const catalog = fakeCatalog();
+  const book = createTrendBook(store, { catalog, now: () => now, search: async () => ids.slice(0, 3).map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) });
+  await book.step();
+  const n = catalog.refreshed.length;
+  assert.ok(n >= 1);
+  await book.list(); await book.step();
+  assert.equal(catalog.refreshed.length, n, 'once a day, and never from the list');
+  now += DAY;
+  await createTrendBook(store, { catalog, now: () => now, search: async () => [] }).step();
+  assert.ok(catalog.refreshed.length > n, 'again the next day');
 });

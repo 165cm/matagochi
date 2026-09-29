@@ -53,8 +53,9 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
       const excluded = await optedOut();
       for (const [videoId, t] of ranked) {
         try {
-          const r = await catalog.import(canonicalYouTubeUrl(videoId));
-          if (!r.ingredients?.length || !r.steps?.length || (r.channelId && excluded.has(r.channelId))) continue;
+          // 表示の GET では読み出すだけ（まだ読んでいない動画を、ここで新しくAIに読ませない）。
+          const r = await catalog.peek(canonicalYouTubeUrl(videoId));
+          if (!r || !r.ingredients?.length || !r.steps?.length || (r.channelId && excluded.has(r.channelId))) continue;
           items.push({ videoId, score: t.same * 3 + t.all, title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
         } catch {}
       }

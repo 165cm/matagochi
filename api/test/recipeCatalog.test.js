@@ -176,3 +176,22 @@ test('description and channel older than 30 days are fetched again, or dropped',
   const failing = createRecipeCatalog(store, async () => sample(), { now: () => now + 31 * 86_400_000, refreshSnippet: async () => { throw new Error('gone'); } });
   assert.equal((await failing.import(url)).caption, '');
 });
+
+test('peek only reads saved results (no AI, no YouTube); refresh re-fetches old descriptions without re-reading', async () => {
+  let now = Date.parse('2026-09-01T00:00:00Z');
+  const store = createMemorySyncStore();
+  let analyses = 0, refreshes = 0;
+  const catalog = createRecipeCatalog(store, async () => { analyses++; return { ...sample(), caption: '説明文', channelTitle: 'ch' }; }, { now: () => now, refreshSnippet: async () => { refreshes++; return { caption: '新しい説明文', channelTitle: 'ch2' }; } });
+  assert.equal(await catalog.peek(url), null, 'not read yet');
+  assert.equal(analyses, 0, 'peek never starts a reading');
+  await catalog.import(url);
+  assert.equal((await catalog.peek(url)).caption, '説明文');
+  now += 31 * 86_400_000;
+  const old = await catalog.peek(url);
+  assert.deepEqual([old.caption, old.channelTitle, refreshes], ['', '', 0], 'an old description is left out, not fetched, when showing');
+  assert.equal(await catalog.refresh(url), true);
+  assert.deepEqual([refreshes, analyses], [1, 1]);
+  assert.equal((await catalog.peek(url)).caption, '新しい説明文');
+  assert.equal(await catalog.refresh('https://youtu.be/zzzzzzzzzzz'), false, 'refresh does not read unknown videos');
+  assert.equal(analyses, 1);
+});

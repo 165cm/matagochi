@@ -11,7 +11,7 @@
 
 | 担当 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|
-| （なし） | | | |
+| Claude | `claude/trends-collect-display` | PR 3 の先行分②：新着の「集める」と「見せる」を分ける。一覧の GET（新着・みんなの定番）は読み出すだけ（`docs/APP_MAP.md` §39） | `api/src/trends.js`・`api/src/popular.js`・`api/src/recipeCatalog.js`（`peek`・`refresh`）・`api/src/server.js`（設定の受け渡し）・`api/test/trends.test.js`・`api/test/recipeCatalog.test.js`・`.github/workflows/trends.yml`（説明）・`docs/*` |
 
 ## 次のタスク（上から優先）
 

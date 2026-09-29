@@ -108,6 +108,26 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited }).finally(() => inFlight.delete(key)));
       return structuredClone(await inFlight.get(key));
     },
+    // 表示用の読み出し（一覧の GET から使う）：保存済みの読み取り結果を返すだけ。AIも YouTube API も呼ばない。
+    // まだ読んでいない動画は null。説明文・チャンネル名が30日より古ければ、取り直さずに外して返す（取り直しは refresh で定期実行から）。
+    async peek(rawUrl) {
+      required();
+      const current = await store.get(`youtube-${extractYouTubeVideoId(rawUrl)}`);
+      if (current?.envelope.status !== "ready") return null;
+      const result = structuredClone(current.envelope.result);
+      const fetchedAt = Date.parse(result.snippetFetchedAt || result.catalog?.analyzedAt || 0);
+      if (now() - fetchedAt > SNIPPET_MAX_AGE_MS) Object.assign(result, { caption: "", channelTitle: "" });
+      return { ...localizeRecipe(result), cacheHit: true };
+    },
+    // 定期実行用：保存済みの結果の説明文・チャンネル名を、30日ルールに沿って取り直す（AIでの読み直しはしない）。
+    async refresh(rawUrl) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready") return false;
+      await refreshed(key, current);
+      return true;
+    },
     // 動画から読んだ結果がもうあるか（あればチケットなしで返せる）。ボタンを押す前の確認用。
     async videoRead(rawUrl) {
       required();
