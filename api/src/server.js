@@ -257,6 +257,17 @@ export function createApp(env = process.env, deps = {}) {
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, feedbackDesk.list(String(req.query?.day || "")));
   });
+  // 掲載停止の申し込み：確認待ち（一時的に外している）・確定・戻したチャンネルの一覧と、確かめた結果の登録。
+  app.get("/api/admin/creators", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, creatorDesk.list());
+  });
+  app.post("/api/admin/creators/:channelId/decide", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, creatorDesk.decide(req.params.channelId, req.body || {}));
+  });
   app.post("/api/admin/corrections/:id/review", async (req, res) => {
     if (!isAdmin(req)) {
       return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
