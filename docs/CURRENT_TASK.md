@@ -11,7 +11,7 @@
 
 | 担当 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|
-| （なし） | | | |
+| Claude | `claude/creators-takedown` | PR 3 の先行分①：掲載停止を「確認待ち→確定／戻す」に・投稿者向けの断定表現の修正（`docs/APP_MAP.md` §38） | `api/src/creators.js`・`api/src/server.js`（管理のルート）・`api/test/creators.test.js`・`creators.html`・`discover.js`（コメント）・`docs/APP_MAP.md`・`docs/PRODUCT.md`・`docs/CURRENT_TASK.md` |
 
 ## 次のタスク（上から優先）
 
