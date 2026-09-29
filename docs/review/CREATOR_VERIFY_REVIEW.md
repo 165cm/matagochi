@@ -1,5 +1,15 @@
 # レビュー資料（Codex 向け）：投稿者の本人確認（YouTubeでログイン）・参加申請・承認画面
 
+## 再レビュー（Codex の指摘への対応）
+
+| 指摘 | 直したこと | 再現テスト（`api/test/creatorVerify.test.js`） |
+|---|---|---|
+| [P1] 変更の申請を見送ると、取り消した同意が戻る | 見送りの時は、前に承認した同意と、いまの申請の同意の共通部分だけを残す（なければ「見送り」＝同意なし）。今の同意を過去の承認内容で上書きしない | 「review fix: rejecting a changed application…」。Codex の手順（保存・一般公開を承認 → 一般公開を外して再申請 → 見送り）で一般公開が戻らないこと。申請・承認・見送り・取り消しをどの順番で行っても、使える同意がいまの同意を超えないこと。`58587e9` では失敗することを確認 |
+
+- 最新の main（#95 PR 1 の公開後 `b6ddc35`）を取り込み済み。コードの重なりはなし（説明文書のみ）
+
+---
+
 指示書：`docs/PERSONALIZE_PLAN.md` §8・§13 PR 3・§14・§16（この文書は PR 1 のブランチにあり、まだ main にはない）。仕様：`docs/APP_MAP.md` §40。PR 3 の本体①。
 ユーザーの決定（2026-09-30）：本人確認は YouTube へのログイン／参加申請は承認画面を作り、運営が手で確認する。
 
@@ -24,7 +34,7 @@
 - 投稿者の許可と YouTube の利用規約を別物として扱う（画面の説明・`consentsFor` は許可だけを返す）
 
 ## 4. テスト
-- `npm test --prefix api`：107件 成功（main の104件＋`creatorVerify.test.js` 3件）
+- `npm test --prefix api`：109件 成功（PR 1 公開後の main の105件＋`creatorVerify.test.js` 4件）。`node --test test/*.test.cjs`：164件 成功
 - `node --test test/*.test.cjs`：144件 成功（アプリは変更なし）
 - `git diff --check`・`node --check`
 - Playwright：ページをローカルの API（メモリ保存・Google は偽物）につなぎ、390×844／844×390／1440×900 で「YouTubeでログイン → 自分のチャンネル → 同意を選んで申請 → 承認画面で承認 → 投稿者の画面で承認ずみ → 掲載を止める」を通した。申請文とチャンネル名に入れた `<script>`・`<img onerror>` は実行されない。ページのエラー・横スクロールなし。画像 `docs/review/creator-verify/`
