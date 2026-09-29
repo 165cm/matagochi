@@ -13,13 +13,12 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude | 修正済み・再レビュー待ち（#97：Codex の指摘2件＋費用の上限） | `claude/trends-collect-display` | PR 3 の先行分②：新着の「集める」と「見せる」を分ける。一覧の GET は読み出すだけ（`docs/APP_MAP.md` §39） | `api/src/trends.js`・`api/src/popular.js`・`api/src/recipeCatalog.js`・`api/src/server.js`・`api/test/trends.test.js`・`api/test/recipeCatalog.test.js`・`.github/workflows/trends.yml`・`docs/*` |
-| Claude | レビュー待ち（#98） | `claude/creator-verify` | PR 3 の本体①：投稿者の本人確認（YouTubeでログイン）・参加申請・承認画面（`docs/APP_MAP.md` §40） | 新規 `api/src/creatorAuth.js`・`api/test/creatorVerify.test.js`・`admin/creators.html`、`api/src/creators.js`・`api/src/server.js`・`creators.html`・`docs/*` |
+| Claude | 修正済み・再レビュー待ち（#97：Codex の指摘4件＋費用の上限） | `claude/trends-collect-display` | PR 3 の先行分②：新着の「集める」と「見せる」を分ける。一覧の GET は読み出すだけ（`docs/APP_MAP.md` §39） | `api/src/trends.js`・`api/src/popular.js`・`api/src/recipeCatalog.js`・`api/src/server.js`・`api/test/trends.test.js`・`api/test/recipeCatalog.test.js`・`.github/workflows/trends.yml`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
 1. **PR 2：深掘り診断とプロフィール可視化**：初回設定（21段階の FUNNEL・16画面の詳しい設定）の重複質問・宣言・時間だけで進む「作成中」を整理し、§37 の会話に寄せる。推薦理由・回答の修正・共有範囲（家族共有とAIへの送信を別々に本人が選ぶ）。サーバーAIをつなぐなら `ProfileTalk.fromAi` の検査・予算・回数・時間切れ
-2. **PR 3：YouTube の取り込み・投稿者管理・公開カタログの基盤**（確認フロー・出典・状態と権限・掲載申請・API情報の更新・一覧GETで有料AIを動かさない）。進み具合：#96（掲載停止の2段階）公開済み・#97（新着の集める／見せる）と #98（本人確認・参加申請・承認画面）レビュー中
+2. **PR 3：YouTube の取り込み・投稿者管理・公開カタログの基盤**（確認フロー・出典・状態と権限・掲載申請・API情報の更新・一覧GETで有料AIを動かさない）。進み具合：#96（掲載停止の2段階）・#98（本人確認・参加申請・承認画面）公開済み、#97（新着の集める／見せる）レビュー中
 3. **PR 4：基本ストック管理と新着配信**（不足カテゴリの確認・日次ジョブ・排他・予算・取り消し。100品の存在を偽装しない）
 4. **PR 5：3日／3日＋3日／5日と買い物**（旧データ互換・人数や予定の変更・購入済みの保持・候補不足で条件をゆるめない）
 5. **PR 6：記録と好みの変化**（カレンダー・定番・根拠つきの理解の更新・方針の版 `snapshots` と再調理の導線）
@@ -28,6 +27,7 @@
 
 ## 最近終わったこと（新しい順）
 
+- #98 投稿者の本人確認（YouTubeでログイン）・参加申請・承認画面（APP_MAP §40）。本物の Google での確認には OAuth 同意画面の設定（`youtube.readonly`）が必要
 - #96 掲載停止の申し込みは「確認待ち」に（運営が確かめて確定／戻す）・投稿者向けの断定表現を直す（APP_MAP §38）
 - #95 PR 1：評価は料理×人ごとの最新で数える（`Lifestyle.latestRatings`）／💬 わが家のごはん方針の最小一巡（`profile-talk.js`・`talk-ui.js`、APP_MAP §37）
 - #93 「家にある」を押した調味料は常備品として覚える／「買う」に戻すと切れた（`Lifestyle.keeps`）

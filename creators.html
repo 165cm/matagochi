@@ -25,6 +25,15 @@
   .note { font-size: 13px; color: var(--muted); }
   #result { margin: 12px 0 0; font-weight: 700; }
   a { color: #c2551f; }
+  .quiet { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+  .ch { border: 1.5px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
+  .ch h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+  .state { display: inline-block; margin: 6px 0 0; padding: 2px 10px; border-radius: 999px; background: #fff1ec; font-size: 13px; font-weight: 700; }
+  fieldset { border: 0; padding: 0; margin: 12px 0 0; }
+  legend { font-weight: 700; font-size: 14px; }
+  .check { display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: start; font-weight: 400; margin-top: 8px; min-height: 44px; }
+  .check input { width: 20px; height: 20px; margin: 3px 0 0; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -45,8 +54,17 @@
     </ul>
   </section>
 
+  <section id="owner" aria-labelledby="owner-h">
+    <h2 id="owner-h">投稿者ご本人の方へ（YouTubeでログイン）</h2>
+    <p>YouTubeのアカウントでログインすると、ご自身のチャンネルについて、<b>掲載の停止・再開</b>がその場でできます。リピごちへの<b>参加の申請</b>もここからどうぞ。</p>
+    <p class="note">Googleの画面で「YouTubeチャンネルを見る」だけを許可していただきます。リピごちが受け取るのは、チャンネルの名前とIDだけです。Googleのログイン情報は保存しません（この画面を閉じると、ログインは2時間以内に切れます）。</p>
+    <button id="yt-login" type="button">YouTubeでログイン</button>
+    <p id="owner-status" role="status" aria-live="polite" class="note"></p>
+    <div id="owner-channels"></div>
+  </section>
+
   <section>
-    <h2>掲載を止めたい場合</h2>
+    <h2>掲載を止めたい場合（ログインしない方）</h2>
     <p>下のフォームから、チャンネルのURL（または動画のURL）をお送りください。<b>確認が済むまでのあいだ、念のため「新着」「みんなの定番」から一時的に外します</b>（10分ほどで反映されます）。</p>
     <p class="note">このフォームでは、送った方がチャンネルの持ち主かどうかを確かめられません。そのため運営が内容を確かめてから、停止を確定します。持ち主でない方からの申し込みと分かった場合は、掲載を元に戻すことがあります。確認のご連絡が必要な場合に備えて、ご連絡先の入力をおすすめします。</p>
     <form id="optout">
@@ -69,6 +87,26 @@
     <p class="note">ご要望やご提案があれば、上のフォームのメッセージ欄でお知らせください。</p>
   </section>
 </main>
+<template id="ch-tpl">
+  <article class="ch">
+    <h3 class="ch-name"></h3>
+    <p class="state ch-listing"></p>
+    <button type="button" class="quiet ch-toggle"></button>
+    <form class="ch-apply">
+      <h4 style="margin:14px 0 0">リピごちへの参加の申請</h4>
+      <p class="note ch-app-state"></p>
+      <fieldset>
+        <legend>同意していただける項目（項目ごとに選べます）</legend>
+      </fieldset>
+      <label>メッセージ（任意）<textarea name="message" maxlength="1000"></textarea></label>
+      <label>ご連絡先（任意）<input name="contact" maxlength="200" placeholder="メールアドレスなど"></label>
+      <button type="submit" class="ch-send">参加を申請する</button>
+      <button type="button" class="quiet ch-withdraw" hidden>参加をやめる（同意をすべて取り消す）</button>
+      <p class="note">申請は運営が確かめてから承認します。承認までは、提携済みにはなりません。同意はいつでも減らせて、減らした分はすぐに止まります。YouTubeの利用規約・APIの規約は、この同意とは別に守ります。</p>
+      <p class="ch-result" role="status" aria-live="polite"></p>
+    </form>
+  </article>
+</template>
 <script>
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
   const form = document.getElementById("optout"), result = document.getElementById("result"), send = document.getElementById("send");
@@ -86,6 +124,101 @@
     } catch { result.textContent = "送れませんでした。通信環境を確かめてください。"; }
     finally { send.disabled = false; }
   });
+
+  // ---- 投稿者ご本人（YouTubeでログイン）：APP_MAP §40 ----
+  const CONSENT_LABELS = {
+    aiExtract: "動画の説明欄・音声と画面から、AIで材料と作り方を書き出すこと",
+    store: "書き出した材料と作り方を、リピごちのサーバーに保存すること",
+    summary: "作り方を、短くまとめて表示すること",
+    scale: "材料の分量を、家庭の人数に合わせて換算すること",
+    publicCatalog: "「新着」など、リピごちの利用者みんなが見る一覧に載せること",
+  };
+  const LISTING = { listed: "掲載中", pending: "一時的に外しています（確認待ちの申し込みあり）", stopped: "掲載を止めています" };
+  const APP_STATE = { pending: "申請を受け付けました。運営の確認待ちです。", approved: "参加を承認しました。", rejected: "今回は承認を見送りました。内容を変えて、もう一度申請できます。", withdrawn: "参加をやめています。" };
+  const ownerStatus = document.getElementById("owner-status"), list = document.getElementById("owner-channels");
+  let creator = null; // { token, titles }
+  try { creator = JSON.parse(sessionStorage.getItem("ripigochi-creator") || "null"); } catch {}
+  const call = async (path, body) => {
+    const response = await fetch(`${API}${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${creator.token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) { creator = null; try { sessionStorage.removeItem("ripigochi-creator"); } catch {} }
+    if (!response.ok) throw new Error(data.error?.message || "うまくいきませんでした。時間をおいてお試しください。");
+    return data;
+  };
+  function renderChannels(channels) {
+    list.textContent = "";
+    for (const c of channels) {
+      const el = document.getElementById("ch-tpl").content.firstElementChild.cloneNode(true);
+      const title = creator.titles?.[c.channelId] || c.channelId;
+      el.querySelector(".ch-name").textContent = title;
+      el.querySelector(".ch-listing").textContent = LISTING[c.listing] || c.listing;
+      const toggle = el.querySelector(".ch-toggle");
+      toggle.textContent = c.listing === "listed" ? "掲載を止める" : "掲載を再開する";
+      toggle.addEventListener("click", () => act(el, c.channelId, c.listing === "listed" ? "stop" : "resume", { title }));
+      const fs = el.querySelector("fieldset");
+      for (const [k, label] of Object.entries(CONSENT_LABELS)) {
+        const row = document.createElement("label"); row.className = "check";
+        const box = document.createElement("input"); box.type = "checkbox"; box.name = k; box.checked = !!c.application?.consents?.[k];
+        const text = document.createElement("span"); text.textContent = label;
+        row.append(box, text); fs.append(row);
+      }
+      el.querySelector(".ch-app-state").textContent = c.application ? APP_STATE[c.application.status] || "" : "まだ申請していません。";
+      const withdraw = el.querySelector(".ch-withdraw");
+      withdraw.hidden = !c.application || c.application.status === "withdrawn";
+      withdraw.addEventListener("click", () => act(el, c.channelId, "withdraw"));
+      el.querySelector(".ch-apply").addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const f = ev.currentTarget;
+        const consents = Object.fromEntries(Object.keys(CONSENT_LABELS).map((k) => [k, f.elements[k].checked]));
+        act(el, c.channelId, "apply", { title, consents, message: f.elements.message.value, contact: f.elements.contact.value });
+      });
+      list.append(el);
+    }
+  }
+  async function act(el, channelId, action, body = {}) {
+    const out = el.querySelector(".ch-result");
+    el.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    out.textContent = "送っています…";
+    try { await call(`/api/creators/me/${encodeURIComponent(channelId)}/${action}`, body); await refresh(); ownerStatus.textContent = { stop: "掲載を止めました（10分ほどで反映）。", resume: "掲載を再開しました（10分ほどで反映）。", apply: "参加の申請を受け付けました。", withdraw: "参加をやめました。同意はすべて取り消しました。" }[action]; }
+    catch (error) { out.textContent = error.message; el.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
+  }
+  async function refresh() {
+    if (!creator) return;
+    try { renderChannels((await call("/api/creators/me")).channels); }
+    catch (error) { list.textContent = ""; ownerStatus.textContent = error.message; }
+  }
+  function loadGoogle() {
+    return new Promise((resolve, reject) => {
+      if (window.google?.accounts?.oauth2) return resolve();
+      const s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.async = true;
+      s.onload = resolve; s.onerror = () => reject(new Error("Googleのログイン画面を読み込めませんでした。"));
+      document.head.append(s);
+    });
+  }
+  document.getElementById("yt-login").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true; ownerStatus.textContent = "Googleの画面を開いています…";
+    try {
+      const config = await (await fetch(`${API}/api/auth/config`)).json();
+      if (!config.google) throw new Error("YouTubeでのログインは準備中です。");
+      await loadGoogle();
+      const accessToken = await new Promise((resolve, reject) => {
+        google.accounts.oauth2.initTokenClient({ client_id: config.google, scope: "https://www.googleapis.com/auth/youtube.readonly",
+          callback: (r) => (r?.access_token ? resolve(r.access_token) : reject(new Error("ログインできませんでした。"))),
+          error_callback: () => reject(new Error("ログインを中止しました。")) }).requestAccessToken();
+      });
+      ownerStatus.textContent = "チャンネルを確かめています…";
+      const response = await fetch(`${API}/api/creators/verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accessToken }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error?.message || "確かめられませんでした。");
+      creator = { token: data.token, titles: Object.fromEntries(data.channels.map((c) => [c.channelId, c.title])) };
+      try { sessionStorage.setItem("ripigochi-creator", JSON.stringify(creator)); } catch {}
+      ownerStatus.textContent = `✓ ${data.channels.map((c) => c.title).join("・")} の持ち主として確認しました。`;
+      await refresh();
+    } catch (error) { ownerStatus.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  refresh();
 </script>
 </body>
 </html>
