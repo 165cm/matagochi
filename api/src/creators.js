@@ -120,7 +120,8 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}
       const apps = readApps(await store.get(APPS));
       return { items: Object.entries(apps).map(([channelId, a]) => ({ channelId, ...a, effective: effective(a) })).sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || String(b.at || "").localeCompare(String(a.at || ""))) };
     },
-    // 管理者：参加申請の承認・却下。承認すると、その時の同意が使える同意になる。却下しても、前に承認した同意はそのまま。
+    // 管理者：参加申請の承認・却下。承認すると、その時の同意が使える同意になる。
+    // 却下しても、前に承認した同意のうち、いまも同意している項目は使える（外した同意は戻らない）。
     async decideApplication(channelId, { decision, note = "" } = {}) {
       required();
       if (!CHANNEL_RE.test(String(channelId || "")) || !["approve", "reject"].includes(decision)) throw new ApiError(400, "invalid_decision", "チャンネルIDと判断（approve か reject）を送ってください。");
@@ -128,9 +129,13 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}
       return update((apps) => {
         const prev = apps[channelId];
         if (!prev || prev.status !== "pending") throw new ApiError(409, "not_pending", "確認待ちの参加申請ではありません。");
+        // 見送り：前に承認した同意のうち、いまも同意している項目だけを残す（投稿者が外した同意を、見送りで戻さない）。
+        const kept = prev.approvedConsents ? both(prev.approvedConsents, prev.consents) : null;
         const next = decision === "approve"
           ? { ...prev, status: "approved", approvedConsents: consentsOf(prev.consents) }
-          : { ...prev, status: prev.approvedConsents ? "approved" : "rejected", consents: prev.approvedConsents ? consentsOf(prev.approvedConsents) : prev.consents };
+          : kept && Object.values(kept).some(Boolean)
+            ? { ...prev, status: "approved", approvedConsents: kept, consents: kept }
+            : { ...prev, status: "rejected", approvedConsents: null };
         apps[channelId] = { ...next, decidedAt: at, ...(note ? { note: clean(note, 500) } : {}), history: [...(prev.history || []), { at, status: decision === "approve" ? "approved" : "rejected" }].slice(-20) };
         return { channelId, status: apps[channelId].status, effective: effective(apps[channelId]) };
       }, APPS, readApps);

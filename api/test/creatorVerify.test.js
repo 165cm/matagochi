@@ -117,3 +117,40 @@ test('HTTP: verify → my channels → apply; another channel is refused; admin 
   assert.equal((await (await post(`/api/admin/creators/applications/${mineCh}/decide`, { decision: 'approve' }, admin)).json()).status, 'approved');
   assert.ok(g.calls.every((u) => /oauth2\.googleapis\.com\/tokeninfo|googleapis\.com\/youtube\/v3\/channels/.test(u)), 'only the two Google endpoints are called');
 });
+
+test('review fix: rejecting a changed application never brings back a consent the creator removed', async () => {
+  const desk = createCreatorDesk(createMemorySyncStore(), { resolveChannel: async () => null });
+  const owned = [mineCh];
+  const usable = async () => Object.entries(await desk.consentsFor(mineCh)).filter(([, v]) => v).map(([k]) => k).sort();
+  const current = async () => (await desk.applications()).items[0];
+  // 1. 「保存」「一般公開」に同意 → 承認
+  await desk.apply(mineCh, owned, { consents: { store: true, publicCatalog: true } });
+  await desk.decideApplication(mineCh, { decision: 'approve' });
+  assert.deepEqual(await usable(), ['publicCatalog', 'store']);
+  // 2. 「一般公開」を外して再申請 → すぐに使えなくなる
+  await desk.apply(mineCh, owned, { consents: { store: true } });
+  assert.deepEqual(await usable(), ['store']);
+  // 3. 運営が見送る → 一般公開は戻らない
+  await desk.decideApplication(mineCh, { decision: 'reject' });
+  assert.deepEqual(await usable(), ['store'], 'the removed consent stays removed');
+  assert.equal((await current()).consents.publicCatalog, false);
+  assert.equal((await current()).status, 'approved');
+  // 外して足した申請（一般公開を外し、要約を足す）を見送った時も、要約は足されず、一般公開も戻らない。
+  await desk.apply(mineCh, owned, { consents: { store: true, summary: true } });
+  await desk.decideApplication(mineCh, { decision: 'reject' });
+  assert.deepEqual(await usable(), ['store']);
+  // 前に承認した項目をすべて外した申請を見送ったら、使える同意はなくなる。
+  await desk.apply(mineCh, owned, { consents: { summary: true } });
+  await desk.decideApplication(mineCh, { decision: 'reject' });
+  assert.deepEqual(await usable(), []);
+  assert.equal((await current()).status, 'rejected');
+  // どの順番で申請・承認・見送り・取り消しをしても、使える同意は「いま同意している項目」を超えない。
+  const steps = [['apply', { store: true, publicCatalog: true, scale: true }], ['approve'], ['apply', { store: true }], ['reject'], ['apply', { store: true, publicCatalog: true }], ['approve'], ['apply', { scale: true }], ['reject'], ['withdraw'], ['apply', { aiExtract: true }], ['approve']];
+  for (const [step, consents] of steps) {
+    if (step === 'apply') await desk.apply(mineCh, owned, { consents });
+    else if (step === 'withdraw') await desk.withdraw(mineCh, owned);
+    else await desk.decideApplication(mineCh, { decision: step });
+    const now = await current();
+    for (const [k, v] of Object.entries(await desk.consentsFor(mineCh))) if (v) assert.equal(now.consents[k], true, `${step}: ${k} is usable but not consented`);
+  }
+});
