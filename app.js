@@ -4018,7 +4018,7 @@ function formatDate(date) {
 }
 
 function renderEmpty(message) {
-  return `<div class="empty-state">${typeof yohaku === "function" ? yohaku("normal") : ""}<p>${message}</p></div>`;
+  return `<div class="empty-state">${typeof yohaku === "function" ? yohaku("bowl") : ""}<p>${message}</p></div>`;
 }
 
 function escapeHtml(value) {

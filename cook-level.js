@@ -94,7 +94,7 @@ function celebrateCook(before) {
     const el = document.createElement("div");
     el.className = "xp-pop";
     el.setAttribute("role", "status");
-    el.innerHTML = lines.join("");
+    el.innerHTML = `${typeof yohaku === "function" ? yohaku("happy", "xp-yohaku") : ""}${lines.join("")}`;
     document.body.append(el);
     setTimeout(() => el.remove(), 3600);
   } catch {}

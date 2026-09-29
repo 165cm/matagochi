@@ -3907,10 +3907,21 @@ i.g { font-style: normal; margin-left: 4px; opacity: .45; }
 .empty-state .yohaku { width: 96px; height: 96px; margin: 8px auto 16px; }
 .yohaku-tile { display: grid; place-items: center; background: var(--surface-soft); }
 .yohaku-tile .yohaku { width: 72%; height: 72%; }
-/* 献立の最後：カードの列の左の端から、ひょこっとのぞく */
-.yohaku-peek-row { height: 72px; margin: 8px 0 24px; overflow: hidden; }
-.yohaku-peek { width: 72px; height: 72px; animation: yh-peek .9s ease-out both, yh-float 3.6s ease-in-out .9s infinite; }
-@keyframes yh-peek { from { transform: translateX(-45%); opacity: 0; } to { transform: none; opacity: 1; } }
+/* 今週のカレンダー：見出しの右の余白から、日付のすきまにひょっこり（高さは取らない） */
+.wk-top { position: relative; }
+.wk-yohaku { position: absolute; right: 6px; bottom: -9px; width: 46px; height: 46px; pointer-events: none; }
+.wk-yohaku .yohaku { width: 46px; height: 46px; animation: yh-pop .7s ease-out both, yh-float 3.6s ease-in-out .7s infinite; transform-origin: 50% 100%; }
+@keyframes yh-pop { from { transform: translateY(40%) scaleY(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+.wk-loop { margin-right: 52px; }
+/* まとめて評価：右下で、もじもじ待つ */
+.rv-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.rv-foot .yohaku-wait { width: 56px; height: 56px; flex: none; }
+/* わかってきたこと：右上の余白で両手をひろげる */
+.insight-card { position: relative; }
+.ic-yohaku { position: absolute; right: 8px; top: -10px; width: 52px; height: 52px; }
+.insight-card h3 { padding-right: 56px; }
+/* 作った時のXP：上でうれしそうに */
+.xp-yohaku { width: 56px; height: 56px; margin: 0 auto 2px; }
 /* レシピの最後：右下の余白で手をふる */
 .yohaku-corner { display: flex; justify-content: flex-end; margin: 24px 8px 0; }
 .yohaku-wave { transform-origin: 50% 90%; animation: yh-wave 2.8s ease-in-out infinite; }
@@ -3918,4 +3929,3 @@ i.g { font-style: normal; margin-left: 4px; opacity: .45; }
 .cc-yohaku { width: 88px; height: 88px; margin: -6px auto 0; }
 @media (prefers-reduced-motion: reduce) { .yohaku { animation: none !important; } }
 .empty-state { grid-column: 1 / -1; }
-.yohaku-peek-row { padding-left: 4px; }

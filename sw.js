@@ -13,7 +13,7 @@ const CORE_ASSETS = [
   ...["teriyaki","tomato-pasta","porkkimchi","kinoko-udon","tofu-egg","tomato-cheese"].map(n => `./assets/dishes/${n}.webp`),
   ...["03","04","07","08","09","10","11","12","14","15","16","17","18","19","20","21","22","23","24","25","26","27","29","30","31","32","33","34","35","36","37","38"].map(n => `./assets/dishes/starter-${n}.webp`),
   ...["rice","noodle","bread","okazu"].map(n => `./assets/dishes/fallback-${n}.webp`),
-  ...["normal","peek","wave"].map(n => `./assets/yohaku/${n}.webp?v=${APP_VERSION}`),
+  ...["normal","wave","popup","open","wait","bowl","happy"].map(n => `./assets/yohaku/${n}.webp?v=${APP_VERSION}`),
   `./starter-recipes.js?v=${APP_VERSION}`,
   `./skills.js?v=${APP_VERSION}`,
   `./aisles.js?v=${APP_VERSION}`,
