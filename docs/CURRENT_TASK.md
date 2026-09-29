@@ -13,24 +13,23 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude | レビュー済み（Codex・指摘5件すべて解消）・公開の確認待ち | `claude/optimistic-albattani-jg5211` | PR 1：診断・プロフィールの保存基盤（`docs/PERSONALIZE_PLAN.md` §13）。人ごとの評価集計の修正・「わが家のごはん方針」の最小一巡 | 新規 `profile-talk.js`・`talk-ui.js`・`test/profile-talk.test.cjs`・`docs/PERSONALIZE_PLAN.md`、`lifestyle.js`（`latestRatings`・`insights`・`propose` の `preferenceOf`）、`daily-ui.js`（`recipeRatings`・入口・`dailyPlan`）、`app.js`（state・画面・設定の1行）、`plus.js`・`api/src/usage.js`（集計の項目）、`index.html`・`sw.js`・`styles.css`、テストの読み込み一覧、`.github/workflows/test.yml`、`docs/*` |
-| Claude | PR 未作成（ブランチに push 済み・レビュー前） | `claude/trends-collect-display` | PR 3 の先行分②：新着の「集める」と「見せる」を分ける。一覧の GET は読み出すだけ（`docs/APP_MAP.md` §39） | `api/src/trends.js`・`api/src/popular.js`・`api/src/recipeCatalog.js`・`api/src/server.js`・`api/test/trends.test.js`・`api/test/recipeCatalog.test.js`・`.github/workflows/trends.yml`・`docs/*` |
+| Claude | レビュー待ち（#97） | `claude/trends-collect-display` | PR 3 の先行分②：新着の「集める」と「見せる」を分ける。一覧の GET は読み出すだけ（`docs/APP_MAP.md` §39） | `api/src/trends.js`・`api/src/popular.js`・`api/src/recipeCatalog.js`・`api/src/server.js`・`api/test/trends.test.js`・`api/test/recipeCatalog.test.js`・`.github/workflows/trends.yml`・`docs/*` |
+| Claude | レビュー待ち（#98） | `claude/creator-verify` | PR 3 の本体①：投稿者の本人確認（YouTubeでログイン）・参加申請・承認画面（`docs/APP_MAP.md` §40） | 新規 `api/src/creatorAuth.js`・`api/test/creatorVerify.test.js`・`admin/creators.html`、`api/src/creators.js`・`api/src/server.js`・`creators.html`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
-1. **PR 1 のレビュー（Codex）と公開の判断（ユーザー）**：診断・プロフィールの保存基盤（APP_MAP §37）
-2. **PR 2：深掘り診断とプロフィール可視化**：初回設定（21段階の FUNNEL・16画面の詳しい設定）の重複質問・宣言・時間だけで進む「作成中」を整理し、§37 の会話に寄せる。推薦理由・回答の修正・共有範囲（家族共有とAIへの送信を別々に本人が選ぶ）。サーバーAIをつなぐなら `ProfileTalk.fromAi` の検査・予算・回数・時間切れ
-3. **PR 3：YouTube の取り込み・投稿者管理・公開カタログの基盤**（確認フロー・出典・状態と権限・掲載申請・API情報の更新・一覧GETで有料AIを動かさない）
-4. **PR 4：基本ストック管理と新着配信**（不足カテゴリの確認・日次ジョブ・排他・予算・取り消し。100品の存在を偽装しない）
-5. **PR 5：3日／3日＋3日／5日と買い物**（旧データ互換・人数や予定の変更・購入済みの保持・候補不足で条件をゆるめない）
-6. **PR 6：記録と好みの変化**（カレンダー・定番・根拠つきの理解の更新・方針の版 `snapshots` と再調理の導線）
-7. **PR 7：試用権限・計測・公開前検証**（14/28日・サーバーで期間を管理・無料に戻っても記録は使える。本番の価格・決済・`GATING_LIVE` は別の判断）
-8. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
+1. **PR 2：深掘り診断とプロフィール可視化**：初回設定（21段階の FUNNEL・16画面の詳しい設定）の重複質問・宣言・時間だけで進む「作成中」を整理し、§37 の会話に寄せる。推薦理由・回答の修正・共有範囲（家族共有とAIへの送信を別々に本人が選ぶ）。サーバーAIをつなぐなら `ProfileTalk.fromAi` の検査・予算・回数・時間切れ
+2. **PR 3：YouTube の取り込み・投稿者管理・公開カタログの基盤**（確認フロー・出典・状態と権限・掲載申請・API情報の更新・一覧GETで有料AIを動かさない）。進み具合：#96（掲載停止の2段階）公開済み・#97（新着の集める／見せる）と #98（本人確認・参加申請・承認画面）レビュー中
+3. **PR 4：基本ストック管理と新着配信**（不足カテゴリの確認・日次ジョブ・排他・予算・取り消し。100品の存在を偽装しない）
+4. **PR 5：3日／3日＋3日／5日と買い物**（旧データ互換・人数や予定の変更・購入済みの保持・候補不足で条件をゆるめない）
+5. **PR 6：記録と好みの変化**（カレンダー・定番・根拠つきの理解の更新・方針の版 `snapshots` と再調理の導線）
+6. **PR 7：試用権限・計測・公開前検証**（14/28日・サーバーで期間を管理・無料に戻っても記録は使える。本番の価格・決済・`GATING_LIVE` は別の判断）
+7. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
 
 - #96 掲載停止の申し込みは「確認待ち」に（運営が確かめて確定／戻す）・投稿者向けの断定表現を直す（APP_MAP §38）
-- （公開の確認待ち）PR 1（#95）：評価は料理×人ごとの最新で数える（`Lifestyle.latestRatings`）／💬 わが家のごはん方針の最小一巡（`profile-talk.js`・`talk-ui.js`、APP_MAP §37）
+- #95 PR 1：評価は料理×人ごとの最新で数える（`Lifestyle.latestRatings`）／💬 わが家のごはん方針の最小一巡（`profile-talk.js`・`talk-ui.js`、APP_MAP §37）
 - #93 「家にある」を押した調味料は常備品として覚える／「買う」に戻すと切れた（`Lifestyle.keeps`）
 - #92 スマホ確認の直し：買い物の「↩ 元に戻す」・買い物リストの中の🧂常備品・小さなタイマーの札・料理モードの「✕ 終わる」・✋のふちを一周する光
 - #91 キャラクター「よはく」を余白に（7ポーズ）
@@ -42,6 +41,7 @@
 
 ## 大事な決めごと
 
+- 投稿者の本人確認は YouTube へのログインで行う。参加申請は承認画面で運営（ユーザー）が手で確認する（2026-09-30 決定。APP_MAP §40）
 - 文字は最小限・説明は ⓘ・絵文字＋短い言葉（`docs/UI_RULES.md`）
 - よはくは1画面に1匹・UIとの間24px以上・高さを取らない
 - 評価は毎日聞かない（ひと回りでまとめて）
