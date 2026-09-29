@@ -305,7 +305,7 @@ function renderCreatorCredit(recipe) {
   if (!recipe?.videoUrl) return "";
   const id = youtubeVideoId(recipe.videoUrl);
   const start = videoStartAt.key === recipe.id ? videoStartAt.seconds : 0;
-  // 公式の埋め込みプレーヤー（再生は投稿者の再生回数・広告収益になる）。
+  // 公式の埋め込みプレーヤー（動画を複製しない。再生回数・広告収益への反映は YouTube の仕組みによる）。
   const shorts = /youtube\.com\/shorts\//i.test(recipe.videoUrl);
   const player = id ? `<div class="video-frame${shorts ? " is-shorts" : ""}"><iframe src="https://www.youtube.com/embed/${id}?playsinline=1&rel=0&enablejsapi=1${globalThis.location?.origin ? `&origin=${encodeURIComponent(globalThis.location.origin)}` : ""}${start ? `&start=${start}&autoplay=1` : ""}" title="${escapeAttr(recipe.title)}の動画" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><button type="button" class="video-undock" data-action="life-video-close" aria-label="小さな動画を閉じる">×</button></div>` : "";
   const name = recipe.author || (id ? "YouTubeの投稿者" : "投稿者");
