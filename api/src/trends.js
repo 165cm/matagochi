@@ -20,7 +20,9 @@ export const TREND_AI_PER_WEEK = 30;
 //   止める … AIの枠・設定の不足。この動画は試していない扱いに戻し、今日はここまで（done にしない）
 //   あとで … 通信・一時的な失敗。この動画を候補に戻し、次の実行でもう一度（3回まで）。done にしない
 //   外す  … 動画の側の理由（非公開・削除・レシピがない など）。この動画は試し終わり
-const STOP_CODES = { analysis_budget_exceeded: "ai_budget", analysis_busy: "ai_budget", analysis_cooldown: "ai_budget", invalid_budget: "ai_budget", analysis_disabled: "not_configured", catalog_not_configured: "not_configured", missing_analyzer: "not_configured", missing_google_cloud_project: "not_configured", missing_youtube_api_key: "not_configured" };
+// 待つだけ …… 直前の失敗の1分の待ち時間・ほかで分析中。失敗の回数に入れず、あとでやり直す
+const WAIT_CODES = new Set(["analysis_cooldown", "analysis_pending"]);
+const STOP_CODES = { analysis_budget_exceeded: "ai_budget", analysis_busy: "ai_budget", invalid_budget: "ai_budget", analysis_disabled: "not_configured", catalog_not_configured: "not_configured", missing_analyzer: "not_configured", missing_google_cloud_project: "not_configured", missing_youtube_api_key: "not_configured" };
 const SKIP_CODES = new Set(["video_not_found", "non_public_video", "invalid_url", "unsupported_url", "empty_description", "incomplete_recipe", "analysis_uncertain"]);
 const MAX_RETRIES = 3;
 const errorKind = (error) => (STOP_CODES[error?.code] ? "stop" : SKIP_CODES.has(error?.code) || (error?.status >= 400 && error?.status < 500 && error?.status !== 408 && error?.status !== 409 && error?.status !== 429) ? "skip" : "retry");
@@ -97,23 +99,16 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
   }
   async function unlock() { const entry = await store.get("trends/lock"); if (entry) await store.put("trends/lock", { until: 0 }, { ifGeneration: entry.generation }).catch(() => {}); }
   // 1品読む：説明文で作り方がなければ、サーバーの分で動画も読む（利用者のチケットは使わない）。
-  // AIを呼んだかもしれない回数を数える（保存済みの結果を返しただけ・枠で断られた時は数えない）。
-  async function counted(spend, work) {
-    try { const r = await work(); if (!r?.cacheHit) spend(); return r; }
-    catch (error) { if (!STOP_CODES[error?.code]) spend(); throw error; }
-  }
-  async function analyze(videoId, spend, canSpend) {
+  // AI の回数は、カタログが AI を呼ぶ直前ごと（説明欄・動画・チャプターの対応付け）に aiGate を通して数える。
+  // 動画に切り替える時に説明欄をもう一度読む分も、その場で数える（取り込み1回＝1回ではない）。
+  async function analyze(videoId, aiGate) {
     const url = canonicalYouTubeUrl(videoId);
     let result = null;
-    try { result = await counted(spend, () => catalog.import(url)); } catch (error) {
+    try { result = await catalog.import(url, { aiGate }); } catch (error) {
       // 説明文が空・読めない（ショート動画に多い）時も、動画から読む。
       if (!["empty_description", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) throw error;
     }
-    if (!result?.steps?.length) {
-      // 動画から読むのも AI の1回。新着集めの枠が残っていなければ、今日はここまで（この動画は候補に戻す）。
-      if (!canSpend()) throw Object.assign(new Error("trend_ai_budget"), { code: "trend_ai_budget" });
-      result = await counted(spend, () => catalog.import(url, { forceVideo: true, unlimited: true, household: "trends-bot" }));
-    }
+    if (!result?.steps?.length) result = await catalog.import(url, { forceVideo: true, unlimited: true, household: "trends-bot", aiGate });
     return result;
   }
   // 日本時間の日付。
@@ -232,18 +227,19 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           const videoId = current.candidates[current.tried.length];
           current.tried.push(videoId);
           try {
-            const r = await analyze(videoId, spend, canSpend);
+            const r = await analyze(videoId, { allow: canSpend, used: spend });
             learn(videoId, isDinnerRecipe(r), r.channelTitle);
             if (isDinnerRecipe(r)) { current.items.push({ videoId, day: today }); current.byDay[today] = (current.byDay[today] || 0) + 1; }
             else skip(NOT_DINNER.test(r.title || "") ? "not_dinner" : !(r.steps || []).length ? "no_steps" : "too_short");
           } catch (error) {
-            const kind = error?.code === "trend_ai_budget" ? "budget" : errorKind(error);
+            const kind = error?.code === "trend_ai_budget" ? "budget" : WAIT_CODES.has(error?.code) ? "wait" : errorKind(error);
             if (kind === "skip" || (kind === "retry" && (current.retries[videoId] || 0) + 1 >= MAX_RETRIES)) {
               learn(videoId, false); skip(String(error?.code || "error").slice(0, 40));
             } else {
               // 試していない扱いに戻す（次の実行で、この動画からやり直す）。
               current.tried.pop();
               if (kind === "retry") { current.retries[videoId] = (current.retries[videoId] || 0) + 1; paused = "temporary_error"; skip("retry"); }
+              else if (kind === "wait") paused = "temporary_error"; // 直前の失敗の待ち時間・分析中。失敗の回数には入れない
               else if (kind === "budget") limited = "trend_ai_budget";
               else paused = STOP_CODES[error.code];
               await writeIndex(index);

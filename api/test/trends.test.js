@@ -11,7 +11,12 @@ function fakeCatalog(overrides = {}) {
   const ready = new Map(); // 読み取り済み（peek で読み出せる）
   const refreshed = [];
   return { calls, refreshed, async peek(url) { return ready.get(url.match(/v=([\w-]{11})/)[1]) || null; }, async refresh(url) { refreshed.push(url.match(/v=([\w-]{11})/)[1]); return true; },
-    async import(url, o = {}) { const r = await this._import(url, o); ready.set(url.match(/v=([\w-]{11})/)[1], r); return r; },
+    async import(url, o = {}) {
+      // 本物のカタログと同じく、AI を呼ぶ直前に aiGate を通す（この偽物は1回の取り込みで AI を1回呼ぶ）。
+      if (o.aiGate && !o.aiGate.allow()) throw Object.assign(new Error('trend'), { code: 'trend_ai_budget', status: 429 });
+      const budgetRefused = overrides[url.match(/v=([\w-]{11})/)[1]] === 'budget';
+      if (!budgetRefused) o.aiGate?.used();
+      const r = await this._import(url, o); ready.set(url.match(/v=([\w-]{11})/)[1], r); return r; },
     async _import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw Object.assign(new Error('gone'), { code: 'video_not_found' }); if (overrides[id] === 'flaky') throw Object.assign(new Error('timeout'), { code: 'youtube_timeout', status: 504 }); if (overrides[id] === 'budget') throw Object.assign(new Error('budget'), { code: 'analysis_budget_exceeded', status: 429 }); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
 }
 const ids = Array.from({ length: 14 }, (_, i) => `vid${String(i).padStart(8, '0')}`);

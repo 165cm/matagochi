@@ -46,14 +46,18 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       };
       if (videoSteps.length) analyzedFrom = clipSeconds ? "video-clip" : "video";
     } catch (error) {
-      if (!hasDescription) throw error;
+      // 「読めたがレシピではなかった」（analysis_uncertain）だけは、説明欄の結果で続ける。
+      // 通信・AIの失敗・回数の上限は、呼び出し元まで伝える（「レシピが不完全」と区別し、やり直せるように）。
+      if (!hasDescription || error?.code !== "analysis_uncertain") throw error;
     }
   }
   if (!hasDescription && !analyzedFrom.startsWith("video")) throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
   // 説明欄に投稿者のタイムスタンプがあれば、手順の時刻はそれに合わせる（AIが動画から探した時刻より正確）。
   const chapters = parseChapters(snippet.description);
   const finalSteps = normalizeSteps(analysis.steps);
-  if (chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function") {
+  // チャプターとの対応付けも AI の1回。枠がなければ、しないで進む（なくても困らない）。
+  const chaptersAllowed = chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function" && (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
+  if (chaptersAllowed) {
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
     const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);
     if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: times }; analyzedTimes = "chapters"; }
