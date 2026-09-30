@@ -83,3 +83,41 @@ test("a video whose owner does not allow embedding is marked on save, opened on 
   assert.equal(run(`JSON.stringify(normalizeRecipes([{ id: "x", title: "a", embeddable: true }])[0]).includes("embeddable")`), false);
   assert.match(run(`renderCreatorCredit({ id: "y", title: "b", videoUrl: "https://youtu.be/abcdefghijk" })`), /<iframe/);
 });
+
+test("review fix (#105): reading from the video when the AI limit is reached answers 200 with the description; it still shows the limit and hides the video button", async () => {
+  const run = app();
+  await importUrl(run, "https://www.youtube.com/watch?v=abcdefghijk", { status: 200, body: { title: "卵焼き", caption: "材料 卵 2個", ingredients: [{ name: "卵", amount: "2個" }], steps: [], videoId: "abcdefghijk" } });
+  assert.match(run("renderReadSteps(false)"), /data-action="draft-video"/);
+  run(`reply = { status: 200, body: { title: "卵焼き", caption: "材料 卵 2個", ingredients: [{ name: "卵", amount: "2個" }], steps: [], videoId: "abcdefghijk", analysis: { ok: false, code: "analysis_budget_exceeded" }, videoSkipped: false } }`);
+  await run("readDraftFromVideo()");
+  assert.equal(run("state.draft.readInfo.aiLimited"), true);
+  assert.match(run("state.fetchStatus"), /今日はAIで読み取れる上限に達しました/);
+  const html = run("renderReadSteps(false)");
+  assert.match(html, /今日のAIの上限/);
+  assert.doesNotMatch(html, /data-action="draft-video"|動画からも作り方を読み取れませんでした/);
+  // 上限でない理由（レシピがない など）は、これまでどおりの文
+  await importUrl(run, "https://www.youtube.com/watch?v=bbbbbbbbbbb", { status: 200, body: { title: "卵焼き", caption: "材料 卵 2個", ingredients: [{ name: "卵", amount: "2個" }], steps: [], videoId: "bbbbbbbbbbb" } });
+  run(`reply = { status: 200, body: { title: "卵焼き", ingredients: [], steps: [], videoId: "bbbbbbbbbbb", analysis: { ok: false, code: "incomplete_recipe" } } }`);
+  await run("readDraftFromVideo()");
+  assert.match(run("state.fetchStatus"), /動画からも作り方を読み取れませんでした/);
+  assert.equal(run("state.draft.readInfo.aiLimited"), undefined);
+});
+
+test("review fix (#105): every way a saved recipe is filled from a video keeps the 'not embeddable' mark", async () => {
+  const run = app();
+  // 献立から「動画で作り方をそろえる」
+  run(`state.recipes = [{ id: "r1", title: "親子丼", videoUrl: "https://www.youtube.com/watch?v=abcdefghijk", mealType: "dinner", ingredients: [], steps: [] }];
+    reply = { status: 200, body: { title: "親子丼", ingredients: [{ name: "鶏もも", amount: "1枚" }], steps: ["煮る", "とじる"], videoId: "abcdefghijk", analyzedFrom: "video", embeddable: false } };`);
+  await run(`fillRecipeFromVideo("r1")`);
+  assert.equal(run("state.recipes[0].steps.length"), 2);
+  assert.equal(run("state.recipes[0].embeddable"), false);
+  assert.doesNotMatch(run("renderCreatorCredit(state.recipes[0])"), /<iframe/);
+  // 献立に URL を貼って入れる・初回設定の「読んでみる」（discoverRecipe を通る）
+  assert.equal(run(`discoverRecipe({ videoId: "abcdefghijk", videoUrl: "https://www.youtube.com/watch?v=abcdefghijk", title: "x", ingredients: [], steps: [], embeddable: false }, "url").embeddable`), false);
+  assert.equal(run(`"embeddable" in discoverRecipe({ videoId: "abcdefghijk", title: "x", ingredients: [], steps: [] }, "url")`), false);
+  // AI の上限で作り方を読めなかった時は、そう伝える
+  run(`state.recipes.push({ id: "r2", title: "卵焼き", videoUrl: "https://www.youtube.com/watch?v=bbbbbbbbbbb", mealType: "dinner", ingredients: [], steps: [] });
+    reply = { status: 200, body: { title: "卵焼き", ingredients: [], steps: [], videoId: "bbbbbbbbbbb", analysis: { ok: false, code: "analysis_budget_exceeded" } } }; toasts.length = 0;`);
+  await run(`fillRecipeFromVideo("r2")`);
+  assert.match(run("toasts.join()"), /今日はAIで読み取れる上限に達しました/);
+});

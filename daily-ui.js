@@ -2119,7 +2119,12 @@ async function fillRecipeFromVideo(id) {
   try {
     const result = await importRecipeFromYouTube(own.videoUrl, { mode: "video" });
     const steps = (result.steps || []).map((x) => String(x || "").trim()).filter(Boolean);
-    if (!steps.length) { showToast("動画からも作り方を読み取れませんでした。レシピを開いて手で入れてください。"); return; }
+    if (!steps.length) {
+      // AI の上限・停止中で読めなかった時は、そう伝える（サーバーは説明欄の結果を 200 で返す）。
+      const limited = result.analysis?.ok === false && importReason(result.analysis.code)?.ai;
+      showToast(limited ? "今日はAIで読み取れる上限に達しました。明日また読めます（レシピを開いて手でも入れられます）。" : "動画からも作り方を読み取れませんでした。レシピを開いて手で入れてください。");
+      return;
+    }
     const ingredients = normalizeImportedIngredients(result.ingredients);
     const planning = aiPlanning(result.planning, { ingredients: ingredients.length ? ingredients : own.ingredients, steps });
     Object.assign(own, {
@@ -2128,6 +2133,8 @@ async function fillRecipeFromVideo(id) {
       ingredients: own.ingredients?.length ? own.ingredients : ingredients,
       sourceServings: own.sourceServings ?? result.sourceServings ?? null,
       planning: own.planning?.conditionsConfirmed ? own.planning : planning || own.planning,
+      // 埋め込み再生を許可していない動画の印も引き継ぐ（YouTube で開く）。
+      ...(result.embeddable === false ? { embeddable: false } : {}),
       updatedAt: nowIso(),
     });
     showToast(`「${own.title}」の作り方をそろえました。${ticketNote(result)}`);

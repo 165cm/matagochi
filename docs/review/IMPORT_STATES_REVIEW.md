@@ -1,5 +1,17 @@
 # レビュー資料（Codex 向け）：動画の取り込みで止まった理由を分けて伝える（PR 3 の残り）
 
+## 再レビュー（Codex の指摘への対応、`c0f0978` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`） |
+|---|---|---|
+| [P2] 🎬 動画から読むで AI の上限になった時、サーバーは説明欄の結果を HTTP 200・`analysis.ok:false` で返すので、ふつうの「読み取れませんでした」になっていた | `readDraftFromVideo` の成功の答えの側でも `analysis` を見て、AI の上限・停止中なら `aiLimited` と理由の文。上限でない理由（レシピがない など）は、これまでどおりの文。献立から「動画で作り方をそろえる」でも、上限ならそう伝える | 「review fix (#105): reading from the video when the AI limit is reached answers 200…」 |
+| [P2] 献立から作り方をそろえる経路（`fillRecipeFromVideo`）で、埋め込み不可の印が保存されない | `fillRecipeFromVideo` で `embeddable:false` を引き継ぐ。ほかの経路も見直し、`discoverRecipe`（献立に URL を貼って入れる・初回設定の「読んでみる」）でも引き継ぐ。読み直し・作る画面からの下書きは `applyImportedRecipe` を通るので、もともと引き継ぐ | 「review fix (#105): every way a saved recipe is filled from a video keeps the 'not embeddable' mark」 |
+
+- 2件とも `c0f0978`（の修正前のコード）では失敗することを確認。`node --test test/*.test.cjs`：185件 成功。`npm test --prefix api`：125件 成功
+- 版：`APP_VERSION` `20261001-import2`・`CACHE_NAME` `ripigochi-v124`
+
+---
+
 指示書：`docs/PERSONALIZE_PLAN.md` §6（「削除・非公開・地域制限・埋め込み不可・解析失敗・不十分な材料を区別」「解析上限に達してもURL保存・保存済み動画の再生・手入力は可能」「人数不明は不明のまま」）。仕様：`docs/APP_MAP.md`（レシピ登録の「読み取りの2段階」の下に追記）。
 
 ## 1. 対象

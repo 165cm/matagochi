@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261001-import";
+const APP_VERSION = "20261001-import2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -3716,8 +3716,12 @@ async function readDraftFromVideo() {
     if (state.draft.videoUrl !== url) return;
     const info = state.draft.readInfo;
     applyImportedRecipe(result);
-    state.draft.readInfo = { desc: info?.desc || "none", video: result.analyzedFrom?.startsWith("video") && state.extractedSteps.length ? "done" : "fail" };
-    state.fetchStatus = result.analyzedFrom?.startsWith("video")
+    // サーバーは、動画の読み取りが AI の上限などで止まっても、説明欄の結果を 200 で返す（analysis.ok:false）。その時も理由を出す。
+    const reason = !result.analyzedFrom?.startsWith("video") && result.analysis?.ok === false ? importReason(result.analysis.code) : null;
+    state.draft.readInfo = { desc: info?.desc || "none", video: result.analyzedFrom?.startsWith("video") && state.extractedSteps.length ? "done" : "fail", ...(reason?.ai || info?.aiLimited ? { aiLimited: true } : {}) };
+    state.fetchStatus = reason?.ai
+      ? reason.text
+      : result.analyzedFrom?.startsWith("video")
       ? `${result.analyzedFrom === "video-clip" ? "動画の最初の10分から" : "動画の音声と画面から"}読み取りました。材料と作り方を確かめてください。${ticketNote(result)}`
       : "動画からも作り方を読み取れませんでした（チケットは戻しました）。動画を見ながら入力してください。";
     saveState();
