@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | 作業中 | `claude/optimistic-albattani-jg5211` | PR 2b：深掘りの質問（休日・一緒に食べる人）・最初の提案への反応・方針の見える化（あなたが言ったこと／記録から見えてきたこと／履歴） | `profile-talk.js`・`talk-ui.js`・`lifestyle.js`（`propose` の `preferenceOf` に日付）・`daily-ui.js`（`dailyPlan` の除外）・`app.js`（版・設定の行）・`styles.css`・`index.html`・`sw.js`・`test/profile-talk.test.cjs`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
