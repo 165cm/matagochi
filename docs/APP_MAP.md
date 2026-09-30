@@ -560,7 +560,11 @@ flowchart LR
 - 管理者（`Authorization: Bearer <RECIPE_ADMIN_TOKEN>`）：`GET /api/admin/creators`（確認待ち・確定・戻したの一覧。申し込みの回数と最後の日時つき）、`POST /api/admin/creators/:channelId/decide` `{ decision: "confirm" | "restore", note? }`
 - 申し込みの記録（`creators/requests/…`）には、状態・メッセージ・連絡先を残す。利用者が自分で保存したレシピには影響しない
 - 投稿者向けの説明では、再生回数・広告収益が「増える」「届く」と断定しない（反映は YouTube の仕組みによる）。アプリの中の数（保存・献立への採用・作った）は、YouTube の公式の再生数・登録者数とは別の数字として伝える
-- 持ち主の確認・参加申請・承認画面は §40。まだないもの：修正依頼、動画単位の停止
+- 持ち主の確認・参加申請・承認画面は §40
+- **修正依頼**（`POST /api/creators/corrections` `{ video, kind, message, contact?, hide? }`、投稿者ページの「レシピの内容の修正を依頼する」）：だれでも送れる。直してほしいところ（`kind`）は 分量・材料・作り方・何人分・出典の表示・その他。**持ち主としてログインしている人の依頼には「ご本人」の印**（`verified`。動画のチャンネルが合い鍵に入っている時だけ）。壊れた・期限切れの合い鍵は 401（だれでも扱いにしない）。依頼は `creators/corrections` に最大300件（対応の済んだ古いものから消す）
+- **動画単位で一覧から外す**（掲載停止の文書の `videos: { 動画ID: { at, by, channelId, correctionId } }`）：外した動画は、新着（集める・見せる）・みんなの定番・ほかの作り方から外す（`optedOut` の集まりに動画IDも入れる。チャンネルIDとは形が違うので混ざらない）。**持ち主は自分の動画を、依頼と一緒にその場で外せる**（「直るまで一覧から外す」）・**戻せる**（`POST /api/creators/me/:channelId/show` `{ videoId }`。運営が外したものも持ち主なら戻せる）。ログインしていない人の「外す」は無視（運営の確認を待つ）
+- 承認画面の「修正依頼」：一覧から外す／一覧に戻す／対応済み／見送り（`GET /api/admin/creators/corrections`・`POST /api/admin/creators/corrections/:id/decide` `{ decision: "hide" | "show" | "done" | "declined", note? }`）。対応済み・見送りにしても、外した動画は「戻す」まで外したまま。**レシピの中身を直す操作は、今までどおり共通レシピの修正（`/api/recipes/corrections` → `/api/admin/corrections/:id/review`）**
+- まだないもの：承認画面からレシピの中身を直接直す画面
 
 ## 39. 新着レシピ：集める処理と見せる枠を分ける（api/src/trends.js・popular.js・recipeCatalog.js）
 
@@ -589,4 +593,4 @@ flowchart LR
 - **参加申請**：同意は5つを別々に持つ（`aiExtract` AIで書き出す／`store` 保存する／`summary` 短くまとめる／`scale` 人数に合わせて換算する／`publicCatalog` みんなが見る一覧に載せる）。**申請しただけでは提携済みにしない**。承認した同意だけが使える（`consentsFor`）。承認ずみの人が同意を減らした申請を出すと、承認を待たずに減らした分はすぐ使えなくなる（増やした分は承認まで使えない）。見送った時は、前に承認した同意と、いまも同意している項目の両方がそろうものだけが残る（**投稿者が外した同意は、見送りで戻らない**。残るものがなければ「見送り」＝同意なし）。使える同意が、いま同意している項目を超えることはない。「参加をやめる」ですべて取り消し。投稿者の許可と YouTube の利用規約は別物として扱う
 - **承認画面**（`admin/creators.html`、検索に出さない）：管理用の合言葉（`RECIPE_ADMIN_TOKEN`）を入れると、参加申請（同意の項目・メッセージ・連絡先）と掲載停止の申し込み（確認待ち・停止中・戻した）を一覧で見て、承認／見送り、停止を確定／掲載に戻す、を押せる。合言葉はそのタブの中だけ（`sessionStorage`）。申請の文章は外から来るので、画面には文字としてだけ入れる（HTML として解釈しない）
 - 管理 API：`GET /api/admin/creators/applications`・`POST /api/admin/creators/applications/:channelId/decide` `{ decision: "approve" | "reject", note? }`（§38 の停止の管理と同じ合言葉）
-- **まだないもの**：同意を実際のカタログの公開に使うこと（PR 4）、修正依頼の窓口、投稿者向けの数字のレポート
+- **まだないもの**：同意を実際のカタログの公開に使うこと（PR 4）、投稿者向けの数字のレポート（修正依頼の窓口は §38）

@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | レビュー待ち | `claude/creator-corrections` | PR 3 の残り：投稿者の修正依頼の窓口・動画単位で一覧から外す（持ち主はその場で外す／戻す）・承認画面の修正依頼 | `api/src/creators.js`・`api/src/server.js`・`api/src/trends.js`・`api/src/popular.js`・`api/src/variants.js`・`creators.html`・`admin/creators.html`・`api/test/creatorVerify.test.js`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

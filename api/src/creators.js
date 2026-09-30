@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ApiError } from "./errors.js";
+import { extractYouTubeVideoId } from "./youtube.js";
 
 // 投稿者の方への窓口（掲載停止の申し込み）。
 // 申し込みをした人がチャンネルの持ち主かは、ここでは確かめられない。だから申し込みだけでは停止を「確定」しない：
@@ -10,7 +11,12 @@ import { ApiError } from "./errors.js";
 // 持ち主（YouTubeでログインして確かめた人：creatorAuth.js）は、自分のチャンネルだけ、その場で停止・再開・参加申請ができる。
 // 参加申請は、申請しただけでは提携済みにしない（管理者が承認画面 admin/creators.html で決める）。
 // 同意は、AIでの読み取り・保存・要約・人数の換算・一般公開を別々に持つ（YouTube の利用規約とは別の、投稿者の許可）。
+// 修正依頼（APP_MAP §38）：だれでも送れる。持ち主としてログインしている人の依頼には「ご本人」の印（verified）。
+// 動画単位で一覧から外せる（videos）：運営が承認画面で外す／戻す。持ち主は、自分の動画をその場で外せる。
 const KEY = "creators/optout";
+const CORRECTIONS = "creators/corrections";
+export const CORRECTION_KINDS = ["amount", "ingredient", "steps", "servings", "credit", "other"];
+const MAX_CORRECTIONS = 300;
 const APPS = "creators/applications";
 export const CONSENTS = ["aiExtract", "store", "summary", "scale", "publicCatalog"];
 const CHANNEL_RE = /^UC[\w-]{22}$/;
@@ -19,7 +25,7 @@ const both = (a, b) => Object.fromEntries(CONSENTS.map((k) => [k, !!a?.[k] && !!
 const clean = (s, n) => String(s || "").slice(0, n);
 function readDoc(entry) {
   const doc = entry?.envelope || {};
-  return { channels: { ...(doc.channels || {}) }, pending: { ...(doc.pending || {}) }, restored: { ...(doc.restored || {}) } };
+  return { channels: { ...(doc.channels || {}) }, pending: { ...(doc.pending || {}) }, restored: { ...(doc.restored || {}) }, videos: { ...(doc.videos || {}) } };
 }
 export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}) {
   const required = () => { if (!store) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
@@ -40,8 +46,8 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}
     if (!store) return new Set();
     if (cache && cache.until > now()) return cache.value;
     const doc = readDoc(await store.get(KEY));
-    // 確定した停止と、確認待ちの一時対応の両方を外す。
-    cache = { value: new Set([...Object.keys(doc.channels), ...Object.keys(doc.pending)]), until: now() + 5 * 60_000 };
+    // 確定した停止と、確認待ちの一時対応の両方を外す。動画単位で外したもの（動画ID・11文字）も同じ集まりに入れる（チャンネルIDは UC で始まる24文字なので混ざらない）。
+    cache = { value: new Set([...Object.keys(doc.channels), ...Object.keys(doc.pending), ...Object.keys(doc.videos)]), until: now() + 5 * 60_000 };
     return cache.value;
   }
   const readApps = (entry) => ({ ...(entry?.envelope || {}) });
@@ -51,8 +57,68 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}
   };
   // 同意のうち、いま使ってよいもの：承認した同意と、いまの申請の同意の両方がある項目だけ（取り消しはすぐ効く）。
   const effective = (app) => (app?.approvedConsents ? (app.status === "approved" ? consentsOf(app.approvedConsents) : both(app.approvedConsents, app.consents)) : consentsOf({}));
+  const readCorrections = (entry) => ({ items: { ...(entry?.envelope?.items || {}) } });
+  // 動画を一覧から外す／戻す（掲載停止の文書の videos）。
+  const setHidden = (videoId, value) => update((doc) => { if (value) doc.videos[videoId] = value; else delete doc.videos[videoId]; return true; });
   return {
     optedOut,
+    // 修正依頼（だれでも）。owned は、持ち主としてログインしている人のチャンネル（ログインしていなければ空）。
+    // hide：持ち主が自分の動画を、その場で一覧から外す（持ち主でなければ無視して、運営の確認を待つ）。
+    async correction({ video, kind, message = "", contact = "", hide = false } = {}, owned = []) {
+      required();
+      let videoId;
+      try { videoId = extractYouTubeVideoId(String(video || "").trim().slice(0, 300)); } catch { throw new ApiError(400, "video_required", "動画のURLを入れてください。"); }
+      if (!CORRECTION_KINDS.includes(kind)) throw new ApiError(400, "kind_required", "直してほしいところを選んでください。");
+      const text = clean(message, 1000).trim();
+      if (!text) throw new ApiError(400, "message_required", "直してほしい内容を書いてください。");
+      const found = await resolveChannel(`https://www.youtube.com/watch?v=${videoId}`).catch(() => null);
+      const channelId = CHANNEL_RE.test(String(found?.channelId || "")) ? found.channelId : "";
+      const verified = !!channelId && (owned || []).includes(channelId);
+      const at = iso(), id = `${at.slice(0, 10)}-${randomUUID().slice(0, 8)}`;
+      const hidden = verified && hide === true;
+      if (hidden) await setHidden(videoId, { at, by: "owner", channelId, correctionId: id });
+      await update((doc) => {
+        doc.items[id] = { videoId, channelId, channelTitle: clean(found?.title, 200), kind, message: text, contact: clean(contact, 200), verified, status: "open", at, ...(hidden ? { hiddenAt: at } : {}) };
+        // 古い順に、対応が済んだものから消して上限に収める。
+        const ids = Object.keys(doc.items).sort();
+        for (const old of ids) { if (Object.keys(doc.items).length <= MAX_CORRECTIONS) break; if (doc.items[old].status !== "open") delete doc.items[old]; }
+        return true;
+      }, CORRECTIONS, readCorrections);
+      return { id, videoId, channelId, verified, hidden, status: "open" };
+    },
+    // 持ち主：自分のチャンネルの動画を、一覧に戻す（運営が外したものも、持ち主なら戻せる）。
+    async ownerShow(channelId, owned, { videoId = "" } = {}) {
+      required();
+      mine(channelId, owned);
+      const doc = readDoc(await store.get(KEY));
+      const v = Object.prototype.hasOwnProperty.call(doc.videos, String(videoId)) ? doc.videos[String(videoId)] : null;
+      if (!v || v.channelId !== channelId) throw new ApiError(404, "video_not_hidden", "外している動画ではありません。");
+      await setHidden(String(videoId), null);
+      return { videoId, hidden: false };
+    },
+    // 管理者：修正依頼の一覧（新しい順）と、いま外している動画。
+    async corrections() {
+      required();
+      const { items } = readCorrections(await store.get(CORRECTIONS));
+      const doc = readDoc(await store.get(KEY));
+      return { items: Object.entries(items).map(([id, v]) => ({ id, ...v, hidden: !!doc.videos[v.videoId] })).sort((a, b) => b.at.localeCompare(a.at)), hiddenVideos: Object.entries(doc.videos).map(([videoId, v]) => ({ videoId, ...v })) };
+    },
+    // 管理者：hide＝その動画を一覧から外す、show＝戻す、done＝対応済み、declined＝見送り（外した動画は show するまで外したまま）。
+    async decideCorrection(id, { decision, note = "" } = {}) {
+      required();
+      if (!["hide", "show", "done", "declined"].includes(decision)) throw new ApiError(400, "invalid_decision", "判断（hide・show・done・declined）を送ってください。");
+      const { items } = readCorrections(await store.get(CORRECTIONS));
+      if (!Object.prototype.hasOwnProperty.call(items, String(id))) throw new ApiError(404, "correction_not_found", "この修正依頼はありません。");
+      const at = iso(), videoId = items[id].videoId;
+      if (decision === "hide") await setHidden(videoId, { at, by: "admin", channelId: items[id].channelId || "", correctionId: id });
+      if (decision === "show") await setHidden(videoId, null);
+      return update((doc) => {
+        const prev = doc.items[id];
+        if (!prev) throw new ApiError(404, "correction_not_found", "この修正依頼はありません。");
+        doc.items[id] = { ...prev, ...(decision === "done" || decision === "declined" ? { status: decision, decidedAt: at } : {}), ...(decision === "hide" ? { hiddenAt: at } : {}), ...(decision === "show" ? { shownAt: at } : {}), ...(note ? { note: clean(note, 500) } : {}) };
+        return { id, status: doc.items[id].status, hidden: decision === "hide" ? true : decision === "show" ? false : undefined };
+      }, CORRECTIONS, readCorrections);
+    },
     // 持ち主：自分のチャンネルの掲載・申請の状態。
     async mine(owned) {
       required();
@@ -61,7 +127,8 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}
       return { channels: owned.map((channelId) => {
         const listing = doc.channels[channelId] ? "stopped" : doc.pending[channelId] ? "pending" : "listed";
         const app = apps[channelId];
-        return { channelId, listing, application: app ? { status: app.status, consents: consentsOf(app.consents), effective: effective(app), at: app.at, ...(app.decidedAt ? { decidedAt: app.decidedAt } : {}) } : null };
+        const hidden = Object.entries(doc.videos).filter(([, v]) => v.channelId === channelId).map(([videoId, v]) => ({ videoId, at: v.at, by: v.by }));
+        return { channelId, listing, hidden, application: app ? { status: app.status, consents: consentsOf(app.consents), effective: effective(app), at: app.at, ...(app.decidedAt ? { decidedAt: app.decidedAt } : {}) } : null };
       }) };
     },
     // 持ち主：掲載を止める（持ち主なので確認待ちにせず、その場で確定）。

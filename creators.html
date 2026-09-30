@@ -18,7 +18,7 @@
   ul { margin: 0; padding-left: 1.2em; } li { margin: 4px 0; }
   .lead { color: var(--muted); margin: 0; }
   label { display: grid; gap: 4px; font-weight: 700; font-size: 14px; margin-top: 10px; }
-  input, textarea { font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; }
+  input, textarea, select { font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; }
   textarea { min-height: 90px; }
   button { margin-top: 14px; width: 100%; min-height: 48px; border: 0; border-radius: 999px; background: var(--tomato); color: #fff; font: inherit; font-weight: 800; font-size: 16px; cursor: pointer; }
   button:disabled { opacity: .6; }
@@ -77,6 +77,29 @@
     <p class="note">利用者の方がご自身で保存したレシピは、その方の端末の中のデータのため、この申し込みの対象外です（その場合も、出典とチャンネル登録ボタンは表示されます）。</p>
   </section>
 
+  <section id="fix" aria-labelledby="fix-h">
+    <h2 id="fix-h">レシピの内容の修正を依頼する</h2>
+    <p>リピごちに載っている材料・分量・作り方などが動画と違う場合は、動画のURLと直してほしいところをお知らせください。運営が確かめて直します。</p>
+    <p class="note">上で「YouTubeでログイン」していると、ご本人からの依頼として受け付けます。ご自身の動画は「直るまで一覧から外す」も選べます（その場で反映・いつでも戻せます）。</p>
+    <form id="correction">
+      <label>動画のURL<input id="fix-video" required placeholder="https://www.youtube.com/watch?v=..." autocomplete="off"></label>
+      <label>直してほしいところ<select id="fix-kind" required>
+        <option value="">選んでください</option>
+        <option value="amount">分量</option>
+        <option value="ingredient">材料</option>
+        <option value="steps">作り方</option>
+        <option value="servings">何人分か</option>
+        <option value="credit">出典・投稿者の表示</option>
+        <option value="other">その他</option>
+      </select></label>
+      <label>直してほしい内容<textarea id="fix-message" required maxlength="1000" placeholder="例：しょうゆは大さじ2ではなく大さじ1です"></textarea></label>
+      <label>ご連絡先（任意・返信が必要な場合）<input id="fix-contact" maxlength="200" placeholder="メールアドレスなど"></label>
+      <label class="check" id="fix-hide-row" hidden><input type="checkbox" id="fix-hide"><span>直るまで、この動画を「新着」「みんなの定番」から外す（ご本人の動画のときだけ）</span></label>
+      <button id="fix-send" type="submit">修正を依頼する</button>
+      <p id="fix-result" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
   <section>
     <h2>これから準備していること</h2>
     <ul>
@@ -92,6 +115,7 @@
     <h3 class="ch-name"></h3>
     <p class="state ch-listing"></p>
     <button type="button" class="quiet ch-toggle"></button>
+    <div class="ch-hidden"></div>
     <form class="ch-apply">
       <h4 style="margin:14px 0 0">リピごちへの参加の申請</h4>
       <p class="note ch-app-state"></p>
@@ -124,6 +148,28 @@
     } catch { result.textContent = "送れませんでした。通信環境を確かめてください。"; }
     finally { send.disabled = false; }
   });
+
+  // ---- 修正依頼（だれでも・ログインしていればご本人として）：APP_MAP §38 ----
+  document.getElementById("correction").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fixForm = event.currentTarget;
+    const out = document.getElementById("fix-result"), button = document.getElementById("fix-send");
+    button.disabled = true; out.textContent = "送っています…";
+    try {
+      const headers = { "Content-Type": "application/json", ...(creator?.token ? { Authorization: `Bearer ${creator.token}` } : {}) };
+      const body = { video: document.getElementById("fix-video").value, kind: document.getElementById("fix-kind").value, message: document.getElementById("fix-message").value, contact: document.getElementById("fix-contact").value, hide: !!creator && document.getElementById("fix-hide").checked };
+      const response = await fetch(`${API}/api/creators/corrections`, { method: "POST", headers, body: JSON.stringify(body) });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { creator = null; try { sessionStorage.removeItem("ripigochi-creator"); } catch {} showHideOption(); }
+      if (!response.ok) throw new Error(data.error?.message || "送れませんでした。時間をおいてお試しください。");
+      out.textContent = `修正のご依頼を受け付けました${data.verified ? "（ご本人として）" : ""}。運営が確かめて直します。${data.hidden ? "直るまで、この動画を一覧から外しました（10分ほどで反映）。" : ""}`;
+      fixForm.reset();
+      if (data.hidden) await refresh();
+    } catch (error) { out.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  // 「直るまで外す」は、ログインしている時だけ出す（ご本人の動画かはサーバーで確かめる）。
+  function showHideOption() { document.getElementById("fix-hide-row").hidden = !creator; }
 
   // ---- 投稿者ご本人（YouTubeでログイン）：APP_MAP §40 ----
   const CONSENT_LABELS = {
@@ -162,6 +208,15 @@
         const text = document.createElement("span"); text.textContent = label;
         row.append(box, text); fs.append(row);
       }
+      const hiddenBox = el.querySelector(".ch-hidden");
+      for (const v of c.hidden || []) {
+        const row = document.createElement("p"); row.className = "note";
+        const link = document.createElement("a"); link.href = `https://www.youtube.com/watch?v=${encodeURIComponent(v.videoId)}`; link.target = "_blank"; link.rel = "noopener"; link.textContent = `動画 ${v.videoId}`;
+        const show = document.createElement("button"); show.type = "button"; show.className = "quiet"; show.textContent = "一覧に戻す";
+        show.addEventListener("click", () => act(el, c.channelId, "show", { videoId: v.videoId }));
+        row.append(link, `：${v.by === "owner" ? "ご自身で" : "運営が"}一覧から外しています `, show);
+        hiddenBox.append(row);
+      }
       el.querySelector(".ch-app-state").textContent = c.application ? APP_STATE[c.application.status] || "" : "まだ申請していません。";
       const withdraw = el.querySelector(".ch-withdraw");
       withdraw.hidden = !c.application || c.application.status === "withdrawn";
@@ -179,10 +234,11 @@
     const out = el.querySelector(".ch-result");
     el.querySelectorAll("button").forEach((b) => (b.disabled = true));
     out.textContent = "送っています…";
-    try { await call(`/api/creators/me/${encodeURIComponent(channelId)}/${action}`, body); await refresh(); ownerStatus.textContent = { stop: "掲載を止めました（10分ほどで反映）。", resume: "掲載を再開しました（10分ほどで反映）。", apply: "参加の申請を受け付けました。", withdraw: "参加をやめました。同意はすべて取り消しました。" }[action]; }
+    try { await call(`/api/creators/me/${encodeURIComponent(channelId)}/${action}`, body); await refresh(); ownerStatus.textContent = { stop: "掲載を止めました（10分ほどで反映）。", resume: "掲載を再開しました（10分ほどで反映）。", apply: "参加の申請を受け付けました。", withdraw: "参加をやめました。同意はすべて取り消しました。", show: "動画を一覧に戻しました（10分ほどで反映）。" }[action]; }
     catch (error) { out.textContent = error.message; el.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
   }
   async function refresh() {
+    showHideOption();
     if (!creator) return;
     try { renderChannels((await call("/api/creators/me")).channels); }
     catch (error) { list.textContent = ""; ownerStatus.textContent = error.message; }
