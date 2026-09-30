@@ -316,3 +316,25 @@ test('the AI attempts for collecting have their own cap, counting failures, vide
   assert.equal(next.limited, 'trend_ai_budget');
   assert.equal(catalog.calls.length + catchCalls, next.ai.week, 'catch writing counts too');
 });
+
+test('review fix (#104): a candidate hidden after it was collected is skipped before any AI read and does not take a slot', async () => {
+  let now = Date.parse('2026-09-28T01:00:00Z');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  let hidden = new Set();
+  const make = () => createTrendBook(store, { catalog, now: () => now, perDay: 2, aiPerDay: 99, aiPerWeek: 99, weekMax: 10, optedOut: async () => hidden,
+    search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
+  assert.equal((await make().step()).items, 2);
+  const read = catalog.calls.map(([id]) => id);
+  const left = ids.filter((id) => !read.includes(id));
+  // 残っている候補のうち、1本は動画単位で、1本はチャンネルごと外す
+  hidden = new Set([left[0], `ch${ids.indexOf(left[1])}`]);
+  now += 86_400_000;
+  const before = catalog.calls.length;
+  const out = await make().step();
+  const readNow = catalog.calls.slice(before).map(([id]) => id);
+  assert.equal(readNow.includes(left[0]), false, 'the hidden video is not read');
+  assert.equal(readNow.includes(left[1]), false, 'a video of the stopped channel is not read');
+  assert.equal(out.items, 4, 'the day still collects its two from the rest');
+  assert.equal(readNow.length, 2);
+});

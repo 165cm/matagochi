@@ -226,8 +226,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           }
           const videoId = current.candidates[current.tried.length];
           current.tried.push(videoId);
+          // 候補に入った後で外された動画・チャンネル（掲載停止・確認待ち・動画単位）は、読まずに飛ばす（AI も採用の枠も使わない）。
+          if (excluded.has(videoId) || excluded.has(current.channelOf[videoId])) { skip("opted_out"); continue; }
           try {
             const r = await analyze(videoId, { allow: canSpend, used: spend });
+            // 読んでみて分かったチャンネルが外されていたら、採用しない。
+            if (r?.channelId && excluded.has(r.channelId)) { skip("opted_out"); continue; }
             learn(videoId, isDinnerRecipe(r), r.channelTitle);
             if (isDinnerRecipe(r)) { current.items.push({ videoId, day: today }); current.byDay[today] = (current.byDay[today] || 0) + 1; }
             else skip(NOT_DINNER.test(r.title || "") ? "not_dinner" : !(r.steps || []).length ? "no_steps" : "too_short");
