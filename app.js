@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20260930-share";
+const APP_VERSION = "20260930-share2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -620,7 +620,8 @@ function mergeSyncPayloads(local, remote) {
     folders: Lifestyle.mergeMap(local.folders, remote.folders),
     starterPref: (remote.starterPref?.updatedAt || "") > (local.starterPref?.updatedAt || "") ? remote.starterPref : local.starterPref,
     // 人ごとに新しいほう（止めた時も { on:false } を新しい日時で書くので、止めたことが相手の端末に届く）。
-    sharedPolicies: typeof ProfileTalk === "undefined" ? local.sharedPolicies || {} : Lifestyle.mergeMap(ProfileTalk.normalizeShared(local.sharedPolicies), ProfileTalk.normalizeShared(remote.sharedPolicies))
+    // ほかの端末が書いた分は、サーバーから消えていたら送り返さない（古い版の書き戻しのあと、古い「見せる」が戻らないように）。
+    sharedPolicies: typeof ProfileTalk === "undefined" ? local.sharedPolicies || {} : ProfileTalk.mergeShared(local.sharedPolicies, remote.sharedPolicies, typeof deviceKey === "function" ? deviceKey() : "")
   };
 }
 

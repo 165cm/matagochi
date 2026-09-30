@@ -45,10 +45,16 @@ export async function putSyncRoom(store, roomId, body) {
   if (baseRevision !== currentRevision) {
     throw new ApiError(409, "sync_conflict", "他の端末が先に保存しました。もう一度同期してください。");
   }
+  // 古い版のアプリは、知らない項目（家族に見せる方針 sharedPolicies）を書き戻す時に落とす。
+  // 項目ごとない時だけ、いまの値を引き継ぐ（新しい版は空でも必ず送るので、新しい版の変更はそのまま入る）。
+  const previous = current?.envelope?.data;
+  const kept = !Object.hasOwn(data, "sharedPolicies") && previous && typeof previous === "object" && Object.hasOwn(previous, "sharedPolicies")
+    ? { ...data, sharedPolicies: previous.sharedPolicies }
+    : data;
   const envelope = {
     revision: randomUUID(),
     updatedAt: new Date().toISOString(),
-    data
+    data: kept
   };
   const result = await store.put(roomId, envelope, { ifGeneration: current ? current.generation : 0 });
   if (!result) {

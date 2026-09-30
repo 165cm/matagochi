@@ -533,6 +533,7 @@ test("PR 2c: '見せる' writes the confirmed policy to the synced sharedPolicie
     let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", text: "平日は疲れてる", at: "2026-09-01T00:00:00Z" });
     p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
     state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" });
+    deviceKey = () => "dev-A";
     let synced = 0; saveState = (o = {}) => { if (o.scheduleSync !== false) synced++; }; globalThis.syncCount = () => synced;
     handleDailyAction("life-talk-view",{});`);
   let html = run("renderTalk()");
@@ -542,6 +543,7 @@ test("PR 2c: '見せる' writes the confirmed policy to the synced sharedPolicie
   assert.equal(run("syncCount()"), 0);
   run(`handleDailyAction("life-talk-share",{family:"1"})`);
   assert.deepEqual(JSON.parse(run("JSON.stringify(state.sharedPolicies['わたし'])")).items, ["life-quick"]);
+  assert.equal(run("state.sharedPolicies['わたし'].by"), "dev-A", "written by this device");
   assert.equal(run("syncCount()"), 1, "a change is synced");
   const payload = run("JSON.stringify(buildSyncPayload())");
   assert.ok(payload.includes("life-quick"));
@@ -615,4 +617,47 @@ test("PR 2c: the dinner type can be answered from the policy screen (optional), 
   assert.equal(run("state.tasteProfile.session.stage"), "view");
   assert.deepEqual(JSON.parse(run("JSON.stringify(state.foodProfile.chains)")), ["ichiran"]);
   assert.equal(T.normalize({ session: { member: "a", stage: "type", typeStep: 9 } }).session.typeStep, undefined);
+});
+
+test("review fix (PR 2c): after an old app drops sharedPolicies, another device never re-publishes a stale '見せる' over the person's '見せない'", () => {
+  // A（本人）・B（家族・新しい版）・C（古い版）が同じ部屋。サーバーの中身を server で持つ。
+  const device = (id, me) => { const run = app(); run(`state.family=["わたし","はなこ"]; state.me=${JSON.stringify(me)}; deviceKey = () => ${JSON.stringify(id)}; saveState=()=>{};`); return run; };
+  const A = device("dev-A", "わたし"), B = device("dev-B", "はなこ");
+  let server = null;
+  const sync = (run) => { const merged = server ? JSON.parse(run(`JSON.stringify(mergeSyncPayloads(buildSyncPayload(), ${JSON.stringify(server)}))`)) : JSON.parse(run("JSON.stringify(buildSyncPayload())")); run(`applySyncPayload(${JSON.stringify(merged)})`); server = JSON.parse(run("JSON.stringify(buildSyncPayload())")); };
+  // 古い版の書き戻し：知らない項目（sharedPolicies）をまるごと落とす
+  const oldApp = () => { const { sharedPolicies, ...rest } = server; server = rest; };
+  A(`let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" });
+    handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"});`);
+  sync(A); sync(B);
+  assert.equal(B("state.sharedPolicies['わたし'].on"), true, "B sees A's policy");
+  // B はオフライン。A が止めて同期 → 古い版の C が書き戻す → B が同期
+  A(`handleDailyAction("life-talk-share",{family:"0"})`);
+  sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false);
+  oldApp();
+  sync(B);
+  assert.equal(server.sharedPolicies?.わたし, undefined, "B does not send A's stale '見せる' back");
+  assert.equal(B("state.sharedPolicies['わたし']"), undefined, "and stops using it itself");
+  assert.equal(B("dailyPlan().map((d) => d.candidate?.reasons || []).flat().some((r) => r.includes('わたし：'))"), false);
+  // A が次に同期すると、止めた記録が戻る（A は自分の分を持ち続ける）
+  sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false);
+  sync(B);
+  assert.equal(B("state.sharedPolicies['わたし'].on"), false);
+  // 見せている時に古い版が落としても、本人の端末が戻す（止めた人以外の分は、一時的に見えなくなるだけ）
+  A(`handleDailyAction("life-talk-share",{family:"1"})`);
+  sync(A); oldApp(); sync(B);
+  assert.equal(B("state.sharedPolicies['わたし']"), undefined);
+  sync(A); sync(B);
+  assert.equal(B("state.sharedPolicies['わたし'].on"), true);
+  // 端末の番号がない（保存できない）時も、止められる
+  const C = device("", "わたし");
+  C(`let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" });
+    handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"}); handleDailyAction("life-talk-share",{family:"0"});`);
+  assert.equal(C("state.sharedPolicies['わたし'].on"), false);
 });

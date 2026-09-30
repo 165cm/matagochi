@@ -220,15 +220,16 @@ function renderTalkFamily(member) {
   return `<h3 class="quick-sub">👨‍👩‍👧 家族が見せている方針</h3>${others.map(([who, ids]) => `<p class="small"><b>${escapeHtml(who)}</b></p><ul class="talk-locked">${ids.map((id) => `<li>${escapeHtml(ProfileTalk.LEANS[id].label)}</li>`).join("")}</ul>`).join("")}<p class="muted small">献立にも使います（${escapeHtml(others.map(([who]) => who).join("・"))}さんが「見せる」にしたもの）。変えられるのは本人だけです</p>`;
 }
 // 「家族に見せる」を選んでいる時は、いまの ✓ を sharedPolicies に書く。止めた時は { on:false } を書いて、家族の端末からも消す。
-// 変わった時だけ true（同期する）。一度も見せていない人は何も書かない。
+// 変わった時だけ true（同期する）。この端末で一度も見せていない人は何も書かない（同じ名前のほかの端末が見せている分を止めない）。
+// by にこの端末の番号を残す（同期の組み合わせで、自分の分だけを持ち続けるため。ProfileTalk.mergeShared）。
 function publishTalkPolicy() {
-  const p = talkProfile(), who = talkWho();
+  const p = talkProfile(), who = talkWho(), by = typeof deviceKey === "function" ? deviceKey() : "";
   const on = ProfileTalk.shareOf(p, who).family;
   const cur = (state.sharedPolicies || {})[who];
-  if (!cur && !on) return false;
+  if (!on && (!cur || (cur.by || "") !== by)) return false;
   const items = on ? ProfileTalk.familyItems(p, who) : [];
-  if (cur && cur.on === on && JSON.stringify(cur.items) === JSON.stringify(items)) return false;
-  state.sharedPolicies = { ...(state.sharedPolicies || {}), [who]: { on, items, updatedAt: nowIso() } };
+  if (cur && (cur.by || "") === by && cur.on === on && JSON.stringify(cur.items) === JSON.stringify(items)) return false;
+  state.sharedPolicies = { ...(state.sharedPolicies || {}), [who]: { on, items, updatedAt: nowIso(), ...(by ? { by } : {}) } };
   return true;
 }
 // ---- 晩ごはんタイプ（任意・おまけ）：方針の画面から4問。献立の決め方には使わない ----

@@ -258,13 +258,27 @@
   }
   // 家族に見せるもの：その人が ✓ にした解釈のIDだけ（答え・ひとこと・推測・「違う」は入れない）。
   const familyItems = (p, member) => interpret(p, member).filter((x) => x.status === "confirmed" && isLean(x.id)).map((x) => x.id).slice(0, 30);
-  // 家族の端末から届いた方針（同期の sharedPolicies）。{ 名前: { on, items:[解釈ID], updatedAt } }。一覧にないIDは捨てる。
+  // 家族の端末から届いた方針（同期の sharedPolicies）。{ 名前: { on, items:[解釈ID], updatedAt, by } }。一覧にないIDは捨てる。
+  // by は書いた端末の番号（ランダム。同期の組み合わせ mergeShared で、自分の端末が書いた分かを見分ける）。
   function normalizeShared(raw) {
     const out = {};
     for (const [m, v] of Object.entries(raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {})) {
       if (!v || typeof v !== "object" || !str(m, 20) || Object.keys(out).length >= 12) continue;
       const on = v.on === true;
-      out[str(m, 20)] = { on, items: on && Array.isArray(v.items) ? [...new Set(v.items.filter(isLean))].slice(0, 30) : [], updatedAt: iso(v.updatedAt) };
+      const by = typeof v.by === "string" && /^[\w-]{1,60}$/.test(v.by) ? v.by : "";
+      out[str(m, 20)] = { on, items: on && Array.isArray(v.items) ? [...new Set(v.items.filter(isLean))].slice(0, 30) : [], updatedAt: iso(v.updatedAt), ...(by ? { by } : {}) };
+    }
+    return out;
+  }
+  // 同期の組み合わせ（local＝この端末、remote＝サーバー）。人ごとに新しいほう。
+  // ただし、この端末が書いていない分がサーバーにない時は、送り返さない。古い版のアプリは書き戻す時に sharedPolicies をまるごと落とすので、
+  // ほかの端末に残っていた古い「見せる」を送り返すと、本人が止めた記録（on:false）を上書きしてしまう。本人の端末は自分の分を持ち続け、次の同期で戻す。
+  function mergeShared(local, remote, device = "") {
+    const l = normalizeShared(local), r = normalizeShared(remote), out = {};
+    for (const m of new Set([...Object.keys(l), ...Object.keys(r)])) {
+      const a = l[m], b = r[m];
+      if (a && !b && !(device && a.by === device)) continue;
+      out[m] = !a ? b : !b ? a : b.updatedAt > a.updatedAt || (b.updatedAt === a.updatedAt && JSON.stringify(b) > JSON.stringify(a)) ? b : a;
     }
     return out;
   }
@@ -311,7 +325,7 @@
       return { items: rules, fallback: true, error: error?.message === "timeout" ? "timeout" : "network" };
     } finally { clearTimeout(timer); }
   }
-  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, shareOf, setShare, familyItems, normalizeShared, othersFrom, aiPayload, fromAi, interpretWithAi };
+  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, shareOf, setShare, familyItems, normalizeShared, mergeShared, othersFrom, aiPayload, fromAi, interpretWithAi };
   root.ProfileTalk = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
