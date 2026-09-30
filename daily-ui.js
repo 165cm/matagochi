@@ -329,8 +329,8 @@ function dailyPlan({ exclude = [] } = {}) {
     // 1回の買い物で作る日。日持ちしない食材の料理を、買い物のすぐあとに回すのに使う。
     rounds: rhythmOn() ? currentBlocks().map((b) => b.dates) : null,
     pins: folderPins(),
-    // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みだけを加点に使う。
-    preferenceOf: state.tasteProfile ? ProfileTalk.leaner(state.tasteProfile, me()) : undefined,
+    // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みと、家族が「見せる」にした好み（✓ だけ）を加点に使う。
+    preferenceOf: state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : undefined,
   });
 }
 // ----- 最近のごはんカレンダー（日曜はじまり、今週を含む3週・今日まで写真、先は予定） -----
