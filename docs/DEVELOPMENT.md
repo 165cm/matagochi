@@ -30,7 +30,7 @@ git worktree add ../matagochi-codex  -b codex/<タスク名>  origin/main
 ## テスト
 
 ```
-node --test test/*.cjs                 # アプリ（vanilla JS）。今は 213件
+node --test test/*.cjs                 # アプリ（vanilla JS）。今は 219件
 cd api && node --test                  # API（Node）。今は 141件
 ```
 

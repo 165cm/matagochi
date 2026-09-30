@@ -179,7 +179,8 @@ function renderTalkView() {
   const guess = items.filter((x) => !x.locked && x.status === "guess");
   const hist = ProfileTalk.history(p, s.member);
   const labelOf = (id) => ProfileTalk.LEANS[id]?.short?.replace(/^💬\s*/, "") || id;
-  const REASON = { first: "はじめて保存", edit: "見直して保存", reaction: "「変えるなら？」から" };
+  const REASON = { first: "はじめて保存", edit: "見直して保存", reaction: "「変えるなら？」から", evidence: "記録から" };
+  const ev = talkEvidence();
   const rec = talkRecords();
   return `<section class="hero-card talk-card" data-stage="view" aria-labelledby="talk-h">
     ${talkHeader()}
@@ -188,14 +189,15 @@ function renderTalkView() {
     <h3 class="quick-sub">💬 あなたが言ったこと</h3>
     ${answers.length ? `<ul class="talk-said">${answers.map((q) => `<li><span>${escapeHtml(q.ask(a))}</span><b>${escapeHtml(talkAnswerLabel(q, a[q.id], a))}</b>${p.answers.find((x) => x.member === s.member && x.q === q.id)?.text ? `<small>「${escapeHtml(p.answers.find((x) => x.member === s.member && x.q === q.id).text)}」</small>` : ""}</li>`).join("")}</ul>` : `<p class="muted small">まだありません</p>`}
     <h3 class="quick-sub">✓ 献立に使っていること</h3>
-    ${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}${x.source === "reaction" ? " <small>（変えるなら？）</small>" : ""}</li>`).join("")}</ul>` : `<p class="muted small">まだありません</p>`}
+    ${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}${x.source === "reaction" ? " <small>（変えるなら？）</small>" : x.source === "records" ? " <small>（記録から）</small>" : ""}</li>`).join("")}</ul>` : `<p class="muted small">まだありません</p>`}
     ${guess.length ? `<p class="small">🧪 まだ確かめていない案が ${guess.length}件 ${dailyButton("life-talk-open-check", "確かめる")}</p>` : ""}
     ${off.length ? `<details class="talk-answers"><summary>✕ 使わないこと（${off.length}）</summary><ul class="talk-locked">${off.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul></details>` : ""}
     ${renderTalkShare(p, s.member, sure.length)}
     ${renderTalkFamily(s.member)}
     <h3 class="quick-sub">📈 記録から見えてきたこと ${tip("「また食べたい」の評価から。あなたが言ったことと分けて出します")}</h3>
     ${rec.html}
-    ${hist.length ? `<h3 class="quick-sub">🕘 方針の履歴</h3><ol class="talk-history">${hist.slice(0, 6).map((h) => `<li><b>版${h.v}</b> <span>${escapeHtml(formatDate(String(h.at).slice(0, 10)))}・${REASON[h.reason] || ""}</span>${h.added.length || h.removed.length ? `<small>${h.added.map((id) => `＋${escapeHtml(labelOf(id))}`).join(" ")} ${h.removed.map((id) => `−${escapeHtml(labelOf(id))}`).join(" ")}</small>` : `<small>✓ ${h.count}件</small>`}</li>`).join("")}</ol>` : ""}
+    ${renderTalkEvidence(ev)}
+    ${hist.length ? `<h3 class="quick-sub">🕘 方針の履歴</h3><ol class="talk-history">${hist.slice(0, 6).map((h) => `<li><b>版${h.v}</b> <span>${escapeHtml(formatDate(String(h.at).slice(0, 10)))}・${REASON[h.reason] || ""}</span>${h.note ? `<small>${escapeHtml(h.note)}</small>` : ""}${h.added.length || h.removed.length ? `<small>${h.added.map((id) => `＋${escapeHtml(labelOf(id))}`).join(" ")} ${h.removed.map((id) => `−${escapeHtml(labelOf(id))}`).join(" ")}</small>` : `<small>✓ ${h.count}件</small>`}</li>`).join("")}</ol>` : ""}
     ${renderTalkTypeRow()}
     <div class="wizard-footer">${ProfileTalk.nextQuestion(p, s.member) ? dailyButton("life-talk-ask", "💬 質問に答える") : "<span></span>"}${dailyButton("life-talk-open-check", "✎ 直す", "", true)}</div>
     <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">閉じる</button></div>
@@ -285,6 +287,37 @@ function talkRecords() {
   const span = days.length ? `${formatDate(days[0])}〜${formatDate(days[days.length - 1])}・評価${rated.length}件` : "";
   return { html: items.length ? `<ul class="talk-locked">${items.map((x) => `<li>${escapeHtml(x.text)}</li>`).join("")}</ul><p class="muted small">${escapeHtml(span)}</p>` : `<p class="muted small">まだはっきりした傾向はありません（${escapeHtml(span)}）</p>` };
 }
+// ---- 記録からの提案（PR 6b・docs/PERSONALIZE_PLAN.md §10）：方針と最近の評価の差を、根拠（品数と料理名）つきで聞く ----
+// 家族の画面を見ているだけの人には出さない。決めるのは本人（「増やす」「見直す」／「いまはいい」「このまま」）。
+function talkEvidence(limit = 2) {
+  if (typeof isViewer === "function" && isViewer()) return [];
+  const recipeOf = (id) => recipeById(id) || Lifestyle.curated.find((c) => c.id === id) || null;
+  return ProfileTalk.evidence(talkProfile(), talkWho(), { evaluations: state.evaluations || [], recipeOf, today: today(), limit });
+}
+function renderTalkEvidence(list) {
+  return list.map((x) => `<div class="evidence-card" role="group" aria-label="記録からの提案"><p class="small">${x.icon} ${escapeHtml(x.note)}${x.names.length ? ` <small>（${x.names.map((n) => escapeHtml(n)).join("・")}）</small>` : ""}</p><p class="evidence-ask"><b>${escapeHtml(x.ask)}</b></p><div class="evidence-actions">${dailyButton("life-talk-evidence", x.kind === "add" ? "増やす" : "見直す（使わない）", `data-id="${escapeAttr(x.id)}" data-kind="${x.kind}" data-answer="yes"`, true)}<button type="button" class="text-button" data-action="life-talk-evidence" data-id="${escapeAttr(x.id)}" data-kind="${x.kind}" data-answer="no">${x.kind === "add" ? "いまはいい" : "このまま"}</button></div></div>`).join("");
+}
+// ふりかえり（今月）に1件だけ。
+function renderReflectEvidence() {
+  const ev = talkEvidence(1);
+  return ev.length ? `<section class="insight-card evidence-reflect"><h3>💬 方針に入れる？ ${tip("「また食べたい」の記録と、わが家のごはん方針を比べました。決めるのはあなたです")}</h3>${renderTalkEvidence(ev)}</section>` : "";
+}
+function talkEvidenceAnswer(data) {
+  // 画面の値は信じず、いまの記録から作り直した提案の中から選ぶ（古い画面・書きかえられたボタンで方針を変えない）。
+  const item = talkEvidence(10).find((x) => x.id === data.id && x.kind === data.kind);
+  if (!item) { render(); return true; }
+  const who = talkWho(), at = nowIso();
+  if (data.answer === "yes") {
+    talkSet(ProfileTalk.adoptEvidence(talkProfile(), { member: who, item, at, foodProfile: dailyProfile() }));
+    trackDaily("talk_fixed");
+    const v = talkProfile().snapshots.filter((x) => x.member === who).pop()?.v;
+    showToast(item.kind === "add" ? `方針に入れました（版${v}）。次の献立の候補から使います` : `方針から外しました（版${v}）`);
+  } else talkSet(ProfileTalk.skipEvidence(talkProfile(), { member: who, item, at }));
+  const shared = publishTalkPolicy();
+  saveState({ scheduleSync: shared });
+  render();
+  return true;
+}
 // 答えたあと：その答えから生まれた、まだ決めていない推測があれば聞き返す。なければ次の質問。
 function talkAfterAnswer(qid) {
   const p = talkProfile(), s = talkSession();
@@ -303,6 +336,7 @@ function handleTalkAction(action, data) {
     return true;
   }
   if (!action.startsWith("life-talk")) return false;
+  if (action === "life-talk-evidence") return talkEvidenceAnswer(data);
   if (action === "life-talk-open") { talkEcho = ""; openTalk(); }
   else if (action === "life-talk-view") { talkEcho = ""; talkTypeDraft = null; openTalk("view"); }
   // 案内を閉じるだけ。会話（session）は作らない（作ると「続きから」に変わって残ってしまう）。
@@ -421,7 +455,7 @@ function handleTalkAction(action, data) {
     if (action === "life-talk-reset") {
       if (globalThis.confirm && !globalThis.confirm("この端末の答えと方針を消します。献立・記録・設定はそのままです。")) return true;
       const p = talkProfile();
-      state.tasteProfile = { ...p, answers: p.answers.filter((x) => x.member !== s.member), decisions: Object.fromEntries(Object.entries(p.decisions).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), drafts: Object.fromEntries(Object.entries(p.drafts || {}).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), snapshots: p.snapshots.filter((x) => x.member !== s.member), share: Object.fromEntries(Object.entries(p.share || {}).filter(([m]) => m !== s.member)), session: null, updatedAt: at };
+      state.tasteProfile = { ...p, answers: p.answers.filter((x) => x.member !== s.member), decisions: Object.fromEntries(Object.entries(p.decisions).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), drafts: Object.fromEntries(Object.entries(p.drafts || {}).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), snapshots: p.snapshots.filter((x) => x.member !== s.member), share: Object.fromEntries(Object.entries(p.share || {}).filter(([m]) => m !== s.member)), evidence: Object.fromEntries(Object.entries(p.evidence || {}).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), session: null, updatedAt: at };
       if (!talkInFunnel()) state.view = "today";
     }
   }

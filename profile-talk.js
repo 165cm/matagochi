@@ -70,13 +70,30 @@
     "life-shop": { kind: "life", label: "🛒 買い物が大変 → 買う回数と品数を減らしたい" },
   };
   const LEAN_SCORE = 6, LEAN_MAX = 12;
+  // 本人が決めた道（答えから生まれたものでなくても残る）：react＝「変えるなら？」、evidence＝記録からの提案。
+  const VIAS = ["react", "evidence"];
+  const MAX_NOTE = 80;
+  // ---- 記録からの提案（PR 6b・docs/PERSONALIZE_PLAN.md §10）----
+  // 方針（本人が確かめた ✓）と、その人の最近の評価（料理ごとに、その人のいちばん新しい評価）を比べる。
+  // テーマの料理が3品以上あって、2品以上・6割以上が「また食べたい」なのに方針にない → 「〜を増やしますか？」（add）。
+  // 方針に ✓ があるのに、テーマの料理3品以上で「また食べたい」が0品・2品以上が「月1回／しばらくいい／もう作らない」→ 「見直しますか？」（drop）。
+  // 好みの良し悪しは言わない。数と料理名（根拠）だけを見せて、決めるのは本人。
+  const THEMES = [
+    { id: "fish", icon: "🐟", noun: "魚料理", lean: "fish-easy", more: "片付けがラクな蒸し・レンジの魚料理を増やしますか？", match: (r) => fish(r) },
+    { id: "light", icon: "🍋", noun: "さっぱりした料理", lean: "taste-light", more: "さっぱりした料理を増やしますか？", match: (r) => tagSet(r).has("light") },
+    { id: "spicy", icon: "🌶", noun: "ピリ辛の料理", lean: "taste-spicy", more: "ピリ辛の料理を増やしますか？", match: (r) => tagSet(r).has("spicy") },
+    { id: "rich", icon: "🧈", noun: "こってりした料理", lean: "taste-rich", more: "こってりした料理を増やしますか？", match: (r) => tagSet(r).has("rich") },
+    { id: "sweet", icon: "🍯", noun: "甘辛い料理", lean: "taste-sweet", more: "甘辛い料理を増やしますか？", match: (r) => LEANS["taste-sweet"].match(r) },
+    { id: "quick", icon: "⚡", noun: "15分以内でできる料理", lean: "life-quick", more: "早くできる料理を増やしますか？", match: (r) => LEANS["life-quick"].match(r) },
+    { id: "few", icon: "🧺", noun: "材料が少ない料理", lean: "life-few", more: "材料が少ない料理を増やしますか？", match: (r) => LEANS["life-few"].match(r) },
+  ];
   const isLean = (id) => own(LEANS, id);
   const isQuestion = (id) => own(QUESTION, id);
 
   const str = (v, n = 40) => (typeof v === "string" ? v.slice(0, n) : "");
   const iso = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(v) ? v : "");
   function empty() {
-    return { v: VERSION, answers: [], decisions: {}, drafts: {}, snapshots: [], session: null, share: {}, updatedAt: "" };
+    return { v: VERSION, answers: [], decisions: {}, drafts: {}, snapshots: [], session: null, share: {}, evidence: {}, updatedAt: "" };
   }
   function validValue(q, value) {
     if (value === IDK || value === LATER) return true;
@@ -102,12 +119,12 @@
     for (const [k, d] of Object.entries(raw.decisions && typeof raw.decisions === "object" ? raw.decisions : {})) {
       const [member, id] = k.split("\u0000");
       if (!isLean(id) || !d || !["confirmed", "rejected"].includes(d.status)) continue;
-      out.decisions[`${str(member, 20)}\u0000${id}`] = { status: d.status, at: iso(d.at), ...(d.via === "react" ? { via: "react" } : {}) };
+      out.decisions[`${str(member, 20)}\u0000${id}`] = { status: d.status, at: iso(d.at), ...(VIAS.includes(d.via) ? { via: d.via } : {}) };
     }
     out.snapshots = (Array.isArray(raw.snapshots) ? raw.snapshots : [])
       .filter((s) => s && Number.isInteger(s.v) && s.v > 0 && Array.isArray(s.items))
       .slice(-MAX_SNAPSHOTS)
-      .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit", "reaction"].includes(s.reason) ? s.reason : "edit", items: s.items.filter((x) => x && isLean(x.id)).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
+      .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit", "reaction", "evidence"].includes(s.reason) ? s.reason : "edit", ...(s.reason === "evidence" && str(s.note, MAX_NOTE) ? { note: str(s.note, MAX_NOTE) } : {}), items: s.items.filter((x) => x && isLean(x.id)).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
     const s = raw.session;
     if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest", "view", "type"].includes(s.stage) ? s.stage : "ask", ...(s.stage === "type" && Number.isInteger(s.typeStep) && s.typeStep >= 0 && s.typeStep <= 4 ? { typeStep: s.typeStep } : {}), confirmId: isLean(s.confirmId) ? s.confirmId : "", q: isQuestion(s.q) ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
     // 答える前に書きかけたひとこと（人・質問ごと）。会話（session）の外に置くので、方針を保存して会話が終わっても残る。
@@ -128,6 +145,12 @@
     for (const [m, v] of Object.entries(raw.share && typeof raw.share === "object" ? raw.share : {})) {
       if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(out.share).length >= 12) continue;
       out.share[str(m, 20)] = { family: v.family === true, ai: v.ai === true, at: iso(v.at) };
+    }
+    // 記録からの提案に「いまはいい」と答えたもの（人・テーマ・向きごと。その時の品数 n。記録が増えたらまた聞く）。
+    for (const [k, v] of Object.entries(raw.evidence && typeof raw.evidence === "object" ? raw.evidence : {})) {
+      const [member, id, kind] = k.split("\u0000");
+      if (!own(THEME, id) || !["add", "drop"].includes(kind) || !v || !Number.isInteger(v.n) || Object.keys(out.evidence).length >= 60) continue;
+      out.evidence[`${str(member, 20)}\u0000${id}\u0000${kind}`] = { n: Math.max(0, Math.min(999, v.n)), at: iso(v.at) };
     }
     out.updatedAt = iso(raw.updatedAt);
     return out;
@@ -174,11 +197,11 @@
     // 「変えるなら？」で本人が決めたもの（答えから生まれたものではないので、答えを直しても消えない）。
     for (const [k, d] of Object.entries(p.decisions)) {
       const [who, id] = k.split("\u0000");
-      if (who === member && d.via === "react" && isLean(id)) add(id, []);
+      if (who === member && VIAS.includes(d.via) && isLean(id)) add(id, []);
     }
     const items = ids.map(({ id, from }) => {
       const d = p.decisions[`${member}\u0000${id}`];
-      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || "guess", source: d?.via === "react" ? "reaction" : "rules" };
+      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || "guess", source: d?.via === "react" ? "reaction" : d?.via === "evidence" ? "records" : "rules" };
     });
     // 食べられないもの・苦手は、設定（foodProfile）のまま。ここで変えない。アレルギーと苦手は分けて見せる。
     const fp = foodProfile || {};
@@ -203,15 +226,15 @@
     const decisions = { ...p.decisions };
     const prevVia = decisions[`${member}\u0000${id}`]?.via;
     if (status === "guess") delete decisions[`${member}\u0000${id}`];
-    else if (["confirmed", "rejected"].includes(status)) decisions[`${member}\u0000${id}`] = { status, at, ...(via === "react" || prevVia === "react" ? { via: "react" } : {}) };
+    else if (["confirmed", "rejected"].includes(status)) { const v = VIAS.includes(via) ? via : VIAS.includes(prevVia) ? prevVia : ""; decisions[`${member}\u0000${id}`] = { status, at, ...(v ? { via: v } : {}) }; }
     return { ...p, decisions, updatedAt: at };
   }
   // 本人が「この方針で保存」を押した時の版。当時の内容と理由を残す（変化を見る時に使う：PR 6）。
-  function snapshot(p, { member, at, foodProfile, reason = "" }) {
+  function snapshot(p, { member, at, foodProfile, reason = "", note = "" }) {
     const items = interpret(p, member, foodProfile).filter((x) => !x.locked && x.status !== "guess").map((x) => ({ id: x.id, status: x.status }));
     const mine = p.snapshots.filter((s) => s.member === member);
     const v = (mine[mine.length - 1]?.v || 0) + 1;
-    return { ...p, snapshots: [...p.snapshots, { v, at, member, reason: reason === "reaction" ? "reaction" : mine.length ? "edit" : "first", items }].slice(-MAX_SNAPSHOTS), session: null, updatedAt: at };
+    return { ...p, snapshots: [...p.snapshots, { v, at, member, reason: reason === "reaction" || reason === "evidence" ? reason : mine.length ? "edit" : "first", ...(reason === "evidence" && str(note, MAX_NOTE) ? { note: str(note, MAX_NOTE) } : {}), items }].slice(-MAX_SNAPSHOTS), session: null, updatedAt: at };
   }
   // 最初の提案への「変えるなら？」。time＝時間が長い → 早くできる料理を、many＝材料が多い → 材料が少ない料理を「合ってる」に。
   // 本人が押したことなので確かめ済み。方針の版も1つ残す（理由：reaction）。
@@ -229,7 +252,7 @@
     return mine.map((s, i) => {
       const prev = new Set((mine[i - 1]?.items || []).filter((x) => x.status === "confirmed").map((x) => x.id));
       const now = new Set(s.items.filter((x) => x.status === "confirmed").map((x) => x.id));
-      return { v: s.v, at: s.at, reason: s.reason, added: [...now].filter((id) => !prev.has(id)), removed: [...prev].filter((id) => !now.has(id)), count: now.size };
+      return { v: s.v, at: s.at, reason: s.reason, ...(s.note ? { note: s.note } : {}), added: [...now].filter((id) => !prev.has(id)), removed: [...prev].filter((id) => !now.has(id)), count: now.size };
     }).reverse();
   }
   // 献立の加点。本人が「合ってる」と確かめた解釈だけを使う（推測や「違う」は使わない）。
@@ -251,6 +274,54 @@
     };
   }
   const leanFor = (p, member, recipe, date = "") => leaner(p, member)(recipe, date);
+  const THEME = Object.fromEntries(THEMES.map((t) => [t.id, t]));
+  const LOVED = ["tomorrow", "weekly"], COOL = ["monthly", "pause", "never"];
+  const EVIDENCE_DAYS = 90;
+  // evaluations：state.evaluations。recipeOf(id)：料理。today：いまの日付（YYYY-MM-DD）。最大 limit 件、add を先に。
+  function evidence(p, member, { evaluations = [], recipeOf = () => null, today = "", limit = 2 } = {}) {
+    if (!member) return [];
+    const from = today ? new Date(Date.parse(today + "T12:00:00Z") - EVIDENCE_DAYS * 864e5).toISOString().slice(0, 10) : "";
+    const recent = evaluations.filter((e) => e && (!from || String(e.cookedAt || "").slice(0, 10) >= from));
+    const rated = [];
+    for (const [id, row] of L.latestRatings(recent)) {
+      const cycle = row.cycles[member];
+      const recipe = cycle ? recipeOf(id) : null;
+      if (recipe) rated.push({ recipe, cycle });
+    }
+    const status = new Map((p ? interpret(p, member) : []).map((x) => [x.id, x.status]));
+    const out = [];
+    for (const t of THEMES) {
+      const list = rated.filter((x) => t.match(x.recipe));
+      if (list.length < 3) continue;
+      const loved = list.filter((x) => LOVED.includes(x.cycle));
+      const cool = list.filter((x) => COOL.includes(x.cycle));
+      // 本人が「違う」にした方針は、いまの答えから外れていても勧めない。
+      const st = status.get(t.lean) || p?.decisions?.[`${member}\u0000${t.lean}`]?.status;
+      const kind = st !== "confirmed" && st !== "rejected" && loved.length >= 2 && loved.length >= list.length * 0.6 ? "add"
+        : st === "confirmed" && !loved.length && cool.length >= 2 ? "drop" : "";
+      if (!kind) continue;
+      // 「いまはいい」と答えた時より、テーマの料理が2品以上増えるまでは聞かない。
+      const seen = p?.evidence?.[`${member}\u0000${t.id}\u0000${kind}`];
+      if (seen && list.length < seen.n + 2) continue;
+      const names = (kind === "add" ? loved : cool).map((x) => x.recipe.title).filter(Boolean).slice(0, 3);
+      const note = kind === "add" ? `${t.noun}${list.length}品のうち${loved.length}品が「また食べたい」` : `${t.noun}${list.length}品に「また食べたい」がまだありません`;
+      out.push({ id: t.id, kind, lean: t.lean, icon: t.icon, n: list.length, loved: loved.length, names, note,
+        ask: kind === "add" ? t.more : `方針の「${LEANS[t.lean].label.replace(/^\S+\s/, "")}」を見直しますか？` });
+    }
+    return out.sort((a, b) => (a.kind === b.kind ? b.loved - a.loved || b.n - a.n : a.kind === "add" ? -1 : 1)).slice(0, limit);
+  }
+  // 本人が「増やす」「見直す」を押した時：add → ✓、drop → ✕（記録から決めた印 evidence）。方針の版を1つ残し、根拠を note に。
+  function adoptEvidence(p, { member, item, at, foodProfile }) {
+    if (!item || !own(THEME, item.id) || THEME[item.id].lean !== item.lean || !["add", "drop"].includes(item.kind)) return p;
+    const next = decide(p, { member, id: item.lean, status: item.kind === "add" ? "confirmed" : "rejected", at, via: "evidence" });
+    const session = next.session;
+    return { ...snapshot(next, { member, at, foodProfile, reason: "evidence", note: item.note }), session };
+  }
+  // 「いまはいい」：その時の品数を覚える。方針は変えない。
+  function skipEvidence(p, { member, item, at }) {
+    if (!item || !own(THEME, item.id) || !["add", "drop"].includes(item.kind) || !Number.isInteger(item.n)) return p;
+    return { ...p, evidence: { ...(p.evidence || {}), [`${member}\u0000${item.id}\u0000${item.kind}`]: { n: item.n, at } }, updatedAt: at };
+  }
   // ---- 共有の範囲 ----
   const shareOf = (p, member) => ({ family: false, ai: false, ...(p?.share && own(p.share, member) ? p.share[member] : {}) });
   function setShare(p, { member, family, at }) {
@@ -327,7 +398,7 @@
       return { items: rules, fallback: true, error: error?.message === "timeout" ? "timeout" : "network" };
     } finally { clearTimeout(timer); }
   }
-  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, shareOf, setShare, familyItems, normalizeShared, mergeShared, othersFrom, aiPayload, fromAi, interpretWithAi };
+  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, shareOf, setShare, familyItems, normalizeShared, mergeShared, othersFrom, aiPayload, fromAi, interpretWithAi, THEMES, evidence, adoptEvidence, skipEvidence };
   root.ProfileTalk = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
