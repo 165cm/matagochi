@@ -800,7 +800,7 @@ function renderDailyShopping() {
   const count = (status) => items.filter((i) => i.status === status).length;
   const fix = (i) => aisleEdit ? `<select class="aisle-select" data-aisle-name="${escapeAttr(i.name)}" aria-label="${escapeAttr(i.name)}の売り場">${Aisles.AISLES.map(([id, label]) => `<option value="${id}" ${Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}) === id ? "selected" : ""}>${label}</option>`).join("")}</select>` : "";
   const uses = (i) => i.uses?.length ? `<span class="use-icons" aria-label="${escapeAttr(i.uses.join("・"))}に使う">${useIcons(i.uses)}</span>` : "";
-  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}${left.has(i.name) ? '<small class="leftover-hint">🧺 残りあり</small>' : ""}${later(i) ? `<small class="later-hint" title="${escapeAttr(`${later(i).label}は傷みやすい食材です`)}">🗓 ${escapeHtml(formatDate(later(i).date))}（${weekdayLabel(later(i).date)}）に使う・傷みやすいので、その前に買うと安心</small>` : ""}</span></label>${later(i) && !isViewer() ? `<button type="button" class="shopping-inline later-btn" data-action="life-shop-later" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}をあとで買う">あとで</button>` : ""}${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
+  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}${left.has(i.name) ? '<small class="leftover-hint">🧺 残りあり</small>' : ""}${later(i) ? `<small class="later-hint" title="${escapeAttr(`${later(i).label}は傷みやすい食材です`)}">🗓 ${escapeHtml(formatDate(later(i).date))}（${weekdayLabel(later(i).date)}）に使う・傷みやすいので、その前に買うと安心</small>` : ""}</span></label>${later(i) && !isViewer() ? `<button type="button" class="shopping-inline later-btn" data-action="life-item-later" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}をあとで買う">あとで</button>` : ""}${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
   const groups = (status) => order.map((category) => {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
     return list.length ? `<section class="aisle-group"><h4 class="aisle-tag" title="${escapeAttr(category)}"><span class="sr-only">${category}</span><span aria-hidden="true">${AISLE_SHORT[Aisles.AISLES.find(([, l]) => l === category)?.[0]] || category}</span></h4><div class="aisle-items">${list.map((i) => row(i, status)).join("")}</div></section>` : "";
@@ -892,6 +892,39 @@ function openRecordEditor(evaluation) {
   recordDraft.familyRepeatCycles = { ...(evaluation.familyRepeatCycles || {}) };
   state.view = "recordDetails";
 }
+// 記録の事実：作った回数と日付・その日の人数・元の動画・もう一度、献立に入れる（docs/PERSONALIZE_PLAN.md §10）。
+function cookHistory(recipeId) {
+  return state.evaluations.filter((e) => e.recipeId === recipeId && e.cookedAt).map((e) => e.cookedAt.slice(0, 10)).sort().reverse();
+}
+function renderRecordFacts(d, r) {
+  const dates = cookHistory(d.recipeId);
+  const servings = d.id.startsWith("meal-") ? state.mealSlots?.[d.cookedAt?.slice(0, 10)]?.servings : null;
+  const facts = [
+    dates.length ? `🍳 ${dates.length}回つくった${dates.length > 1 ? `（${dates.slice(0, 4).map((x) => formatDate(x)).join("・")}${dates.length > 4 ? "ほか" : ""}）` : ""}` : "",
+    servings ? `👥 この日は${servings}人分` : "",
+  ].filter(Boolean);
+  const video = r.videoUrl ? `<a class="text-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noopener">▶ 元の動画${r.author ? `（${escapeHtml(r.author)}）` : ""}</a>` : "";
+  const again = !isViewer() && !d.isNew && allDinnerRecipes().some((x) => x.id === r.id) ? dailyButton("life-replan", "🔁 もう一度、献立に入れる", `data-recipe="${escapeAttr(r.id)}"`) : "";
+  return facts.length || video || again ? `<div class="record-facts">${facts.length ? `<p class="small">${facts.map((f) => escapeHtml(f)).join("<br>")}</p>` : ""}<div class="record-links">${video}${again}</div></div>` : "";
+}
+// もう一度、献立に入れる：まだ決めていない、いちばん近い日（条件に合う日だけ）の下書きに入れる。決めた日は置き換えない。
+function replanRecipe(id) {
+  const r = allDinnerRecipes().find((x) => x.id === id);
+  if (!r) return "";
+  const p = dailyProfile();
+  const plan = dailyPlan(), locks = lockedDates(plan);
+  // もう入っている日があれば、それを知らせるだけ（同じ料理を2回入れない）。
+  const same = (x) => x && (x.id === r.id || x.starterId === r.id || r.starterId === x.id);
+  const has = plan.find((d) => d.date >= today() && !d.off && d.slot?.status !== "off" && same(d.slot?.recipe || d.candidate?.recipe));
+  if (has) return { date: has.date, already: true };
+  // 本人がほかの料理を選んだ日（下書きの入れ替え）も置き換えない。
+  const day = plan.find((d) => d.date >= today() && !d.off && !d.prestart && !locks.has(d.date) && !state.planOverrides[d.date] && !(d.slot && ["confirmed", "cooked", "off"].includes(d.slot.status)) && Lifestyle.fit(r, p, d.date).ok);
+  if (!day) return "";
+  const before = dailyShopping();
+  state.planOverrides[day.date] = r.id;
+  changedShopping(before);
+  return { date: day.date, already: false };
+}
 function renderRecordEditor() {
   const d = recordDraft;
   if (!d) return `<section class="panel"><p>記録が見つかりません。</p>${dailyButton("go-view", "ふりかえりへ", 'data-view="repeat"')}</section>`;
@@ -901,6 +934,7 @@ function renderRecordEditor() {
   return `<section class="record-editor">
     <button type="button" class="text-button cooking-back" data-action="life-record-back">‹ ふりかえりへ</button>
     <div class="record-head">${photo}<div><p class="eyebrow">${d.isNew ? "作った記録をつける" : "記録を編集"}</p><h2>${escapeHtml(r.title)}</h2><p class="muted small">${escapeHtml(lastEatenLabel(r) === "はじめて" ? "はじめての記録" : lastEatenLabel(r))}</p></div></div>
+    ${renderRecordFacts(d, r)}
     <label class="record-field">食べた日<input id="record-date" class="input" type="date" max="${today()}" value="${escapeAttr(d.cookedAt)}" ${fixedDate ? "readonly" : ""}></label>
     <h3 class="record-h">次はいつ食べたい？</h3>
     <p class="muted small">ふたりとも食べたくなる頃に、また献立に入ります。</p>
@@ -929,6 +963,25 @@ function renderInsights(recipeOf, favId = "") {
   if (!body) return "";
   return `<section class="insight-card">${yohaku("open", "ic-yohaku")}<h3>💡 わかってきたこと ${tip("評価から見えた好み。献立の提案にも使っています")}</h3>${body}</section>`;
 }
+// 🏆 わが家の定番：2回以上つくって、だれかのいちばん新しい評価が「明日でも／毎週」の料理。もう一度、献立に入れられる。
+function stapleRecipes(recipeOf) {
+  const latest = new Map();
+  const times = new Map();
+  for (const e of state.evaluations) {
+    if (!e.recipeId || !e.cookedAt) continue;
+    times.set(e.recipeId, (times.get(e.recipeId) || 0) + 1);
+    const cur = latest.get(e.recipeId);
+    if (!cur || e.cookedAt > cur.cookedAt) latest.set(e.recipeId, e);
+  }
+  return [...times].filter(([id, n]) => n >= 2 && Object.values(latest.get(id).familyRepeatCycles || {}).some((c) => c === "weekly" || c === "tomorrow"))
+    .sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, n]) => ({ recipe: recipeOf(latest.get(id)), times: n, last: latest.get(id).cookedAt.slice(0, 10) }));
+}
+function renderStaples(recipeOf) {
+  const list = stapleRecipes(recipeOf);
+  if (!list.length) return "";
+  const can = (r) => !isViewer() && allDinnerRecipes().some((x) => x.id === r.id);
+  return `<section class="staple-card"><h3>🏆 わが家の定番 ${tip("2回以上つくって、「また食べたい」がついた料理")}</h3><ul class="staple-list">${list.map(({ recipe, times, last }) => `<li>${dishTile(recipe, "staple-photo")}<div><b>${escapeHtml(recipe.title)}</b><small>${times}回・前回 ${escapeHtml(formatDate(last))}</small></div>${can(recipe) ? `<button type="button" class="secondary-button" data-action="life-replan" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}をもう一度、献立に入れる">🔁 もう一度</button>` : ""}</li>`).join("")}</ul></section>`;
+}
 function renderReflection() {
   const month = reflectionMonth();
   const recipeOf = (e) => recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || { id: e.recipeId, title: e.recipeTitle || "保存済みの料理", ingredients: [] };
@@ -954,6 +1007,7 @@ function renderReflection() {
   return `<div class="page-actions">${nav}</div>
   ${list.length ? `<div class="refl-stats"><p><strong>${list.length}</strong><small>回つくった</small></p><p><strong>${tally.size}</strong><small>種類の料理</small></p><p><strong>${lovedCount}</strong><small>また食べたい</small></p></div>` : ""}
   ${reflMonth === 0 ? renderInsights(recipeOf, favRecipe?.id) : ""}
+  ${reflMonth === 0 ? renderStaples(recipeOf) : ""}
   ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
   ${reflMonth === 0 ? renderMenuAlbum() : ""}
   <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3>${list.length ? '<small class="muted">タップで編集</small>' : ""}</div>
@@ -1501,7 +1555,8 @@ function handleDailyAction(action, data) {
     }
   }
   // 傷みやすい食材を「あとで買う」：今回の買い物からは外し（印 later）、「◯日の分」として買い足すものに入れる（買い物完了の後も残る）。
-  if (action === "life-shop-later") {
+  // 操作名は「買い物完了にする？」の「あとで」（life-shop-later）と分ける。
+  if (action === "life-item-later") {
     const item = dailyShopping().find((i) => i.id === data.id);
     const when = item && freshLater(item);
     if (when) {
@@ -1557,6 +1612,11 @@ function handleDailyAction(action, data) {
       saveOwnRecipe(r);
       showToast("自分用に保存しました。レシピ画面から編集できます。");
     }
+  }
+  if (action === "life-replan" && data.recipe && !isViewer()) {
+    const hit = replanRecipe(data.recipe);
+    if (hit) { state.view = "plan"; showToast(`${formatDate(hit.date)}（${weekdayLabel(hit.date)}）の献立に${hit.already ? "もう入っています" : "入れました（まだ決定前の下書き）"}`); }
+    else showToast("入れられる日がありません（まだ決めていない日がない・条件に合わない）。献立タブで入れ替えもできます");
   }
   if (action === "life-edit-record") {
     const e = state.evaluations.find((e) => e.id === data.id);

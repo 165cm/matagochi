@@ -2123,6 +2123,15 @@ span.tile-photo { cursor: default; }
 .insight-card h3 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: center; gap: 4px; }
 .insight-card ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; }
 .insight-card p { margin: 0; font-size: 13px; }
+/* 🏆 わが家の定番 PR 6a */
+.staple-card { margin: 0 0 14px; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.staple-card h3 { margin: 0 0 8px; font-size: 15px; display: flex; align-items: center; gap: 4px; }
+.staple-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.staple-list li { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.staple-list b { display: block; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.staple-list small { color: var(--muted); font-size: 12px; }
+.staple-list .secondary-button { min-height: 36px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+.staple-photo { width: 48px; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; }
 .refl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
 .refl-stats p { margin: 0; padding: 12px 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
 .refl-stats strong { display: block; font-size: 24px; color: var(--tomato); }
@@ -2203,6 +2212,11 @@ span.tile-photo { cursor: default; }
 .record-photo { aspect-ratio: 1 / 1; }
 .record-head h2 { margin: 2px 0; font-size: 20px; line-height: 1.4; }
 .record-head .eyebrow { margin: 0; font-weight: 800; color: var(--tomato); font-size: 13px; }
+/* 記録の事実（作った回数・人数・元の動画・もう一度）PR 6a */
+.record-facts { margin: 12px 0 4px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.record-facts p { margin: 0 0 6px; line-height: 1.6; }
+.record-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.record-links .text-button { padding-left: 0; }
 .record-field { display: grid; gap: 6px; font-weight: 700; }
 .record-h { margin: 6px 0 0; font-size: 17px; }
 .record-editor > .muted { margin: -6px 0 0; }
