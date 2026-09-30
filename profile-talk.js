@@ -76,7 +76,7 @@
   const str = (v, n = 40) => (typeof v === "string" ? v.slice(0, n) : "");
   const iso = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(v) ? v : "");
   function empty() {
-    return { v: VERSION, answers: [], decisions: {}, drafts: {}, snapshots: [], session: null, share: { family: false, ai: false }, updatedAt: "" };
+    return { v: VERSION, answers: [], decisions: {}, drafts: {}, snapshots: [], session: null, share: {}, updatedAt: "" };
   }
   function validValue(q, value) {
     if (value === IDK || value === LATER) return true;
@@ -109,7 +109,7 @@
       .slice(-MAX_SNAPSHOTS)
       .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit", "reaction"].includes(s.reason) ? s.reason : "edit", items: s.items.filter((x) => x && isLean(x.id)).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
     const s = raw.session;
-    if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest", "view"].includes(s.stage) ? s.stage : "ask", confirmId: isLean(s.confirmId) ? s.confirmId : "", q: isQuestion(s.q) ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
+    if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest", "view", "type"].includes(s.stage) ? s.stage : "ask", ...(s.stage === "type" && Number.isInteger(s.typeStep) && s.typeStep >= 0 && s.typeStep <= 4 ? { typeStep: s.typeStep } : {}), confirmId: isLean(s.confirmId) ? s.confirmId : "", q: isQuestion(s.q) ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
     // 答える前に書きかけたひとこと（人・質問ごと）。会話（session）の外に置くので、方針を保存して会話が終わっても残る。
     // 以前の形（session.notes）は、その会話の人の書きかけとして移す。
     const addDraft = (member, q, t) => {
@@ -122,8 +122,13 @@
     // 最初の提案の「変えるなら？」で外した料理（その会話の間だけ）。
     if (out.session && Array.isArray(s.skip)) { const skip = s.skip.filter((x) => typeof x === "string" && x.length <= 80).slice(-20); if (skip.length) out.session.skip = skip; }
     if (iso(raw.dismissedAt)) out.dismissedAt = iso(raw.dismissedAt);
-    // 共有の範囲は、この版では「共有しない」だけ（家族共有とAIへの送信は別々に、本人が選ぶ形で後から足す）。
-    out.share = { family: false, ai: false };
+    // 共有の範囲（人ごと・本人が選ぶ）。family：✓ にした方針だけを家族の端末へ（答え・ひとことは送らない）。
+    // ai：サーバーのAIへの送信。家族とは別に持つ（この版は画面で選べない＝送らない）。
+    // 以前の形（{ family:false, ai:false }）は、だれも選んでいないので空になる。
+    for (const [m, v] of Object.entries(raw.share && typeof raw.share === "object" ? raw.share : {})) {
+      if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(out.share).length >= 12) continue;
+      out.share[str(m, 20)] = { family: v.family === true, ai: v.ai === true, at: iso(v.at) };
+    }
     out.updatedAt = iso(raw.updatedAt);
     return out;
   }
@@ -229,17 +234,58 @@
   }
   // 献立の加点。本人が「合ってる」と確かめた解釈だけを使う（推測や「違う」は使わない）。
   // 献立を作るたびに料理の数だけ呼ぶので、確かめた解釈を先に1度だけ数える。
-  function leaner(p, member) {
-    const sure = p ? interpret(p, member).filter((x) => x.status === "confirmed" && isLean(x.id) && LEANS[x.id].match) : [];
+  // others（{ 名前: [解釈ID] }）は、家族が見せている方針。自分のものと同じ重みで足す（合計の上限は同じ）。
+  function leaner(p, member, others = {}) {
+    const mine = p ? interpret(p, member).filter((x) => x.status === "confirmed" && isLean(x.id)).map((x) => ({ id: x.id, who: "" })) : [];
+    const theirs = Object.entries(others && typeof others === "object" ? others : {}).flatMap(([who, ids]) => (who === member || !Array.isArray(ids) ? [] : ids.filter(isLean).map((id) => ({ id, who: str(who, 20) }))));
+    const sure = [...mine, ...theirs].filter((x) => LEANS[x.id].match);
     const weekend = (date) => { if (!date) return false; const d = new Date(`${date}T12:00:00`).getDay(); return d === 0 || d === 6; };
     // date が分かる時は、休日だけの項目（days: "weekend"）を土日にだけ使う。分からない時は使わない。
     return (recipe, date = "") => {
       if (!sure.length || !recipe) return null;
       const hits = sure.filter((x) => (LEANS[x.id].days !== "weekend" || weekend(date)) && LEANS[x.id].match(recipe));
-      return hits.length ? { score: Math.min(LEAN_MAX, hits.length * LEAN_SCORE), reason: hits[0].short, ids: hits.map((x) => x.id) } : null;
+      if (!hits.length) return null;
+      const ids = [...new Set(hits.map((x) => x.id))];
+      const top = hits[0];
+      return { score: Math.min(LEAN_MAX, ids.length * LEAN_SCORE), reason: top.who ? `💬 ${top.who}：${LEANS[top.id].short.replace(/^💬\s*/, "")}` : LEANS[top.id].short, ids };
     };
   }
   const leanFor = (p, member, recipe, date = "") => leaner(p, member)(recipe, date);
+  // ---- 共有の範囲 ----
+  const shareOf = (p, member) => ({ family: false, ai: false, ...(p?.share && own(p.share, member) ? p.share[member] : {}) });
+  function setShare(p, { member, family, at }) {
+    return { ...p, share: { ...p.share, [member]: { ...shareOf(p, member), family: family === true, at } }, updatedAt: at };
+  }
+  // 家族に見せるもの：その人が ✓ にした解釈のIDだけ（答え・ひとこと・推測・「違う」は入れない）。
+  const familyItems = (p, member) => interpret(p, member).filter((x) => x.status === "confirmed" && isLean(x.id)).map((x) => x.id).slice(0, 30);
+  // 家族の端末から届いた方針（同期の sharedPolicies）。{ 名前: { on, items:[解釈ID], updatedAt, by } }。一覧にないIDは捨てる。
+  // by は書いた端末の番号（ランダム。同期の組み合わせ mergeShared で、自分の端末が書いた分かを見分ける）。
+  function normalizeShared(raw) {
+    const out = {};
+    for (const [m, v] of Object.entries(raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {})) {
+      if (!v || typeof v !== "object" || !str(m, 20) || Object.keys(out).length >= 12) continue;
+      const on = v.on === true;
+      const by = typeof v.by === "string" && /^[\w-]{1,60}$/.test(v.by) ? v.by : "";
+      out[str(m, 20)] = { on, items: on && Array.isArray(v.items) ? [...new Set(v.items.filter(isLean))].slice(0, 30) : [], updatedAt: iso(v.updatedAt), ...(by ? { by } : {}) };
+    }
+    return out;
+  }
+  // 同期の組み合わせ（local＝この端末、remote＝サーバー）。人ごとに新しいほう。
+  // ただし、この端末が書いていない分がサーバーにない時は、送り返さない。古い版のアプリは書き戻す時に sharedPolicies をまるごと落とすので、
+  // ほかの端末に残っていた古い「見せる」を送り返すと、本人が止めた記録（on:false）を上書きしてしまう。本人の端末は自分の分を持ち続け、次の同期で戻す。
+  function mergeShared(local, remote, device = "") {
+    const l = normalizeShared(local), r = normalizeShared(remote), out = {};
+    for (const m of new Set([...Object.keys(l), ...Object.keys(r)])) {
+      const a = l[m], b = r[m];
+      if (a && !b && !(device && a.by === device)) continue;
+      out[m] = !a ? b : !b ? a : b.updatedAt > a.updatedAt || (b.updatedAt === a.updatedAt && JSON.stringify(b) > JSON.stringify(a)) ? b : a;
+    }
+    return out;
+  }
+  // 家族が見せている方針（自分の分・止めた人は除く）。{ 名前: [解釈ID] }
+  function othersFrom(shared, member, family = null) {
+    return Object.fromEntries(Object.entries(normalizeShared(shared)).filter(([m, v]) => m !== member && v.on && v.items.length && (!family || family.includes(m))).map(([m, v]) => [m, v.items]));
+  }
   // ---- AIの境界（この版では画面から呼ばない。サーバーのAIをつなぐ時にそのまま使う） ----
   // AIに渡すのは、答えの値と、本人が書いたひとことだけ（名前・食べられないもの・評価は渡さない）。
   function aiPayload(p, member) {
@@ -263,6 +309,8 @@
   async function interpretWithAi(p, member, ai, { timeoutMs = 8000, foodProfile = null } = {}) {
     const rules = interpret(p, member, foodProfile);
     if (typeof ai !== "function") return { items: rules, fallback: true, error: "off" };
+    // AIへ送るのは、本人が「AIに送る」を選んだ時だけ（家族共有とは別。この版は選べないので送らない）。
+    if (!shareOf(p, member).ai) return { items: rules, fallback: true, error: "not_allowed" };
     let timer;
     try {
       const raw = await Promise.race([ai(aiPayload(p, member)), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), timeoutMs); })]);
@@ -277,7 +325,7 @@
       return { items: rules, fallback: true, error: error?.message === "timeout" ? "timeout" : "network" };
     } finally { clearTimeout(timer); }
   }
-  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, aiPayload, fromAi, interpretWithAi };
+  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, shareOf, setShare, familyItems, normalizeShared, mergeShared, othersFrom, aiPayload, fromAi, interpretWithAi };
   root.ProfileTalk = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

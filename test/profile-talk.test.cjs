@@ -120,7 +120,9 @@ test("normalize is idempotent, keeps only allowed data and caps sizes", () => {
   assert.equal(once.answers.find((a) => a.q === "why").text.length, 200);
   assert.deepEqual(Object.keys(once.decisions), ["わたし\u0000fish-easy"]);
   assert.deepEqual(once.snapshots[0].items, [{ id: "fish-easy", status: "confirmed" }]);
-  assert.deepEqual(once.share, { family: false, ai: false }, "sharing stays off in this version");
+  assert.deepEqual(once.share, {}, "the old shape (nobody chose) becomes empty");
+  const shared = T.normalize({ share: { わたし: { family: true, ai: "yes", at: "2026-09-30T00:00:00Z" }, はなこ: "on", ["x".repeat(50)]: { family: 1 } } }).share;
+  assert.deepEqual(shared, { わたし: { family: true, ai: false, at: "2026-09-30T00:00:00Z" }, ["x".repeat(20)]: { family: false, ai: false, at: "" } });
   assert.equal(once.session.stage, "ask");
   assert.equal(once.extra, undefined);
 });
@@ -135,6 +137,11 @@ test("AI boundary: only allow-listed ids become guesses; bad JSON, timeouts and 
   assert.equal(T.fromAi("not json").ok, false);
   assert.equal(T.fromAi({ nope: 1 }).ok, false);
   const food = L.profile({ restrictions: ["卵"] });
+  // 本人が「AIに送る」を選んでいなければ、AIは呼ばない（家族に見せる、とは別）
+  let called = false;
+  const off = await T.interpretWithAi(T.setShare(p, { member: "わたし", family: true, at: "2026-09-30T00:00:00Z" }), "わたし", async () => { called = true; return { items: ["taste-light"] }; });
+  assert.deepEqual([called, off.fallback, off.error], [false, true, "not_allowed"]);
+  p = { ...p, share: { わたし: { family: false, ai: true, at: "" } } };
   const ok = await T.interpretWithAi(p, "わたし", async () => JSON.stringify({ items: ["fish-easy", "taste-light"] }), { foodProfile: food });
   assert.equal(ok.fallback, false);
   assert.deepEqual(ok.items.filter((x) => !x.locked).map((x) => [x.id, x.status, x.source]), [["fish-noprep", "guess", "rules"], ["fish-easy", "guess", "ai"], ["taste-light", "guess", "ai"]]);
@@ -251,7 +258,7 @@ test("review fix 1: inherited names (constructor, toString, __proto__) never pas
   const bad = ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"];
   assert.deepEqual(T.fromAi({ items: [...bad, "taste-light"] }).items, ["taste-light"]);
   assert.deepEqual(T.fromAi(JSON.stringify({ items: bad.map((id) => ({ id })) })).items, []);
-  const p = say(T.empty(), "taste", ["spicy"]);
+  const p = { ...say(T.empty(), "taste", ["spicy"]), share: { わたし: { family: false, ai: true, at: "" } } };
   const out = await T.interpretWithAi(p, "わたし", async () => ({ items: bad }));
   assert.equal(out.fallback, false);
   assert.deepEqual(ids(out.items), ["taste-spicy"], "nothing without a label or kind");
@@ -484,4 +491,212 @@ test("PR 2b: the overview keeps what you said, what the menu uses, what the reco
   // 設定の「見直す」はこの画面を開く
   run("state.tasteProfile.session = null");
   assert.ok(run("renderTalkSetting().body").includes('data-action="life-talk-view"'));
+});
+
+test("PR 2c: sharing is chosen per person; only confirmed policy ids are shared (never answers or notes), and AI stays a separate choice", () => {
+  let p = say(say(T.empty(), "want", "fish", "わたし", "骨がこわい"), "why", "clean");
+  p = T.decide(p, { member: "わたし", id: "fish-easy", status: "confirmed", at: at() });
+  p = T.decide(p, { member: "わたし", id: "fish-noprep", status: "rejected", at: at() });
+  p = say(p, "taste", ["spicy"]);
+  assert.deepEqual(T.shareOf(p, "わたし"), { family: false, ai: false }, "off until the person chooses");
+  p = T.setShare(p, { member: "わたし", family: true, at: "2026-09-30T00:00:00Z" });
+  assert.deepEqual(T.shareOf(p, "わたし"), { family: true, ai: false, at: "2026-09-30T00:00:00Z" }, "family does not turn AI on");
+  assert.deepEqual(T.shareOf(p, "はなこ"), { family: false, ai: false }, "per person");
+  assert.deepEqual(T.familyItems(p, "わたし"), ["fish-easy"], "confirmed only (no guesses, no rejected)");
+  assert.deepEqual(T.normalize(JSON.parse(JSON.stringify(p))).share, p.share);
+  // 家族から届いた形：一覧にないID・止めた人・自分の分は使わない
+  const shared = T.normalizeShared({ はなこ: { on: true, items: ["life-quick", "evil", "constructor", "life-quick"], updatedAt: "2026-09-30T00:00:00Z" }, たろう: { on: false, items: ["taste-spicy"] }, わたし: { on: true, items: ["taste-light"] }, bad: null, list: [1] });
+  assert.deepEqual(shared.はなこ.items, ["life-quick"]);
+  assert.deepEqual(shared.たろう, { on: false, items: [], updatedAt: "" });
+  assert.deepEqual(T.othersFrom(shared, "わたし"), { はなこ: ["life-quick"] });
+  assert.deepEqual(T.othersFrom(shared, "わたし", ["わたし"]), {}, "only people in the family");
+  assert.deepEqual(T.normalizeShared(JSON.parse(JSON.stringify(shared))), shared);
+});
+
+test("PR 2c: a family member's shared policy scores like one's own, names them in the reason, and keeps the cap and the weekend rule", () => {
+  const quick = { id: "q", planning: { minutes: 10 }, ingredients: [{ name: "a" }] };
+  const slow = { id: "s", planning: { minutes: 40 }, ingredients: [{ name: "a" }], tags: ["pot"], title: "煮込み" };
+  const own = T.leaner(T.empty(), "わたし", { はなこ: ["life-quick"] })(quick);
+  assert.deepEqual([own.score, own.reason], [6, "💬 はなこ：早くできる"]);
+  let p = T.decide(say(T.empty(), "hard", "time"), { member: "わたし", id: "life-quick", status: "confirmed", at: at() });
+  const both = T.leaner(p, "わたし", { はなこ: ["life-quick", "life-few"] })(quick);
+  assert.deepEqual([both.score, both.reason, both.ids], [12, "💬 早くできる", ["life-quick", "life-few"]], "own reason first; the same id is counted once; the cap stays");
+  assert.equal(T.leaner(p, "わたし", { わたし: ["life-few"] })(quick).score, 6, "one's own name is not a family member");
+  const weekend = T.leaner(T.empty(), "わたし", { はなこ: ["weekend-cook"] });
+  assert.equal(weekend(slow, "2026-10-03").reason, "💬 はなこ：休日はじっくり");
+  assert.equal(weekend(slow, "2026-10-01"), null, "weekend-only on weekdays: no");
+});
+
+test("PR 2c: '見せる' writes the confirmed policy to the synced sharedPolicies, follows changes, and '見せない' / '答えを消す' withdraw it", () => {
+  const run = app();
+  run(`state.family=["わたし","はなこ"]; state.me="わたし";
+    let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", text: "平日は疲れてる", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" });
+    deviceKey = () => "dev-A";
+    let synced = 0; saveState = (o = {}) => { if (o.scheduleSync !== false) synced++; }; globalThis.syncCount = () => synced;
+    handleDailyAction("life-talk-view",{});`);
+  let html = run("renderTalk()");
+  assert.ok(html.includes("👥 共有の範囲") && html.includes("家族に見せる") && html.includes("AIに送る"));
+  assert.match(html, /data-family="0" aria-pressed="true">見せない/);
+  assert.equal(run("JSON.stringify(state.sharedPolicies)"), "{}", "nothing is written before choosing");
+  assert.equal(run("syncCount()"), 0);
+  run(`handleDailyAction("life-talk-share",{family:"1"})`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.sharedPolicies['わたし'])")).items, ["life-quick"]);
+  assert.equal(run("state.sharedPolicies['わたし'].by"), "dev-A", "written by this device");
+  assert.equal(run("syncCount()"), 1, "a change is synced");
+  const payload = run("JSON.stringify(buildSyncPayload())");
+  assert.ok(payload.includes("life-quick"));
+  assert.equal(payload.includes("平日は疲れてる"), false, "notes never leave the device");
+  assert.equal(payload.includes('"hard"'), false, "answers never leave the device");
+  assert.match(run("renderTalk()"), /data-family="1" aria-pressed="true">見せる/);
+  // 方針が変わると、見せている中身も変わる
+  run(`state.tasteProfile.session.stage = "suggest"; handleDailyAction("life-talk-react",{kind:"many",recipe:"x"})`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.sharedPolicies['わたし'].items)")), ["life-quick", "life-few"]);
+  // 何も変わらない操作では同期しない
+  const n = run("syncCount()");
+  run(`handleDailyAction("life-talk-view",{})`);
+  assert.equal(run("syncCount()"), n);
+  run(`handleDailyAction("life-talk-share",{family:"0"})`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.sharedPolicies['わたし'])")).items, []);
+  assert.equal(run("state.sharedPolicies['わたし'].on"), false, "a stop is written so that it reaches the family");
+  run(`handleDailyAction("life-talk-share",{family:"1"}); globalThis.confirm = () => true; handleDailyAction("life-talk-reset",{})`);
+  assert.equal(run("state.sharedPolicies['わたし'].on"), false, "erasing the answers also stops sharing");
+  assert.equal(run("JSON.stringify(state.tasteProfile.share)"), "{}");
+});
+
+test("PR 2c: a family member's shared policy arrives by sync, is shown read-only, and moves the menu; newer per person wins", () => {
+  const run = app();
+  run(`state.family=["わたし","はなこ"]; state.me="わたし"; state.tasteProfile = ProfileTalk.snapshot(ProfileTalk.empty(), { member: "わたし", at: "2026-09-01T00:00:00Z" });`);
+  const remote = JSON.stringify({ sharedPolicies: { はなこ: { on: true, items: ["life-quick", "<img>"], updatedAt: "2026-09-30T00:00:00Z" } } });
+  run(`applySyncPayload(mergeSyncPayloads(buildSyncPayload(), { ...buildSyncPayload(), ...${remote} }))`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.sharedPolicies)")), { はなこ: { on: true, items: ["life-quick"], updatedAt: "2026-09-30T00:00:00Z" } });
+  run(`handleDailyAction("life-talk-view",{})`);
+  const html = run("renderTalk()");
+  assert.ok(html.includes("👨‍👩‍👧 家族が見せている方針") && html.includes("はなこ") && html.includes("⚡ 平日は早くできる料理"));
+  assert.equal(html.includes("&lt;img") || html.includes("<img>"), false);
+  assert.ok(JSON.parse(run("JSON.stringify(dailyPlan().map((d) => d.candidate?.reasons || []).flat())")).includes("💬 はなこ：早くできる"));
+  // はなこが止めた（新しい日時の on:false）→ 消える。古い「見せる」では戻らない
+  const stop = JSON.stringify({ sharedPolicies: { はなこ: { on: false, items: [], updatedAt: "2026-10-01T00:00:00Z" } } });
+  run(`applySyncPayload(mergeSyncPayloads(buildSyncPayload(), { ...buildSyncPayload(), ...${stop} }))`);
+  run(`applySyncPayload(mergeSyncPayloads(buildSyncPayload(), { ...buildSyncPayload(), ...${remote} }))`);
+  assert.equal(run("state.sharedPolicies['はなこ'].on"), false);
+  assert.equal(run("renderTalk()").includes("家族が見せている方針"), false);
+  assert.equal(JSON.parse(run("JSON.stringify(dailyPlan().map((d) => d.candidate?.reasons || []).flat())")).includes("💬 はなこ：早くできる"), false);
+  // 壊れた値が届いても落ちない
+  run(`applySyncPayload(mergeSyncPayloads(buildSyncPayload(), { ...buildSyncPayload(), sharedPolicies: { x: null, y: "on" } }))`);
+  assert.equal(run("state.sharedPolicies.x"), undefined);
+});
+
+test("PR 2c: the dinner type can be answered from the policy screen (optional), without an onboarding draft or changing menu tastes", () => {
+  const run = app();
+  run(`state.family=["わたし"]; state.me="わたし"; state.foodProfile = Lifestyle.profile({ completed: true, tastes: ["和風"], servings: 2 });
+    state.tasteProfile = ProfileTalk.snapshot(ProfileTalk.empty(), { member: "わたし", at: "2026-09-01T00:00:00Z" });
+    handleDailyAction("life-talk-view",{});`);
+  let html = run("renderTalk()");
+  assert.ok(html.includes("🎴 晩ごはんタイプ（おまけ）") && html.includes("献立の決め方には使いません") && html.includes("診断する（任意）"));
+  run(`handleDailyAction("life-talk-type",{step:"0"})`);
+  assert.equal(run("state.tasteProfile.session.stage"), "type");
+  assert.ok(run("renderTalk()").includes("いまの1週間"));
+  run(`handleDailyAction("life-ratio",{part:"wd",kind:"out",delta:"1"}); handleDailyAction("life-talk-type",{step:"1"}); handleDailyAction("life-staple",{value:"noodle"}); handleDailyAction("life-talk-type",{step:"2"}); handleDailyAction("life-chain",{value:"ichiran"})`);
+  // 途中で読み込み直しても、同じ段から
+  run("state=normalizeState(JSON.parse(JSON.stringify(state)));saveState=()=>{};render=()=>{};");
+  assert.equal(run("state.tasteProfile.session.typeStep"), 2);
+  run(`handleDailyAction("life-talk-type",{step:"3"}); handleDailyAction("life-priority",{value:"fast"})`);
+  assert.equal(run("state.tasteProfile.session.typeStep"), 4, "the last pick shows the result");
+  html = run("renderTalk()");
+  assert.ok(html.includes("cook-type-card") && html.includes("この結果を残す"));
+  assert.equal(run("state.onboardingDraft"), null, "no onboarding draft is created");
+  assert.equal(run("JSON.stringify(state.foodProfile.chains || [])"), "[]", "nothing is saved before '残す'");
+  run(`handleDailyAction("life-talk-type-save",{})`);
+  assert.equal(run("state.tasteProfile.session.stage"), "view");
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.foodProfile.chains, state.foodProfile.priority, state.foodProfile.tastes, state.foodProfile.completed])")), [["ichiran"], "fast", ["和風"], true], "menu tastes stay");
+  assert.ok(run("renderTalk()").includes("タイプを見る") && run("renderTalk()").includes("晩ごはんタイプを残しました"));
+  // 「戻る」を最初の段で押すと方針の画面へ。「残さずに戻る」は保存しない
+  run(`handleDailyAction("life-talk-type",{step:"0"}); handleDailyAction("life-chain",{value:"sukiya"}); handleDailyAction("life-talk-type",{step:"-1"})`);
+  assert.equal(run("state.tasteProfile.session.stage"), "view");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.foodProfile.chains)")), ["ichiran"]);
+  assert.equal(T.normalize({ session: { member: "a", stage: "type", typeStep: 9 } }).session.typeStep, undefined);
+});
+
+test("review fix (PR 2c): after an old app drops sharedPolicies, another device never re-publishes a stale '見せる' over the person's '見せない'", () => {
+  // A（本人）・B（家族・新しい版）・C（古い版）が同じ部屋。サーバーの中身を server で持つ。
+  const device = (id, me) => { const run = app(); run(`state.family=["わたし","はなこ"]; state.me=${JSON.stringify(me)}; deviceKey = () => ${JSON.stringify(id)}; saveState=()=>{};`); return run; };
+  const A = device("dev-A", "わたし"), B = device("dev-B", "はなこ");
+  let server = null;
+  const sync = (run) => { const merged = server ? JSON.parse(run(`JSON.stringify(mergeSyncPayloads(buildSyncPayload(), ${JSON.stringify(server)}))`)) : JSON.parse(run("JSON.stringify(buildSyncPayload())")); run(`applySyncPayload(${JSON.stringify(merged)})`); server = JSON.parse(run("JSON.stringify(buildSyncPayload())")); };
+  // 古い版の書き戻し：知らない項目（sharedPolicies）をまるごと落とす
+  const oldApp = () => { const { sharedPolicies, ...rest } = server; server = rest; };
+  A(`let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" });
+    handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"});`);
+  sync(A); sync(B);
+  assert.equal(B("state.sharedPolicies['わたし'].on"), true, "B sees A's policy");
+  // B はオフライン。A が止めて同期 → 古い版の C が書き戻す → B が同期
+  A(`handleDailyAction("life-talk-share",{family:"0"})`);
+  sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false);
+  oldApp();
+  sync(B);
+  assert.equal(server.sharedPolicies?.わたし, undefined, "B does not send A's stale '見せる' back");
+  assert.equal(B("state.sharedPolicies['わたし']"), undefined, "and stops using it itself");
+  assert.equal(B("dailyPlan().map((d) => d.candidate?.reasons || []).flat().some((r) => r.includes('わたし：'))"), false);
+  // A が次に同期すると、止めた記録が戻る（A は自分の分を持ち続ける）
+  sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false);
+  sync(B);
+  assert.equal(B("state.sharedPolicies['わたし'].on"), false);
+  // 見せている時に古い版が落としても、本人の端末が戻す（止めた人以外の分は、一時的に見えなくなるだけ）
+  A(`handleDailyAction("life-talk-share",{family:"1"})`);
+  sync(A); oldApp(); sync(B);
+  assert.equal(B("state.sharedPolicies['わたし']"), undefined);
+  sync(A); sync(B);
+  assert.equal(B("state.sharedPolicies['わたし'].on"), true);
+  // 端末の番号がない（保存できない）時も、止められる
+  const C = device("", "わたし");
+  C(`let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" });
+    handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"}); handleDailyAction("life-talk-share",{family:"0"});`);
+  assert.equal(C("state.sharedPolicies['わたし'].on"), false);
+});
+
+test("review fix (PR 2c, round 2): with two devices of the same name, a pressed '見せない' always stops, and a received stop is never republished by just opening the screen", () => {
+  let server = null;
+  const device = (id) => { const run = app(); run(`state.family=["わたし","はなこ"]; state.me="わたし"; deviceKey = () => ${JSON.stringify(id)}; saveState=()=>{};
+    let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" }); handleDailyAction("life-talk-view",{});`); return run; };
+  const sync = (run) => { const merged = server ? JSON.parse(run(`JSON.stringify(mergeSyncPayloads(buildSyncPayload(), ${JSON.stringify(server)}))`)) : JSON.parse(run("JSON.stringify(buildSyncPayload())")); run(`applySyncPayload(${JSON.stringify(merged)})`); server = JSON.parse(run("JSON.stringify(buildSyncPayload())")); };
+  const shown = (run) => /data-family="1" aria-pressed="true"/.test(run("renderTalk()"));
+  const A = device("dev-A"), B = device("dev-B");
+  // 指摘1：A が見せる → B が受け取る → B で「見せない」を押す → 止まる
+  A(`handleDailyAction("life-talk-share",{family:"1"})`); sync(A); sync(B);
+  assert.equal(shown(B), true, "B shows the real state (shared from A)");
+  assert.match(B("renderTalk()"), /同じ名前の別の端末で「見せる」にしています/);
+  B(`handleDailyAction("life-talk-share",{family:"0"})`); sync(B);
+  assert.deepEqual([server.sharedPolicies.わたし.on, server.sharedPolicies.わたし.by], [false, "dev-B"]);
+  sync(A);
+  assert.equal(A("state.sharedPolicies['わたし'].on"), false);
+  // 指摘2：A の端末には以前の「見せる」が残っているが、画面を開いただけでは戻さない
+  A(`handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-open-check",{}); handleDailyAction("life-talk-view",{})`); sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false, "not republished by opening the screen");
+  assert.equal(shown(A), false, "A shows '見せない' (the received stop)");
+  // 方針が変わっても（自動）戻さない
+  A(`state.tasteProfile.session.stage = "suggest"; handleDailyAction("life-talk-react",{kind:"many",recipe:"x"})`); sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false);
+  // もう一度見せるには「見せる」を押す
+  A(`handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"})`); sync(A);
+  assert.deepEqual([server.sharedPolicies.わたし.on, server.sharedPolicies.わたし.by], [true, "dev-A"]);
+  assert.deepEqual(server.sharedPolicies.わたし.items, ["life-quick", "life-few"]);
+  // 入れ直して番号が変わった端末からの「見せない」も効く
+  const A2 = device("dev-A2");
+  sync(A2);
+  A2(`handleDailyAction("life-talk-share",{family:"0"})`); sync(A2);
+  assert.deepEqual([server.sharedPolicies.わたし.on, server.sharedPolicies.わたし.by], [false, "dev-A2"]);
+  // 見せていない時に「見せない」を押しても、何も書かない
+  const C = device("dev-C");
+  C(`state.family=["わたし"]; state.sharedPolicies = {}; handleDailyAction("life-talk-share",{family:"0"})`);
+  assert.equal(C("JSON.stringify(state.sharedPolicies)"), "{}");
 });
