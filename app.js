@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261001-leftover2";
+const APP_VERSION = "20261001-later2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -348,7 +348,7 @@ function normalizePlanOverrides(overrides) {
 }
 
 function normalizeShoppingMarks(raw) {
-  return Object.fromEntries(Object.entries(raw || {}).filter(([,v])=>v && ['buy','have','purchased'].includes(v.status)).map(([k,v])=>[k,{status:v.status,signature:String(v.signature||''),updatedAt:normalizeTimestamp(v.updatedAt)}]));
+  return Object.fromEntries(Object.entries(raw || {}).filter(([,v])=>v && ['buy','have','purchased','later'].includes(v.status)).map(([k,v])=>[k,{status:v.status,signature:String(v.signature||''),updatedAt:normalizeTimestamp(v.updatedAt)}]));
 }
 function normalizeManualShopping(raw) {
   return Object.fromEntries(Object.entries(raw || {}).filter(([k,v])=>k.startsWith('manual-') && v && typeof v.name==='string').map(([k,v])=>[k,{name:v.name.slice(0,100),amount:String(v.amount||'').slice(0,80),deleted:!!v.deleted,updatedAt:normalizeTimestamp(v.updatedAt)}]));
