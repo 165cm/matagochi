@@ -267,3 +267,19 @@ export async function fetchChannelIcons(channelIds, env = process.env, fetchImpl
   const data = await youtubeGet("channels", { part: "snippet", id: ids.join(","), maxResults: "50" }, env, fetchImpl, AbortSignal.timeout(10_000));
   return Object.fromEntries((data.items || []).map((item) => [item.id, item.snippet?.thumbnails?.default?.url || ""]).filter(([, url]) => /^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(url)));
 }
+
+// 保存済みの動画が、いまも公開されているかをまとめて確かめる（定期の後片付け用。50本で1回・1単位）。
+// 返す形：{ 動画ID: { status: "public" | "non_public" | "not_found", snippet? } }。通信の失敗は投げる（「消えた」とは扱わない）。
+export async function fetchYouTubeStatuses(videoIds, env = process.env, fetchImpl = fetch) {
+  const ids = [...new Set(videoIds.filter((id) => /^[\w-]{11}$/.test(id)))].slice(0, 50);
+  if (!ids.length) return {};
+  const data = await youtubeGet("videos", { part: "snippet,status", id: ids.join(","), maxResults: "50" }, env, fetchImpl);
+  const out = Object.fromEntries(ids.map((id) => [id, { status: "not_found" }]));
+  for (const item of data.items || []) {
+    if (!out[item.id]) continue;
+    out[item.id] = item.status?.privacyStatus === "public" && item.snippet
+      ? { status: "public", snippet: { title: item.snippet.title || "", description: item.snippet.description || "", channelTitle: item.snippet.channelTitle || "", channelId: item.snippet.channelId || "" } }
+      : { status: "non_public" };
+  }
+  return out;
+}

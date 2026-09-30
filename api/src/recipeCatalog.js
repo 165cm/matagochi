@@ -17,7 +17,12 @@ const EXTRACTOR_VERSION = 3;
 // A durable conditional claim precedes all paid work, including across instances.
 // Pending claims are deliberately not stolen: an expired request may still incur AI cost.
 const SNIPPET_MAX_AGE_MS = 30 * 86_400_000;
-export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true, tickets = null, refreshSnippet = null } = {}) {
+// 定期の後片付け（sweep）：YouTube API で取った情報は、30日を超える前（25日）に取り直す。
+// 見られなくなった動画（削除・非公開）は、すぐに一覧から外し、30日たっても戻らなければ、読み取った結果ごと消す。
+const RECHECK_AFTER_MS = 25 * 86_400_000;
+const GONE_AFTER_MS = 30 * 86_400_000;
+const UNAVAILABLE = { not_found: ["video_not_found", 404, "YouTube動画が見つかりませんでした。"], non_public: ["non_public_video", 422, "この動画はいま公開されていません。"] };
+export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true, tickets = null, refreshSnippet = null, checkVideos = null } = {}) {
   const inFlight = new Map();
   const required = () => {
     if (!store) throw new ApiError(503, "catalog_not_configured", "分析結果の保存先が未設定です。手動入力をご利用ください。");
@@ -43,14 +48,20 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const result = current.envelope.result;
     const fetchedAt = Date.parse(result.snippetFetchedAt || result.catalog?.analyzedAt || 0);
     if (now() - fetchedAt <= SNIPPET_MAX_AGE_MS) return result;
-    let next = { ...result, caption: "", channelTitle: "", snippetFetchedAt: new Date(now()).toISOString() };
+    // 取り直せなかった時も、古い説明文・チャンネル名は外す。日付は進めない（次の読み出し・定期の後片付けでまた取り直す）。
+    let next = { ...result, caption: "", channelTitle: "" };
     try {
       const fresh = await refreshSnippet?.(result.videoId || key.replace(/^youtube-/, ""));
-      if (fresh) next = { ...next, caption: fresh.caption || "", channelTitle: fresh.channelTitle || "" };
-    } catch {}
+      if (fresh) { next = { ...next, caption: fresh.caption || "", channelTitle: fresh.channelTitle || "", snippetFetchedAt: new Date(now()).toISOString() }; delete next.unavailable; }
+    } catch (error) {
+      const reason = error?.code === "video_not_found" ? "not_found" : error?.code === "non_public_video" ? "non_public" : "";
+      if (reason) next = { ...next, snippetFetchedAt: new Date(now()).toISOString(), unavailable: { reason, since: result.unavailable?.since || new Date(now()).toISOString() } };
+    }
     await store.put(key, { status: "ready", result: next }, { ifGeneration: current.generation }).catch(() => {});
     return next;
   }
+  // 見られなくなった動画（削除・非公開）の結果は、一覧にも取り込みにも出さない（AI も呼ばない）。
+  const unavailableError = (result) => { const [code, status, message] = UNAVAILABLE[result.unavailable.reason] || UNAVAILABLE.not_found; return new ApiError(status, code, message); };
   // aiGate：呼び出し元ごとの AI 回数の上限（新着集めが使う）。{ allow(): 残りがあるか, used(): 1回使った } を、AI を呼ぶ直前ごとに通す。
   async function run(id, { forceVideo = false, household = "", unlimited = false, aiGate = null } = {}) {
     const gate = async () => {
@@ -65,7 +76,12 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const fresh = (current?.envelope.result?.catalog?.extractorVersion || 1) >= EXTRACTOR_VERSION;
     // 「動画から読み直す」：すでに動画から読んだ結果があれば、同じ結果になるので再解析しない（費用をかけない）。
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
-    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) return { ...localizeRecipe(structuredClone(await refreshed(key, current))), cacheHit: true };
+    if (current?.envelope.status === "ready" && current.envelope.result?.unavailable) throw unavailableError(current.envelope.result);
+    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) {
+      const result = await refreshed(key, current);
+      if (result.unavailable) throw unavailableError(result);
+      return { ...localizeRecipe(structuredClone(result)), cacheHit: true };
+    }
     // 動画の読み取りは、ボタンを押した時だけ。チケットを先に1枚使う（なければ保存済みの結果には触れない）。
     // 誰かがもう動画から読んだ動画なら、上で保存済みの結果を返すのでチケットは使わない。
     let spent = false;
@@ -120,7 +136,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     async peek(rawUrl) {
       required();
       const current = await store.get(`youtube-${extractYouTubeVideoId(rawUrl)}`);
-      if (current?.envelope.status !== "ready") return null;
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) return null;
       const result = structuredClone(current.envelope.result);
       const fetchedAt = Date.parse(result.snippetFetchedAt || result.catalog?.analyzedAt || 0);
       if (now() - fetchedAt > SNIPPET_MAX_AGE_MS) Object.assign(result, { caption: "", channelTitle: "" });
@@ -135,6 +151,51 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       await refreshed(key, current);
       return true;
     },
+    // 定期の後片付け：保存済みの読み取り結果を名前の順に max 件見て、25日より前に確かめたものを YouTube に確かめ直す（50本ずつ）。
+    // 公開 → 説明文・チャンネル名を取り直す。削除・非公開 → 一覧から外す（30日たっても戻らなければ消す）。
+    // 確かめられない（通信・枠）時は、30日を過ぎた説明文だけ外して、日付は進めない（次の回にまた）。
+    // 返す next を次の回に渡すと続きから。"" なら最初から。
+    async sweep({ cursor = "", max = 200 } = {}) {
+      required();
+      if (typeof store.list !== "function" || typeof checkVideos !== "function") return { skipped: true, next: "" };
+      const page = await store.list("youtube-", { pageToken: cursor, max });
+      const due = [];
+      const out = { seen: 0, checked: 0, refreshed: 0, unavailable: 0, removed: 0, stripped: 0, errors: 0, next: page.next };
+      for (const key of page.names) {
+        const entry = await store.get(key).catch(() => null);
+        if (entry?.envelope.status !== "ready") continue;
+        out.seen += 1;
+        const r = entry.envelope.result;
+        const checkedAt = Date.parse(r.snippetFetchedAt || r.catalog?.analyzedAt || 0) || 0;
+        if (now() - checkedAt >= RECHECK_AFTER_MS) due.push({ key, entry, id: r.videoId || key.replace(/^youtube-/, "") });
+      }
+      const write = (d, result) => store.put(d.key, { status: "ready", result }, { ifGeneration: d.entry.generation }).catch(() => null);
+      for (let i = 0; i < due.length; i += 50) {
+        const batch = due.slice(i, i + 50);
+        let statuses = null;
+        try { statuses = await checkVideos(batch.map((d) => d.id)); } catch { out.errors += 1; }
+        for (const d of batch) {
+          const r = d.entry.envelope.result;
+          const at = new Date(now()).toISOString();
+          const s = statuses?.[d.id];
+          if (!s) {
+            // 確かめられなかった：30日を過ぎた説明文・チャンネル名は外す（日付は進めない）。
+            const old = now() - (Date.parse(r.snippetFetchedAt || r.catalog?.analyzedAt || 0) || 0) > SNIPPET_MAX_AGE_MS;
+            if (old && (r.caption || r.channelTitle) && await write(d, { ...r, caption: "", channelTitle: "" })) out.stripped += 1;
+            continue;
+          }
+          out.checked += 1;
+          if (s.status === "public") {
+            const next = { ...r, caption: s.caption || "", channelTitle: s.channelTitle || "", snippetFetchedAt: at };
+            delete next.unavailable;
+            if (await write(d, next)) out.refreshed += 1;
+          } else if (r.unavailable && now() - Date.parse(r.unavailable.since || at) >= GONE_AFTER_MS) {
+            if (await store.remove(d.key, { ifGeneration: d.entry.generation }).catch(() => false)) out.removed += 1;
+          } else if (await write(d, { ...r, caption: "", channelTitle: "", snippetFetchedAt: at, unavailable: { reason: s.status, since: r.unavailable?.since || at } })) out.unavailable += 1;
+        }
+      }
+      return out;
+    },
     // 動画から読んだ結果がもうあるか（あればチケットなしで返せる）。ボタンを押す前の確認用。
     async videoRead(rawUrl) {
       required();
@@ -146,8 +207,10 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       required();
       if (!/^youtube-[\w-]{11}$/.test(id)) throw new ApiError(400, "invalid_catalog_id", "レシピIDが正しくありません。");
       const entry = await store.get(id);
-      if (entry?.envelope.status !== "ready") throw new ApiError(404, "recipe_not_found", "分析済みレシピがありません。");
-      return structuredClone(entry.envelope.result);
+      if (entry?.envelope.status !== "ready" || entry.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "分析済みレシピがありません。");
+      const result = structuredClone(entry.envelope.result);
+      if (now() - Date.parse(result.snippetFetchedAt || result.catalog?.analyzedAt || 0) > SNIPPET_MAX_AGE_MS) Object.assign(result, { caption: "", channelTitle: "" });
+      return result;
     },
     async propose(body) {
       required();

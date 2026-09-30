@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | レビュー待ち | `claude/youtube-refresh` | PR 3 の残り：YouTube の情報の定期的な確かめ直しと削除（1日1回の後片付け・削除や非公開の動画を一覧から外す・古い検索結果とアイコンを消す） | `api/src/housekeeping.js`（新規）・`api/src/recipeCatalog.js`・`api/src/syncStore.js`・`api/src/youtube.js`・`api/src/trends.js`・`api/src/server.js`・`api/test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
