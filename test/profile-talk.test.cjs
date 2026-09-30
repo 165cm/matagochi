@@ -449,6 +449,20 @@ test("PR 2b: reacting to the first suggestion ('変えるなら？') updates the
   assert.equal(T.normalize({ session: { member: "a", stage: "suggest", skip: [1, "x".repeat(99), "ok"] } }).session.skip.join(), "ok");
 });
 
+test("review fix (PR 2b): a reaction on a preference the answers also gave still shows the '変えるなら？' mark", () => {
+  const run = app();
+  run(`state.family=["わたし"]; state.me="わたし";
+    let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:01Z" });
+    p = ProfileTalk.react(p, { member: "わたし", kind: "time", at: "2026-09-02T00:00:00Z" });
+    state.tasteProfile = p; state.evaluations = [];
+    handleDailyAction("life-talk-view",{});`);
+  const quick = JSON.parse(run(`JSON.stringify(ProfileTalk.interpret(state.tasteProfile, "わたし").find((x) => x.id === "life-quick"))`));
+  assert.deepEqual(quick.from, ["hard"], "the answer still explains it");
+  assert.equal(quick.source, "reaction");
+  assert.match(run("renderTalk()"), /早くできる料理[^<]*<small>（変えるなら？）<\/small>/);
+});
+
 test("PR 2b: the overview keeps what you said, what the menu uses, what the records show (with period and count) and the history apart", () => {
   const run = app();
   run(`state.family=["わたし"]; state.me="わたし";

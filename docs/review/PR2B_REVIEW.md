@@ -1,5 +1,16 @@
 # PR 2b レビュー資料（Codex 向け）：深掘り・「変えるなら？」・方針の見える化
 
+## 再レビュー（Codex の指摘への対応、`bb47f64` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/profile-talk.test.cjs`） |
+|---|---|---|
+| [P3] 答えと「変えるなら？」で同じ方針になると、方針の画面に「（変えるなら？）」の印が出ない | 印は `decisions` の `via: "react"` だけで決める（答えからも出ている時も `source: "reaction"`。`from` には答えの質問がそのまま残る）。`source` を使うのは方針の画面の印だけで、保持・加点・✕ で外す動きは変わらない | 「review fix (PR 2b): a reaction on a preference the answers also gave…」：「いちばん大変なのは？」で「時間」→ 保存 →「⏱ 時間が長い」→ 方針の画面に印が出る（`bb47f64` では失敗） |
+
+- `node --test test/*.test.cjs`：173件 成功。`npm test --prefix api`：123件 成功
+- 版：`APP_VERSION` `20260930-deep2`・`CACHE_NAME` `ripigochi-v118`
+
+---
+
 指示書：`docs/PERSONALIZE_PLAN.md` §4・§5・§13 PR 2・§16。仕様：`docs/APP_MAP.md` §37（今回追記）。
 
 ## 1. 対象

@@ -173,7 +173,7 @@
     }
     const items = ids.map(({ id, from }) => {
       const d = p.decisions[`${member}\u0000${id}`];
-      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || "guess", source: d?.via === "react" && !from.length ? "reaction" : "rules" };
+      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || "guess", source: d?.via === "react" ? "reaction" : "rules" };
     });
     // 食べられないもの・苦手は、設定（foodProfile）のまま。ここで変えない。アレルギーと苦手は分けて見せる。
     const fp = foodProfile || {};
