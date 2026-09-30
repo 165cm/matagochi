@@ -4044,3 +4044,14 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .rhythm-week { display: flex; flex-wrap: wrap; gap: 6px; }
 .rhythm-week .chip-button { min-width: 44px; min-height: 44px; padding: 4px 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 .rhythm-week .chip-button[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--sage-dark); }
+
+/* ---- 残っている食材・献立を変えた時の買い物の差分（PR 5b） ---- */
+.leftover-panel { display: grid; gap: 8px; margin: 0 0 12px; padding: 12px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); }
+.leftover-panel .quick-sub { margin: 0; }
+.leftover-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.leftover-chips .chip-button { min-height: 44px; padding: 4px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; }
+.leftover-chips .chip-button[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--sage-dark); }
+.leftover-hint { color: var(--sage-dark); font-weight: 700; }
+.shop-diff { position: relative; display: grid; gap: 4px; margin: 0 0 12px; padding: 12px 44px 12px 12px; border-radius: 16px; background: #fff7e8; border: 1.5px solid #f2d9a6; font-size: 14px; overflow-wrap: anywhere; }
+.shop-diff p { margin: 0; }
+.shop-diff .todo-x { position: absolute; top: 4px; right: 4px; }
