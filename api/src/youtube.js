@@ -80,7 +80,9 @@ export async function fetchYouTubeSnippet(videoId, env = process.env, fetchImpl 
     channelId: snippet.channelId || "",
     publishedAt: snippet.publishedAt || "",
     thumbnails: snippet.thumbnails || {},
-    durationSeconds: parseIsoDuration(item.contentDetails?.duration)
+    durationSeconds: parseIsoDuration(item.contentDetails?.duration),
+    // 投稿者が埋め込み再生を許可していない動画（アプリの中では再生できず、YouTube で開く）。
+    embeddable: item.status?.embeddable !== false
   };
 }
 

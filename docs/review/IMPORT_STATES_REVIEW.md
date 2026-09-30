@@ -1,0 +1,84 @@
+# レビュー資料（Codex 向け）：動画の取り込みで止まった理由を分けて伝える（PR 3 の残り）
+
+## 再レビュー3（Codex の指摘への対応、`f86755d` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`「review fix (#105, round 3)…」） |
+|---|---|---|
+| [P2] 作り方なしで残した埋め込み不可の印が、別の端末に届かない（更新日時を進めていなかった。同期は同じ日時なら手元を使う） | `fillRecipeFromVideo` で印が変わった時は、作り方の有無にかかわらず `updatedAt` も進める。もう印がある時は動かさない（同期を増やさない） | 端末A で作り方なし・`embeddable:false` → A の同期の中身を B が取り込むと、B にも印が届く |
+
+- `f86755d` では失敗することを確認。`node --test test/*.test.cjs`：187件 成功。`npm test --prefix api`：141件 成功（#102〜#104 の公開後に main を取り込み済み）
+- 版：`APP_VERSION` `20261001-import4`・`CACHE_NAME` `ripigochi-v126`
+
+---
+
+## 再レビュー2（Codex の指摘への対応、`b0e0275` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`「review fix (#105, round 2)…」） |
+|---|---|---|
+| [P2] 作り方が返らない時は、埋め込み不可の印を残す前に戻っていた | `fillRecipeFromVideo` で、作り方があるかを見る前に `embeddable:false` を残す | 200・`steps:[]`・`embeddable:false`・上限 → レシピに印が残り、再生の枠を出さない |
+| [P3] 停止中・混雑中も「上限に達した・明日また読める」と出る | 理由ごとの短い文（`IMPORT_REASONS` の `short`）を使う（上限／混雑／お休み中） | `analysis_disabled`・`analysis_busy` で「上限」「明日また」を出さない |
+
+- `b0e0275` では失敗することを確認。`node --test test/*.test.cjs`：186件 成功。`npm test --prefix api`：125件 成功
+- 版：`APP_VERSION` `20261001-import3`・`CACHE_NAME` `ripigochi-v125`
+
+---
+
+## 再レビュー（Codex の指摘への対応、`c0f0978` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`） |
+|---|---|---|
+| [P2] 🎬 動画から読むで AI の上限になった時、サーバーは説明欄の結果を HTTP 200・`analysis.ok:false` で返すので、ふつうの「読み取れませんでした」になっていた | `readDraftFromVideo` の成功の答えの側でも `analysis` を見て、AI の上限・停止中なら `aiLimited` と理由の文。上限でない理由（レシピがない など）は、これまでどおりの文。献立から「動画で作り方をそろえる」でも、上限ならそう伝える | 「review fix (#105): reading from the video when the AI limit is reached answers 200…」 |
+| [P2] 献立から作り方をそろえる経路（`fillRecipeFromVideo`）で、埋め込み不可の印が保存されない | `fillRecipeFromVideo` で `embeddable:false` を引き継ぐ。ほかの経路も見直し、`discoverRecipe`（献立に URL を貼って入れる・初回設定の「読んでみる」）でも引き継ぐ。読み直し・作る画面からの下書きは `applyImportedRecipe` を通るので、もともと引き継ぐ | 「review fix (#105): every way a saved recipe is filled from a video keeps the 'not embeddable' mark」 |
+
+- 2件とも `c0f0978`（の修正前のコード）では失敗することを確認。`node --test test/*.test.cjs`：185件 成功。`npm test --prefix api`：125件 成功
+- 版：`APP_VERSION` `20261001-import2`・`CACHE_NAME` `ripigochi-v124`
+
+---
+
+指示書：`docs/PERSONALIZE_PLAN.md` §6（「削除・非公開・地域制限・埋め込み不可・解析失敗・不十分な材料を区別」「解析上限に達してもURL保存・保存済み動画の再生・手入力は可能」「人数不明は不明のまま」）。仕様：`docs/APP_MAP.md`（レシピ登録の「読み取りの2段階」の下に追記）。
+
+## 1. 対象
+- ブランチ：`claude/import-states`（最新の `main` `7b9918a` から）。#101〜#104 とは別のブランチ。重なる可能性：`app.js`・`sw.js`・`index.html` の版の行（#101 と）、`api/src/server.js`・`api/src/youtube.js`（#103・#104 と別の行）、`docs/*`
+
+## 2. 問題・変更後・含めない範囲
+**問題**
+- 取り込みに失敗すると「YouTube動画が見つかりませんでした。（video_not_found）」のように理由のコードがそのまま出て、次に何をすればよいか分からなかった
+- AI の上限に達した時、サーバーは説明欄から料理名と説明文を返していたが、画面は「説明欄から読み取りました」だけで理由が出ず、押しても同じ理由で止まる「🎬 動画から読む」が残っていた
+- YouTube の取り込みでは、止まった理由（`fetchStatus`）が新しいレシピの画面に出ていなかった（2段階の表示だけ。編集の時だけ出ていた）
+- 投稿者が埋め込み再生を許可していない動画も、アプリの中で再生しようとしていた
+
+**変更後**
+- `app.js`
+  - `IMPORT_REASONS`：理由ごとの案内（削除・非公開・URL・通信・AI の上限／混雑／停止中・待ち時間・読み取り中・レシピがない）。`importRecipeFromYouTube` はコードを `error.code` に持ち、知っている理由は案内の文、知らない理由はサーバーの文（コードは付けない）
+  - 説明欄から読めたが AI が止まった時（`analysis.ok === false`）：AI の上限・停止中なら `readInfo.aiLimited`（②に「今日のAIの上限」、🎬 を出さない）と理由の1行。🎬 動画から読むが上限で止まった時も同じ
+  - 削除・非公開は `readInfo.gone`（②に「✗ 動画を見られません」）
+  - 2段階の下に理由の1行（読めなかった・上限・見られない時）
+  - `embeddable: false` を下書き・保存・読み込み（`normalizeRecipes`。false の時だけ持つ）
+- `discover.js`：埋め込みができない動画は、再生の枠の代わりに「▶ YouTubeで動画を見る」。手順の「▶」は YouTube のその時刻（`&t=`）を開くリンク
+- `daily-ui.js`：料理モードは、埋め込みができない動画では写真
+- `api/src/youtube.js`：`fetchYouTubeSnippet` が `embeddable`（`status.embeddable`）を返す
+- `api/src/importRecipe.js`・`server.js`：結果に `embeddable: false`（false の時だけ。AI が止まった時の説明欄だけの結果にも）
+- 版：`APP_VERSION` `20261001-import`・`CACHE_NAME` `ripigochi-v123`（#101 の公開後に main を取り込み、v122 より上へ）
+
+**すでにできていたこと（確認のみ）**：料理名だけで保存できる（材料・作り方は空でよい）。何人分か分からない時は「不明」で、分量をそのまま出す
+
+**含めない範囲**：地域制限（`regionRestriction`）の判定、Instagram/TikTok（§6 で今回対象外）、以前の保存データで人数の項目がないものを「不明」に変えること（分量の見え方が変わるので、別に判断）
+
+## 3. 受け入れ条件
+- 削除・非公開・上限・読み取りの失敗を区別して表示する
+- 上限でも URL 保存・手入力ができる（テストで料理名だけの保存を確認）
+- 埋め込み不可の動画は、アプリの中で再生せず YouTube で開く
+
+## 4. テスト
+- `node --test test/*.test.cjs`：183件 成功（main の180件＋`test/import-states.test.cjs` 3件：削除・非公開の案内と料理名だけの保存・知らないコード／AI の上限で 🎬 を出さない・動画から読むの上限／埋め込み不可の保存・画面・手順のリンク・読み込み直し）
+- `npm test --prefix api`：125件 成功（1件追加：`embeddable` の受け渡し）
+- Playwright（API はモック）：390×844・844×390・1440×900 で、AI の上限・非公開・埋め込み不可の取り込みと、埋め込み不可のレシピの画面。ページのエラー・横スクロールなし。画像は `docs/review/import-states/`
+- 未実行：本物の YouTube での埋め込み不可の動画
+
+## 6. 影響
+- 保存形式：レシピに `embeddable: false`（その時だけ）。古い版は知らないだけ（再生の枠を出す＝YouTube 側の「再生できません」になる）
+- API：取り込みの結果に項目が1つ増える（false の時だけ）。YouTube API の呼び出しは増えない（同じ `videos.list` の `status` を読むだけ）
+- AI の費用：変更なし（上限の日に 🎬 を押せなくなる分、失敗の呼び出しが減る）
+
+## 8. ロールバック
+- revert で戻る

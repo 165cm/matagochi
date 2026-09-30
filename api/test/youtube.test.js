@@ -89,3 +89,13 @@ test("playlist API cap cannot exceed 200, and exposes unlisted status without AI
 test("network failures report a bounded user-facing timeout",async()=>{
  await assert.rejects(fetchYouTubePlaylist('PLabcdefghijklmnop',{YOUTUBE_API_KEY:'test'},async()=>{throw new Error('network')}),e=>e.status===504 && e.code==='youtube_timeout');
 });
+
+test('the embeddable flag comes from YouTube and survives normalizing only when false', async () => {
+  const { fetchYouTubeSnippet } = await import('../src/youtube.js');
+  const { normalizeImportResult } = await import('../src/importRecipe.js');
+  const reply = (status) => async () => new Response(JSON.stringify({ items: [{ snippet: { title: 't', description: 'd', channelTitle: 'c', channelId: 'UC' + 'a'.repeat(22) }, status: { privacyStatus: 'public', ...status }, contentDetails: { duration: 'PT1M' } }] }));
+  assert.equal((await fetchYouTubeSnippet('abcdefghijk', { YOUTUBE_API_KEY: 'k' }, reply({ embeddable: false }))).embeddable, false);
+  assert.equal((await fetchYouTubeSnippet('abcdefghijk', { YOUTUBE_API_KEY: 'k' }, reply({}))).embeddable, true);
+  assert.equal(normalizeImportResult({ title: 'x', embeddable: false }).embeddable, false);
+  assert.equal('embeddable' in normalizeImportResult({ title: 'x', embeddable: true }), false);
+});

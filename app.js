@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261001-share3";
+const APP_VERSION = "20261001-import4";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -363,7 +363,7 @@ function normalizeRecipes(recipes) {
   return recipes.map((recipe) => {
     const ingredients = normalizeIngredientList(recipe.ingredients);
     const originalIngredients = normalizeIngredientList(recipe.originalIngredients || recipe.sourceIngredients || ingredients);
-    return {
+    const out = {
       ...recipe,
       sourceServings: recipe.sourceServings === undefined ? 1 : normalizeSourceServings(recipe.sourceServings),
       ingredients,
@@ -371,6 +371,9 @@ function normalizeRecipes(recipes) {
       steps: Array.isArray(recipe.steps) ? recipe.steps.map((step) => String(step || "").trim()).filter(Boolean) : [],
       author: String(recipe.author || "").trim().slice(0, 60)
     };
+    // 埋め込み再生ができない動画の印は false の時だけ持つ。
+    if (out.embeddable !== false) delete out.embeddable;
+    return out;
   });
 }
 
@@ -1163,6 +1166,8 @@ function renderReadSteps(busy) {
   const desc = { ok: ["is-ok", "✓ 材料と作り方"], ingredients: ["is-part", "△ 材料だけ（作り方なし）"], steps: ["is-part", "△ 作り方だけ（材料なし）"], none: ["is-no", "✗ 見つからず"], fail: ["is-no", "✗ 読めず"] }[r.desc] || ["", ""];
   const needVideo = !state.extractedSteps.length;
   const video = draftVideoBusy ? ["is-run", "⏳ 読んでいます…（最大2分）"]
+    : r.gone ? ["is-no", "✗ 動画を見られません"]
+    : r.aiLimited && r.video !== "done" ? ["is-no", "⏸ 今日のAIの上限（明日また読めます）"]
     : r.video === "done" ? ["is-ok", `✓ 作り方${state.extractedSteps.length}ステップを書き出し`]
     : r.video === "fail" ? ["is-no", "✗ 読めず（🎟は戻しました）"]
     : needVideo ? ["is-todo", "説明欄にない作り方を、AIが動画の音声と画面から書き出します"]
@@ -1171,7 +1176,9 @@ function renderReadSteps(busy) {
     <li class="rs ${desc[0]}"><p><b>① 📝 説明欄</b><small>無料</small></p><em>${desc[1]}</em></li>
     <li class="rs ${video[0]}"><p><b>② 🎬 動画AI</b><small>🎟1</small></p><em>${video[1]}</em>
       ${video[0] === "is-todo" && canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>🎬 動画から読む${ticketPrice()}</button>` : ""}</li>
-  </ol>`;
+  </ol>
+  ${(r.desc === "fail" || r.aiLimited || r.gone) && state.fetchStatus ? `<p class="notice small read-reason" role="status">${escapeHtml(state.fetchStatus)}</p>` : ""}
+  ${state.draft.embeddable === false ? `<p class="notice small read-reason">▶ この動画は、投稿者の設定でアプリの中では再生できません。レシピは保存でき、動画は YouTube で開いて見ます。</p>` : ""}`;
 }
 // 🧩 レシピの完成度：埋まった項目は ✓、足りない項目は ＋（タップでその欄へ）。それぞれ「埋めると何が良くなるか」を添える。
 const CHECK_ITEMS = [
@@ -2550,24 +2557,31 @@ async function handleAction(event) {
       applyImportedRecipe(result);
       // 読み取りの2段階（① 説明欄 → ② 動画AI）のどこまで読めたか。
       const hasIng = state.extractedIngredients.length > 0, hasSteps = state.extractedSteps.length > 0;
+      const reason = result.analysis?.ok === false ? importReason(result.analysis.code) : null;
       state.draft.readInfo = {
         desc: hasIng && hasSteps ? "ok" : hasIng ? "ingredients" : hasSteps ? "steps" : "none",
         video: String(result.analyzedFrom || "").startsWith("video") ? "done" : "todo",
+        ...(reason?.ai ? { aiLimited: true } : {}),
       };
       if (state.draft.readInfo.video === "done") state.draft.readInfo.desc = "none";
       // 伝えることだけ短く。作り方がない時は、すぐ下の「🎬 動画から読む」へ。
-      state.fetchStatus = !state.extractedSteps.length
+      state.fetchStatus = !state.extractedSteps.length && !reason?.ai
         ? "📝 説明欄に作り方がありません。🎬 で動画から読めます（あとで献立からでもOK）"
         : result.analyzedFrom === "video-clip" || result.analyzedFrom === "video"
           ? "🎬 動画から読み取りました。確かめて保存"
+          : reason?.ai
+          ? `⏸ ${reason.text}`
           : result.analysis?.ok === false
           ? "📝 説明欄から読み取りました。確かめて保存"
           : result.cacheHit ? "✅ 読み取り済みのレシピです。確かめて保存" : "✅ 読み取りました。確かめて保存";
       saveState();
     } catch (error) {
       if (state.draft.videoUrl !== importingUrl) return;
-      state.draft.readInfo = { desc: "fail", video: "todo" };
-      state.fetchStatus = `${error.message || "読み取れませんでした。"} 動画の説明文をコピーして「出典・メモ・本文」の説明文欄に貼ると、そこから読み取れます。`;
+      const reason = importReason(error.code);
+      state.draft.readInfo = { desc: "fail", video: "todo", ...(reason?.ai ? { aiLimited: true } : {}), ...(["video_not_found", "non_public_video"].includes(error.code) ? { gone: true } : {}) };
+      state.fetchStatus = ["video_not_found", "non_public_video", "invalid_url", "unsupported_url"].includes(error.code)
+        ? error.message
+        : `${error.message || "読み取れませんでした。"} 動画の説明文をコピーして「出典・メモ・本文」の説明文欄に貼ると、そこから読み取れます。`;
       state.extractedIngredients = parseIngredients(state.draft.caption);
       detectDraftServings();
       state.originalIngredients = clone(state.extractedIngredients);
@@ -2800,6 +2814,7 @@ async function handleAction(event) {
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.author = state.draft.author || "";
       if (state.draft.channelId) existing.channelId = state.draft.channelId;
+      if (state.draft.embeddable === false) existing.embeddable = false;
       // 手順ごとの動画の時刻は、手順の数が変わっていなければ残す。
       existing.stepTimes = stepTimesFor(steps, state.draft.stepTimes);
       existing.note = state.draft.note;
@@ -2832,6 +2847,7 @@ async function handleAction(event) {
         source: state.draft.source,
         author: state.draft.author || "",
         channelId: state.draft.channelId || "",
+        ...(state.draft.embeddable === false ? { embeddable: false } : {}),
         stepTimes: stepTimesFor(steps, state.draft.stepTimes),
         mealType: state.draft.mealType,
         caption: state.draft.caption,
@@ -3611,10 +3627,34 @@ async function importRecipeFromYouTube(videoUrl, { mode = "" } = {}) {
     throw error;
   }
   if (!response.ok) {
-    throw new Error(`${data.error?.message || "YouTubeの説明文を取得できませんでした。"}${data.error?.code ? `（${data.error.code}）` : `（HTTP ${response.status}）`}`);
+    const code = data.error?.code || "";
+    const error = new Error(importReason(code)?.text || `${data.error?.message || "YouTubeの説明文を取得できませんでした。"}${code ? "" : `（HTTP ${response.status}）`}`);
+    error.code = code;
+    throw error;
   }
   return data;
 }
+// 動画の読み取りが止まった理由ごとの案内（docs/PERSONALIZE_PLAN.md §6：削除・非公開・上限・読み取りの失敗を区別する）。
+// ai：AI の上限・停止中。今日は 🎬 動画から読む を出さない（押しても同じ理由で止まる）。どの場合も、料理名と URL だけで保存でき、材料・作り方は手で入れられる。
+const IMPORT_REASONS = {
+  video_not_found: { text: "動画が見つかりません（削除されたか、URLが違います）。URLを確かめてください。" },
+  non_public_video: { text: "非公開・限定公開の動画は読み取れません。料理名を入れれば、URLだけで保存できます。" },
+  invalid_url: { text: "YouTubeの動画のURLではないようです。URLを確かめてください。" },
+  unsupported_url: { text: "この形のURLは読み取れません。動画のページのURLを貼ってください。" },
+  youtube_timeout: { text: "YouTubeからの取得に時間がかかっています。少し待ってから、もう一度お試しください。" },
+  youtube_api_error: { text: "YouTubeの動画の情報を取得できませんでした。少し待ってから、もう一度お試しください。" },
+  // short：献立から「動画で作り方をそろえる」など、画面を開かずに知らせる時の短い文。
+  analysis_budget_exceeded: { ai: true, short: "今日はAIで読み取れる上限に達しました。明日また読めます（レシピを開いて手でも入れられます）。", text: "今日はAIで読み取れる上限に達しました。説明欄から読める分だけ入れました。URLと料理名はこのまま保存でき、材料・作り方は手でも入れられます（明日また🎬で読めます）。" },
+  analysis_busy: { ai: true, short: "AIの読み取りが混み合っています。少し待ってから、もう一度お試しください。", text: "AIの読み取りが混み合っています。説明欄から読める分だけ入れました。このまま保存して、あとでもう一度読むこともできます。" },
+  analysis_disabled: { ai: true, short: "AIの読み取りはいまお休み中です。レシピを開いて手で入れられます。", text: "AIの読み取りはいまお休み中です。説明欄から読める分だけ入れました。URLと料理名はこのまま保存でき、材料・作り方は手でも入れられます。" },
+  analysis_cooldown: { text: "少し前に読み取りに失敗しました。1分ほど待ってから、もう一度お試しください。" },
+  analysis_pending: { text: "いま同じ動画を読み取っています。少し待ってから、もう一度お試しください。" },
+  incomplete_recipe: { text: "説明欄から材料と作り方を読み取れませんでした。" },
+  empty_description: { text: "説明欄が空でした。" },
+  analysis_uncertain: { text: "説明欄にレシピが見つかりませんでした。" },
+  video_analysis_failed: { text: "AIで読み取れませんでした。" },
+};
+const importReason = (code) => (Object.prototype.hasOwnProperty.call(IMPORT_REASONS, code) ? IMPORT_REASONS[code] : null);
 
 // 「材料（2人分）」「2人前」「二人分」「材料（2人）」などを本文・タイトルから読み取る。読めなければ未確認のまま。
 // サーバーの api/src/servings.js と同じルール。「1人分あたり◯kcal」など栄養の表示は読まない。材料の見出しの近くを優先。
@@ -3677,14 +3717,23 @@ async function readDraftFromVideo() {
     if (state.draft.videoUrl !== url) return;
     const info = state.draft.readInfo;
     applyImportedRecipe(result);
-    state.draft.readInfo = { desc: info?.desc || "none", video: result.analyzedFrom?.startsWith("video") && state.extractedSteps.length ? "done" : "fail" };
-    state.fetchStatus = result.analyzedFrom?.startsWith("video")
+    // サーバーは、動画の読み取りが AI の上限などで止まっても、説明欄の結果を 200 で返す（analysis.ok:false）。その時も理由を出す。
+    const reason = !result.analyzedFrom?.startsWith("video") && result.analysis?.ok === false ? importReason(result.analysis.code) : null;
+    state.draft.readInfo = { desc: info?.desc || "none", video: result.analyzedFrom?.startsWith("video") && state.extractedSteps.length ? "done" : "fail", ...(reason?.ai || info?.aiLimited ? { aiLimited: true } : {}) };
+    state.fetchStatus = reason?.ai
+      ? reason.text
+      : result.analyzedFrom?.startsWith("video")
       ? `${result.analyzedFrom === "video-clip" ? "動画の最初の10分から" : "動画の音声と画面から"}読み取りました。材料と作り方を確かめてください。${ticketNote(result)}`
       : "動画からも作り方を読み取れませんでした（チケットは戻しました）。動画を見ながら入力してください。";
     saveState();
   } catch (error) {
     if (error.code === "no_tickets") openTicketSheet({ need: true, retry: () => readDraftFromVideo() });
-    else showToast(error.message || "読み取れませんでした。");
+    else {
+      // 上限・停止中：今日は 🎬 を出さない（チケットはサーバーが戻す）。
+      if (importReason(error.code)?.ai && state.draft.readInfo) state.draft.readInfo.aiLimited = true;
+      state.fetchStatus = error.message || "読み取れませんでした。";
+      showToast(error.message || "読み取れませんでした。");
+    }
   } finally {
     draftVideoBusy = isCaptionImporting = false;
     render();
@@ -3706,6 +3755,8 @@ function applyImportedRecipe(result) {
     source: result.source || platform.label,
     author: state.draft.author || String(result.channelTitle || result.author || "").trim().slice(0, 60),
     channelId: result.channelId || state.draft.channelId || "",
+    // 埋め込み再生を許可していない動画：アプリの中では再生せず、YouTube で開く。
+    embeddable: result.embeddable === false ? false : undefined,
     stepTimes: Array.isArray(result.stepTimes) ? result.stepTimes : [],
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
