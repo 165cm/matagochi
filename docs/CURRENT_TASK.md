@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | 作業中 | `claude/optimistic-albattani-jg5211` | PR 6a：記録の画面（作った回数・人数・元の動画・「もう一度、献立に入れる」）・ふりかえりに定番の欄・PR 5c の「あとで」の操作名の重なりを直す | `daily-ui.js`・`app.js`（版）・`styles.css`・`index.html`・`sw.js`・`test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
