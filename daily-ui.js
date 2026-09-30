@@ -826,7 +826,8 @@ function cookingCheck(kind, index, recipe, servings) {
 function cookSections(recipe, servings) {
   const amountOf = (x) => scaleAmountForServings(x.amount, servings, recipe.sourceServings);
   const steps = recipe.steps || [];
-  CookMode.setRecipe({ title: recipe.title, steps, timesOf: () => recipeStepTimes(recipe), videoId: youtubeVideoId(recipe.videoUrl), shorts: /youtube\.com\/shorts\//i.test(recipe.videoUrl || ""), ingredients: recipe.ingredients || [], amountOf, photoHtml: dishTile(recipe, "cm-photo") });
+  // 埋め込み再生ができない動画は、料理モードでは写真を出す（動画は YouTube で開く）。
+  CookMode.setRecipe({ title: recipe.title, steps, timesOf: () => recipeStepTimes(recipe), videoId: recipe.embeddable === false ? "" : youtubeVideoId(recipe.videoUrl), shorts: /youtube\.com\/shorts\//i.test(recipe.videoUrl || ""), ingredients: recipe.ingredients || [], amountOf, photoHtml: dishTile(recipe, "cm-photo") });
   const timed = steps.some((st) => CookMode.timesIn(st).length);
   return {
     ingredients: (recipe.ingredients || []).length ? CookMode.ingredientsHtml(recipe.ingredients, amountOf) : '<p class="muted small">材料が登録されていません。</p>',

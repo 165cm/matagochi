@@ -78,7 +78,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       videoId,
       videoUrl,
       channelTitle: snippet.channelTitle,
-      channelId: snippet.channelId
+      channelId: snippet.channelId,
+      embeddable: snippet.embeddable
     }),
     analyzedFrom,
     ...(analyzedTimes ? { stepTimesFrom: analyzedTimes } : {}),
@@ -104,6 +105,8 @@ export function normalizeImportResult(result) {
     // チャンネルIDは投稿者をまとめる鍵。名前が変わっても同じ人として扱える。
     channelId: /^[\w-]{10,40}$/.test(cleanText(result.channelId)) ? cleanText(result.channelId) : "",
     planning: normalizePlanning(result.planning),
+    // 埋め込み再生ができない動画だけ印をつける（ない時は再生できる扱い）。
+    ...(result.embeddable === false ? { embeddable: false } : {}),
     ...(cleanText(result.catch) ? { catch: cleanText(result.catch).slice(0, 40) } : {})
   };
 }

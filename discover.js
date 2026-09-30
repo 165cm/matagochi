@@ -293,6 +293,8 @@ if (globalThis.addEventListener && !globalThis.__videoPlayerBound) {
 function stepTimeButton(recipe, index) {
   const t = recipeStepTimes(recipe)[index];
   if (!Number.isFinite(t) || !youtubeVideoId(recipe.videoUrl)) return "";
+  // 埋め込み再生ができない動画は、YouTube のその時刻を開く。
+  if (recipe.embeddable === false) return `<a class="step-time" href="https://www.youtube.com/watch?v=${encodeURIComponent(youtubeVideoId(recipe.videoUrl))}&t=${Math.floor(t)}s" target="_blank" rel="noopener" aria-label="この手順を YouTube の${mmss(t)}から見る">▶ ${mmss(t)}</a>`;
   return `<button type="button" class="step-time" data-action="life-video-at" data-recipe="${escapeAttr(recipe.id)}" data-seconds="${t}" aria-label="この手順を動画の${mmss(t)}から見る">▶ ${mmss(t)}</button>`;
 }
 function creatorLink(recipe) {
@@ -307,11 +309,13 @@ function renderCreatorCredit(recipe) {
   const start = videoStartAt.key === recipe.id ? videoStartAt.seconds : 0;
   // 公式の埋め込みプレーヤー（動画を複製しない。再生回数・広告収益への反映は YouTube の仕組みによる）。
   const shorts = /youtube\.com\/shorts\//i.test(recipe.videoUrl);
-  const player = id ? `<div class="video-frame${shorts ? " is-shorts" : ""}"><iframe src="https://www.youtube.com/embed/${id}?playsinline=1&rel=0&enablejsapi=1${globalThis.location?.origin ? `&origin=${encodeURIComponent(globalThis.location.origin)}` : ""}${start ? `&start=${start}&autoplay=1` : ""}" title="${escapeAttr(recipe.title)}の動画" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><button type="button" class="video-undock" data-action="life-video-close" aria-label="小さな動画を閉じる">×</button></div>` : "";
+  // 投稿者が埋め込み再生を許可していない動画は、アプリの中で再生せず、YouTube で開く。
+  const player = id && recipe.embeddable === false ? `<a class="video-open" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noopener">▶ YouTubeで動画を見る<small>投稿者の設定で、アプリの中では再生できません</small></a>`
+    : id ? `<div class="video-frame${shorts ? " is-shorts" : ""}"><iframe src="https://www.youtube.com/embed/${id}?playsinline=1&rel=0&enablejsapi=1${globalThis.location?.origin ? `&origin=${encodeURIComponent(globalThis.location.origin)}` : ""}${start ? `&start=${start}&autoplay=1` : ""}" title="${escapeAttr(recipe.title)}の動画" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><button type="button" class="video-undock" data-action="life-video-close" aria-label="小さな動画を閉じる">×</button></div>` : "";
   const name = recipe.author || (id ? "YouTubeの投稿者" : "投稿者");
   const link = creatorLink(recipe);
   const isYouTube = !!id;
-  return `<section class="creator-credit" aria-label="レシピの出典">${player}<div class="credit-row"><p class="credit-name"><small>レシピ・動画</small><b>${escapeHtml(name)}</b></p>${link ? `<a class="subscribe-button" href="${escapeAttr(link)}" target="_blank" rel="noopener">${isYouTube && recipe.channelId ? "チャンネル登録" : "投稿者を見る"}</a>` : ""}</div><p class="credit-note small">${isYouTube ? "コツや火加減は動画で。手順の「▶」から、その場面を再生できます。" : "元の動画で、コツや火加減も確かめてください。"} <a href="creators.html" target="_blank" rel="noopener">投稿者の方へ</a></p></section>`;
+  return `<section class="creator-credit" aria-label="レシピの出典">${player}<div class="credit-row"><p class="credit-name"><small>レシピ・動画</small><b>${escapeHtml(name)}</b></p>${link ? `<a class="subscribe-button" href="${escapeAttr(link)}" target="_blank" rel="noopener">${isYouTube && recipe.channelId ? "チャンネル登録" : "投稿者を見る"}</a>` : ""}</div><p class="credit-note small">${isYouTube ? (recipe.embeddable === false ? "コツや火加減は動画で。手順の「▶」から、YouTube のその場面を開けます。" : "コツや火加減は動画で。手順の「▶」から、その場面を再生できます。") : "元の動画で、コツや火加減も確かめてください。"} <a href="creators.html" target="_blank" rel="noopener">投稿者の方へ</a></p></section>`;
 }
 
 /* ---- 作った人の声を投稿者に届ける（つくれぽ型）：コメントで伝える・作ってみたをシェア ---- */

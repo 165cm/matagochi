@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | レビュー待ち | `claude/import-states` | PR 3 の残り：動画の取り込みで止まった理由を分けて伝える（削除・非公開・AI の上限など）・AI の上限でも保存できる・埋め込み再生ができない動画は YouTube で開く | `app.js`・`discover.js`・`daily-ui.js`（料理モードの動画）・`styles.css`・`index.html`・`sw.js`・`api/src/youtube.js`・`api/src/importRecipe.js`・`api/src/server.js`・`test/import-states.test.cjs`（新規）・`api/test/youtube.test.js`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

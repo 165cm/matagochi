@@ -201,7 +201,7 @@ export function createApp(env = process.env, deps = {}) {
         try {
           const videoId = extractYouTubeVideoId(req.body?.url);
           const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env);
-          return res.json({ ...normalizeImportResult({ title: snippet.title, caption: buildCaption(snippet), source: /youtube\.com\/shorts\//i.test(req.body?.url || "") ? "YouTube Shorts" : "YouTube", videoId, videoUrl: canonicalYouTubeUrl(videoId, req.body?.url || ""), channelTitle: snippet.channelTitle, channelId: snippet.channelId }), analysis: { ok: false, code: error.code || "unknown" }, videoSkipped: req.body?.mode !== "video", tickets: await quota() });
+          return res.json({ ...normalizeImportResult({ title: snippet.title, caption: buildCaption(snippet), source: /youtube\.com\/shorts\//i.test(req.body?.url || "") ? "YouTube Shorts" : "YouTube", videoId, videoUrl: canonicalYouTubeUrl(videoId, req.body?.url || ""), channelTitle: snippet.channelTitle, channelId: snippet.channelId, embeddable: snippet.embeddable }), analysis: { ok: false, code: error.code || "unknown" }, videoSkipped: req.body?.mode !== "video", tickets: await quota() });
         } catch (fallbackError) {
           console.error(JSON.stringify({ event: "youtube_snippet_failed", code: fallbackError.code || "unknown", message: String(fallbackError.message || "").slice(0, 200) }));
         }
