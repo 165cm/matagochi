@@ -23,7 +23,7 @@
 - `daily-ui.js`：料理モードは、埋め込みができない動画では写真
 - `api/src/youtube.js`：`fetchYouTubeSnippet` が `embeddable`（`status.embeddable`）を返す
 - `api/src/importRecipe.js`・`server.js`：結果に `embeddable: false`（false の時だけ。AI が止まった時の説明欄だけの結果にも）
-- 版：`APP_VERSION` `20261001-import`・`CACHE_NAME` `ripigochi-v121`
+- 版：`APP_VERSION` `20261001-import`・`CACHE_NAME` `ripigochi-v123`（#101 の公開後に main を取り込み、v122 より上へ）
 
 **すでにできていたこと（確認のみ）**：料理名だけで保存できる（材料・作り方は空でよい）。何人分か分からない時は「不明」で、分量をそのまま出す
 
@@ -35,8 +35,8 @@
 - 埋め込み不可の動画は、アプリの中で再生せず YouTube で開く
 
 ## 4. テスト
-- `node --test test/*.test.cjs`：176件 成功（173件＋`test/import-states.test.cjs` 3件：削除・非公開の案内と料理名だけの保存・知らないコード／AI の上限で 🎬 を出さない・動画から読むの上限／埋め込み不可の保存・画面・手順のリンク・読み込み直し）
-- `npm test --prefix api`：124件 成功（1件追加：`embeddable` の受け渡し）
+- `node --test test/*.test.cjs`：183件 成功（main の180件＋`test/import-states.test.cjs` 3件：削除・非公開の案内と料理名だけの保存・知らないコード／AI の上限で 🎬 を出さない・動画から読むの上限／埋め込み不可の保存・画面・手順のリンク・読み込み直し）
+- `npm test --prefix api`：125件 成功（1件追加：`embeddable` の受け渡し）
 - Playwright（API はモック）：390×844・844×390・1440×900 で、AI の上限・非公開・埋め込み不可の取り込みと、埋め込み不可のレシピの画面。ページのエラー・横スクロールなし。画像は `docs/review/import-states/`
 - 未実行：本物の YouTube での埋め込み不可の動画
 

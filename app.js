@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261001-import2";
+const APP_VERSION = "20261001-import";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -35,6 +35,8 @@ const demoState = {
   foodProfile: null,
   // わが家のごはん方針（profile-talk.js）。端末ごと・家族の同期には入れない。
   tasteProfile: null,
+  // 本人が「家族に見せる」を選んだ方針（✓ の解釈IDだけ）。人ごと・家族の同期に入る（APP_MAP §37）。
+  sharedPolicies: {},
   onboardingDraft: null,
   householdProfile: null,
   mealSlots: {},
@@ -292,6 +294,7 @@ function normalizeState(saved) {
     draftThumbnailUrl: typeof saved.draftThumbnailUrl === "string" ? saved.draftThumbnailUrl : "",
     foodProfile: saved.foodProfile ? Lifestyle.profile(saved.foodProfile) : null,
     tasteProfile: typeof ProfileTalk === "undefined" ? saved.tasteProfile || null : ProfileTalk.normalize(saved.tasteProfile),
+    sharedPolicies: typeof ProfileTalk === "undefined" ? {} : ProfileTalk.normalizeShared(saved.sharedPolicies),
     onboardingDraft: saved.onboardingDraft ? Lifestyle.profile(saved.onboardingDraft) : null,
     householdProfile: saved.householdProfile ? {equipment:Lifestyle.profile(saved.householdProfile).equipment,pantry:Lifestyle.profile(saved.householdProfile).pantry,updatedAt:normalizeTimestamp(saved.householdProfile.updatedAt)} : null,
     mealSlots: Lifestyle.normalizeSlots(saved.mealSlots),
@@ -576,7 +579,8 @@ function buildSyncPayload() {
     aisleOverrides: state.aisleOverrides || {},
     creatorNames: state.creatorNames || {},
     folders: state.folders || {},
-    starterPref: state.starterPref || {}
+    starterPref: state.starterPref || {},
+    sharedPolicies: state.sharedPolicies || {}
   };
 }
 
@@ -617,7 +621,10 @@ function mergeSyncPayloads(local, remote) {
     aisleOverrides: Lifestyle.mergeMap(local.aisleOverrides, remote.aisleOverrides),
     creatorNames: Lifestyle.mergeMap(local.creatorNames, remote.creatorNames),
     folders: Lifestyle.mergeMap(local.folders, remote.folders),
-    starterPref: (remote.starterPref?.updatedAt || "") > (local.starterPref?.updatedAt || "") ? remote.starterPref : local.starterPref
+    starterPref: (remote.starterPref?.updatedAt || "") > (local.starterPref?.updatedAt || "") ? remote.starterPref : local.starterPref,
+    // 人ごとに新しいほう（止めた時も { on:false } を新しい日時で書くので、止めたことが相手の端末に届く）。
+    // ほかの端末が書いた分は、サーバーから消えていたら送り返さない（古い版の書き戻しのあと、古い「見せる」が戻らないように）。
+    sharedPolicies: typeof ProfileTalk === "undefined" ? local.sharedPolicies || {} : ProfileTalk.mergeShared(local.sharedPolicies, remote.sharedPolicies, typeof deviceKey === "function" ? deviceKey() : "")
   };
 }
 
@@ -671,6 +678,7 @@ function applySyncPayload(payload) {
   state.creatorNames = normalizeCreatorNames(payload.creatorNames || state.creatorNames);
   state.folders = normalizeFolders(payload.folders || state.folders);
   state.starterPref = normalizeStarterPref(payload.starterPref || state.starterPref);
+  if (typeof ProfileTalk !== "undefined") state.sharedPolicies = ProfileTalk.normalizeShared(payload.sharedPolicies || state.sharedPolicies);
   if (payload.householdProfile) state.householdProfile = {equipment:Lifestyle.profile(payload.householdProfile).equipment,pantry:Lifestyle.profile(payload.householdProfile).pantry,updatedAt:normalizeTimestamp(payload.householdProfile.updatedAt)};
   // Personal preferences/restrictions and the onboarding draft never leave this device via sync.
   state.repeatDraft = normalizeRepeatDraft(state.repeatDraft, family);
