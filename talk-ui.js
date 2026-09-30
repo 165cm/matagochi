@@ -18,7 +18,21 @@ function talkSet(next) {
   state.tasteProfile = next;
 }
 let talkEcho = "";
-function openTalk(stage = "") {
+// 初回設定（FUNNEL の "talk"）の中で話している時。閉じる・保存は、初回設定の次の画面へ進む。
+function talkInFunnel() {
+  return typeof FUNNEL !== "undefined" && !!state.onboardingDraft && FUNNEL[state.onboardingDraft.quickSetupIndex] === "talk" && (!state.onboarded || (typeof profileEditing !== "undefined" && profileEditing));
+}
+// 食べられないもの・苦手（🔒 設定のまま）：初回設定の途中は、まだ保存していない下書きのほうを見る。
+const talkFood = () => (talkInFunnel() ? Lifestyle.profile(profileDraft()) : dailyProfile());
+// 初回設定の画面から会話を始める（画面の切り替えはしない）。
+function startTalkInFunnel() {
+  if (!talkProfile().session) openTalk("", { setView: false });
+}
+function funnelStep(delta) {
+  const p = profileDraft();
+  p.quickSetupIndex = Math.max(0, Math.min(FUNNEL.length - 1, p.quickSetupIndex + delta));
+}
+function openTalk(stage = "", { setView = true } = {}) {
   const p = talkProfile();
   const fresh = !p.session;
   const s = talkSession();
@@ -35,7 +49,7 @@ function openTalk(stage = "") {
   else if (fresh) s.stage = now.snapshots.some((x) => x.member === s.member) && !ProfileTalk.nextQuestion(now, s.member) ? "check" : "ask";
   // 続きから：聞くことが戻ってきたら、質問の画面へ（聞き返しの途中なら、そのまま）。
   else if (later.length && s.stage !== "confirm") { s.stage = "ask"; s.q = ""; }
-  state.view = "talk";
+  if (setView) state.view = "talk";
 }
 // 今のメンバーで、次に聞く質問。「戻る」や「直す」で選んだ質問があれば、それを先に。
 function talkQuestion() {
@@ -73,8 +87,8 @@ function renderTalk() {
     ${q.multi ? `<button type="button" class="primary-button full-button" data-action="life-talk-multi-done" data-q="${q.id}" ${Array.isArray(current) && current.length ? "" : "disabled"}>これで決定</button>` : ""}
     <details class="talk-note" ${note ? "open" : ""}><summary>✍️ ひとこと書く（任意）</summary><label class="sr-only" for="talk-text">ひとこと</label><textarea id="talk-text" class="input" data-q="${q.id}" maxlength="200" rows="2" placeholder="例：骨がこわくて、子どもに出しにくい">${escapeHtml(note)}</textarea><p class="muted small">端末の中だけに保存します</p></details>
     <div class="talk-skip">${keep ? `<button type="button" class="text-button" data-action="life-talk-keep">このままでいい</button>` : ""}<button type="button" class="text-button" data-action="life-talk-pick" data-q="${q.id}" data-value="${ProfileTalk.IDK}">わからない</button><button type="button" class="text-button" data-action="life-talk-pick" data-q="${q.id}" data-value="${ProfileTalk.LATER}">あとで</button></div>
-    <div class="wizard-footer"><button type="button" class="text-button" data-action="life-talk-back" ${n <= 1 ? "disabled" : ""}>戻る</button>${answered ? `<button type="button" class="secondary-button" data-action="life-talk-check">ここまでで確かめる ›</button>` : ""}</div>
-    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">保存して閉じる</button></div>
+    <div class="wizard-footer"><button type="button" class="text-button" data-action="life-talk-back" ${n <= 1 && !talkInFunnel() ? "disabled" : ""}>戻る</button>${answered ? `<button type="button" class="secondary-button" data-action="life-talk-check">ここまでで確かめる ›</button>` : ""}</div>
+    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">${talkInFunnel() ? "方針はあとで（次へ）" : "保存して閉じる"}</button></div>
   </section>`;
 }
 // 答えから生まれた推測を、その場で聞き返す（例：魚は好きだけど片付けが大変 → 蒸し料理を入れてみる？）。
@@ -99,7 +113,7 @@ function talkAnswerLabel(q, value, a) {
 // 解釈の確認：「本人が言ったこと（答え）」「推測」「確かめたこと」「設定のまま変わらないこと」を分けて見せる。
 function renderTalkCheck() {
   const p = talkProfile(), s = talkSession();
-  const items = ProfileTalk.interpret(p, s.member, dailyProfile());
+  const items = ProfileTalk.interpret(p, s.member, talkFood());
   const open = items.filter((x) => !x.locked);
   const locked = items.filter((x) => x.locked);
   const a = ProfileTalk.answersOf(p, s.member);
@@ -115,7 +129,7 @@ function renderTalkCheck() {
     ${locked.length ? `<ul class="talk-locked">${locked.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : `<p class="muted small">食べられないもの・苦手：なし</p>`}
     ${answers.length ? `<details class="talk-answers"><summary>💬 答えたこと（${answers.length}）</summary><ul>${answers.map((q) => `<li><span>${escapeHtml(q.ask(a))}</span><b>${escapeHtml(talkAnswerLabel(q, a[q.id], a))}</b><button type="button" class="link-inline" data-action="life-talk-edit" data-q="${q.id}">直す</button></li>`).join("")}</ul></details>` : ""}
     <div class="wizard-footer">${more ? `<button type="button" class="text-button" data-action="life-talk-ask">質問にもどる</button>` : `<span></span>`}<button type="button" class="primary-button" data-action="life-talk-save">この方針で保存</button></div>
-    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">保存して閉じる</button>${p.answers.some((x) => x.member === s.member) || Object.keys(p.drafts || {}).some((k) => k.startsWith(`${s.member}\u0000`)) ? `<button type="button" class="text-button danger-text" data-action="life-talk-reset">答えを消す</button>` : ""}</div>
+    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">${talkInFunnel() ? "方針はあとで（次へ）" : "保存して閉じる"}</button>${p.answers.some((x) => x.member === s.member) || Object.keys(p.drafts || {}).some((k) => k.startsWith(`${s.member}\u0000`)) ? `<button type="button" class="text-button danger-text" data-action="life-talk-reset">答えを消す</button>` : ""}</div>
   </section>`;
 }
 // 最初の提案：いまの献立の決め方（条件はゆるめない）に、確かめた好みの加点を足した1品と、その理由。
@@ -191,6 +205,8 @@ function handleTalkAction(action, data) {
       const cur = talkQuestion();
       const i = cur ? list.findIndex((x) => x.id === cur.id) : list.length;
       if (i > 0) { s.q = list[i - 1].id; s.stage = "ask"; }
+      // 初回設定の中で、最初の質問から戻る：初回設定の前の画面へ（会話は続きから開ける）。
+      else if (talkInFunnel()) funnelStep(-1);
     }
     if (action === "life-talk-edit") { s.q = data.q; s.stage = "ask"; }
     if (action === "life-talk-ask") { s.q = ""; s.stage = "ask"; }
@@ -215,10 +231,13 @@ function handleTalkAction(action, data) {
       }
     }
     if (action === "life-talk-save") {
-      talkSet(ProfileTalk.snapshot(talkProfile(), { member: s.member, at, foodProfile: dailyProfile() }));
+      const inFunnel = talkInFunnel();
+      talkSet(ProfileTalk.snapshot(talkProfile(), { member: s.member, at, foodProfile: talkFood() }));
       trackDaily("talk_saved");
+      // 初回設定の中では、次の画面へ（最初の提案は、初回設定を終えた時に出す）。
+      if (inFunnel) funnelStep(1);
       // 保存で会話は閉じる。提案の画面を出すため、提案の段だけの会話を開き直す。
-      talkProfile().session = { member: s.member, stage: "suggest", confirmId: "", q: "", startedAt: at, updatedAt: at };
+      else talkProfile().session = { member: s.member, stage: "suggest", confirmId: "", q: "", startedAt: at, updatedAt: at };
     }
     if (action === "life-talk-place") {
       const r = allDinnerRecipes().find((x) => x.id === data.recipe);
@@ -232,20 +251,24 @@ function handleTalkAction(action, data) {
       state.view = data.date === today() ? "today" : "plan";
     }
     if (action === "life-talk-close") {
-      // 提案の画面から閉じた時は、会話は終わり。途中なら続きから開けるように残す。
-      if (s.stage === "suggest") talkProfile().session = null;
-      state.view = "today";
+      // 初回設定の中：会話は途中のまま残し（今日の「やること」から続きを開ける）、初回設定の次の画面へ。
+      if (talkInFunnel()) funnelStep(1);
+      else {
+        // 提案の画面から閉じた時は、会話は終わり。途中なら続きから開けるように残す。
+        if (s.stage === "suggest") talkProfile().session = null;
+        state.view = "today";
+      }
     }
     if (action === "life-talk-reset") {
       if (globalThis.confirm && !globalThis.confirm("この端末の答えと方針を消します。献立・記録・設定はそのままです。")) return true;
       const p = talkProfile();
       state.tasteProfile = { ...p, answers: p.answers.filter((x) => x.member !== s.member), decisions: Object.fromEntries(Object.entries(p.decisions).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), drafts: Object.fromEntries(Object.entries(p.drafts || {}).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), snapshots: p.snapshots.filter((x) => x.member !== s.member), session: null, updatedAt: at };
-      state.view = "today";
+      if (!talkInFunnel()) state.view = "today";
     }
   }
   saveState({ scheduleSync: false });
   render();
-  if (state.view === "talk") document.querySelector("#app h2")?.focus?.();
+  if (state.view === "talk" || talkInFunnel()) document.querySelector("#app h2")?.focus?.();
   globalThis.scrollTo?.({ top: 0, behavior: "instant" });
   return true;
 }
