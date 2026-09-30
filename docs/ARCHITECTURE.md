@@ -56,7 +56,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 
 | まとまり | 主なルート |
 |---|---|
-| 取り込み | `POST /api/import/youtube`（説明欄→AI、`mode:"video"` で動画をAIが読む・チケット1枚）・`/api/import/youtube/playlist`・`/api/import/images`・`/api/oembed/tiktok`・`/api/import/youtube/timecodes` |
+| 取り込み | `POST /api/import/youtube`（説明欄→AI、`mode:"video"` で動画をAIが読む・チケット1枚）・`/api/import/youtube/playlist`・`/api/import/images`・`/api/oembed/tiktok`・`/api/import/youtube/timecodes`（手順の時刻。AI の1日の予算の中で動き、動画の接続先を切り替える時も切り替えの直前ごとに予算を確かめる） |
 | 同期 | `GET/PUT /api/sync/rooms/:roomId`（写真は `/photos/:hash`） |
 | ログイン | `/api/auth/google`・`/api/auth/email/start`・`/api/auth/email/verify`・`/api/auth/me` |
 | 通知 | `/api/push/*` |
