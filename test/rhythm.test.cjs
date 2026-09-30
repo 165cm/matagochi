@@ -89,3 +89,44 @@ test("PR 5a: the menu plans only the chosen cooking days, and the settings scree
   assert.match(html, /金土日・週1回の買い物/);
   assert.match(html, /data-action="life-rhythm-start" data-day="5" aria-pressed="true"/);
 });
+
+test("review fix (#106): unpicking and re-picking the first cooking day keeps the week start (no shifted blocks, same reminder)", () => {
+  const run = app();
+  run(`handleDailyAction("life-rhythm", { preset: "3day" })`);
+  assert.deepEqual(J(run, "rhythmBlocks()"), [[1, 2, 3], [4, 5, 6]]);
+  const reminder = run("rhythmReminder().days.join()");
+  run(`handleDailyAction("life-rhythm-day", { day: "1" })`); // 月を外す（途中）
+  assert.match(run("renderRhythmSettings()"), /data-action="life-rhythm-start" data-day="1" aria-pressed="true"/, "the start stays Monday while picking");
+  run(`handleDailyAction("life-rhythm-day", { day: "1" })`); // 月を戻す
+  assert.deepEqual(J(run, "rhythmBlocks()"), [[1, 2, 3], [4, 5, 6]], "back to 月火水／木金土");
+  assert.equal(run("rhythmReminder().days.join()"), reminder);
+  // 月曜はじまりのまま、火〜日を選ぶ → 火水木／金土日（週の始まりは月曜のまま）
+  run(`handleDailyAction("life-rhythm-day", { day: "1" }); handleDailyAction("life-rhythm-day", { day: "0" })`);
+  assert.deepEqual(J(run, "rhythmBlocks()"), [[2, 3, 4], [5, 6, 0]]);
+  assert.equal(run("rhythmStart()"), 1);
+  assert.deepEqual(J(run, "normalizeRhythm(JSON.parse(JSON.stringify(state.rhythm)))"), J(run, "state.rhythm"), "the start survives saving and sync");
+});
+
+test("review fix (#106): broken saved days are never used — no type coercion, and the days must go forward within one week from the start", () => {
+  const run = app();
+  for (const days of [[null, 1, 2], [false, 1, 2], ["", 1, 2], ["1", 2, 3], [1, 3, 2], [3, 2, 1], [1.5, 2, 3]]) {
+    const r = J(run, `normalizeRhythm({ preset: "three", days: ${JSON.stringify(days)} })`);
+    assert.equal(r.days, undefined, JSON.stringify(days));
+    assert.deepEqual(J(run, `rhythmBlocks(${JSON.stringify(r)})`), [[1, 2, 3]], "falls back to the usual days");
+  }
+  // 週の始まりから見て順に並んでいれば、週をまたいでよい（金土日月…）
+  assert.deepEqual(J(run, `normalizeRhythm({ preset: "three", days: [5, 6, 0], start: 5 }).days`), [5, 6, 0]);
+  assert.equal(J(run, `normalizeRhythm({ preset: "three", days: [6, 0, 1], start: 5 }).start`), 5);
+  // 週の始まりから見て戻る並びは使わない。水曜はじまりなら [3, 1, 2]（水・翌月・翌火）は前に進むのでよいが、[3, 2, 1] は戻る
+  assert.deepEqual(J(run, `normalizeRhythm({ preset: "three", days: [3, 1, 2], start: 3 }).days`), [3, 1, 2]);
+  assert.equal(run(`normalizeRhythm({ preset: "three", days: [3, 2, 1], start: 3 }).days === undefined`), true);
+  assert.equal(run(`normalizeRhythm({ preset: "three", days: [1, 2, 3], start: 2 }).days === undefined`), true, "Monday comes last from a Tuesday start");
+  // 壊れた週の始まりは持たない（曜日だけ使う）
+  const r = J(run, `normalizeRhythm({ preset: "three", days: [1, 2, 3], start: "x" })`);
+  assert.deepEqual([r.days, r.start], [[1, 2, 3], undefined]);
+  // どのまとまりも1週間の中に収まり、次の回と重ならない
+  run(`state.rhythm = normalizeRhythm({ preset: "3day", days: [6, 0, 1, 2, 3, 4], start: 6 })`);
+  const bs = blocks(run);
+  for (let i = 1; i < bs.length; i++) assert.ok(bs[i - 1].dates.at(-1) < bs[i].dates[0], "no overlap");
+  assert.ok(bs.every((b) => (Date.parse(b.dates.at(-1)) - Date.parse(b.dates[0])) / 86_400_000 < 7));
+});
