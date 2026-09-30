@@ -89,3 +89,34 @@ test("PR 5c: changing the number of servings keeps what was bought on record and
   assert.equal(J(run, `state.shoppingMarks[${JSON.stringify(item.id)}].status`), "purchased", "the record of buying stays");
   assert.match(run("renderDailyShopping()"), /要確認/);
 });
+
+test("review fix (#108): undoing 'あとで' after a sync writes a newer 'buy' mark, so the old 'later' cannot come back", () => {
+  const run = app();
+  setup(run);
+  const id = run(`dailyShopping().find((i) => i.name === "もやし").id`);
+  run(`handleDailyAction("life-shop-later", { id: ${JSON.stringify(id)} })`);
+  // 同期が済む（サーバーには later の印）。同期の組み合わせは買った印を Lifestyle.mergeMap で新しいほうにする
+  const serverMarks = run("JSON.stringify(state.shoppingMarks)");
+  run(`nowIso = (() => { let t = Date.now() + 5000; return () => new Date(t += 1000).toISOString(); })(); shopUndo.undo();`);
+  assert.equal(J(run, `state.shoppingMarks[${JSON.stringify(id)}].status`), "buy", "the mark is kept as 'buy', not deleted");
+  run(`state.shoppingMarks = Lifestyle.mergeMap(state.shoppingMarks, ${serverMarks})`); // 次の同期
+  const items = J(run, "dailyShopping().map((i) => ({ name: i.name, status: i.status }))");
+  assert.equal(items.find((i) => i.name === "もやし").status, "buy", "still to buy after the next sync");
+  assert.equal(items.some((i) => i.name.startsWith("もやし（")), false);
+});
+
+test("review fix (#108): an item put off with 'あとで' is not 'already bought' when its dish is swapped after the trip", () => {
+  const run = app();
+  setup(run);
+  const id = run(`dailyShopping().find((i) => i.name === "もやし").id`);
+  run(`handleDailyAction("life-shop-later", { id: ${JSON.stringify(id)} }); state.shopDone = { [today()]: new Date(Date.now() + 1000).toISOString() };`);
+  assert.equal(J(run, `plannedIngredients().get("もやし")`), false, "put off, so not bought");
+  assert.equal(J(run, `plannedIngredients().get("豆腐")`), true, "the rest of the trip was bought");
+  const egg = JSON.stringify({ id: "卵焼き", title: "卵焼き", sourceServings: 2, ingredients: [{ name: "卵", amount: "3個" }] });
+  run(`const before = dailyShopping(); state.mealSlots["2026-10-03"] = { ...state.mealSlots["2026-10-03"], recipe: ${egg}, updatedAt: nowIso() }; changedShopping(before);`);
+  const diff = J(run, "shoppingNotice || { bought: [] }");
+  assert.equal(diff.bought.includes("もやし"), false, `bought: ${diff.bought}`);
+  // 買ってあった品を入れ替えた時は、これまでどおり出る
+  run(`const b2 = dailyShopping(); state.mealSlots["2026-10-04"] = { ...state.mealSlots["2026-10-04"], recipe: ${egg}, updatedAt: nowIso() }; changedShopping(b2);`);
+  assert.ok(J(run, "shoppingNotice.bought").includes("豆腐"));
+});

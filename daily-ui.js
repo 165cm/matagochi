@@ -418,7 +418,9 @@ function plannedIngredients() {
     for (const i of s.recipe.ingredients || []) {
       const name = Lifestyle.shoppingName(i.name);
       if (!name || !Lifestyle.isBought(name)) continue;
-      const bought = onTrip || marks[Lifestyle.shoppingKey(name)]?.status === "purchased";
+      // 「あとで」にした品は、前の買い物の料理の材料でも、まだ買っていない。
+      const mark = marks[Lifestyle.shoppingKey(name)]?.status;
+      const bought = mark === "purchased" || (onTrip && mark !== "later");
       out.set(name, out.get(name) || bought);
     }
   }
@@ -1507,7 +1509,8 @@ function handleDailyAction(action, data) {
       const id = generateId("manual-");
       state.shoppingMarks[item.id] = { status: "later", signature: item.signature, updatedAt: nowIso() };
       state.manualShopping[id] = { name: `${item.name}（${formatDate(when.date)}の分）`.slice(0, 100), amount: String(item.amount || "").slice(0, 80), updatedAt: nowIso() };
-      shopUndo = { text: `🗓 ${item.name}は${formatDate(when.date)}の前に買う`, undo: () => { if (prevMark) state.shoppingMarks[item.id] = { ...prevMark, updatedAt: nowIso() }; else delete state.shoppingMarks[item.id]; state.manualShopping[id] = { ...state.manualShopping[id], deleted: true, updatedAt: nowIso() }; } };
+      // 元に戻す時は、印を消さずに新しい日時の印を書く（消すと、同期でサーバーに残っている later が戻ってくる）。
+      shopUndo = { text: `🗓 ${item.name}は${formatDate(when.date)}の前に買う`, undo: () => { state.shoppingMarks[item.id] = prevMark ? { ...prevMark, updatedAt: nowIso() } : { status: "buy", signature: item.signature, updatedAt: nowIso() }; state.manualShopping[id] = { ...state.manualShopping[id], deleted: true, updatedAt: nowIso() }; } };
     }
   }
   if (action === "life-shopping-status" && ["buy","have"].includes(data.status)) {
