@@ -240,7 +240,10 @@ function publishTalkPolicy({ explicit = false } = {}) {
   if (explicit ? !on && !cur?.on : !on || !cur?.on || (cur.by || "") !== by) return false;
   const items = on ? ProfileTalk.familyItems(p, who) : [];
   if (cur && (cur.by || "") === by && cur.on === on && JSON.stringify(cur.items) === JSON.stringify(items)) return false;
-  state.sharedPolicies = { ...(state.sharedPolicies || {}), [who]: { on, items, updatedAt: nowIso(), ...(by ? { by } : {}) } };
+  // 日時は、前の記録より必ず後にする（同じミリ秒に「見せる」→「見せない」と押しても、あとの操作が同期で勝つ）。
+  let updatedAt = nowIso();
+  if (cur?.updatedAt && updatedAt <= cur.updatedAt) updatedAt = new Date(Date.parse(cur.updatedAt) + 1).toISOString();
+  state.sharedPolicies = { ...(state.sharedPolicies || {}), [who]: { on, items, updatedAt, ...(by ? { by } : {}) } };
   return true;
 }
 // ---- 晩ごはんタイプ（任意・おまけ）：方針の画面から4問。献立の決め方には使わない ----

@@ -714,20 +714,60 @@ function renderFlow() {
 // 定着の目安：3日ずつなら週2回の決定。好きな料理が「次に食べたい頃」でまた出てくるのは
 // 2〜4週目なので、はじめの4週間を「ループが回り始めるまで」として見せる（週カウンター）。
 // 並びはおすすめ順（習慣にしやすい「平日5日」がいちばん上）。
+// docs/PERSONALIZE_PLAN.md §9：3日／3日＋3日／5日。作る曜日（days）と週の始まりは家庭ごとに選べる（月曜固定にしない）。
+// sizes：まとまりごとの日数。days がない・合わない時は、blocks（以前からの月曜はじまり）を使う＝今までのリズムはそのまま。
 const RHYTHMS = {
-  weekday: { label: "平日5日", note: "月〜金・土日はお休み", blocks: [[1, 2, 3, 4, 5]] },
-  week: { label: "1週間まとめて", note: "月〜土・日曜お休み", blocks: [[1, 2, 3, 4, 5, 6]] },
-  "3day": { label: "3日ずつ", note: "月火水／木金土・日曜お休み", blocks: [[1, 2, 3], [4, 5, 6]] },
+  weekday: { label: "5日", note: "月〜金・土日はお休み", sizes: [5], blocks: [[1, 2, 3, 4, 5]] },
+  "3day": { label: "3日＋3日", note: "月火水／木金土・週2回の買い物", sizes: [3, 3], blocks: [[1, 2, 3], [4, 5, 6]] },
+  three: { label: "3日", note: "月火水・週1回の買い物", sizes: [3], blocks: [[1, 2, 3]] },
+  week: { label: "1週間まとめて", note: "月〜土・日曜お休み", sizes: [6], blocks: [[1, 2, 3, 4, 5, 6]] },
 };
+const rhythmSize = (preset) => (RHYTHMS[preset] ? RHYTHMS[preset].sizes.reduce((a, b) => a + b, 0) : 0);
+// 作る曜日（0＝日〜6＝土）を、選んだ順＝週の始まりからの順に並べたもの。preset の日数と合う時だけ使う。
+// 型を変えずに調べる（null・false・空文字・"1" などは曜日にしない）。週の始まり（start）から1週間の中で、順に並んでいること
+// （[1, 3, 2] のように戻ると、1つのまとまりが翌週にまたがって次の回と重なる）。
+const isWeekday = (d) => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6;
+function validRhythmDays(preset, days, start = Array.isArray(days) ? days[0] : undefined) {
+  if (!Array.isArray(days) || days.length !== rhythmSize(preset) || !days.every(isWeekday) || !isWeekday(start)) return null;
+  const offsets = days.map((d) => (d - start + 7) % 7);
+  return offsets.every((o, i) => i === 0 || o > offsets[i - 1]) ? [...days] : null;
+}
+// 週の始まり：選んだ曜日（start）。なければ作る曜日の最初、それもなければ以前の月曜はじまりの最初。
+function rhythmStart(r = state.rhythm) {
+  const preset = RHYTHMS[r?.preset];
+  if (!preset) return 1;
+  const days = validRhythmDays(r.preset, r.days, isWeekday(r.start) ? r.start : undefined);
+  return days ? (isWeekday(r.start) ? r.start : days[0]) : preset.blocks[0][0];
+}
+// いまのリズムのまとまり（曜日の並び）。例：[[3, 4, 5], [6, 0, 1]]＝水木金／土日月。
+function rhythmBlocks(r = state.rhythm) {
+  const preset = RHYTHMS[r?.preset];
+  if (!preset) return [];
+  const days = validRhythmDays(r.preset, r.days, isWeekday(r.start) ? r.start : undefined);
+  if (!days) return preset.blocks;
+  const out = [];
+  let i = 0;
+  for (const n of preset.sizes) { out.push(days.slice(i, i + n)); i += n; }
+  return out;
+}
+// 週の始まりの曜日から、作る曜日の初期値（続けて preset の日数）。
+const defaultRhythmDays = (preset, start = 1) => Array.from({ length: rhythmSize(preset) }, (_, i) => (start + i) % 7);
 const SHOP_TIMES = ["10:00", "12:00", "17:00", "19:00"];
 const LOOP_WEEKS = 4;
 function normalizeShopDone(raw) {
   return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && typeof v === "string"));
 }
 function normalizeRhythm(raw) {
+  const preset = RHYTHMS[raw?.preset] ? raw.preset : "";
+  // 週の始まりは、作る曜日と一緒の時だけ持つ（作る曜日がその週の始まりから順に並んでいる時だけ）。
+  const start = isWeekday(raw?.start) ? raw.start : undefined;
+  const days = preset ? validRhythmDays(preset, raw?.days, start) : null;
   return {
-    preset: RHYTHMS[raw?.preset] ? raw.preset : "",
+    preset,
     shopTime: SHOP_TIMES.includes(raw?.shopTime) ? raw.shopTime : "17:00",
+    // 作る曜日（選んだ時だけ）・買い物の日（前日＝1 がふつう、当日＝0）。
+    ...(days ? { days, ...(start !== undefined ? { start } : {}) } : {}),
+    ...(raw?.shopBefore === 0 ? { shopBefore: 0 } : {}),
     dismissed: !!raw?.dismissed,
     // First block of the rhythm: starting mid-block would skip the first full "decide → shop" round.
     startFrom: /^\d{4}-\d{2}-\d{2}$/.test(raw?.startFrom || "") ? raw.startFrom : "",
@@ -756,8 +796,10 @@ function rhythmOn() {
   return !!RHYTHMS[state.rhythm?.preset];
 }
 function rhythmDays() {
-  return [...new Set(RHYTHMS[state.rhythm.preset].blocks.flat())].map(String);
+  return [...new Set(rhythmBlocks().flat())].map(String);
 }
+// 買い物の日：まとまりの最初の日の前日（ふつう）か当日。
+const shopDayOf = (start) => (state.rhythm?.shopBefore === 0 ? start : addDays(start, -1));
 const dow = (date) => new Date(date + "T12:00:00").getDay();
 const WD = "日月火水木金土";
 function blockRange(b) {
@@ -771,10 +813,12 @@ function blocksFrom(from, horizon = 21) {
   if (k && k.dates[k.dates.length - 1] >= from) out.push({ key: k.start, start: k.start, end: k.dates[k.dates.length - 1], dates: k.dates, shopAt: k.shopAt, kickoff: true });
   for (let i = -7; i < horizon; i += 1) {
     const date = addDays(from, i);
-    const shape = RHYTHMS[state.rhythm.preset].blocks.find((b) => b[0] === dow(date));
+    const shape = rhythmBlocks().find((b) => b[0] === dow(date));
     if (!shape) continue;
-    const dates = shape.map((_, k) => addDays(date, k));
-    const b = { key: date, start: date, end: dates[dates.length - 1], dates, shopAt: `${addDays(date, -1)}T${state.rhythm.shopTime}` };
+    // 曜日の並びを、その日からの日付に（飛び飛びの曜日・週をまたぐまとまりも、週の始まりからの順に進める）。
+    let offset = 0;
+    const dates = shape.map((w, k) => { if (k) offset += (w - shape[k - 1] + 7) % 7 || 7; return addDays(date, offset); });
+    const b = { key: date, start: date, end: dates[dates.length - 1], dates, shopAt: `${shopDayOf(date)}T${state.rhythm.shopTime}` };
     if (b.end >= from && !(k && b.dates.some((d) => k.dates.includes(d)))) out.push(b);
   }
   return out.sort((a, b) => (a.start < b.start ? -1 : 1));
@@ -898,30 +942,72 @@ function renderBlockShoppingDone(items) {
   const all = items.length && items.every((i) => i.status !== "buy");
   return dailyButton("life-block-shopped", "買い物完了", `data-key="${b.key}"`, all);
 }
+// 作る曜日を選んでいる途中（日数がそろうまでは保存しない）。
+let rhythmPick = null;
+// まとまりの曜日を「水木金／土日月」のように。
+const rhythmShape = (blocks) => blocks.map((b) => b.map((d) => WD[d]).join("")).join("／");
 function renderRhythmSettings(first = false) {
   const cur = state.rhythm?.preset || "weekday";
+  const on = rhythmOn();
+  const blocks = on ? rhythmBlocks() : [];
+  const days = rhythmPick || blocks.flat();
+  const need = on ? rhythmSize(state.rhythm.preset) : 0;
+  // 週の始まりは、曜日を選んでいる途中でも動かさない（保存してあるリズムの週の始まり）。
+  const start = on ? rhythmStart() : 1;
+  // 週の始まりから7日を並べる（飛び飛びの曜日も選べる）。
+  const week = Array.from({ length: 7 }, (_, i) => (start + i) % 7);
   return `<section class="panel rhythm-panel" id="rhythm"><h3>🗓 献立のリズム</h3>
     <p class="muted small">決める日・買い物の日が曜日で決まり、「作りながら次を考える」が自然に回ります。</p>
-    <div class="rhythm-options">${Object.entries(RHYTHMS).map(([id, r]) => `<button type="button" class="rhythm-option" data-action="life-rhythm" data-preset="${id}" aria-pressed="${rhythmOn() ? state.rhythm.preset === id : !first ? false : id === cur}"><strong>${r.label}</strong><small>${r.note}</small></button>`).join("")}</div>
-    <label class="rhythm-time">買い物の時間（まとまりの前日）<select id="rhythm-time" class="input">${SHOP_TIMES.map((t) => `<option ${state.rhythm?.shopTime === t || (!state.rhythm?.shopTime && t === "17:00") ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-    ${rhythmOn() ? '<button type="button" class="text-button" data-action="life-rhythm-off">リズムを使わない</button>' : ""}</section>`;
+    <div class="rhythm-options">${Object.entries(RHYTHMS).map(([id, r]) => `<button type="button" class="rhythm-option" data-action="life-rhythm" data-preset="${id}" aria-pressed="${on ? state.rhythm.preset === id : !first ? false : id === cur}"><strong>${r.label}</strong><small>${on && state.rhythm.preset === id ? `${escapeHtml(rhythmShape(blocks))}・${r.sizes.length === 2 ? "週2回の買い物" : "週1回の買い物"}` : r.note}</small></button>`).join("")}</div>
+    ${on ? `<div class="rhythm-days">
+      <p class="small"><b>週の始まり</b></p>
+      <div class="rhythm-week" role="group" aria-label="週の始まり">${[0, 1, 2, 3, 4, 5, 6].map((d) => `<button type="button" class="chip-button" data-action="life-rhythm-start" data-day="${d}" aria-pressed="${d === start}">${WD[d]}</button>`).join("")}</div>
+      <p class="small"><b>作る曜日</b> <small class="muted">${need}日を選ぶ${rhythmPick && rhythmPick.length !== need ? `（あと${need - rhythmPick.length > 0 ? `${need - rhythmPick.length}日` : `${rhythmPick.length - need}日外す`}）` : ""}</small></p>
+      <div class="rhythm-week" role="group" aria-label="作る曜日">${week.map((d) => `<button type="button" class="chip-button" data-action="life-rhythm-day" data-day="${d}" aria-pressed="${days.includes(d)}">${WD[d]}</button>`).join("")}</div>
+      <p class="small"><b>買い物の日</b></p>
+      <div class="rhythm-week" role="group" aria-label="買い物の日">${[[1, "まとまりの前日"], [0, "まとまりの初日"]].map(([v, label]) => `<button type="button" class="chip-button" data-action="life-rhythm-shopday" data-before="${v}" aria-pressed="${(state.rhythm.shopBefore === 0 ? 0 : 1) === v}">${label}</button>`).join("")}</div>
+    </div>` : ""}
+    <label class="rhythm-time">買い物の時間<select id="rhythm-time" class="input">${SHOP_TIMES.map((t) => `<option ${state.rhythm?.shopTime === t || (!state.rhythm?.shopTime && t === "17:00") ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+    ${on ? '<button type="button" class="text-button" data-action="life-rhythm-off">リズムを使わない</button>' : ""}</section>`;
 }
 function renderRhythmInvite() {
   if (rhythmOn() || isViewer() || state.rhythm?.dismissed) return "";
   return `<section class="rhythm-invite"><p><b>献立のリズムを決めよう</b><br><small>⭐ 平日5日・買い物は前日17:00</small></p><div class="actions">${dailyButton("life-rhythm", "これではじめる", 'data-preset="weekday"', true)}${dailyButton("life-rhythm-open", "ほかを選ぶ")}</div></section>`;
 }
+// リズムを変える：作る曜日・買い物の日が変わるので、決まっていない日の下書きを作り直す。今日以降に決めた献立がなければ、次の丸ごとの回から始める。
+function applyRhythm({ preset, days, start, shopBefore = state.rhythm?.shopBefore === 0 ? 0 : 1 }) {
+  rhythmPick = null;
+  state.rhythm = normalizeRhythm({ preset, days, start, shopBefore, shopTime: document.querySelector("#rhythm-time")?.value || state.rhythm?.shopTime || "17:00", updatedAt: nowIso() });
+  const decidedAhead = Object.values(state.mealSlots || {}).some((x) => x.date >= today() && ["confirmed", "cooked"].includes(x.status));
+  if (decidedAhead) state.rhythm.startFrom = ""; else startRhythm();
+  state.planOverrides = {};
+}
 function handleRhythmAction(action, data) {
   if (action === "life-week") { boardWeek = Math.max(-2, Math.min(1, boardWeek + (Number(data.delta) || 0))); calPick = ""; }
   else if (action === "life-rhythm-open") { state.view = "settings"; saveState(); openSetting("rhythm"); return true; }
   else if (action === "life-rhythm" && RHYTHMS[data.preset] && !isViewer()) {
-    state.rhythm = { preset: data.preset, shopTime: document.querySelector("#rhythm-time")?.value || state.rhythm?.shopTime || "17:00", updatedAt: nowIso() };
-    // With nothing decided from today on, begin at the next whole block.
-    const decidedAhead = Object.values(state.mealSlots || {}).some((x) => x.date >= today() && ["confirmed", "cooked"].includes(x.status));
-    if (decidedAhead) state.rhythm.startFrom = ""; else startRhythm();
+    // 週の始まりは、選んでいた曜日のまま（はじめは月曜）。作る曜日は、そこから続けて preset の日数。
+    const start = rhythmOn() ? rhythmStart() : 1;
+    applyRhythm({ preset: data.preset, days: defaultRhythmDays(data.preset, start), start });
     // During the first-run questions, picking a rhythm moves on to the next question.
     if ((profileEditing || !state.onboarded) && FUNNEL[state.onboardingDraft?.quickSetupIndex] === 1) state.onboardingDraft.quickSetupIndex++;
-    state.planOverrides = {};
     showToast(`献立のリズムを「${RHYTHMS[data.preset].label}」にしました。`);
+  } else if (action === "life-rhythm-start" && rhythmOn() && !isViewer()) {
+    const start = Number(data.day);
+    if (isWeekday(start)) applyRhythm({ preset: state.rhythm.preset, days: defaultRhythmDays(state.rhythm.preset, start), start });
+  } else if (action === "life-rhythm-day" && rhythmOn() && !isViewer()) {
+    // 作る曜日を1つずつ。日数がそろった時だけ保存する（週の始まりからの順に並べる）。
+    const d = Number(data.day);
+    if (!Number.isInteger(d) || d < 0 || d > 6) return true;
+    const cur = rhythmPick || rhythmBlocks().flat();
+    const start = rhythmStart();
+    const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d];
+    const order = (x) => (x - start + 7) % 7;
+    const sorted = next.sort((a, b) => order(a) - order(b));
+    if (sorted.length === rhythmSize(state.rhythm.preset)) { applyRhythm({ preset: state.rhythm.preset, days: sorted, start }); showToast(`作る曜日を「${rhythmShape(rhythmBlocks())}」にしました。`); }
+    else rhythmPick = sorted;
+  } else if (action === "life-rhythm-shopday" && rhythmOn() && !isViewer()) {
+    applyRhythm({ preset: state.rhythm.preset, days: rhythmBlocks().flat(), start: rhythmStart(), shopBefore: data.before === "0" ? 0 : 1 });
   } else if (action === "life-rhythm-off" && !isViewer()) state.rhythm = { preset: "", shopTime: state.rhythm.shopTime, updatedAt: nowIso(), dismissed: true };
   else if (action === "life-block-shopped" && !isViewer()) {
     // One trip covers every block that is decided by now.

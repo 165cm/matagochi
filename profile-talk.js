@@ -278,7 +278,9 @@
     for (const m of new Set([...Object.keys(l), ...Object.keys(r)])) {
       const a = l[m], b = r[m];
       if (a && !b && !(device && a.by === device)) continue;
-      out[m] = !a ? b : !b ? a : b.updatedAt > a.updatedAt || (b.updatedAt === a.updatedAt && JSON.stringify(b) > JSON.stringify(a)) ? b : a;
+      // 同じ日時なら「見せない」を優先（見せすぎない側に倒す）。それも同じなら、文字の並びで決める（どの端末でも同じ結果）。
+      const tie = () => (a.on !== b.on ? (b.on ? a : b) : JSON.stringify(b) > JSON.stringify(a) ? b : a);
+      out[m] = !a ? b : !b ? a : b.updatedAt > a.updatedAt ? b : b.updatedAt < a.updatedAt ? a : tie();
     }
     return out;
   }

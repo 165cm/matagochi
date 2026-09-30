@@ -1712,8 +1712,9 @@ function googleCalendarUrl() {
 // 決める日（まとまりの前日）の予定を、毎週くり返しのカレンダーファイルにする。
 const ICS_DAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"], DAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
 function rhythmReminder() {
-  const preset = RHYTHMS[state.rhythm?.preset || "weekday"];
-  const days = preset.blocks.map((b) => (b[0] + 6) % 7);
+  const blocks = rhythmOn() ? rhythmBlocks() : RHYTHMS.weekday.blocks;
+  // 決める日＝買い物の日（まとまりの前日か当日）。
+  const days = blocks.map((b) => (state.rhythm?.shopBefore === 0 ? b[0] : (b[0] + 6) % 7));
   const time = state.rhythm?.shopTime || "17:00";
   const [h, m] = time.split(":").map(Number);
   const at = `${String(Math.max(0, h - 1)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;

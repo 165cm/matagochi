@@ -700,3 +700,23 @@ test("review fix (PR 2c, round 2): with two devices of the same name, a pressed 
   C(`state.family=["わたし"]; state.sharedPolicies = {}; handleDailyAction("life-talk-share",{family:"0"})`);
   assert.equal(C("JSON.stringify(state.sharedPolicies)"), "{}");
 });
+
+test("fix (found by CI): '見せる' then '見せない' in the same millisecond — the later one still wins after sync, and a tie prefers the stop", () => {
+  const run = app();
+  run(`state.family=["わたし","はなこ"]; state.me="わたし"; deviceKey = () => "dev-A"; saveState=()=>{}; nowIso = () => "2026-10-01T00:00:00.000Z";
+    let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" });
+    handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"});`);
+  const shown = JSON.parse(run("JSON.stringify(state.sharedPolicies['わたし'])"));
+  run(`handleDailyAction("life-talk-share",{family:"0"})`);
+  const stopped = JSON.parse(run("JSON.stringify(state.sharedPolicies['わたし'])"));
+  assert.ok(stopped.updatedAt > shown.updatedAt, "the stop is written later even in the same millisecond");
+  // 古い「見せる」と組み合わせても、止めた記録が勝つ
+  assert.equal(T.mergeShared({ わたし: stopped }, { わたし: shown }, "dev-B").わたし.on, false);
+  assert.equal(T.mergeShared({ わたし: shown }, { わたし: stopped }, "dev-B").わたし.on, false);
+  // 同じ日時なら「見せない」
+  const same = { ...stopped, updatedAt: shown.updatedAt };
+  assert.equal(T.mergeShared({ わたし: shown }, { わたし: same }, "dev-A").わたし.on, false);
+  assert.equal(T.mergeShared({ わたし: same }, { わたし: shown }, "dev-A").わたし.on, false);
+});
