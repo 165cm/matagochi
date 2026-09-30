@@ -1156,6 +1156,8 @@ test("the first-run funnel (2026-09-30): no duplicate question, no pledge, no ti
   run(`handleDailyAction("life-talk-pick",{q:"hard",value:"clean"}); handleDailyAction("life-talk-pick",{q:"want",value:"fish"}); handleDailyAction("life-talk-pick",{q:"why",value:"clean"})`);
   assert.ok(run("renderTalk()").includes("魚を減らすより"), "the guess is asked back during setup too");
   run(`handleDailyAction("life-talk-decide",{id:"fish-easy",status:"confirmed"}); handleDailyAction("life-talk-toggle",{q:"taste",value:"light"}); handleDailyAction("life-talk-multi-done",{q:"taste"})`);
+  assert.ok(run("renderTalk()").includes("休日の夜は、平日とちがう？"), "the deeper questions come next");
+  run(`handleDailyAction("life-talk-pick",{q:"weekend",value:"same"}); handleDailyAction("life-talk-pick",{q:"together",value:"same"})`);
   html = run("renderTalk()");
   assert.ok(html.includes("わが家のごはん方針（案）"));
   assert.ok(html.includes("🚫 えび（食べられない）"), "the restrictions come from the setup draft (not saved yet)");
