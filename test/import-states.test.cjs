@@ -121,3 +121,19 @@ test("review fix (#105): every way a saved recipe is filled from a video keeps t
   await run(`fillRecipeFromVideo("r2")`);
   assert.match(run("toasts.join()"), /今日はAIで読み取れる上限に達しました/);
 });
+
+test("review fix (#105, round 2): the mark is kept even when no steps come back, and the busy / paused reasons are not called 'the limit'", async () => {
+  const run = app();
+  run(`state.recipes = [{ id: "r1", title: "親子丼", videoUrl: "https://www.youtube.com/watch?v=abcdefghijk", mealType: "dinner", ingredients: [], steps: [] }];
+    reply = { status: 200, body: { title: "親子丼", ingredients: [], steps: [], videoId: "abcdefghijk", embeddable: false, analysis: { ok: false, code: "analysis_budget_exceeded" } } }; toasts.length = 0;`);
+  await run(`fillRecipeFromVideo("r1")`);
+  assert.equal(run("state.recipes[0].embeddable"), false, "kept although no steps came back");
+  assert.doesNotMatch(run("renderCreatorCredit(state.recipes[0])"), /<iframe/);
+  assert.match(run("toasts.join()"), /上限に達しました/);
+  for (const [code, want] of [["analysis_disabled", /お休み中/], ["analysis_busy", /混み合っています/]]) {
+    run(`reply = { status: 200, body: { title: "親子丼", ingredients: [], steps: [], videoId: "abcdefghijk", analysis: { ok: false, code: "${code}" } } }; toasts.length = 0;`);
+    await run(`fillRecipeFromVideo("r1")`);
+    assert.match(run("toasts.join()"), want);
+    assert.doesNotMatch(run("toasts.join()"), /上限|明日また/);
+  }
+});

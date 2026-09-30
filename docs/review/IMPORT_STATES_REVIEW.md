@@ -1,5 +1,17 @@
 # レビュー資料（Codex 向け）：動画の取り込みで止まった理由を分けて伝える（PR 3 の残り）
 
+## 再レビュー2（Codex の指摘への対応、`b0e0275` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`「review fix (#105, round 2)…」） |
+|---|---|---|
+| [P2] 作り方が返らない時は、埋め込み不可の印を残す前に戻っていた | `fillRecipeFromVideo` で、作り方があるかを見る前に `embeddable:false` を残す | 200・`steps:[]`・`embeddable:false`・上限 → レシピに印が残り、再生の枠を出さない |
+| [P3] 停止中・混雑中も「上限に達した・明日また読める」と出る | 理由ごとの短い文（`IMPORT_REASONS` の `short`）を使う（上限／混雑／お休み中） | `analysis_disabled`・`analysis_busy` で「上限」「明日また」を出さない |
+
+- `b0e0275` では失敗することを確認。`node --test test/*.test.cjs`：186件 成功。`npm test --prefix api`：125件 成功
+- 版：`APP_VERSION` `20261001-import3`・`CACHE_NAME` `ripigochi-v125`
+
+---
+
 ## 再レビュー（Codex の指摘への対応、`c0f0978` → この版）
 
 | 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`） |

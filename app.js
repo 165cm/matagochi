@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261001-import2";
+const APP_VERSION = "20261001-import3";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -3643,9 +3643,10 @@ const IMPORT_REASONS = {
   unsupported_url: { text: "この形のURLは読み取れません。動画のページのURLを貼ってください。" },
   youtube_timeout: { text: "YouTubeからの取得に時間がかかっています。少し待ってから、もう一度お試しください。" },
   youtube_api_error: { text: "YouTubeの動画の情報を取得できませんでした。少し待ってから、もう一度お試しください。" },
-  analysis_budget_exceeded: { ai: true, text: "今日はAIで読み取れる上限に達しました。説明欄から読める分だけ入れました。URLと料理名はこのまま保存でき、材料・作り方は手でも入れられます（明日また🎬で読めます）。" },
-  analysis_busy: { ai: true, text: "AIの読み取りが混み合っています。説明欄から読める分だけ入れました。このまま保存して、あとでもう一度読むこともできます。" },
-  analysis_disabled: { ai: true, text: "AIの読み取りはいまお休み中です。説明欄から読める分だけ入れました。URLと料理名はこのまま保存でき、材料・作り方は手でも入れられます。" },
+  // short：献立から「動画で作り方をそろえる」など、画面を開かずに知らせる時の短い文。
+  analysis_budget_exceeded: { ai: true, short: "今日はAIで読み取れる上限に達しました。明日また読めます（レシピを開いて手でも入れられます）。", text: "今日はAIで読み取れる上限に達しました。説明欄から読める分だけ入れました。URLと料理名はこのまま保存でき、材料・作り方は手でも入れられます（明日また🎬で読めます）。" },
+  analysis_busy: { ai: true, short: "AIの読み取りが混み合っています。少し待ってから、もう一度お試しください。", text: "AIの読み取りが混み合っています。説明欄から読める分だけ入れました。このまま保存して、あとでもう一度読むこともできます。" },
+  analysis_disabled: { ai: true, short: "AIの読み取りはいまお休み中です。レシピを開いて手で入れられます。", text: "AIの読み取りはいまお休み中です。説明欄から読める分だけ入れました。URLと料理名はこのまま保存でき、材料・作り方は手でも入れられます。" },
   analysis_cooldown: { text: "少し前に読み取りに失敗しました。1分ほど待ってから、もう一度お試しください。" },
   analysis_pending: { text: "いま同じ動画を読み取っています。少し待ってから、もう一度お試しください。" },
   incomplete_recipe: { text: "説明欄から材料と作り方を読み取れませんでした。" },
