@@ -51,7 +51,13 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     await store.put(key, { status: "ready", result: next }, { ifGeneration: current.generation }).catch(() => {});
     return next;
   }
-  async function run(id, { forceVideo = false, household = "", unlimited = false } = {}) {
+  // aiGate：呼び出し元ごとの AI 回数の上限（新着集めが使う）。{ allow(): 残りがあるか, used(): 1回使った } を、AI を呼ぶ直前ごとに通す。
+  async function run(id, { forceVideo = false, household = "", unlimited = false, aiGate = null } = {}) {
+    const gate = async () => {
+      if (aiGate && !aiGate.allow()) throw new ApiError(429, "trend_ai_budget", "新着集めの AI の回数の上限に達しました。");
+      await reserveBudget();
+      aiGate?.used();
+    };
     required();
     const key = `youtube-${id}`;
     const current = await store.get(key);
@@ -73,8 +79,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const claim = await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
     if (!claim) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
     try {
-      await reserveBudget();
-      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget, forceVideo });
+      // 説明欄の読み取り・動画の読み取り・チャプターとの対応付けの、それぞれの直前に gate を通す。
+      await gate();
+      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo });
       const result = { ...normalizeImportResult(raw), analyzedFrom: ["video", "video-clip"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description" };
       // 動画から作り方を読めなかったら、チケットは戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
@@ -102,11 +109,31 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   }
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
-    async import(rawUrl, { forceVideo = false, household = "", unlimited = false } = {}) {
+    async import(rawUrl, { forceVideo = false, household = "", unlimited = false, aiGate = null } = {}) {
       const id = extractYouTubeVideoId(rawUrl);
       const key = forceVideo ? `${id}:video:${household}` : id;
-      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited }).finally(() => inFlight.delete(key)));
+      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited, aiGate }).finally(() => inFlight.delete(key)));
       return structuredClone(await inFlight.get(key));
+    },
+    // 表示用の読み出し（一覧の GET から使う）：保存済みの読み取り結果を返すだけ。AIも YouTube API も呼ばない。
+    // まだ読んでいない動画は null。説明文・チャンネル名が30日より古ければ、取り直さずに外して返す（取り直しは refresh で定期実行から）。
+    async peek(rawUrl) {
+      required();
+      const current = await store.get(`youtube-${extractYouTubeVideoId(rawUrl)}`);
+      if (current?.envelope.status !== "ready") return null;
+      const result = structuredClone(current.envelope.result);
+      const fetchedAt = Date.parse(result.snippetFetchedAt || result.catalog?.analyzedAt || 0);
+      if (now() - fetchedAt > SNIPPET_MAX_AGE_MS) Object.assign(result, { caption: "", channelTitle: "" });
+      return { ...localizeRecipe(result), cacheHit: true };
+    },
+    // 定期実行用：保存済みの結果の説明文・チャンネル名を、30日ルールに沿って取り直す（AIでの読み直しはしない）。
+    async refresh(rawUrl) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready") return false;
+      await refreshed(key, current);
+      return true;
     },
     // 動画から読んだ結果がもうあるか（あればチケットなしで返せる）。ボタンを押す前の確認用。
     async videoRead(rawUrl) {

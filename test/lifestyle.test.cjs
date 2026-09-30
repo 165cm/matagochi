@@ -10,11 +10,19 @@ const addDays = (d, n) => {
   t.setUTCDate(t.getUTCDate() + n);
   return t.toISOString().slice(0, 10);
 };
-function app() {
+// now を渡すと、その時刻で時計を止める（曜日で結果が変わるテスト用）。
+function fixedDate(iso) {
+  const t = Date.parse(iso);
+  return class extends Date {
+    constructor(...a) { if (a.length) super(...a); else super(t); }
+    static now() { return t; }
+  };
+}
+function app({ now } = {}) {
   const ctx = vm.createContext({
     console,
     URL,
-    Date,
+    Date: now ? fixedDate(now) : Date,
     document: { querySelector: () => null, querySelectorAll: () => [] },
   });
   for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "profile-talk.js", "talk-ui.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "weekly.js", "cook-type.js", "plan-moves.js", "plus.js", "cook-mode.js", "folders.js", "install.js", "push.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
@@ -913,8 +921,9 @@ test("eating out moves the bought dinners back a day; neighbours can swap", () =
 });
 
 test("eating out on a weekday rhythm: cook the extra dinner on Saturday (recommended) or carry it to next week", () => {
+  // 月曜の昼に固定する（週の途中だと「今のまとまり」が3日より短く、2日目・3日目の外食を試せない）。
   const setup = () => {
-    const run = app();
+    const run = app({ now: "2026-09-28T03:00:00Z" });
     run(`state.onboarded=true;handleDailyAction("life-rhythm",{preset:"weekday"});globalThis.B=currentBlocks();handleDailyAction("life-confirm",{block:B[0].key});state.shopDone={...(state.shopDone||{}),[B[0].key]:nowIso()}`);
     return run;
   };

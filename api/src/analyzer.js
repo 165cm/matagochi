@@ -4,8 +4,8 @@ import { ApiError } from "./errors.js";
 
 // 動画（YouTubeのURL）をAIに読ませる。Vertex が動画を読めない時があるので、順に試す：
 // ① Gemini API（GEMINI_API_KEY がある時。YouTube動画に公式に対応）→ ② Vertex（いつもの地域）→ ③ Vertex（global）。
-// deps.clients は試験用。
-export async function generateFromVideo(env, { videoUrl, videoMetadata = null, prompt, config }, { clients } = {}) {
+// deps.clients は試験用。beforeRetry：2つ目以降の接続先を呼ぶ直前ごとに通す、AI の予算の確認（切り替えも AI の1回）。
+export async function generateFromVideo(env, { videoUrl, videoMetadata = null, prompt, config }, { clients, beforeRetry } = {}) {
   const model = env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash";
   const location = env.GOOGLE_CLOUD_LOCATION || "us-central1";
   const list = clients || [
@@ -15,7 +15,11 @@ export async function generateFromVideo(env, { videoUrl, videoMetadata = null, p
   ];
   if (!list.length) throw new ApiError(500, "missing_google_cloud_project", "Google Cloudプロジェクトが設定されていません。");
   const failures = [];
-  for (const client of list) {
+  for (const [i, client] of list.entries()) {
+    // 予算の確認は try の外：断られたら「接続の失敗」として次へ進まず、そのまま止める。
+    if (i > 0 && beforeRetry) {
+      try { await beforeRetry(); } catch (error) { if (error && typeof error === "object") error.fromBudget = true; throw error; }
+    }
     try {
       const response = await client.ai().models.generateContent({ model, contents: [{ role: "user", parts: [
         { fileData: { fileUri: videoUrl, mimeType: "video/mp4" }, ...(videoMetadata ? { videoMetadata } : {}) },
@@ -65,9 +69,11 @@ export async function analyzeRecipeDescription(snippet, env = process.env) {
 
 // 説明文に手順がない動画向け：公開YouTube動画を映像と音声ごと読む（低画質で費用を抑える）。
 // clipSeconds を渡すと、動画の頭からその秒数だけを見る（長い動画の後半の感想・雑談は読まない）。
-export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env, { clipSeconds = null } = {}) {
+export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env, { clipSeconds = null, beforeRetry, clients } = {}) {
   const { response } = await generateFromVideo(env, { videoUrl, videoMetadata: clipMetadata(clipSeconds), prompt: buildVideoPrompt(snippet, clipSeconds),
-    config: { mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 4096, temperature: 0.2, responseMimeType: "application/json" } }).catch((error) => {
+    config: { mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 4096, temperature: 0.2, responseMimeType: "application/json" } }, { beforeRetry, clients }).catch((error) => {
+    // 予算で断られたのは、読み取りの失敗ではない（包み直さずに伝える）。
+    if (error?.fromBudget) throw error;
     console.error(JSON.stringify({ event: "video_analysis_failed", message: String(error?.detail || error?.message || "").slice(0, 300) }));
     throw new ApiError(502, "video_analysis_failed", "動画から作り方を読み取れませんでした。", error?.detail || "");
   });
