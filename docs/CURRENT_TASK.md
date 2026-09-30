@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | 作業中 | `claude/optimistic-albattani-jg5211` | PR 5a：献立のリズムを 3日／3日＋3日／5日（＋6日）にし、週の始まり・作る曜日・買い物の日（前日／当日）を選べるように。今までのリズムはそのまま | `household.js`・`daily-ui.js`（リズムの選択・通知）・`app.js`（版）・`styles.css`・`index.html`・`sw.js`・`test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
