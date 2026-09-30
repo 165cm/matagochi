@@ -661,3 +661,42 @@ test("review fix (PR 2c): after an old app drops sharedPolicies, another device 
     handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"}); handleDailyAction("life-talk-share",{family:"0"});`);
   assert.equal(C("state.sharedPolicies['わたし'].on"), false);
 });
+
+test("review fix (PR 2c, round 2): with two devices of the same name, a pressed '見せない' always stops, and a received stop is never republished by just opening the screen", () => {
+  let server = null;
+  const device = (id) => { const run = app(); run(`state.family=["わたし","はなこ"]; state.me="わたし"; deviceKey = () => ${JSON.stringify(id)}; saveState=()=>{};
+    let p = ProfileTalk.answer(ProfileTalk.empty(), { member: "わたし", q: "hard", value: "time", at: "2026-09-01T00:00:00Z" });
+    p = ProfileTalk.decide(p, { member: "わたし", id: "life-quick", status: "confirmed", at: "2026-09-01T00:00:01Z" });
+    state.tasteProfile = ProfileTalk.snapshot(p, { member: "わたし", at: "2026-09-01T00:00:02Z" }); handleDailyAction("life-talk-view",{});`); return run; };
+  const sync = (run) => { const merged = server ? JSON.parse(run(`JSON.stringify(mergeSyncPayloads(buildSyncPayload(), ${JSON.stringify(server)}))`)) : JSON.parse(run("JSON.stringify(buildSyncPayload())")); run(`applySyncPayload(${JSON.stringify(merged)})`); server = JSON.parse(run("JSON.stringify(buildSyncPayload())")); };
+  const shown = (run) => /data-family="1" aria-pressed="true"/.test(run("renderTalk()"));
+  const A = device("dev-A"), B = device("dev-B");
+  // 指摘1：A が見せる → B が受け取る → B で「見せない」を押す → 止まる
+  A(`handleDailyAction("life-talk-share",{family:"1"})`); sync(A); sync(B);
+  assert.equal(shown(B), true, "B shows the real state (shared from A)");
+  assert.match(B("renderTalk()"), /同じ名前の別の端末で「見せる」にしています/);
+  B(`handleDailyAction("life-talk-share",{family:"0"})`); sync(B);
+  assert.deepEqual([server.sharedPolicies.わたし.on, server.sharedPolicies.わたし.by], [false, "dev-B"]);
+  sync(A);
+  assert.equal(A("state.sharedPolicies['わたし'].on"), false);
+  // 指摘2：A の端末には以前の「見せる」が残っているが、画面を開いただけでは戻さない
+  A(`handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-open-check",{}); handleDailyAction("life-talk-view",{})`); sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false, "not republished by opening the screen");
+  assert.equal(shown(A), false, "A shows '見せない' (the received stop)");
+  // 方針が変わっても（自動）戻さない
+  A(`state.tasteProfile.session.stage = "suggest"; handleDailyAction("life-talk-react",{kind:"many",recipe:"x"})`); sync(A);
+  assert.equal(server.sharedPolicies.わたし.on, false);
+  // もう一度見せるには「見せる」を押す
+  A(`handleDailyAction("life-talk-view",{}); handleDailyAction("life-talk-share",{family:"1"})`); sync(A);
+  assert.deepEqual([server.sharedPolicies.わたし.on, server.sharedPolicies.わたし.by], [true, "dev-A"]);
+  assert.deepEqual(server.sharedPolicies.わたし.items, ["life-quick", "life-few"]);
+  // 入れ直して番号が変わった端末からの「見せない」も効く
+  const A2 = device("dev-A2");
+  sync(A2);
+  A2(`handleDailyAction("life-talk-share",{family:"0"})`); sync(A2);
+  assert.deepEqual([server.sharedPolicies.わたし.on, server.sharedPolicies.わたし.by], [false, "dev-A2"]);
+  // 見せていない時に「見せない」を押しても、何も書かない
+  const C = device("dev-C");
+  C(`state.family=["わたし"]; state.sharedPolicies = {}; handleDailyAction("life-talk-share",{family:"0"})`);
+  assert.equal(C("JSON.stringify(state.sharedPolicies)"), "{}");
+});

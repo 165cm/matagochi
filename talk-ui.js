@@ -202,13 +202,22 @@ function renderTalkView() {
   </section>`;
 }
 // 共有の範囲：家族に見せる（本人が選ぶ）と、AIに送る（この版は送らない）を別々に出す。
+// いま家族に見せているか：同期で届いた記録（同じ名前のほかの端末で押した「見せる」「見せない」も含む）があれば、それが正。
+// 記録がない時だけ、この端末の選択を見る。
+function talkSharedOn(p, member) {
+  const cur = (state.sharedPolicies || {})[member];
+  return cur ? cur.on === true : ProfileTalk.shareOf(p, member).family;
+}
 function renderTalkShare(p, member, count) {
-  const on = ProfileTalk.shareOf(p, member).family;
+  const on = talkSharedOn(p, member);
+  const cur = (state.sharedPolicies || {})[member], by = typeof deviceKey === "function" ? deviceKey() : "";
+  const elsewhere = cur?.on && (cur.by || "") !== by;
   const linked = typeof syncEnabled === "function" && syncEnabled();
   return `<h3 class="quick-sub">👥 共有の範囲</h3>
     <div class="talk-share">
       <p><b>家族に見せる</b><small>見せるのは「✓ 献立に使っていること」（いま${count}件）だけ。答え・書いたひとことは送りません。家族の端末で見られて、家族の献立にも使われます</small></p>
       <div class="talk-yesno" role="group" aria-label="家族に見せる"><button type="button" class="chip-button" data-action="life-talk-share" data-family="0" aria-pressed="${!on}">見せない</button><button type="button" class="chip-button" data-action="life-talk-share" data-family="1" aria-pressed="${on}">見せる</button></div>
+      ${elsewhere ? `<p class="muted small">同じ名前の別の端末で「見せる」にしています。ここで「見せない」を押すと止まります</p>` : ""}
       ${on && !linked ? `<p class="muted small">いまは「ふたりで使う」でつながっていないので、まだ届きません</p>` : ""}
       <p><b>AIに送る</b><span class="talk-share-state">送らない</span><small>この版はAIを使っていません。使う時は、家族に見せるとは別に、ここでたずねます</small></p>
     </div>`;
@@ -219,14 +228,16 @@ function renderTalkFamily(member) {
   if (!others.length) return "";
   return `<h3 class="quick-sub">👨‍👩‍👧 家族が見せている方針</h3>${others.map(([who, ids]) => `<p class="small"><b>${escapeHtml(who)}</b></p><ul class="talk-locked">${ids.map((id) => `<li>${escapeHtml(ProfileTalk.LEANS[id].label)}</li>`).join("")}</ul>`).join("")}<p class="muted small">献立にも使います（${escapeHtml(others.map(([who]) => who).join("・"))}さんが「見せる」にしたもの）。変えられるのは本人だけです</p>`;
 }
-// 「家族に見せる」を選んでいる時は、いまの ✓ を sharedPolicies に書く。止めた時は { on:false } を書いて、家族の端末からも消す。
-// 変わった時だけ true（同期する）。この端末で一度も見せていない人は何も書かない（同じ名前のほかの端末が見せている分を止めない）。
-// by にこの端末の番号を残す（同期の組み合わせで、自分の分だけを持ち続けるため。ProfileTalk.mergeShared）。
-function publishTalkPolicy() {
+// sharedPolicies に書く。変わった時だけ true（同期する）。by にこの端末の番号を残す（ProfileTalk.mergeShared が自分の分を見分ける）。
+// explicit（本人が「見せる」「見せない」「答えを消す」を押した）：その選択を、だれが前に書いたかにかかわらず新しい日時で書く
+//   （同じ名前の別の端末・入れ直して番号が変わった端末から押した「見せない」も効く）。
+// 自動（画面を開いた・方針が変わった）：この端末が書いた「見せる」の中身を最新にするだけ。
+//   届いた「見せない」・別の端末の記録・記録がない時は書かない（もう一度見せるには「見せる」を押す）。
+function publishTalkPolicy({ explicit = false } = {}) {
   const p = talkProfile(), who = talkWho(), by = typeof deviceKey === "function" ? deviceKey() : "";
   const on = ProfileTalk.shareOf(p, who).family;
   const cur = (state.sharedPolicies || {})[who];
-  if (!on && (!cur || (cur.by || "") !== by)) return false;
+  if (explicit ? !on && !cur?.on : !on || !cur?.on || (cur.by || "") !== by) return false;
   const items = on ? ProfileTalk.familyItems(p, who) : [];
   if (cur && (cur.by || "") === by && cur.on === on && JSON.stringify(cur.items) === JSON.stringify(items)) return false;
   state.sharedPolicies = { ...(state.sharedPolicies || {}), [who]: { on, items, updatedAt: nowIso(), ...(by ? { by } : {}) } };
@@ -412,7 +423,7 @@ function handleTalkAction(action, data) {
     }
   }
   // 家族に見せている方針が変わった時だけ、同期する。
-  const shared = publishTalkPolicy();
+  const shared = publishTalkPolicy({ explicit: action === "life-talk-share" || action === "life-talk-reset" });
   saveState({ scheduleSync: shared });
   render();
   if (state.view === "talk" || talkInFunnel()) document.querySelector("#app h2")?.focus?.();
@@ -451,6 +462,6 @@ function renderTalkSetting() {
   const last = p.snapshots.filter((x) => x.member === who).pop();
   const sure = ProfileTalk.interpret(p, who).filter((x) => x.status === "confirmed");
   const summary = last ? `✓ ${sure.length}件・版${last.v}` : p.session ? "途中まで" : "まだ";
-  const body = `${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : ""}${dailyButton(last ? "life-talk-view" : "life-talk-open", last ? "見直す" : p.session ? "続きから" : "話す", "", true)}<p class="muted small">${ProfileTalk.shareOf(p, who).family ? "✓ の方針だけ家族に見せています（答え・ひとことは送りません）" : "答えはこの端末だけ（家族に見せていません）"}。AIは使っていません ${tip("見せる・見せないは「見直す」で選べます。バックアップの書き出しには入ります。消す時は、見直す →「答えを消す」")}</p>`;
+  const body = `${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : ""}${dailyButton(last ? "life-talk-view" : "life-talk-open", last ? "見直す" : p.session ? "続きから" : "話す", "", true)}<p class="muted small">${talkSharedOn(p, who) ? "✓ の方針だけ家族に見せています（答え・ひとことは送りません）" : "答えはこの端末だけ（家族に見せていません）"}。AIは使っていません ${tip("見せる・見せないは「見直す」で選べます。バックアップの書き出しには入ります。消す時は、見直す →「答えを消す」")}</p>`;
   return { summary, body };
 }
