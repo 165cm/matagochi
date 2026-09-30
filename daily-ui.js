@@ -49,7 +49,19 @@ function profileDraft() {
     });
     trackDaily("profile_started");
   }
+  migrateFunnel(state.onboardingDraft);
   return state.onboardingDraft;
+}
+// 初回設定の途中の人（以前の21段階の順番で保存されている）を、今の順番の同じ画面・なければ次に残っている画面へ移す。何度通しても同じ。
+function migrateFunnel(p) {
+  if (!p || p.funnelV === 2) return;
+  p.funnelV = 2;
+  if (p.quickSetupIndex === null || p.quickSetupIndex === undefined) return;
+  const moved = { pain: 0, ratio: "talk", staple: "talk", chains: "talk", priority: "talk", type: "talk", commit: "result", building: "result" };
+  const old = FUNNEL_V1[p.quickSetupIndex];
+  const key = old in moved ? moved[old] : old;
+  const at = FUNNEL.indexOf(key);
+  p.quickSetupIndex = at >= 0 ? at : 0;
 }
 const setupEmoji = ["🍽️", "📅", "🔎", "🥬", "😋", "⏱️", "🧑‍🍳", "🍳", "🧂", "🧈", "🍲", "🌿", "🍚", "🛒", "🥕", "✨"];
 const itemEmojis = {"コンロ":"🔥","電子レンジ":"♨️","フライパン":"🍳","鍋":"🍲","包丁":"🔪","まな板":"🥕","ざる":"🥬","ふた":"🍲","計量スプーン":"🥄","炊飯器":"🍚","トースター":"🍞","キッチンばさみ":"✂️","耐熱ボウル":"🥣","電気ケトル":"🫖","オーブン":"🥧","はかり":"⚖️","圧力鍋":"🍲","ミキサー":"🥤","ホットプレート":"🥞","塩":"🧂","砂糖":"🍬","しょうゆ":"🫙","みそ":"🥣","酢":"🍶","みりん":"🍶","料理酒":"🍶","サラダ油":"🌻","オリーブ油":"🫒","ごま油":"🫙","バター":"🧈","マヨネーズ":"🥚","こしょう":"🧂","にんにく":"🧄","しょうが":"🌿","カレー粉":"🍛","米":"🌾","パスタ":"🍝","うどん":"🍜","食パン":"🍞","小麦粉":"🌾","片栗粉":"🥔","ツナ缶":"🐟","トマト缶":"🍅","のり":"🍙","卵":"🥚","乳":"🥛","小麦":"🌾","えび":"🦐","かに":"🦀","そば":"🍜","落花生":"🥜","くるみ":"🌰","大豆":"🫘","魚":"🐟","肉":"🥩","和風":"🍙","洋風":"🍝","中華風":"🥟","和風だし":"🍲","鶏ガラスープの素":"🐓","コンソメ":"🥣","めんつゆ":"🥢","ポン酢":"🍋","ケチャップ":"🍅","中濃ソース":"🥫","焼肉のたれ":"🍖","オイスターソース":"🦪","七味":"🌶️","ごま":"🌱","豆板醤":"🌶️"};
@@ -1138,8 +1150,7 @@ function handleDailyAction(action, data) {
     picks.has(data.recipe) ? picks.delete(data.recipe) : picks.add(data.recipe);
     p.picks = [...picks].slice(0, 12);
   }
-  if (action === "life-funnel-commit") profileDraft().quickSetupIndex = FUNNEL.indexOf("building");
-  if (action === "life-quick-back") { profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1); pledgeCount = 0; }
+  if (action === "life-quick-back") { profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1); }
   if (action === "life-preview" && !state.onboarded) {
     state.onboarded=true;state.planLength=3;state.view="plan";profileEditing=false;
   }
@@ -1185,6 +1196,8 @@ function handleDailyAction(action, data) {
     if (name) { profileDraft()[data.field][name] = "have"; if (data.field === "equipment") equipmentGroupIndex = 2; }
   }
   if (action === "life-finish") {
+    // 最初の提案の画面を出すのは、初めての初回設定を終えた時だけ（詳しい設定の保存・かんたん設定のやり直しでは出さない）。
+    const firstRun = !state.onboarded && profileDraft().quickSetupIndex !== null;
     const chosen = [...finishFunnelPicks(), ...(funnelDemo.result ? [funnelDemo.result] : [])];
     trackDaily("profile_completed");
     const p = Lifestyle.profile(profileDraft());
@@ -1217,6 +1230,12 @@ function handleDailyAction(action, data) {
       if (day) state.planOverrides[day.date] = recipe.id;
     }
     state.trialFrom = state.trialFrom || today();
+    // 方針を保存した人は、最初の具体的な料理と、その理由から（わが家のごはん方針の提案の画面）。
+    // 途中の会話があれば、それを上書きしない（続きから開けるように残す）。
+    if (firstRun && !state.tasteProfile?.session && state.tasteProfile?.snapshots?.some((x) => x.member === talkWho())) {
+      state.tasteProfile.session = { member: talkWho(), stage: "suggest", confirmId: "", q: "", startedAt: nowIso(), updatedAt: nowIso() };
+      state.view = "talk";
+    }
     if (paywallPreview()) openPaywall();
     touchSettings();
   }
@@ -1619,11 +1638,17 @@ const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", 
 // → 料理スキル（診断がおすすめ）→ 平日の夜の時間（ダイヤル）→ 食べられないもの → 新着から選ぶ → 目標を決める → 作成中。
 // 数字（0〜4）は献立に使う5問（0 人数・1 リズム・2 スキル・3 時間・4 食べられないもの）。
 // 2部構成。第1部「いまのあなた」（現状）→ いまのままだと…（損の見える化）→ 第2部「これからのあなた」（希望と設定）→ 約束。
-const FUNNEL = ["pain", 0, "eaters", 4, "equipment", "ratio", "staple", "chains", "priority", 2, "type", "videos", "demo", "loss", "goal", 1, "remind", 3, "picks", "commit", "building"];
+// 2026-09-30 の整理（docs/PERSONALIZE_PLAN.md §4、APP_MAP §19）：
+//  ・「いま、夜ごはんはどう決めてる？」（pain）は、わが家のごはん方針の最初の質問と同じなのでやめた
+//  ・晩ごはんタイプ（割合・主食・お店・いちばん大事なこと・タイプ）は、方針の会話（味・大変なこと）が役目を持つので、初回からは外した
+//  ・宣言（3回の長押し）と、時間だけで100%になる「作成中」はやめた。最後は、実際に反映する中身と、最初の提案
+//  ・方針の会話（talk）を、食べられないもの・器具・時間・スキルのあとに入れた（聞き返し・確認・保存まで）
+const FUNNEL = [0, "eaters", 4, "equipment", 3, 2, "talk", "picks", "videos", "demo", "loss", "goal", 1, "remind", "result"];
+// 以前の順番（途中まで進んだ人の移し替えだけに使う）。
+const FUNNEL_V1 = ["pain", 0, "eaters", 4, "equipment", "ratio", "staple", "chains", "priority", 2, "type", "videos", "demo", "loss", "goal", 1, "remind", 3, "picks", "commit", "building"];
 const EATERS = [["me", "🧑", "自分"], ["partner", "💑", "パートナー"], ["kids", "🧒", "子ども（小学生まで）"], ["teens", "🧑‍🎓", "子ども（中学生から）"], ["parents", "👵", "親"], ["friends", "🏠", "同居の友人など"]];
 const EATER_OF = Object.fromEntries(EATERS.map(([id, , label]) => [id, label.replace(/（.*$/, "")]));
 const OPTIONAL_TOOLS = ["炊飯器", "トースター", "オーブン", "電気ケトル", "圧力鍋", "ホットプレート", "ミキサー", "はかり"];
-const personaOf = (p) => { const r = cookTypeOf(p); return r ? { title: r.name } : null; };
 const QUICK_STEPS = FUNNEL.length;
 const FUNNEL_PART2 = FUNNEL.indexOf("goal");
 // 答えへのひとこと（入力が続く第1部を、会話のようにする）。前の答えを次の画面の上に出す。
@@ -1887,37 +1912,16 @@ function renderFunnelStep(key) {
   if (key === "videos") return [`📱 保存したレシピ動画、実際に作ったのは？`, `<div class="funnel-picks">${VIDEOS.map((x) => funnelPick("savedVideos", x, p.savedVideos)).join("")}</div>`];
   if (key === "demo") return renderFunnelDemo();
   if (key === "picks") return renderFunnelPicks();
-  if (key === "commit") {
-    const lines = PLEDGES[p.goal] || PLEDGES.time;
-    const read = pledgeCount;
-    return [`あなたの宣言`, `<div class="pledge" role="group" aria-label="宣言">
-      <p class="pl-text">${lines.map((l) => `<span>${escapeHtml(l)}</span>`).join("")}</p>
-      <p class="pl-guide">声に出して（心の中でも）、ゆっくり<b>3回</b>。<br>1回読むごとに、指を置いてください。</p>
-      <button type="button" class="funnel-hold is-print is-pledge" data-hold="900" data-pledge="1" aria-label="読んだら、指を置いて長押し（${read} / 3）"><span class="fh-ring" aria-hidden="true"></span>${FINGERPRINT}</button>
-      <p class="pl-dots" aria-live="polite">${[0, 1, 2].map((k) => `<i class="${k < read ? "is-on" : ""}"></i>`).join("")}<span>${read} / 3</span></p></div>`];
+  if (key === "result") {
+    // 時間で進む演出はしない。この時点で決まっている中身を、そのまま見せる。
+    const lines = resultLines(p);
+    return [`✅ この条件で、献立を作ります`, `<ul class="funnel-result">${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>
+      <p class="muted small">あとから設定で変えられます</p>
+      <button type="button" class="primary-button full-button" data-action="life-finish">最初の提案を見る</button>`];
   }
-  if (key === "building") return [`🍳 あなた専用の献立を、つくっています`, `<div class="funnel-building"><p class="fb-pct" aria-live="polite">0%</p><progress max="100" value="0" aria-label="作成中"></progress><ul class="fb-list">${buildingLines(p).map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`];
   return ["", ""];
 }
 function bindFunnel() {
-  const hold = document.querySelector(".funnel-hold");
-  if (hold) {
-    let timer = null;
-    const done = () => {
-      hold.classList.remove("is-holding");
-      globalThis.navigator?.vibrate?.(30);
-      // 宣言は3回読んでから（1回ごとに指を置く）。
-      if (hold.dataset.pledge && ++pledgeCount < 3) { render(); document.querySelector(".pledge")?.classList.add("is-read"); return; }
-      pledgeCount = 0;
-      handleDailyAction("life-funnel-commit", {}); saveState({ scheduleSync: false }); render();
-    };
-    const start = (ev) => { ev.preventDefault(); hold.classList.add("is-holding"); timer = setTimeout(done, Number(hold.dataset.hold) || 1200); };
-    const stop = () => { clearTimeout(timer); hold.classList.remove("is-holding"); };
-    hold.addEventListener("pointerdown", start);
-    ["pointerup", "pointerleave", "pointercancel"].forEach((e) => hold.addEventListener(e, stop));
-    // キーボードで押した時は、長押しなしで進める。
-    hold.addEventListener("click", (ev) => { if (ev.detail === 0) done(); });
-  }
   document.querySelector("#swap-url")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) document.querySelector('[data-action="life-url-insert"]')?.click(); });
   document.querySelector("#demo-url")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) document.querySelector('[data-action="life-demo-read"]')?.click(); });
   document.querySelectorAll("[data-chip-input]").forEach((el) => el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); addChip(el.dataset.chipInput); } }));
@@ -1930,45 +1934,23 @@ function bindFunnel() {
     const tick = (t) => { if (!document.body.contains(el)) return; const k = Math.max(0, Math.min(1, (t - t0) / ms)); el.textContent = String(Math.round(max * (1 - (1 - k) ** 3))); if (k < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   });
-  const building = document.querySelector(".funnel-building");
-  if (building) {
-    const pct = building.querySelector(".fb-pct"), bar = building.querySelector("progress"), items = building.querySelectorAll("li");
-    const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    let n = reduce ? 100 : 0;
-    const tick = () => {
-      n = Math.min(100, n + 2);
-      pct.textContent = `${n}%`; bar.value = n;
-      items.forEach((li, k) => li.classList.toggle("is-done", n >= ((k + 1) * 100) / items.length));
-      if (n < 100) setTimeout(tick, 80);
-      else setTimeout(() => { if (FUNNEL[profileDraft().quickSetupIndex] === "building") { handleDailyAction("life-finish", {}); saveState(); render(); } }, 450);
-    };
-    tick();
-  }
 }
-// 声に出して読みたい宣言（目標ごと）。
-const PLEDGES = {
-  smile: ["今日のひと皿が、", "明日の笑顔になる。", "わたしは、この食卓に", "「おいしい」を灯しつづける。"],
-  save: ["買ったものは、", "ひとつ残らず、いただく。", "わたしは、台所の小さなムダを", "やさしく手放していく。"],
-  time: ["迷う時間を、そっと手放す。", "取り戻した夕暮れは、", "わたしと、", "大切な人のために。"],
-  grow: ["昨日の自分より、", "ひと皿ぶん先へ。", "わたしは、台所で", "少しずつ、たしかに育っていく。"],
-};
-let pledgeCount = 0;
-const FINGERPRINT = `<svg class="fh-print" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 22a17 17 0 0 1 28 0"/><path d="M14 32a18 18 0 0 1 36 0v4"/><path d="M20 44c2-4 3-8 3-12a9 9 0 0 1 18 0c0 6-1 11-3 15"/><path d="M32 32c0 7-2 14-6 19"/><path d="M26 32a6 6 0 0 1 12 0c0 3 0 6-1 9"/><path d="M44 42c-1 4-2 7-4 10"/><path d="M14 44c1-2 2-5 2-8"/></g></svg>`;
-// 作成中の画面：答えを1つずつ反映していく様子を見せる（あなたのために作っている、が伝わる）。
-function buildingLines(p) {
+// 最後の画面：この時点で決まっている条件を、そのまま並べる（「〜しています」と進んでいるふりはしない）。
+function resultLines(p) {
   const avoid = [...(p.restrictions || []), ...(p.dislikes || [])];
   const tools = OPTIONAL_TOOLS.filter((t) => p.equipment?.[t] === "have");
-  const persona = personaOf(p);
   const sp = state.skillProfile;
   const eaters = (p.eaters || []).filter((x) => x !== "me").map((x) => EATER_OF[x]);
+  // わが家のごはん方針で、本人が「合ってる」にしたもの（推測のままのものは入れない）。
+  const tp = state.tasteProfile && typeof ProfileTalk !== "undefined" ? ProfileTalk.interpret(state.tasteProfile, talkWho()).filter((x) => x.status === "confirmed") : [];
   return [
-    `${p.servings >= 5 ? "5人以上" : `${p.servings || 1}人分`}に、分量をそろえています`,
-    avoid.length ? `${avoid.slice(0, 3).join("・")}${avoid.length > 3 ? "など" : ""}を外しています` : "食べられないものを確かめています",
-    tools.length ? `${tools.slice(0, 2).join("・")}も使える料理を探しています` : "手持ちの道具で作れる料理に絞っています",
-    sp ? `★${sp.level}までの、作れる料理に絞っています` : "作りやすい料理を選んでいます",
-    `平日${p.weekdayMinutes || 20}分以内の料理を選んでいます`,
-    persona ? `「${persona.title}」の好みで並べています` : "好きそうな料理を上に並べています",
-    (p.picks || []).length ? `選んだ${p.picks.length}品を入れています` : eaters.length ? `${eaters.join("・")}と食べる献立にしています` : "かぶらない組み合わせを考えています",
+    `🍽 ${p.servings >= 5 ? "5人以上" : `${p.servings || 1}人分`}${eaters.length ? `（${eaters.join("・")}と）` : ""}`,
+    avoid.length ? `🚫 ${avoid.slice(0, 4).join("・")}${avoid.length > 4 ? " ほか" : ""}は入れない` : "🚫 食べられないもの：なし",
+    `⏱ 平日 ${p.weekdayMinutes || 20}分以内`,
+    `🍳 ${tools.length ? `基本の道具＋${tools.slice(0, 3).join("・")}` : "基本の道具"}${sp ? `・★${sp.level}まで` : ""}`,
+    ...tp.slice(0, 4).map((x) => x.label),
+    // 選んだ数は事実。献立に入るかは条件（食べられないもの・時間・器具）と空いている日しだいなので、ここでは約束しない。
+    ...((p.picks || []).length ? [`📌 気になる料理を${p.picks.length}品選択済み`] : []),
   ];
 }
 /* ---- 課金の案内（リピごちプラス）：献立ができた直後、期待がいちばん高い時に出す。閉じられる。
@@ -2067,12 +2049,20 @@ function renderQuickSetup() {
     if (key === 2) bindPhotoJudge();
   };
   const nextButton = `<button class="primary-button" data-action="life-quick-next">次へ</button>`;
+  // わが家のごはん方針の会話は、その画面をそのまま使う（聞き返し・確かめる・保存まで）。上に進み具合だけ出す。
+  if (key === "talk") {
+    document.body.classList.toggle("is-onboarding", !state.onboarded);
+    startTalkInFunnel();
+    document.querySelector("#app").innerHTML = `<div class="funnel-talk">${funnelProgress(i)}${renderTalk()}</div>`;
+    document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
+    return;
+  }
   if (key === "equipment") p.equipment = Lifestyle.equipmentDefaults(p.equipment);
   if (typeof key === "string") {
     const [title, body] = renderFunnelStep(key);
     // 主食・お店は、選ぶまで「次へ」の代わりに「スキップ」。
     if ((key === "staple" && !(p.staples || []).length) || (key === "chains" && !(p.chains || []).length)) return shell(title, body, `<button class="text-button" data-action="life-quick-next">スキップ</button>`);
-    const next = ["commit", "building", "goal", "pain", "videos", "priority"].includes(key) ? "" : key === "remind" ? `<button class="primary-button is-quiet" data-action="life-quick-next">${p.remindAdded ? "次へ" : "あとで"}</button>` : nextButton;
+    const next = ["result", "goal", "pain", "videos", "priority"].includes(key) ? "" : key === "remind" ? `<button class="primary-button is-quiet" data-action="life-quick-next">${p.remindAdded ? "次へ" : "あとで"}</button>` : nextButton;
     return shell(title, body, next);
   }
   if (key === 3 && !p.weekdayMinutes) p.weekdayMinutes = 20;
