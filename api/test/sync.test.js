@@ -106,3 +106,17 @@ test("photos are stored once per room under their SHA-256 and checked", async ()
   await assert.rejects(putSyncPhoto(store, ROOM_ID, hash, { data: "javascript:alert(1)" }), { code: "invalid_photo" });
   await assert.rejects(getSyncPhoto(store, ROOM_ID, "c".repeat(64)), { code: "photo_not_found" });
 });
+
+test("an old app that does not know sharedPolicies keeps the room's value; a new app replaces it", async () => {
+  const store = createMemorySyncStore();
+  const shared = { わたし: { on: false, items: [], updatedAt: "2026-09-30T00:00:00Z", by: "dev-A" } };
+  const first = await putSyncRoom(store, ROOM_ID, { data: payload({ sharedPolicies: shared }), baseRevision: "" });
+  // 古い版：項目ごとない
+  const old = await putSyncRoom(store, ROOM_ID, { data: payload({ recipes: [{ id: "r1", title: "古い版" }] }), baseRevision: first.revision });
+  const afterOld = await getSyncRoom(store, ROOM_ID);
+  assert.deepEqual(afterOld.data.sharedPolicies, shared, "the stop record survives");
+  assert.equal(afterOld.data.recipes[0].title, "古い版", "the rest of the old app's write is stored");
+  // 新しい版：空でも送れば、そのまま入る
+  await putSyncRoom(store, ROOM_ID, { data: payload({ sharedPolicies: {} }), baseRevision: old.revision });
+  assert.deepEqual((await getSyncRoom(store, ROOM_ID)).data.sharedPolicies, {});
+});

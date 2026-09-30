@@ -202,12 +202,12 @@ function renderCookTypeCard(r) {
     <p class="ct-move"><span>得意技</span><i aria-hidden="true"></i><b>${escapeHtml(r.move)}</b></p>
     <button type="button" class="ct-share" data-action="life-type-share">結果をシェア</button></div>`;
 }
-function handleCookTypeAction(action, data) {
-  const p = profileDraft();
+// p：答えを入れる先。ふだんは初回設定の下書き。わが家のごはん方針の画面から開いた時は、その画面の下書き（talk-ui.js）。
+function handleCookTypeAction(action, data, p = profileDraft()) {
   if (action === "life-ratio") { changeRatio(p, data.part, data.kind, Number(data.delta) || 0); p.ratioSet = true; return false; }
   if (action === "life-staple") { const on = new Set(p.staples || []); on.has(data.value) ? on.delete(data.value) : on.add(data.value); p.staples = STAPLES.map(([id]) => id).filter((id) => on.has(id)); return false; }
   if (action === "life-chain") { const on = new Set(p.chains || []); if (on.has(data.value)) on.delete(data.value); else if (on.size < 3 && CHAIN_OF[data.value]) on.add(data.value); p.chains = [...on]; return false; }
-  if (action === "life-priority") { p.priority = PRIORITIES.some(([id]) => id === data.value) ? data.value : ""; p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1); return false; }
+  if (action === "life-priority") { p.priority = PRIORITIES.some(([id]) => id === data.value) ? data.value : ""; if (Number.isInteger(p.quickSetupIndex)) p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1); return false; }
   if (action === "life-photo-retry") { skillPhoto = { status: "idle", result: null, message: "" }; return false; }
   if (action === "life-type-share") {
     const r = cookTypeOf(p) || cookTypeOf(state.foodProfile || {});

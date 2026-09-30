@@ -1,7 +1,8 @@
 /* 💬 わが家のごはん方針（APP_MAP §37）：答える → 解釈を確かめる → 最初の提案。
    データと規則は profile-talk.js（ProfileTalk）。ここは画面と操作だけ。
    - 途中で閉じても続きから（state.tasteProfile.session）。今までの人に、強制ではやり直させない。
-   - この版はAIを使わない（画面にもそう書く）。答えは端末の中だけ。家族の同期にも入れない。 */
+   - この版はAIを使わない（画面にもそう書く）。答えは端末の中だけ。
+   - 家族に見せるのは、本人が「見せる」を選んだ時の ✓ の方針だけ（state.sharedPolicies。答え・ひとことは送らない）。 */
 function talkProfile() {
   if (!state.tasteProfile || state.tasteProfile.v !== ProfileTalk.VERSION) state.tasteProfile = ProfileTalk.normalize(state.tasteProfile);
   return state.tasteProfile;
@@ -69,6 +70,7 @@ function renderTalk() {
   if (stage === "check") return renderTalkCheck();
   if (stage === "suggest") return renderTalkSuggest();
   if (stage === "view") return renderTalkView();
+  if (stage === "type") return renderTalkType();
   const q = talkQuestion();
   if (!q) { s.stage = "check"; return renderTalkCheck(); }
   const a = ProfileTalk.answersOf(p, s.member);
@@ -182,17 +184,92 @@ function renderTalkView() {
   return `<section class="hero-card talk-card" data-stage="view" aria-labelledby="talk-h">
     ${talkHeader()}
     <h2 id="talk-h" tabindex="-1">わが家のごはん方針</h2>
+    ${talkEcho ? `<p class="funnel-echo" role="status">💬 ${escapeHtml(talkEcho)}</p>` : ""}
     <h3 class="quick-sub">💬 あなたが言ったこと</h3>
     ${answers.length ? `<ul class="talk-said">${answers.map((q) => `<li><span>${escapeHtml(q.ask(a))}</span><b>${escapeHtml(talkAnswerLabel(q, a[q.id], a))}</b>${p.answers.find((x) => x.member === s.member && x.q === q.id)?.text ? `<small>「${escapeHtml(p.answers.find((x) => x.member === s.member && x.q === q.id).text)}」</small>` : ""}</li>`).join("")}</ul>` : `<p class="muted small">まだありません</p>`}
     <h3 class="quick-sub">✓ 献立に使っていること</h3>
     ${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}${x.source === "reaction" ? " <small>（変えるなら？）</small>" : ""}</li>`).join("")}</ul>` : `<p class="muted small">まだありません</p>`}
     ${guess.length ? `<p class="small">🧪 まだ確かめていない案が ${guess.length}件 ${dailyButton("life-talk-open-check", "確かめる")}</p>` : ""}
     ${off.length ? `<details class="talk-answers"><summary>✕ 使わないこと（${off.length}）</summary><ul class="talk-locked">${off.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul></details>` : ""}
+    ${renderTalkShare(p, s.member, sure.length)}
+    ${renderTalkFamily(s.member)}
     <h3 class="quick-sub">📈 記録から見えてきたこと ${tip("「また食べたい」の評価から。あなたが言ったことと分けて出します")}</h3>
     ${rec.html}
     ${hist.length ? `<h3 class="quick-sub">🕘 方針の履歴</h3><ol class="talk-history">${hist.slice(0, 6).map((h) => `<li><b>版${h.v}</b> <span>${escapeHtml(formatDate(String(h.at).slice(0, 10)))}・${REASON[h.reason] || ""}</span>${h.added.length || h.removed.length ? `<small>${h.added.map((id) => `＋${escapeHtml(labelOf(id))}`).join(" ")} ${h.removed.map((id) => `−${escapeHtml(labelOf(id))}`).join(" ")}</small>` : `<small>✓ ${h.count}件</small>`}</li>`).join("")}</ol>` : ""}
+    ${renderTalkTypeRow()}
     <div class="wizard-footer">${ProfileTalk.nextQuestion(p, s.member) ? dailyButton("life-talk-ask", "💬 質問に答える") : "<span></span>"}${dailyButton("life-talk-open-check", "✎ 直す", "", true)}</div>
     <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">閉じる</button></div>
+  </section>`;
+}
+// 共有の範囲：家族に見せる（本人が選ぶ）と、AIに送る（この版は送らない）を別々に出す。
+// いま家族に見せているか：同期で届いた記録（同じ名前のほかの端末で押した「見せる」「見せない」も含む）があれば、それが正。
+// 記録がない時だけ、この端末の選択を見る。
+function talkSharedOn(p, member) {
+  const cur = (state.sharedPolicies || {})[member];
+  return cur ? cur.on === true : ProfileTalk.shareOf(p, member).family;
+}
+function renderTalkShare(p, member, count) {
+  const on = talkSharedOn(p, member);
+  const cur = (state.sharedPolicies || {})[member], by = typeof deviceKey === "function" ? deviceKey() : "";
+  const elsewhere = cur?.on && (cur.by || "") !== by;
+  const linked = typeof syncEnabled === "function" && syncEnabled();
+  return `<h3 class="quick-sub">👥 共有の範囲</h3>
+    <div class="talk-share">
+      <p><b>家族に見せる</b><small>見せるのは「✓ 献立に使っていること」（いま${count}件）だけ。答え・書いたひとことは送りません。家族の端末で見られて、家族の献立にも使われます</small></p>
+      <div class="talk-yesno" role="group" aria-label="家族に見せる"><button type="button" class="chip-button" data-action="life-talk-share" data-family="0" aria-pressed="${!on}">見せない</button><button type="button" class="chip-button" data-action="life-talk-share" data-family="1" aria-pressed="${on}">見せる</button></div>
+      ${elsewhere ? `<p class="muted small">同じ名前の別の端末で「見せる」にしています。ここで「見せない」を押すと止まります</p>` : ""}
+      ${on && !linked ? `<p class="muted small">いまは「ふたりで使う」でつながっていないので、まだ届きません</p>` : ""}
+      <p><b>AIに送る</b><span class="talk-share-state">送らない</span><small>この版はAIを使っていません。使う時は、家族に見せるとは別に、ここでたずねます</small></p>
+    </div>`;
+}
+// 家族が見せている方針（読むだけ。変えられるのは本人の端末だけ）。
+function renderTalkFamily(member) {
+  const others = Object.entries(ProfileTalk.othersFrom(state.sharedPolicies, member, state.family));
+  if (!others.length) return "";
+  return `<h3 class="quick-sub">👨‍👩‍👧 家族が見せている方針</h3>${others.map(([who, ids]) => `<p class="small"><b>${escapeHtml(who)}</b></p><ul class="talk-locked">${ids.map((id) => `<li>${escapeHtml(ProfileTalk.LEANS[id].label)}</li>`).join("")}</ul>`).join("")}<p class="muted small">献立にも使います（${escapeHtml(others.map(([who]) => who).join("・"))}さんが「見せる」にしたもの）。変えられるのは本人だけです</p>`;
+}
+// sharedPolicies に書く。変わった時だけ true（同期する）。by にこの端末の番号を残す（ProfileTalk.mergeShared が自分の分を見分ける）。
+// explicit（本人が「見せる」「見せない」「答えを消す」を押した）：その選択を、だれが前に書いたかにかかわらず新しい日時で書く
+//   （同じ名前の別の端末・入れ直して番号が変わった端末から押した「見せない」も効く）。
+// 自動（画面を開いた・方針が変わった）：この端末が書いた「見せる」の中身を最新にするだけ。
+//   届いた「見せない」・別の端末の記録・記録がない時は書かない（もう一度見せるには「見せる」を押す）。
+function publishTalkPolicy({ explicit = false } = {}) {
+  const p = talkProfile(), who = talkWho(), by = typeof deviceKey === "function" ? deviceKey() : "";
+  const on = ProfileTalk.shareOf(p, who).family;
+  const cur = (state.sharedPolicies || {})[who];
+  if (explicit ? !on && !cur?.on : !on || !cur?.on || (cur.by || "") !== by) return false;
+  const items = on ? ProfileTalk.familyItems(p, who) : [];
+  if (cur && (cur.by || "") === by && cur.on === on && JSON.stringify(cur.items) === JSON.stringify(items)) return false;
+  state.sharedPolicies = { ...(state.sharedPolicies || {}), [who]: { on, items, updatedAt: nowIso(), ...(by ? { by } : {}) } };
+  return true;
+}
+// ---- 晩ごはんタイプ（任意・おまけ）：方針の画面から4問。献立の決め方には使わない ----
+const TALK_TYPE_STEPS = [["ratio", "🗓 いまの1週間、晩ごはんはどうしてる？"], ["staple", "🍚 晩ごはんで、よく食べる主食は？"], ["chains", "🏪 晩ごはんを外で食べるなら、どこ？"], ["priority", "🎯 晩ごはんで、いちばん大事なのは？"], ["type", "🎴 あなたの晩ごはんタイプ"]];
+const TALK_TYPE_KEYS = ["ratio", "ratioSet", "staples", "chains", "priority"];
+let talkTypeDraft = null;
+// 下書きは、保存してある答え（foodProfile）から始める。「この結果を残す」まで foodProfile は変えない。
+function talkTypeFor() {
+  if (!talkTypeDraft) talkTypeDraft = JSON.parse(JSON.stringify(Object.fromEntries(TALK_TYPE_KEYS.filter((k) => state.foodProfile && k in state.foodProfile).map((k) => [k, state.foodProfile[k]]))));
+  return talkTypeDraft;
+}
+function renderTalkTypeRow() {
+  if (!state.foodProfile) return "";
+  const r = cookTypeOf(state.foodProfile);
+  return `<h3 class="quick-sub">🎴 晩ごはんタイプ（おまけ）</h3><p class="small">${r ? `${r.el} <b>${escapeHtml(r.name)}</b>` : "4問の遊びの診断です"}<small class="muted">（献立の決め方には使いません）</small></p><div class="talk-type-open">${r ? dailyButton("life-talk-type", "タイプを見る", `data-step="4"`) : ""}${dailyButton("life-talk-type", r ? "答え直す" : "診断する（任意）", `data-step="0"`)}</div>`;
+}
+function renderTalkType() {
+  const s = talkSession(), p = talkTypeFor();
+  const step = Number.isInteger(s.typeStep) ? s.typeStep : 0;
+  const [key, title] = TALK_TYPE_STEPS[step];
+  const r = key === "type" ? cookTypeOf(p) : null;
+  const body = key === "ratio" ? renderRatioStep(p) : key === "staple" ? renderStapleStep(p) : key === "chains" ? renderChainStep(p) : key === "priority" ? renderPriorityStep(p) : r ? renderCookTypeCard(r) : `<p>答えが足りないので、タイプを出せません。「戻る」で答えてください。</p>`;
+  const next = key === "type" ? (r ? dailyButton("life-talk-type-save", "この結果を残す", "", true) : "<span></span>") : dailyButton("life-talk-type", key === "priority" && !p.priority ? "スキップ" : "次へ", `data-step="${step + 1}"`, true);
+  return `<section class="hero-card talk-card" data-stage="type" aria-labelledby="talk-h">
+    <p class="talk-meta"><span>🎴 晩ごはんタイプ（おまけ）</span><span>${step < 4 ? `${step + 1} / 4` : ""}</span></p>
+    <h2 id="talk-h" tabindex="-1">${escapeHtml(title)}</h2>
+    ${body}
+    <div class="wizard-footer">${dailyButton("life-talk-type", "戻る", `data-step="${step - 1}"`)}${next}</div>
+    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-view">残さずに方針へ戻る</button></div>
   </section>`;
 }
 // 記録から見えてきたこと：評価（また食べたい）から。対象の期間と件数を添える。精密な点数や伸び率は出さない。
@@ -214,9 +291,17 @@ function talkAfterAnswer(qid) {
   s.stage = ProfileTalk.nextQuestion(p, s.member) ? "ask" : "check";
 }
 function handleTalkAction(action, data) {
+  // 方針の画面から開いた晩ごはんタイプの答えは、その画面の下書きへ（初回設定の下書きは作らない）。
+  if (["life-ratio", "life-staple", "life-chain", "life-priority", "life-type-share"].includes(action) && state.view === "talk" && state.tasteProfile?.session?.stage === "type") {
+    if (handleCookTypeAction(action, data, talkTypeFor())) return true;
+    if (action === "life-priority") talkSession().typeStep = 4;
+    saveState({ scheduleSync: false });
+    render();
+    return true;
+  }
   if (!action.startsWith("life-talk")) return false;
   if (action === "life-talk-open") { talkEcho = ""; openTalk(); }
-  else if (action === "life-talk-view") { talkEcho = ""; openTalk("view"); }
+  else if (action === "life-talk-view") { talkEcho = ""; talkTypeDraft = null; openTalk("view"); }
   // 案内を閉じるだけ。会話（session）は作らない（作ると「続きから」に変わって残ってしまう）。
   else if (action === "life-talk-dismiss") talkProfile().dismissedAt = nowIso();
   else {
@@ -286,6 +371,19 @@ function handleTalkAction(action, data) {
       // 保存で会話は閉じる。提案の画面を出すため、提案の段だけの会話を開き直す。
       else talkProfile().session = { member: s.member, stage: "suggest", confirmId: "", q: "", startedAt: at, updatedAt: at };
     }
+    if (action === "life-talk-share") talkSet(ProfileTalk.setShare(talkProfile(), { member: s.member, family: data.family === "1", at }));
+    if (action === "life-talk-type") {
+      const step = Number(data.step);
+      if (step < 0) { talkTypeDraft = null; s.stage = "view"; delete s.typeStep; }
+      else { if (s.stage !== "type") talkTypeDraft = null; s.stage = "type"; s.typeStep = Math.min(4, Math.max(0, step || 0)); }
+    }
+    if (action === "life-talk-type-save" && state.foodProfile) {
+      const d = talkTypeFor();
+      // 晩ごはんタイプの答えだけを書きかえる（好みの味・献立の条件は変えない）。
+      state.foodProfile = Lifestyle.profile({ ...Object.fromEntries(Object.entries(state.foodProfile).filter(([k]) => !TALK_TYPE_KEYS.includes(k))), ...d });
+      talkTypeDraft = null; s.stage = "view"; delete s.typeStep;
+      talkEcho = "晩ごはんタイプを残しました";
+    }
     if (action === "life-talk-react") {
       if (TALK_REACT.some(([k]) => k === data.kind) && data.recipe) {
         s.skip = [...(s.skip || []), data.recipe].slice(-20);
@@ -320,11 +418,13 @@ function handleTalkAction(action, data) {
     if (action === "life-talk-reset") {
       if (globalThis.confirm && !globalThis.confirm("この端末の答えと方針を消します。献立・記録・設定はそのままです。")) return true;
       const p = talkProfile();
-      state.tasteProfile = { ...p, answers: p.answers.filter((x) => x.member !== s.member), decisions: Object.fromEntries(Object.entries(p.decisions).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), drafts: Object.fromEntries(Object.entries(p.drafts || {}).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), snapshots: p.snapshots.filter((x) => x.member !== s.member), session: null, updatedAt: at };
+      state.tasteProfile = { ...p, answers: p.answers.filter((x) => x.member !== s.member), decisions: Object.fromEntries(Object.entries(p.decisions).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), drafts: Object.fromEntries(Object.entries(p.drafts || {}).filter(([k]) => !k.startsWith(`${s.member}\u0000`))), snapshots: p.snapshots.filter((x) => x.member !== s.member), share: Object.fromEntries(Object.entries(p.share || {}).filter(([m]) => m !== s.member)), session: null, updatedAt: at };
       if (!talkInFunnel()) state.view = "today";
     }
   }
-  saveState({ scheduleSync: false });
+  // 家族に見せている方針が変わった時だけ、同期する。
+  const shared = publishTalkPolicy({ explicit: action === "life-talk-share" || action === "life-talk-reset" });
+  saveState({ scheduleSync: shared });
   render();
   if (state.view === "talk" || talkInFunnel()) document.querySelector("#app h2")?.focus?.();
   globalThis.scrollTo?.({ top: 0, behavior: "instant" });
@@ -362,6 +462,6 @@ function renderTalkSetting() {
   const last = p.snapshots.filter((x) => x.member === who).pop();
   const sure = ProfileTalk.interpret(p, who).filter((x) => x.status === "confirmed");
   const summary = last ? `✓ ${sure.length}件・版${last.v}` : p.session ? "途中まで" : "まだ";
-  const body = `${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : ""}${dailyButton(last ? "life-talk-view" : "life-talk-open", last ? "見直す" : p.session ? "続きから" : "話す", "", true)}<p class="muted small">答えはこの端末だけ（家族と共有しません）。AIは使っていません ${tip("バックアップの書き出しには入ります。消す時は、見直す →「答えを消す」")}</p>`;
+  const body = `${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : ""}${dailyButton(last ? "life-talk-view" : "life-talk-open", last ? "見直す" : p.session ? "続きから" : "話す", "", true)}<p class="muted small">${talkSharedOn(p, who) ? "✓ の方針だけ家族に見せています（答え・ひとことは送りません）" : "答えはこの端末だけ（家族に見せていません）"}。AIは使っていません ${tip("見せる・見せないは「見直す」で選べます。バックアップの書き出しには入ります。消す時は、見直す →「答えを消す」")}</p>`;
   return { summary, body };
 }

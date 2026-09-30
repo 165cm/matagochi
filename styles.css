@@ -4020,3 +4020,15 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .talk-said li, .talk-history li { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; overflow-wrap: anywhere; }
 .talk-said li span, .talk-history li span, .talk-said li small, .talk-history li small { color: var(--muted); }
 .talk-said li b { font-size: 15px; }
+
+/* ---- 方針の共有範囲・家族の方針・晩ごはんタイプ（PR 2c・2026-09-30） ---- */
+.talk-share { display: grid; gap: 6px; margin: 0 0 10px; padding: 10px 12px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); }
+.talk-share p { margin: 0; display: grid; gap: 2px; font-size: 14px; overflow-wrap: anywhere; }
+.talk-share p small { color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1.5; }
+.talk-share .talk-yesno { margin: 2px 0 6px; }
+.talk-share .chip-button, .talk-type-open .chip-button { min-height: 44px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.talk-share .chip-button[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--sage-dark); }
+.talk-share-state { font-weight: 700; color: var(--sage-dark); }
+.talk-type-open { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.talk-type-open > * { flex: 1; min-height: 44px; }
+.talk-card[data-stage="type"] .cook-type-card { margin: 0 auto 10px; }
