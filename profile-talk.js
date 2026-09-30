@@ -27,6 +27,9 @@
     { id: "taste", multi: true, ask: () => "よく食べたい味は？（いくつでも）", choices: () => [["sweet", "🍯", "甘辛"], ["light", "🍋", "さっぱり"], ["spicy", "🌶", "ピリ辛"], ["rich", "🧈", "こってり"], ["gentle", "🍵", "やさしい味"]] },
     // 「片付けが大変」と答えた人には、洗い物のことはもう聞かない（同じことを2度聞かない）。
     { id: "weeknight", ask: () => "平日の夜、ゆずれないのは？", when: (a) => a.hard !== "clean", choices: () => [["quick", "⚡", "早くできる"], ["onepan", "🍳", "洗い物が少ない"], ["knife", "🔪", "包丁をあまり使わない"], ["any", "🙆", "こだわらない"]] },
+    // 深掘り（PR 2b）：平日と休日の違い・一緒に食べる人との違い。相手の好みは、相手が自分の端末で答える（ここで決めない）。
+    { id: "weekend", ask: () => "休日の夜は、平日とちがう？", choices: () => [["same", "🙆", "同じでいい"], ["cook", "🍳", "休日はじっくり作りたい"], ["relax", "🛋", "休日も手早くすませたい"], ["out", "🍽", "休日は外食が多い"]] },
+    { id: "together", ask: () => "一緒に食べる人と、好みはちがう？", choices: () => [["alone", "🧑", "ひとりで食べる"], ["same", "🤝", "だいたい同じ"], ["some", "🔀", "ときどきちがう"], ["diff", "↔️", "けっこうちがう"]] },
   ];
   const QUESTION = Object.fromEntries(QUESTIONS.map((q) => [q.id, q]));
   // 一覧に自分で書いた項目だけを認める（"constructor" "toString" "__proto__" など、継承した名前を通さない）。
@@ -55,7 +58,14 @@
     "life-quick": { kind: "life", label: "⚡ 平日は早くできる料理", short: "💬 早くできる", match: (r) => (r?.planning?.minutes || 99) <= 15 },
     "life-onepan": { kind: "life", label: "🍳 洗い物が少ない料理（フライパンかレンジひとつ）", short: "💬 洗い物少なめ", match: (r) => { const e = eq(r); return e.length > 0 && !(e.includes("鍋") && e.includes("フライパン")) && !(e.includes("包丁") && e.includes("フライパン") && e.includes("ふた")); } },
     "life-knife": { kind: "life", label: "🔪 包丁をあまり使わない料理", short: "💬 包丁なし", match: (r) => eq(r).length > 0 && !eq(r).includes("包丁") },
+    // days: "weekend" は、土日の献立にだけ加点する。
+    "weekend-cook": { kind: "life", days: "weekend", label: "🍳 休日は、少し手間のかかる料理も候補に", short: "💬 休日はじっくり", ask: "休日は、少し手間のかかる料理（煮込み・焼きもの）も候補に入れます。合っていますか？", match: (r) => (r?.planning?.minutes || 0) >= 20 && (tagSet(r).has("rich") || tagSet(r).has("pot") || has(r, /煮|焼/)) },
+    "weekend-quick": { kind: "life", days: "weekend", label: "🛋 休日も、手早く作れる料理", short: "💬 休日も手早く", ask: "休日も、15分くらいで作れる料理を先に出します。合っていますか？", match: (r) => (r?.planning?.minutes || 99) <= 15 },
+    // 「変えるなら？」（最初の提案への反応）から決まるもの。
+    "life-few": { kind: "life", label: "🧺 材料が少ない料理", short: "💬 材料少なめ", match: (r) => (r?.ingredients || []).length > 0 && (r?.ingredients || []).length <= 6 },
     // 献立の加点はしない、生活の理解（買い物のペースなどは PR 5 で使う）。
+    "life-weekend-out": { kind: "life", label: "🍽 休日は外食が多い（休日の献立は、設定の「作る曜日」で減らせます）" },
+    "together-diff": { kind: "life", label: "👥 一緒に食べる人と好みがちがう → 相手の好みは、相手が自分の端末で答えます" },
     "life-think": { kind: "life", label: "🤔 何を作るか考えるのが大変 → 献立はリピごちが先に出します" },
     "life-shop": { kind: "life", label: "🛒 買い物が大変 → 買う回数と品数を減らしたい" },
   };
@@ -92,14 +102,14 @@
     for (const [k, d] of Object.entries(raw.decisions && typeof raw.decisions === "object" ? raw.decisions : {})) {
       const [member, id] = k.split("\u0000");
       if (!isLean(id) || !d || !["confirmed", "rejected"].includes(d.status)) continue;
-      out.decisions[`${str(member, 20)}\u0000${id}`] = { status: d.status, at: iso(d.at) };
+      out.decisions[`${str(member, 20)}\u0000${id}`] = { status: d.status, at: iso(d.at), ...(d.via === "react" ? { via: "react" } : {}) };
     }
     out.snapshots = (Array.isArray(raw.snapshots) ? raw.snapshots : [])
       .filter((s) => s && Number.isInteger(s.v) && s.v > 0 && Array.isArray(s.items))
       .slice(-MAX_SNAPSHOTS)
-      .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit"].includes(s.reason) ? s.reason : "edit", items: s.items.filter((x) => x && isLean(x.id)).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
+      .map((s) => ({ v: s.v, at: iso(s.at), member: str(s.member, 20), reason: ["first", "edit", "reaction"].includes(s.reason) ? s.reason : "edit", items: s.items.filter((x) => x && isLean(x.id)).slice(0, 30).map((x) => ({ id: x.id, status: x.status === "confirmed" ? "confirmed" : "rejected" })) }));
     const s = raw.session;
-    if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest"].includes(s.stage) ? s.stage : "ask", confirmId: isLean(s.confirmId) ? s.confirmId : "", q: isQuestion(s.q) ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
+    if (s && typeof s === "object") out.session = { member: str(s.member, 20), stage: ["ask", "confirm", "check", "suggest", "view"].includes(s.stage) ? s.stage : "ask", confirmId: isLean(s.confirmId) ? s.confirmId : "", q: isQuestion(s.q) ? s.q : "", startedAt: iso(s.startedAt), updatedAt: iso(s.updatedAt) };
     // 答える前に書きかけたひとこと（人・質問ごと）。会話（session）の外に置くので、方針を保存して会話が終わっても残る。
     // 以前の形（session.notes）は、その会話の人の書きかけとして移す。
     const addDraft = (member, q, t) => {
@@ -109,6 +119,8 @@
     };
     for (const [k, t] of Object.entries(raw.drafts && typeof raw.drafts === "object" ? raw.drafts : {})) { const [member, q] = k.split("\u0000"); addDraft(member, q, t); }
     if (s && typeof s === "object" && s.notes && typeof s.notes === "object") for (const [q, t] of Object.entries(s.notes)) addDraft(s.member, q, t);
+    // 最初の提案の「変えるなら？」で外した料理（その会話の間だけ）。
+    if (out.session && Array.isArray(s.skip)) { const skip = s.skip.filter((x) => typeof x === "string" && x.length <= 80).slice(-20); if (skip.length) out.session.skip = skip; }
     if (iso(raw.dismissedAt)) out.dismissedAt = iso(raw.dismissedAt);
     // 共有の範囲は、この版では「共有しない」だけ（家族共有とAIへの送信は別々に、本人が選ぶ形で後から足す）。
     out.share = { family: false, ai: false };
@@ -152,9 +164,16 @@
     if (a.hard === "think") add("life-think", ["hard"]);
     if (a.hard === "shop") add("life-shop", ["hard"]);
     add({ quick: "life-quick", onepan: "life-onepan", knife: "life-knife" }[a.weeknight] || "", ["weeknight"]);
+    add({ cook: "weekend-cook", relax: "weekend-quick", out: "life-weekend-out" }[a.weekend] || "", ["weekend"]);
+    if (["some", "diff"].includes(a.together)) add("together-diff", ["together"]);
+    // 「変えるなら？」で本人が決めたもの（答えから生まれたものではないので、答えを直しても消えない）。
+    for (const [k, d] of Object.entries(p.decisions)) {
+      const [who, id] = k.split("\u0000");
+      if (who === member && d.via === "react" && isLean(id)) add(id, []);
+    }
     const items = ids.map(({ id, from }) => {
       const d = p.decisions[`${member}\u0000${id}`];
-      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || "guess", source: "rules" };
+      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || "guess", source: d?.via === "react" && !from.length ? "reaction" : "rules" };
     });
     // 食べられないもの・苦手は、設定（foodProfile）のまま。ここで変えない。アレルギーと苦手は分けて見せる。
     const fp = foodProfile || {};
@@ -174,31 +193,53 @@
     if (t) drafts[k] = t; else delete drafts[k];
     return { ...p, drafts };
   }
-  function decide(p, { member, id, status, at }) {
+  function decide(p, { member, id, status, at, via = "" }) {
     if (!isLean(id)) return p;
     const decisions = { ...p.decisions };
+    const prevVia = decisions[`${member}\u0000${id}`]?.via;
     if (status === "guess") delete decisions[`${member}\u0000${id}`];
-    else if (["confirmed", "rejected"].includes(status)) decisions[`${member}\u0000${id}`] = { status, at };
+    else if (["confirmed", "rejected"].includes(status)) decisions[`${member}\u0000${id}`] = { status, at, ...(via === "react" || prevVia === "react" ? { via: "react" } : {}) };
     return { ...p, decisions, updatedAt: at };
   }
   // 本人が「この方針で保存」を押した時の版。当時の内容と理由を残す（変化を見る時に使う：PR 6）。
-  function snapshot(p, { member, at, foodProfile }) {
+  function snapshot(p, { member, at, foodProfile, reason = "" }) {
     const items = interpret(p, member, foodProfile).filter((x) => !x.locked && x.status !== "guess").map((x) => ({ id: x.id, status: x.status }));
     const mine = p.snapshots.filter((s) => s.member === member);
     const v = (mine[mine.length - 1]?.v || 0) + 1;
-    return { ...p, snapshots: [...p.snapshots, { v, at, member, reason: mine.length ? "edit" : "first", items }].slice(-MAX_SNAPSHOTS), session: null, updatedAt: at };
+    return { ...p, snapshots: [...p.snapshots, { v, at, member, reason: reason === "reaction" ? "reaction" : mine.length ? "edit" : "first", items }].slice(-MAX_SNAPSHOTS), session: null, updatedAt: at };
+  }
+  // 最初の提案への「変えるなら？」。time＝時間が長い → 早くできる料理を、many＝材料が多い → 材料が少ない料理を「合ってる」に。
+  // 本人が押したことなので確かめ済み。方針の版も1つ残す（理由：reaction）。
+  const REACTIONS = { time: "life-quick", many: "life-few" };
+  function react(p, { member, kind, at }) {
+    const id = own(REACTIONS, kind) ? REACTIONS[kind] : "";
+    if (!id) return p;
+    const next = decide(p, { member, id, status: "confirmed", at, via: "react" });
+    const session = next.session;
+    return { ...snapshot(next, { member, at, reason: "reaction" }), session };
+  }
+  // 方針の履歴：版ごとに、前の版から増えた（✓）・外した（✕ や、なくなった）項目。
+  function history(p, member) {
+    const mine = p.snapshots.filter((s) => s.member === member);
+    return mine.map((s, i) => {
+      const prev = new Set((mine[i - 1]?.items || []).filter((x) => x.status === "confirmed").map((x) => x.id));
+      const now = new Set(s.items.filter((x) => x.status === "confirmed").map((x) => x.id));
+      return { v: s.v, at: s.at, reason: s.reason, added: [...now].filter((id) => !prev.has(id)), removed: [...prev].filter((id) => !now.has(id)), count: now.size };
+    }).reverse();
   }
   // 献立の加点。本人が「合ってる」と確かめた解釈だけを使う（推測や「違う」は使わない）。
   // 献立を作るたびに料理の数だけ呼ぶので、確かめた解釈を先に1度だけ数える。
   function leaner(p, member) {
     const sure = p ? interpret(p, member).filter((x) => x.status === "confirmed" && isLean(x.id) && LEANS[x.id].match) : [];
-    return (recipe) => {
+    const weekend = (date) => { if (!date) return false; const d = new Date(`${date}T12:00:00`).getDay(); return d === 0 || d === 6; };
+    // date が分かる時は、休日だけの項目（days: "weekend"）を土日にだけ使う。分からない時は使わない。
+    return (recipe, date = "") => {
       if (!sure.length || !recipe) return null;
-      const hits = sure.filter((x) => LEANS[x.id].match(recipe));
+      const hits = sure.filter((x) => (LEANS[x.id].days !== "weekend" || weekend(date)) && LEANS[x.id].match(recipe));
       return hits.length ? { score: Math.min(LEAN_MAX, hits.length * LEAN_SCORE), reason: hits[0].short, ids: hits.map((x) => x.id) } : null;
     };
   }
-  const leanFor = (p, member, recipe) => leaner(p, member)(recipe);
+  const leanFor = (p, member, recipe, date = "") => leaner(p, member)(recipe, date);
   // ---- AIの境界（この版では画面から呼ばない。サーバーのAIをつなぐ時にそのまま使う） ----
   // AIに渡すのは、答えの値と、本人が書いたひとことだけ（名前・食べられないもの・評価は渡さない）。
   function aiPayload(p, member) {
@@ -236,7 +277,7 @@
       return { items: rules, fallback: true, error: error?.message === "timeout" ? "timeout" : "network" };
     } finally { clearTimeout(timer); }
   }
-  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, leaner, leanFor, aiPayload, fromAi, interpretWithAi };
+  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, aiPayload, fromAi, interpretWithAi };
   root.ProfileTalk = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

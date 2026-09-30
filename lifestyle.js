@@ -561,7 +561,7 @@
           request: requestOf(x.recipe),
           fresh: freshness(x.recipe),
           season: season(x.recipe, date),
-          pref: preferenceOf(x.recipe),
+          pref: preferenceOf(x.recipe, date),
         }))
         .filter((x) => !x.repeat.exclude)
         .map((x) => ({

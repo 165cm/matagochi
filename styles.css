@@ -4011,3 +4011,12 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .funnel-talk > .funnel-parts { padding: 0 4px; }
 .funnel-result { list-style: none; width: 100%; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; text-align: left; }
 .funnel-result li { padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); font-size: 15px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* ---- 方針の深掘り・反応・見える化（PR 2b・2026-09-30） ---- */
+.talk-react { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 10px; }
+.talk-react > span { width: 100%; color: var(--muted); font-size: 13px; font-weight: 700; }
+.talk-react .chip-button { min-height: 44px; padding: 4px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.talk-said, .talk-history { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.talk-said li, .talk-history li { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; overflow-wrap: anywhere; }
+.talk-said li span, .talk-history li span, .talk-said li small, .talk-history li small { color: var(--muted); }
+.talk-said li b { font-size: 15px; }

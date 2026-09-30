@@ -68,6 +68,7 @@ function renderTalk() {
   if (stage === "confirm" && ProfileTalk.isLean(s.confirmId)) return renderTalkConfirm();
   if (stage === "check") return renderTalkCheck();
   if (stage === "suggest") return renderTalkSuggest();
+  if (stage === "view") return renderTalkView();
   const q = talkQuestion();
   if (!q) { s.stage = "check"; return renderTalkCheck(); }
   const a = ProfileTalk.answersOf(p, s.member);
@@ -134,7 +135,8 @@ function renderTalkCheck() {
 }
 // 最初の提案：いまの献立の決め方（条件はゆるめない）に、確かめた好みの加点を足した1品と、その理由。
 function talkPick() {
-  return dailyPlan().find((d) => d.candidate && !d.slot && !d.off) || null;
+  const skip = talkProfile().session?.skip || [];
+  return dailyPlan({ exclude: skip }).find((d) => d.candidate && !d.slot && !d.off) || null;
 }
 function renderTalkSuggest() {
   const p = talkProfile(), s = talkSession();
@@ -144,20 +146,64 @@ function renderTalkSuggest() {
   const sure = ProfileTalk.interpret(p, s.member).filter((x) => x.status === "confirmed");
   if (!day) return `<section class="hero-card talk-card" data-stage="suggest"><h2 tabindex="-1">🍽 いま出せる候補がありません</h2><p class="muted">食べられないもの・時間・器具の条件は、ゆるめずにそのままです。レシピを足すか、条件を見直してください。</p><div class="wizard-footer">${dailyButton("go-view", "レシピへ", 'data-view="collection"')}${dailyButton("life-talk-close", "閉じる", "", true)}</div></section>`;
   const r = day.candidate.recipe;
-  const hit = ProfileTalk.leanFor(p, s.member, r);
+  const hit = ProfileTalk.leanFor(p, s.member, r, day.date);
   const used = (hit?.ids || []).map((id) => `<li>${escapeHtml(ProfileTalk.LEANS[id].label)}</li>`).join("");
   const other = (day.candidate.reasons || []).filter((x) => !String(x).startsWith("💬")).slice(0, 3).map((x) => `<li>${escapeHtml(x)}</li>`).join("");
   const when = day.date === today() ? "今夜" : formatDate(day.date);
   return `<section class="hero-card talk-card" data-stage="suggest" aria-labelledby="talk-h">
     <p class="talk-meta"><span>✓ 方針を保存しました</span></p>
+    ${talkEcho ? `<p class="funnel-echo" role="status">💬 ${escapeHtml(talkEcho)}</p>` : ""}
     <h2 id="talk-h" tabindex="-1">${escapeHtml(when)}は、これはどう？</h2>
     <article class="talk-dish">${dishTile(r, "talk-dish-photo")}<div><strong>${escapeHtml(r.title)}</strong><small>${r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : ""}</small></div></article>
     <h3 class="quick-sub">この料理にした理由</h3>
     <ul class="talk-why">${used}${other}${lockLine}</ul>
     ${!used && sure.length ? `<p class="muted small">確かめた好みに合う料理は、いまの候補にありませんでした（条件はゆるめていません）</p>` : ""}
     <div class="talk-yesno">${dailyButton("life-talk-place", `${escapeHtml(when)}に入れる`, `data-date="${day.date}" data-recipe="${escapeAttr(r.id)}"`, true)}${dailyButton("life-talk-open-check", "方針を見直す")}</div>
+    <div class="talk-react" role="group" aria-label="変えるなら？"><span>変えるなら？</span>${TALK_REACT.map(([kind, label]) => `<button type="button" class="chip-button" data-action="life-talk-react" data-kind="${kind}" data-recipe="${escapeAttr(r.id)}">${label}</button>`).join("")}</div>
     <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">閉じる</button></div>
   </section>`;
+}
+// 最初の提案への反応。time・many は方針を直す（本人が押したので確かめ済み）。どれも、その料理を外して次の料理を出す。
+const TALK_REACT = [["time", "⏱ 時間が長い"], ["many", "🧺 材料が多い"], ["other", "🤔 気分じゃない"]];
+const TALK_REACT_ECHO = { time: "早くできる料理を、先に出します", many: "材料が少ない料理を、先に出します", other: "ほかの料理にします" };
+// 方針の見える化（docs/PERSONALIZE_PLAN.md §5）：「あなたが言ったこと」「献立に使っていること」「記録から見えてきたこと」「履歴」を分けて見せる。
+function renderTalkView() {
+  const p = talkProfile(), s = talkSession();
+  const a = ProfileTalk.answersOf(p, s.member);
+  const answers = ProfileTalk.asked(p, s.member).filter((q) => q.id in a && a[q.id] !== ProfileTalk.LATER);
+  const items = ProfileTalk.interpret(p, s.member, dailyProfile());
+  const sure = items.filter((x) => !x.locked && x.status === "confirmed");
+  const off = items.filter((x) => !x.locked && x.status === "rejected");
+  const guess = items.filter((x) => !x.locked && x.status === "guess");
+  const hist = ProfileTalk.history(p, s.member);
+  const labelOf = (id) => ProfileTalk.LEANS[id]?.short?.replace(/^💬\s*/, "") || id;
+  const REASON = { first: "はじめて保存", edit: "見直して保存", reaction: "「変えるなら？」から" };
+  const rec = talkRecords();
+  return `<section class="hero-card talk-card" data-stage="view" aria-labelledby="talk-h">
+    ${talkHeader()}
+    <h2 id="talk-h" tabindex="-1">わが家のごはん方針</h2>
+    <h3 class="quick-sub">💬 あなたが言ったこと</h3>
+    ${answers.length ? `<ul class="talk-said">${answers.map((q) => `<li><span>${escapeHtml(q.ask(a))}</span><b>${escapeHtml(talkAnswerLabel(q, a[q.id], a))}</b>${p.answers.find((x) => x.member === s.member && x.q === q.id)?.text ? `<small>「${escapeHtml(p.answers.find((x) => x.member === s.member && x.q === q.id).text)}」</small>` : ""}</li>`).join("")}</ul>` : `<p class="muted small">まだありません</p>`}
+    <h3 class="quick-sub">✓ 献立に使っていること</h3>
+    ${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}${x.source === "reaction" ? " <small>（変えるなら？）</small>" : ""}</li>`).join("")}</ul>` : `<p class="muted small">まだありません</p>`}
+    ${guess.length ? `<p class="small">🧪 まだ確かめていない案が ${guess.length}件 ${dailyButton("life-talk-open-check", "確かめる")}</p>` : ""}
+    ${off.length ? `<details class="talk-answers"><summary>✕ 使わないこと（${off.length}）</summary><ul class="talk-locked">${off.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul></details>` : ""}
+    <h3 class="quick-sub">📈 記録から見えてきたこと ${tip("「また食べたい」の評価から。あなたが言ったことと分けて出します")}</h3>
+    ${rec.html}
+    ${hist.length ? `<h3 class="quick-sub">🕘 方針の履歴</h3><ol class="talk-history">${hist.slice(0, 6).map((h) => `<li><b>版${h.v}</b> <span>${escapeHtml(formatDate(String(h.at).slice(0, 10)))}・${REASON[h.reason] || ""}</span>${h.added.length || h.removed.length ? `<small>${h.added.map((id) => `＋${escapeHtml(labelOf(id))}`).join(" ")} ${h.removed.map((id) => `−${escapeHtml(labelOf(id))}`).join(" ")}</small>` : `<small>✓ ${h.count}件</small>`}</li>`).join("")}</ol>` : ""}
+    <div class="wizard-footer">${ProfileTalk.nextQuestion(p, s.member) ? dailyButton("life-talk-ask", "💬 質問に答える") : "<span></span>"}${dailyButton("life-talk-open-check", "✎ 直す", "", true)}</div>
+    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">閉じる</button></div>
+  </section>`;
+}
+// 記録から見えてきたこと：評価（また食べたい）から。対象の期間と件数を添える。精密な点数や伸び率は出さない。
+function talkRecords() {
+  const rated = (state.evaluations || []).filter((e) => Object.values(e.familyRepeatCycles || {}).some(Boolean));
+  const recipeOf = (id) => recipeById(id) || Lifestyle.curated.find((c) => c.id === id) || null;
+  const { left, items } = Lifestyle.insights({ evaluations: state.evaluations || [], recipeOf, family: state.family || [] });
+  if (left) return { html: `<p class="muted small">あと${left}品「また食べたい」をつけると見えてきます</p>` };
+  const days = rated.map((e) => String(e.cookedAt || "").slice(0, 10)).filter(Boolean).sort();
+  const span = days.length ? `${formatDate(days[0])}〜${formatDate(days[days.length - 1])}・評価${rated.length}件` : "";
+  return { html: items.length ? `<ul class="talk-locked">${items.map((x) => `<li>${escapeHtml(x.text)}</li>`).join("")}</ul><p class="muted small">${escapeHtml(span)}</p>` : `<p class="muted small">まだはっきりした傾向はありません（${escapeHtml(span)}）</p>` };
 }
 // 答えたあと：その答えから生まれた、まだ決めていない推測があれば聞き返す。なければ次の質問。
 function talkAfterAnswer(qid) {
@@ -170,6 +216,7 @@ function talkAfterAnswer(qid) {
 function handleTalkAction(action, data) {
   if (!action.startsWith("life-talk")) return false;
   if (action === "life-talk-open") { talkEcho = ""; openTalk(); }
+  else if (action === "life-talk-view") { talkEcho = ""; openTalk("view"); }
   // 案内を閉じるだけ。会話（session）は作らない（作ると「続きから」に変わって残ってしまう）。
   else if (action === "life-talk-dismiss") talkProfile().dismissedAt = nowIso();
   else {
@@ -239,6 +286,17 @@ function handleTalkAction(action, data) {
       // 保存で会話は閉じる。提案の画面を出すため、提案の段だけの会話を開き直す。
       else talkProfile().session = { member: s.member, stage: "suggest", confirmId: "", q: "", startedAt: at, updatedAt: at };
     }
+    if (action === "life-talk-react") {
+      if (TALK_REACT.some(([k]) => k === data.kind) && data.recipe) {
+        s.skip = [...(s.skip || []), data.recipe].slice(-20);
+        if (ProfileTalk.REACTIONS[data.kind]) {
+          const before = talkProfile().decisions[`${s.member}\u0000${ProfileTalk.REACTIONS[data.kind]}`]?.status;
+          talkSet(ProfileTalk.react(talkProfile(), { member: s.member, kind: data.kind, at }));
+          if (before !== "confirmed") trackDaily("talk_fixed");
+        }
+        talkEcho = TALK_REACT_ECHO[data.kind];
+      }
+    }
     if (action === "life-talk-place") {
       const r = allDinnerRecipes().find((x) => x.id === data.recipe);
       if (r && data.date && !state.mealSlots[data.date]) {
@@ -296,7 +354,7 @@ function renderTalkTodo() {
   const p = talkProfile();
   const who = talkWho();
   if (p.snapshots.some((x) => x.member === who) || (p.dismissedAt && !p.session)) return "";
-  return `<div class="todo-row${p.session ? "" : " has-x"}"><span>💬</span><p><b>わが家のごはん方針</b>をいっしょに（5問ほど）</p>${dailyButton("life-talk-open", p.session ? "続きから" : "話す")}${p.session ? "" : `<button type="button" class="todo-x" data-action="life-talk-dismiss" aria-label="わが家のごはん方針の案内を閉じる">×</button>`}</div>`;
+  return `<div class="todo-row${p.session ? "" : " has-x"}"><span>💬</span><p><b>わが家のごはん方針</b>をいっしょに（6問ほど）</p>${dailyButton("life-talk-open", p.session ? "続きから" : "話す")}${p.session ? "" : `<button type="button" class="todo-x" data-action="life-talk-dismiss" aria-label="わが家のごはん方針の案内を閉じる">×</button>`}</div>`;
 }
 // 設定の1行。
 function renderTalkSetting() {
@@ -304,6 +362,6 @@ function renderTalkSetting() {
   const last = p.snapshots.filter((x) => x.member === who).pop();
   const sure = ProfileTalk.interpret(p, who).filter((x) => x.status === "confirmed");
   const summary = last ? `✓ ${sure.length}件・版${last.v}` : p.session ? "途中まで" : "まだ";
-  const body = `${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : ""}${dailyButton("life-talk-open", last ? "見直す" : p.session ? "続きから" : "話す", "", true)}<p class="muted small">答えはこの端末だけ（家族と共有しません）。AIは使っていません ${tip("バックアップの書き出しには入ります。消す時は、見直す →「答えを消す」")}</p>`;
+  const body = `${sure.length ? `<ul class="talk-locked">${sure.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : ""}${dailyButton(last ? "life-talk-view" : "life-talk-open", last ? "見直す" : p.session ? "続きから" : "話す", "", true)}<p class="muted small">答えはこの端末だけ（家族と共有しません）。AIは使っていません ${tip("バックアップの書き出しには入ります。消す時は、見直す →「答えを消す」")}</p>`;
   return { summary, body };
 }

@@ -13,11 +13,11 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude | 作業中 | `claude/optimistic-albattani-jg5211` | PR 2b：深掘りの質問（休日・一緒に食べる人）・最初の提案への反応・方針の見える化（あなたが言ったこと／記録から見えてきたこと／履歴） | `profile-talk.js`・`talk-ui.js`・`lifestyle.js`（`propose` の `preferenceOf` に日付）・`daily-ui.js`（`dailyPlan` の除外）・`app.js`（版・設定の行）・`styles.css`・`index.html`・`sw.js`・`test/profile-talk.test.cjs`・`docs/*` |
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | PR 2b：深掘りの質問（休日・一緒に食べる人）・最初の提案への反応・方針の見える化（あなたが言ったこと／記録から見えてきたこと／履歴） | `profile-talk.js`・`talk-ui.js`・`lifestyle.js`（`propose` の `preferenceOf` に日付）・`daily-ui.js`（`dailyPlan` の除外）・`app.js`（版・設定の行）・`styles.css`・`index.html`・`sw.js`・`test/profile-talk.test.cjs`・`test/lifestyle.test.cjs`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
-1. **PR 2**：2a（初回設定の整理）は公開済み（#99）。2b で、深掘り（平日と休日・同居人との違い・献立案への反応）・方針の見える化（本人が言ったこと／記録からの傾向／次に試す提案・版の履歴）・晩ごはんタイプを方針の画面から任意で開く。推薦理由・回答の修正・共有範囲（家族共有とAIへの送信を別々に本人が選ぶ）。サーバーAIをつなぐなら `ProfileTalk.fromAi` の検査・予算・回数・時間切れ
+1. **PR 2**：2a（初回設定の整理）は公開済み（#99）。2b（深掘り・「変えるなら？」・方針の見える化）はレビュー待ち。2c で、共有範囲（家族共有とAIへの送信を別々に本人が選ぶ）・晩ごはんタイプを方針の画面から任意で開く。サーバーAIをつなぐなら `ProfileTalk.fromAi` の検査・予算・回数・時間切れ
 2. **PR 3：YouTube の取り込み・投稿者管理・公開カタログの基盤**（確認フロー・出典・状態と権限・掲載申請・API情報の更新・一覧GETで有料AIを動かさない）。進み具合：#96（掲載停止の2段階）・#98（本人確認・参加申請・承認画面）・#97（新着の集める／見せる）公開済み
 3. **PR 4：基本ストック管理と新着配信**（不足カテゴリの確認・日次ジョブ・排他・予算・取り消し。100品の存在を偽装しない）
 4. **PR 5：3日／3日＋3日／5日と買い物**（旧データ互換・人数や予定の変更・購入済みの保持・候補不足で条件をゆるめない）

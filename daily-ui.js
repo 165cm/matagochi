@@ -311,11 +311,12 @@ function lastEatenLabel(recipe) {
   const gap = daysBetween(hit.date, today());
   return gap === 0 ? "今日" : gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `前回は${gap}日前`;
 }
-function dailyPlan() {
+// exclude：出さない料理のID（わが家のごはん方針の「変えるなら？」で外した料理）。
+function dailyPlan({ exclude = [] } = {}) {
   const p = dailyProfile();
   return Lifestyle.propose({
     history: mealHistory(120),
-    recipes: planRecipes(),
+    recipes: exclude.length ? planRecipes().filter((r) => !exclude.includes(r.id)) : planRecipes(),
     profile: p,
     slots: state.mealSlots || {},
     start: today(),
