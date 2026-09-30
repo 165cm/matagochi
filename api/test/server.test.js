@@ -170,3 +170,24 @@ test('weekly menu route: 3 tickets, one board, the wallet on failure too', async
   const bad = await fetch(`${base}/api/weekly/menu`, { method: 'POST', headers, body });
   assert.equal(bad.status, 502); assert.equal((await bad.json()).tickets.balance, 7, 'refunded, and the app hears the balance');
 });
+
+test('the daily refresh also runs housekeeping once: a deleted video leaves the public lists without AI', async t => {
+  const store = createMemorySyncStore();
+  const old = new Date(Date.now() - 26 * 86_400_000).toISOString();
+  await store.put('youtube-abcdefghijk', { status: 'ready', result: { title: '丼', videoId: 'abcdefghijk', caption: 'x', channelTitle: 'y', ingredients: [{ name: '米', amount: '1合' }], steps: ['炊く'], snippetFetchedAt: old, catalog: { id: 'youtube-abcdefghijk', analyzedAt: old, extractorVersion: 3 } } });
+  let asked = 0;
+  const app = createApp({}, { recipeStore: store, syncStore: null,
+    importRecipe: async () => { throw new Error('AI must not run'); },
+    fetchYouTubeStatuses: async (ids) => { asked++; return Object.fromEntries(ids.map((id) => [id, { status: 'not_found' }])); },
+    searchChannels: async () => [], channelUploads: async () => [], searchRecipes: async () => [] });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const refresh = () => fetch(`http://127.0.0.1:${server.address().port}/api/trends/refresh`, { method: 'POST' }).then(r => r.json());
+  const first = await refresh();
+  assert.equal(first.housekeeping.catalog.unavailable, 1);
+  assert.equal((await store.get('youtube-abcdefghijk')).envelope.result.unavailable.reason, 'not_found');
+  const second = await refresh();
+  assert.deepEqual(second.housekeeping, { skipped: 'done_today' });
+  assert.equal(asked, 1);
+});
