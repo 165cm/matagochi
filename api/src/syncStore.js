@@ -31,6 +31,20 @@ export function createMemorySyncStore() {
       const generation = current + 1;
       rooms.set(roomId, { envelope, generation });
       return { generation };
+    },
+    // 名前が start で始まるものを、名前の順に max 件ずつ。続きは next（最後なら ""）。
+    async list(start, { pageToken = "", max = 1000 } = {}) {
+      const names = [...rooms.keys()].filter((k) => k.startsWith(start) && k > pageToken).sort();
+      const page = names.slice(0, max);
+      return { names: page, next: names.length > max ? page[page.length - 1] : "" };
+    },
+    // 消す（ないものを消しても失敗にしない）。ifGeneration を渡すと、その版の時だけ消す。
+    async remove(roomId, { ifGeneration } = {}) {
+      const current = rooms.get(roomId)?.generation;
+      if (current === undefined) return true;
+      if (ifGeneration !== undefined && ifGeneration !== current) return false;
+      rooms.delete(roomId);
+      return true;
     }
   };
 }
@@ -93,6 +107,28 @@ export function createGcsSyncStore(bucket, { fetch = globalThis.fetch, prefix = 
       }
       const meta = await response.json();
       return { generation: Number(meta.generation) };
+    },
+    // 名前が start で始まるものを max 件ずつ（定期の後片付け用）。続きは next（最後なら ""）。
+    async list(start, { pageToken = "", max = 1000 } = {}) {
+      const token = await accessToken();
+      const params = new URLSearchParams({ prefix: `${prefix}/${start}`, fields: "items(name),nextPageToken", maxResults: String(Math.min(1000, Math.max(1, max))) });
+      if (pageToken) params.set("pageToken", pageToken);
+      const response = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new ApiError(502, "sync_storage_failed", "保存データの一覧を取得できませんでした。");
+      const body = await response.json();
+      const names = (body.items || []).map((x) => String(x.name || "")).filter((n) => n.startsWith(`${prefix}/`) && n.endsWith(".json")).map((n) => n.slice(prefix.length + 1, -5));
+      return { names, next: body.nextPageToken || "" };
+    },
+    // 消す（ないものを消しても失敗にしない）。ifGeneration を渡すと、その版の時だけ消す。
+    async remove(roomId, { ifGeneration } = {}) {
+      const token = await accessToken();
+      const params = new URLSearchParams();
+      if (ifGeneration !== undefined) params.set("ifGenerationMatch", String(ifGeneration));
+      const response = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectName(roomId)}${params.size ? `?${params}` : ""}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      if (response.status === 404) return true;
+      if (response.status === 412) return false;
+      if (!response.ok) throw new ApiError(502, "sync_storage_failed", "保存データを消せませんでした。");
+      return true;
     }
   };
 }

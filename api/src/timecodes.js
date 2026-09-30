@@ -81,7 +81,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         await reserveBudget();
         const seconds = info?.durationSeconds ?? (await snippet(videoId).catch(() => null))?.durationSeconds;
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
-        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds });
+        // 接続先を切り替える時も、切り替えの直前ごとに AI の予算を通す（最初の1回は上の reserveBudget）。
+        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, beforeRetry: reserveBudget });
         const stepTimes = cleanTimes(raw?.stepTimes, list);
         if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
         await save(key, { stepTimes, source: "video", chaptersChecked: true }, cached);

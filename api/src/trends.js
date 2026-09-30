@@ -48,6 +48,17 @@ const SEARCH_ROUNDS = [
 export const TREND_MARKET = { regionCode: "JP", relevanceLanguage: "ja", titleLooksLocal: (title) => /[ぁ-んァ-ヶ一-龠]/.test(String(title || "")) };
 const NOT_DINNER = /ケーキ|クッキー|スイーツ|プリン|アイス|ドリンク|ジュース|スムージー|マフィン|タルト|チョコ|ゼリー|おやつ|デザート|パン作り|食パン|ベーグル|ドーナツ|お菓子|和菓子|コーヒー|カクテル|お酒/;
 
+// 投稿者のアイコン（YouTube API の情報）は、取ってから30日まで。{ チャンネルID: { url, at } }。
+// 以前の形（URL の文字列だけ）は、まとめて取った日（doc.at）を使う。
+export function pruneIcons(doc, nowMs) {
+  const out = {};
+  for (const [id, v] of Object.entries(doc?.map || {})) {
+    const url = typeof v === "string" ? v : v?.url;
+    const at = typeof v === "string" ? doc.at : v?.at;
+    if (typeof url === "string" && url && nowMs - (Date.parse(at || 0) || 0) <= 30 * DAY) out[id] = { url, at };
+  }
+  return out;
+}
 // 週の区切り：日本時間の月曜日。
 export function weekOf(ms) {
   const jst = new Date(ms + 9 * 3_600_000);
@@ -126,7 +137,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       for (const id of ids) { const r = await peek(id).catch(() => null); if (r?.channelId && !channelIds.includes(r.channelId)) channelIds.push(r.channelId); }
       if (channelIds.length) {
         const got = await channelIcons(channelIds).catch(() => null);
-        if (got) { const cur = await store.get("trends/icons"); await store.put("trends/icons", { at: new Date(now()).toISOString(), map: { ...(cur?.envelope.map || {}), ...got } }, { ifGeneration: cur?.generation ?? 0 }).catch(() => {}); }
+        if (got) {
+          const cur = await store.get("trends/icons");
+          const at = new Date(now()).toISOString();
+          const map = { ...pruneIcons(cur?.envelope, now()), ...Object.fromEntries(Object.entries(got).map(([id, url]) => [id, { url, at }])) };
+          await store.put("trends/icons", { at, map }, { ifGeneration: cur?.generation ?? 0 }).catch(() => {});
+        }
       }
       index.refreshedOn = today;
     }
@@ -292,8 +308,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         }
       }
       // 投稿者のアイコン：集める側が保存したものを使うだけ。
-      const iconMap = (await store.get("trends/icons"))?.envelope.map || {};
-      items.forEach((i) => { if (iconMap[i.channelId]) i.channelThumb = iconMap[i.channelId]; });
+      const iconMap = pruneIcons((await store.get("trends/icons"))?.envelope, now());
+      items.forEach((i) => { if (iconMap[i.channelId]) i.channelThumb = iconMap[i.channelId].url; });
       const value = { items, updatedAt: new Date(now()).toISOString() };
       cache = { value, until: now() + 10 * 60_000 };
       return value;
