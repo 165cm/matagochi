@@ -155,11 +155,17 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/import/youtube/timecodes", (req, res) => send(res, timecodeBook.find(req.body || {}, householdOf(req))));
   app.put("/api/import/youtube/timecodes", (req, res) => send(res, timecodeBook.fix(req.body || {}, householdOf(req))));
   app.post("/api/creators/request", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, creatorDesk.request(req.body || {})); });
+  // 修正依頼（だれでも）。持ち主としてログインしていれば「ご本人」の印がつき、自分の動画はその場で一覧から外せる。
+  app.post("/api/creators/corrections", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const owned = req.get("authorization") ? creatorAuth.channelsOf(req.get("authorization")) : Promise.resolve([]);
+    send(res, owned.then((ch) => creatorDesk.correction(req.body || {}, ch)));
+  });
   // 投稿者ご本人（YouTubeでログイン）：本人確認 → 自分のチャンネルだけ、停止・再開・参加申請・参加をやめる。APP_MAP §40。
   const ownedBy = (req) => creatorAuth.channelsOf(req.get("authorization"));
   app.post("/api/creators/verify", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, creatorAuth.verify(req.body?.accessToken)); });
   app.get("/api/creators/me", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, ownedBy(req).then((owned) => creatorDesk.mine(owned))); });
-  const ownerAction = { stop: (id, owned, body) => creatorDesk.ownerStop(id, owned, body), resume: (id, owned) => creatorDesk.ownerResume(id, owned), apply: (id, owned, body) => creatorDesk.apply(id, owned, body), withdraw: (id, owned) => creatorDesk.withdraw(id, owned) };
+  const ownerAction = { stop: (id, owned, body) => creatorDesk.ownerStop(id, owned, body), resume: (id, owned) => creatorDesk.ownerResume(id, owned), apply: (id, owned, body) => creatorDesk.apply(id, owned, body), withdraw: (id, owned) => creatorDesk.withdraw(id, owned), show: (id, owned, body) => creatorDesk.ownerShow(id, owned, body) };
   app.post("/api/creators/me/:channelId/:action", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     const act = Object.prototype.hasOwnProperty.call(ownerAction, req.params.action) ? ownerAction[req.params.action] : null;
@@ -291,6 +297,16 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, creatorDesk.decideApplication(req.params.channelId, req.body || {}));
+  });
+  app.get("/api/admin/creators/corrections", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, creatorDesk.corrections());
+  });
+  app.post("/api/admin/creators/corrections/:id/decide", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, creatorDesk.decideCorrection(req.params.id, req.body || {}));
   });
   app.post("/api/admin/creators/:channelId/decide", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
