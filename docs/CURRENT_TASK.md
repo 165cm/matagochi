@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | レビュー待ち | `claude/privacy-creators` | プライバシーポリシーに投稿者ご本人の確認・投稿者からのお申し込み・YouTube API サービスの利用を追記。ポリシーと規約の運営者の表記から個人名を外す（氏名・住所は請求があれば開示） | `legal/privacy.html`・`legal/terms.html`・`docs/CURRENT_TASK.md` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
