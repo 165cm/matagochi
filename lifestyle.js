@@ -146,6 +146,8 @@
       savings: raw.savings === true,
       useUp: list(raw.useUp),
       useUpUntil: typeof raw.useUpUntil === "string" ? raw.useUpUntil : "",
+      // 本人が「残っている」と確かめた食材（家族で共有・daily-ui.js が今の分だけ入れる）。使い切りたい食材と同じ加点。
+      leftovers: list(raw.leftovers),
       answered: list(raw.answered),
       startedAt: raw.startedAt || "",
       completedAt: raw.completedAt || "",
@@ -270,6 +272,9 @@
       p.useUpUntil >= date &&
       p.useUp.some((x) => names.some((n) => matches(n, x)));
     if (useUp) reasons.push("使い切りたい食材入り");
+    // 残っている食材（確かめたもの）を使う料理。加点は「使い切りたい」と合わせて1回だけ。
+    const leftover = (p.leftovers || []).find((x) => names.some((n) => matches(n, x)));
+    if (leftover) reasons.push(`🧺 残りの${leftover}を使う`);
     const votedTastes = Taste.preferredTastes(p.tasteVotes);
     const taste = meta?.tastes?.some((x) => (Taste.normalize(p.tasteVotes).length ? votedTastes : p.tastes).includes(x));
     const likedTitles = Taste.result(p.tasteVotes).likes.map(c => c.title);
@@ -281,7 +286,7 @@
     return {
       ok: true,
       reasons,
-      score: priorities.score + (useUp ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
+      score: priorities.score + (useUp || leftover ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
       needsReview: !knownEquipment || !meta?.ingredientsVerified,
       challenge,
       skillNeed: need,
@@ -1123,6 +1128,8 @@
     normalizeSlots,
     mergeMap,
     shopping,
+    shoppingName,
+    isBought: (name) => !notPurchased.test(shoppingName(name)),
     curated,
     traits,
     tags,

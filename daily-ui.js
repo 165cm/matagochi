@@ -272,6 +272,7 @@ function dailyProfile() {
     ...state.householdProfile,
     restrictions: [...new Set([...(state.foodProfile?.restrictions || []), ...householdRestrictions()])],
     ...(rhythmOn() ? { days: rhythmDays() } : {}),
+    leftovers: activeLeftovers(),
     ...(skillProfile() && !isViewer() ? { skillLevel: state.skillProfile.level, skillGrowth: state.skillProfile.growth } : {}),
     servings: state.servingCount,
   });
@@ -468,7 +469,7 @@ function renderDailyPlan() {
     return head + html + foot;
   }).join("");
   const ready = plan.filter((d) => d.candidate && !locks.has(d.date)).length;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${renderTicketNudge("plan")}${renderRhythmInvite()}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderShareInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${renderTicketNudge("plan")}${renderRhythmInvite()}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}${renderLeftoverPanel()}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderShareInvite()}`;
 }
 let swapShowAll = false;
 // 好きの度合い（評価）：「明日でも」がいちばん。家族の中でいちばん低い評価で比べる。
@@ -769,12 +770,14 @@ function renderShopPantry() {
 }
 function renderDailyShopping() {
   const items = dailyShopping();
+  // 残っている食材は、買う物から勝手に外さない（量が分からない）。「残りあり」と知らせるだけ。
+  const left = new Set(activeLeftovers().map((n) => Lifestyle.shoppingName(n)));
   const aisle = (i) => Aisles.aisleLabel(Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}));
   const order = Aisles.AISLES.map(([, label]) => label);
   const count = (status) => items.filter((i) => i.status === status).length;
   const fix = (i) => aisleEdit ? `<select class="aisle-select" data-aisle-name="${escapeAttr(i.name)}" aria-label="${escapeAttr(i.name)}の売り場">${Aisles.AISLES.map(([id, label]) => `<option value="${id}" ${Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}) === id ? "selected" : ""}>${label}</option>`).join("")}</select>` : "";
   const uses = (i) => i.uses?.length ? `<span class="use-icons" aria-label="${escapeAttr(i.uses.join("・"))}に使う">${useIcons(i.uses)}</span>` : "";
-  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}</span></label>${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
+  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}${left.has(i.name) ? '<small class="leftover-hint">🧺 残りあり</small>' : ""}</span></label>${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
   const groups = (status) => order.map((category) => {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
     return list.length ? `<section class="aisle-group"><h4 class="aisle-tag" title="${escapeAttr(category)}"><span class="sr-only">${category}</span><span aria-hidden="true">${AISLE_SHORT[Aisles.AISLES.find(([, l]) => l === category)?.[0]] || category}</span></h4><div class="aisle-items">${list.map((i) => row(i, status)).join("")}</div></section>` : "";
@@ -787,7 +790,7 @@ function renderDailyShopping() {
   const done = renderShoppingDone(items);
   const menu = items.length ? `<div class="page-actions"><details class="shop-menu"><summary aria-label="買い物メニュー">⋯</summary><div class="shop-menu-list">${dailyButton("copy-shopping", "リストをコピー")}${dailyButton("share-shopping", "共有")}<button type="button" class="secondary-button" data-action="life-aisle-edit">${aisleEdit ? "売り場の直しを終える" : "売り場を直す"}</button>${isViewer() ? "" : '<button type="button" class="secondary-button" data-action="life-pantry-open">常備品</button>'}${done}</div></details></div>` : "";
   const sheet = all && done && !shopDoneLater ? `<div class="shop-done-sheet" role="dialog" aria-label="買い物完了"><p><b>全部そろった！</b>買い物完了にする？</p><div>${done}<button type="button" class="text-button" data-action="life-shop-later">あとで</button></div></div>` : "";
-  return `<section class="shop-head">${renderTripMeals()}${progress}${menu}</section>
+  return `${renderShopDiff()}<section class="shop-head">${renderTripMeals()}${progress}${menu}</section>
   ${!items.length ? `<section class="panel shop-empty"><p>献立が決まると、必要な材料だけのリストができます。</p>${dailyButton("go-view", isViewer() ? "献立を見る" : "献立を決める", 'data-view="plan"', true)}</section>` : ""}
   ${aisleEdit ? '<button type="button" class="primary-button full-button" data-action="life-aisle-edit">売り場の直しを終える</button>' : ""}
   ${buy ? `<div class="shop-list">${groups("buy")}</div>` : ""}
@@ -965,16 +968,75 @@ function confirmDaily(day, recipe = day.candidate?.recipe) {
     updatedAt: nowIso(),
   };
 }
+// 献立を変えた時の買い物の差分を、品名で残す（買い物タブの上に出す。×で閉じる）。
+// bought：もう買ってあるのに、使わなくなった品（残りの食材として使える）。more：買ってあるが、分量が増えた・別の料理にも使う品。
 function changedShopping(before) {
   const after = dailyShopping();
-  const added = after.filter((x) => !before.some((b) => b.id === x.id)).length;
-  const removed = before.filter(
-    (x) => !after.some((b) => b.id === x.id),
-  ).length;
-  const changed = after.filter((x) =>
-    before.some((b) => b.id === x.id && b.signature !== x.signature),
-  ).length;
-  shoppingNotice = `買い物を更新しました：追加${added}品・不要${removed}品・数量等の変更${changed}品。`;
+  const names = (list) => [...new Set(list.map((x) => x.name))];
+  const gone = before.filter((x) => !after.some((b) => b.id === x.id));
+  const diff = {
+    added: names(after.filter((x) => x.status === "buy" && !before.some((b) => b.id === x.id))),
+    removed: names(gone.filter((x) => x.status === "buy")),
+    bought: names(gone.filter((x) => x.status === "purchased")),
+    more: names(after.filter((x) => x.recheck && before.some((b) => b.id === x.id && b.signature !== x.signature))),
+  };
+  if (!Object.values(diff).some((l) => l.length)) return;
+  shoppingNotice = diff;
+  const part = (label, list) => (list.length ? `${label}${list.slice(0, 3).join("・")}${list.length > 3 ? `ほか${list.length - 3}品` : ""}` : "");
+  showToast(`買い物：${[part("＋", diff.added), part("−", diff.removed), part("🧺 買ってある：", diff.bought)].filter(Boolean).join("／") || "分量が変わった品があります"}`);
+}
+// 残っている食材（本人が確かめたもの）。確かめてから7日を過ぎたものは使わない（使ったはずと決めつけない代わりに、古いものは出さない）。
+const LEFTOVER_DAYS = 7;
+function activeLeftovers() {
+  const since = addDays(today(), -LEFTOVER_DAYS);
+  return Object.entries(state.leftovers?.items || {}).filter(([, v]) => (v?.at || "").slice(0, 10) >= since).map(([name]) => name);
+}
+function setLeftover(name, on) {
+  const n = String(name || "").normalize("NFKC").trim().slice(0, 30);
+  if (!n) return;
+  const items = { ...(state.leftovers?.items || {}) };
+  if (on) items[n] = { at: nowIso() }; else delete items[n];
+  state.leftovers = { items, updatedAt: nowIso() };
+}
+// 残っているかもしれない食材の候補：買ってあるのに今のリストで使わなくなった品（ここ7日の買った印）と、
+// 前の買い物のあとに予定していたのに作らなかった料理の材料。どれも「かもしれない」なので、本人が選ぶまで使わない。
+function leftoverCandidates() {
+  const since = addDays(today(), -LEFTOVER_DAYS);
+  const now = new Set(dailyShopping().map((x) => x.id));
+  const byId = new Map();
+  const pantry = dailyProfile().pantry || {};
+  const add = (name) => { const n = Lifestyle.shoppingName(name); if (n && Lifestyle.isBought(n) && pantry[n] !== "have" && !byId.has(n)) byId.set(n, n); };
+  for (const [id, m] of Object.entries(state.shoppingMarks || {})) if (m?.status === "purchased" && (m.updatedAt || "").slice(0, 10) >= since && !now.has(id)) add(id);
+  for (const s of Object.values(state.mealSlots || {})) if (s?.status === "confirmed" && s.recipe && s.date < today() && s.date >= since) (s.recipe.ingredients || []).forEach((i) => add(i.name));
+  return [...byId.values()].slice(0, 20);
+}
+function renderLeftoverPanel() {
+  if (isViewer() || !lastShoppedAt()) return "";
+  const have = activeLeftovers();
+  const names = [...new Set([...have, ...leftoverCandidates()])];
+  if (!names.length && !leftoverOpen) return "";
+  const undecided = undecidedPlanDates();
+  return `<section class="leftover-panel" aria-labelledby="leftover-h"><h3 id="leftover-h" class="quick-sub">🧺 家に残っている食材 ${tip("残っているものを選ぶと、その食材を使う料理を先に出します。使ったかどうかは決めつけません（選んでから7日で外れます）")}</h3>
+    ${names.length ? `<div class="leftover-chips" role="group" aria-label="残っている食材">${names.map((n) => `<button type="button" class="chip-button" data-action="life-leftover" data-name="${escapeAttr(n)}" aria-pressed="${have.includes(n)}">${escapeHtml(n)}</button>`).join("")}</div>` : `<p class="muted small">候補はありません。下から足せます</p>`}
+    <div class="shopping-add leftover-add"><input id="leftover-name" class="input" maxlength="30" placeholder="ほかに（例：キャベツ）" aria-label="残っている食材"><button type="button" class="secondary-button" data-action="life-leftover-add">足す</button></div>
+    ${have.length && undecided.length ? `${dailyButton("life-leftover-rebuild", "🧺 この食材で組み直す", "", true)}<p class="muted small">まだ決めていない${undecided.length}日だけ。決めた献立はそのまま</p>` : ""}
+  </section>`;
+}
+let leftoverOpen = false;
+// まだ決めていない日（確定・作った・お休みの日は入れない）。組み直しても、決めた献立は置き換えない。
+function undecidedPlanDates() {
+  return dailyPlan().filter((d) => d.date >= today() && !d.off && !d.prestart && !(d.slot && ["confirmed", "cooked", "off"].includes(d.slot.status))).map((d) => d.date);
+}
+// 買い物タブの上：献立を変えた時の差分（品名）。
+function renderShopDiff() {
+  const d = shoppingNotice;
+  if (!d || typeof d !== "object") return "";
+  const line = (icon, label, list) => (list.length ? `<p><b>${icon} ${label}</b> ${list.map((n) => escapeHtml(n)).join("・")}</p>` : "");
+  return `<section class="shop-diff" role="status"><button type="button" class="todo-x" data-action="life-shopdiff-close" aria-label="献立を変えた時の知らせを閉じる">×</button>
+    <p class="small"><b>献立を変えたので、買い物が変わりました</b></p>
+    ${line("＋", "買う物に増えた", d.added)}${line("−", "いらなくなった", d.removed)}${line("↻", "分量・使う料理が変わった（買ってある分で足りるか確認）", d.more)}
+    ${d.bought.length ? `<p><b>🧺 もう買ってあるのに、使わなくなった</b> ${d.bought.map((n) => escapeHtml(n)).join("・")}</p>${isViewer() ? "" : dailyButton("life-shopdiff-leftover", "残っている食材に入れる", "", true)}` : ""}
+  </section>`;
 }
 function dailyRecord(slot) {
   if (!slot || slot.status !== "confirmed" || !canRecordDate(slot.date)) return;
@@ -1321,6 +1383,25 @@ function handleDailyAction(action, data) {
       changedShopping(before);
     }
     swapDate = "";
+  }
+  // 残っている食材（本人が選ぶ）と、それを使った組み直し。確定・作った・お休みの日は置き換えない。
+  if (action === "life-leftover" && data.name) setLeftover(data.name, !activeLeftovers().includes(data.name));
+  if (action === "life-leftover-add") {
+    const el = document.querySelector("#leftover-name");
+    const name = (el?.value || "").trim();
+    if (name) { setLeftover(name, true); leftoverOpen = true; }
+  }
+  if (action === "life-leftover-rebuild") {
+    const dates = undecidedPlanDates();
+    dates.forEach((d) => { delete state.planOverrides[d]; });
+    changedShopping(before);
+    showToast(`残っている食材を使うように、${dates.length}日を組み直しました。決めた献立はそのままです。`);
+  }
+  if (action === "life-shopdiff-close") shoppingNotice = "";
+  if (action === "life-shopdiff-leftover" && shoppingNotice?.bought?.length) {
+    shoppingNotice.bought.forEach((n) => setLeftover(n, true));
+    showToast(`${shoppingNotice.bought.join("・")}を、残っている食材に入れました。献立タブで組み直せます。`);
+    shoppingNotice = { ...shoppingNotice, bought: [] };
   }
   if (action === "life-cook") {
     trackDaily("cooking_opened");
