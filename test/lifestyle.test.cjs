@@ -1458,3 +1458,27 @@ test("recipeRatings (献立の周期) uses each person's own latest rating acros
   assert.equal(run(`JSON.stringify(recipeRatings(Lifestyle.curated[0]))`), JSON.stringify({ パパ: "tomorrow", ママ: "weekly" }));
   assert.equal(run(`bothLike(Lifestyle.curated[0])`), true);
 });
+
+test("review fix (PR 2a): saving the detailed settings does not jump to the first suggestion or replace a talk in progress", () => {
+  const run = app();
+  // 設定済みの人：方針を保存したことがあり、いまは続きの会話（味の質問）の途中
+  run(`state.onboarded=true; state.view="settings";
+    state.tasteProfile = ProfileTalk.snapshot(ProfileTalk.answer(ProfileTalk.empty(), { member: talkWho(), q: "hard", value: "clean", at: "2026-09-29T00:00:00Z" }), { member: talkWho(), at: "2026-09-29T00:00:01Z" });
+    state.tasteProfile.session = { member: talkWho(), stage: "ask", confirmId: "", q: "taste", startedAt: "2026-09-30T00:00:00Z", updatedAt: "2026-09-30T00:00:00Z" };
+    handleDailyAction("life-profile",{}); handleDailyAction("life-finish",{});`);
+  assert.equal(run("state.view"), "plan", "the detailed settings save as before");
+  assert.equal(run("state.tasteProfile.session.stage"), "ask", "the talk in progress is kept");
+  assert.equal(run("state.tasteProfile.session.q"), "taste");
+  // かんたん設定のやり直し（設定済みの人）でも出さない
+  run(`state.tasteProfile.session = null; handleDailyAction("life-quick",{}); state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("result"); handleDailyAction("life-finish",{})`);
+  assert.equal(run("state.view"), "plan");
+  assert.equal(run("state.tasteProfile.session"), null);
+});
+
+test("review fix (PR 2a): the result screen states how many dishes were picked, not that all of them go into the first plan", () => {
+  const run = app();
+  run(`handleDailyAction("life-quick",{}); state.onboardingDraft.picks = Array.from({ length: 10 }, (_, i) => "p" + i);`);
+  const lines = JSON.parse(run("JSON.stringify(resultLines(state.onboardingDraft))"));
+  assert.ok(lines.includes("📌 気になる料理を10品選択済み"), lines.join(" / "));
+  assert.ok(!lines.some((l) => /最初の献立に/.test(l)));
+});

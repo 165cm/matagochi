@@ -1,5 +1,17 @@
 # PR 2a レビュー資料（Codex 向け）：初回設定の整理
 
+## 再レビュー（Codex の指摘への対応、`bf5f244` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/lifestyle.test.cjs`） |
+|---|---|---|
+| [P2] 詳しい設定の保存でも「最初の提案」へ移り、途中の会話を上書きする | `life-finish` の最初に、初めての初回設定を終える時か（`!state.onboarded` かつ初回設定の画面の途中）を見て、その時だけ提案の画面へ。途中の会話（`session`）があれば上書きしない。詳しい設定の保存・かんたん設定のやり直しは、これまでどおり献立タブ | 「review fix (PR 2a): saving the detailed settings…」：方針を保存済みで、味の質問の途中（`stage:"ask"`・`q:"taste"`）の人が詳しい設定を保存 → 献立タブ・会話はそのまま。かんたん設定のやり直しでも出ない |
+| [P2] 最後の画面が、選んだ全品を献立に入れると表示する | 選んだ数という事実だけを出す（「📌 気になる料理を10品選択済み」）。献立に入るかは条件と空いている日しだいなので約束しない | 「review fix (PR 2a): the result screen states how many…」 |
+
+- 2件とも `bf5f244` では失敗することを確認。`node --test test/*.test.cjs`：169件 成功
+- 版：`APP_VERSION` `20260930-funnel2`・`CACHE_NAME` `ripigochi-v116`
+
+---
+
 指示書：`docs/PERSONALIZE_PLAN.md` §4.1・§4.2・§13 PR 2・§16。仕様：`docs/APP_MAP.md` §19（今回書き直し）・§37。
 
 ## 1. 対象

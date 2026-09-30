@@ -1196,6 +1196,8 @@ function handleDailyAction(action, data) {
     if (name) { profileDraft()[data.field][name] = "have"; if (data.field === "equipment") equipmentGroupIndex = 2; }
   }
   if (action === "life-finish") {
+    // 最初の提案の画面を出すのは、初めての初回設定を終えた時だけ（詳しい設定の保存・かんたん設定のやり直しでは出さない）。
+    const firstRun = !state.onboarded && profileDraft().quickSetupIndex !== null;
     const chosen = [...finishFunnelPicks(), ...(funnelDemo.result ? [funnelDemo.result] : [])];
     trackDaily("profile_completed");
     const p = Lifestyle.profile(profileDraft());
@@ -1229,7 +1231,8 @@ function handleDailyAction(action, data) {
     }
     state.trialFrom = state.trialFrom || today();
     // 方針を保存した人は、最初の具体的な料理と、その理由から（わが家のごはん方針の提案の画面）。
-    if (state.tasteProfile?.snapshots?.some((x) => x.member === talkWho())) {
+    // 途中の会話があれば、それを上書きしない（続きから開けるように残す）。
+    if (firstRun && !state.tasteProfile?.session && state.tasteProfile?.snapshots?.some((x) => x.member === talkWho())) {
       state.tasteProfile.session = { member: talkWho(), stage: "suggest", confirmId: "", q: "", startedAt: nowIso(), updatedAt: nowIso() };
       state.view = "talk";
     }
@@ -1946,7 +1949,8 @@ function resultLines(p) {
     `⏱ 平日 ${p.weekdayMinutes || 20}分以内`,
     `🍳 ${tools.length ? `基本の道具＋${tools.slice(0, 3).join("・")}` : "基本の道具"}${sp ? `・★${sp.level}まで` : ""}`,
     ...tp.slice(0, 4).map((x) => x.label),
-    ...((p.picks || []).length ? [`📌 選んだ${p.picks.length}品を最初の献立に`] : []),
+    // 選んだ数は事実。献立に入るかは条件（食べられないもの・時間・器具）と空いている日しだいなので、ここでは約束しない。
+    ...((p.picks || []).length ? [`📌 気になる料理を${p.picks.length}品選択済み`] : []),
   ];
 }
 /* ---- 課金の案内（リピごちプラス）：献立ができた直後、期待がいちばん高い時に出す。閉じられる。
