@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | 作業中 | `claude/optimistic-albattani-jg5211` | PR 2c：方針の共有範囲（家族に見せる・AIには送らない）・家族の方針を献立に・晩ごはんタイプを方針の画面から任意で | `profile-talk.js`・`talk-ui.js`・`cook-type.js`・`daily-ui.js`・`app.js`（同期・版）・`styles.css`・`index.html`・`sw.js`・`test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
