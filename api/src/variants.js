@@ -27,7 +27,7 @@ export function createVariantSearch(store, { search, optedOut = async () => new 
         await store.put(key, { items, at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 }).catch(() => {});
       }
       const blocked = await optedOut().catch(() => new Set());
-      return { items: items.filter((x) => !blocked.has(x.channelId)).slice(0, 8) };
+      return { items: items.filter((x) => !blocked.has(x.channelId) && !blocked.has(x.videoId)).slice(0, 8) };
     }
   };
 }

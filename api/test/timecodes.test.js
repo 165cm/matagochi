@@ -71,3 +71,24 @@ test('peek never watches the video; without chapters the full request still does
   const full = await book.find(ask, 'h');
   assert.deepEqual(full.stepTimes, [3, 9]); assert.equal(full.source, 'video'); assert.equal(videoCalls, 1);
 });
+
+test('step times: switching the AI endpoint is counted against the AI budget, and a refusal stops without trying the next one', async () => {
+  const { analyzeStepTimes } = await import('../src/analyzer.js');
+  const client = (name, fn) => ({ name, ai: () => ({ models: { generateContent: fn } }) });
+  const seen = [];
+  let budget = 0;
+  const book = createTimecodeBook(createMemorySyncStore(), { reserveBudget: async () => { budget++; if (budget > 3) throw Object.assign(new Error('budget'), { code: 'ai_budget', status: 429 }); }, snippet: async () => ({ durationSeconds: 120 }),
+    analyze: (url, steps, o) => analyzeStepTimes(url, steps, {}, { ...o, clients: [
+      client('a', async () => { seen.push('a'); throw new Error('down'); }),
+      client('b', async () => { seen.push('b'); return { text: JSON.stringify({ stepTimes: steps.map((_, i) => i * 10 + 1) }) }; })
+    ] }) });
+  const url = 'https://www.youtube.com/watch?v=abcdefghijk';
+  const out = await book.find({ url, steps: ['切る', '焼く'] }, 'home-0001');
+  assert.deepEqual(out.stepTimes, [1, 11]);
+  assert.equal(seen.join(''), 'ab');
+  assert.equal(budget, 2, 'the first call and the switch to the second endpoint');
+  // 2本目：最初の1回は通るが、切り替えの直前で予算が尽きる → 次の接続先へ進まずに止める（読み取りの失敗ではなく、予算の理由のまま）
+  seen.length = 0;
+  await assert.rejects(book.find({ url, steps: ['混ぜる', '煮る'] }, 'home-0001'), (e) => e.code === 'ai_budget');
+  assert.equal(seen.join(''), 'a');
+});

@@ -48,6 +48,17 @@ const SEARCH_ROUNDS = [
 export const TREND_MARKET = { regionCode: "JP", relevanceLanguage: "ja", titleLooksLocal: (title) => /[ぁ-んァ-ヶ一-龠]/.test(String(title || "")) };
 const NOT_DINNER = /ケーキ|クッキー|スイーツ|プリン|アイス|ドリンク|ジュース|スムージー|マフィン|タルト|チョコ|ゼリー|おやつ|デザート|パン作り|食パン|ベーグル|ドーナツ|お菓子|和菓子|コーヒー|カクテル|お酒/;
 
+// 投稿者のアイコン（YouTube API の情報）は、取ってから30日まで。{ チャンネルID: { url, at } }。
+// 以前の形（URL の文字列だけ）は、まとめて取った日（doc.at）を使う。
+export function pruneIcons(doc, nowMs) {
+  const out = {};
+  for (const [id, v] of Object.entries(doc?.map || {})) {
+    const url = typeof v === "string" ? v : v?.url;
+    const at = typeof v === "string" ? doc.at : v?.at;
+    if (typeof url === "string" && url && nowMs - (Date.parse(at || 0) || 0) <= 30 * DAY) out[id] = { url, at };
+  }
+  return out;
+}
 // 週の区切り：日本時間の月曜日。
 export function weekOf(ms) {
   const jst = new Date(ms + 9 * 3_600_000);
@@ -126,7 +137,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       for (const id of ids) { const r = await peek(id).catch(() => null); if (r?.channelId && !channelIds.includes(r.channelId)) channelIds.push(r.channelId); }
       if (channelIds.length) {
         const got = await channelIcons(channelIds).catch(() => null);
-        if (got) { const cur = await store.get("trends/icons"); await store.put("trends/icons", { at: new Date(now()).toISOString(), map: { ...(cur?.envelope.map || {}), ...got } }, { ifGeneration: cur?.generation ?? 0 }).catch(() => {}); }
+        if (got) {
+          const cur = await store.get("trends/icons");
+          const at = new Date(now()).toISOString();
+          const map = { ...pruneIcons(cur?.envelope, now()), ...Object.fromEntries(Object.entries(got).map(([id, url]) => [id, { url, at }])) };
+          await store.put("trends/icons", { at, map }, { ifGeneration: cur?.generation ?? 0 }).catch(() => {});
+        }
       }
       index.refreshedOn = today;
     }
@@ -193,7 +209,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           const perChannel = {};
           const picked = [];
           for (const c of found) {
-            if (seen.has(c.videoId) || picked.includes(c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId)) continue;
+            if (seen.has(c.videoId) || picked.includes(c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) continue;
             if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) continue;
             picked.push(c.videoId);
             current.channelOf[c.videoId] = c.channelId;
@@ -226,8 +242,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           }
           const videoId = current.candidates[current.tried.length];
           current.tried.push(videoId);
+          // 候補に入った後で外された動画・チャンネル（掲載停止・確認待ち・動画単位）は、読まずに飛ばす（AI も採用の枠も使わない）。
+          if (excluded.has(videoId) || excluded.has(current.channelOf[videoId])) { skip("opted_out"); continue; }
           try {
             const r = await analyze(videoId, { allow: canSpend, used: spend });
+            // 読んでみて分かったチャンネルが外されていたら、採用しない。
+            if (r?.channelId && excluded.has(r.channelId)) { skip("opted_out"); continue; }
             learn(videoId, isDinnerRecipe(r), r.channelTitle);
             if (isDinnerRecipe(r)) { current.items.push({ videoId, day: today }); current.byDay[today] = (current.byDay[today] || 0) + 1; }
             else skip(NOT_DINNER.test(r.title || "") ? "not_dinner" : !(r.steps || []).length ? "no_steps" : "too_short");
@@ -278,7 +298,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             if (!r || !isDinnerRecipe(r)) continue;
             // 対象の国の動画だけ（説明文が残っていて、日本語がない動画は外す）。
             if (r.caption && !TREND_MARKET.titleLooksLocal(r.caption)) continue;
-            if (r.channelId && excluded.has(r.channelId)) continue; // 掲載停止（確認待ちを含む）
+            if ((r.channelId && excluded.has(r.channelId)) || excluded.has(videoId)) continue; // 掲載停止（確認待ち・動画単位を含む）
             const c = r.catch || saved[videoId];
             items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
               title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
@@ -288,8 +308,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         }
       }
       // 投稿者のアイコン：集める側が保存したものを使うだけ。
-      const iconMap = (await store.get("trends/icons"))?.envelope.map || {};
-      items.forEach((i) => { if (iconMap[i.channelId]) i.channelThumb = iconMap[i.channelId]; });
+      const iconMap = pruneIcons((await store.get("trends/icons"))?.envelope, now());
+      items.forEach((i) => { if (iconMap[i.channelId]) i.channelThumb = iconMap[i.channelId].url; });
       const value = { items, updatedAt: new Date(now()).toISOString() };
       cache = { value, until: now() + 10 * 60_000 };
       return value;

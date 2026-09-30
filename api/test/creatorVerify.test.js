@@ -154,3 +154,83 @@ test('review fix: rejecting a changed application never brings back a consent th
     for (const [k, v] of Object.entries(await desk.consentsFor(mineCh))) if (v) assert.equal(now.consents[k], true, `${step}: ${k} is usable but not consented`);
   }
 });
+
+test('corrections: anyone can send one; the owner gets the verified mark and can hide (and show) their own video at once; others cannot', async () => {
+  let now = Date.parse('2026-10-01T00:00:00Z');
+  const store = createMemorySyncStore();
+  const byVideo = { mmmmmmmmmm1: { channelId: mineCh, title: 'わたしの台所' }, ooooooooooo: { channelId: otherCh, title: 'よその台所' } };
+  const desk = createCreatorDesk(store, { resolveChannel: async (x) => byVideo[new URL(x).searchParams.get('v')] || null, now: () => now });
+  await assert.rejects(desk.correction({ video: 'not a url', kind: 'amount', message: 'x' }), { code: 'video_required' });
+  await assert.rejects(desk.correction({ video: 'https://youtu.be/mmmmmmmmmm1', kind: 'constructor', message: 'x' }), { code: 'kind_required' });
+  await assert.rejects(desk.correction({ video: 'https://youtu.be/mmmmmmmmmm1', kind: 'amount', message: '   ' }), { code: 'message_required' });
+  // ログインしていない人：受け付けるだけ（hide は無視）
+  const anon = await desk.correction({ video: 'https://youtu.be/mmmmmmmmmm1', kind: 'amount', message: '醤油は大さじ1です', contact: 'a@example.com', hide: true });
+  assert.deepEqual([anon.verified, anon.hidden, anon.channelId], [false, false, mineCh]);
+  assert.equal((await desk.optedOut()).has('mmmmmmmmmm1'), false);
+  // 持ち主：ご本人の印・自分の動画はその場で外せる
+  const own = await desk.correction({ video: 'https://www.youtube.com/watch?v=mmmmmmmmmm1', kind: 'steps', message: '手順3が違います', hide: true }, [mineCh]);
+  assert.deepEqual([own.verified, own.hidden], [true, true]);
+  assert.ok((await desk.optedOut()).has('mmmmmmmmmm1'), 'hidden from the public lists');
+  // 持ち主でも、よその動画は外せない
+  const other = await desk.correction({ video: 'https://youtu.be/ooooooooooo', kind: 'credit', message: 'x', hide: true }, [mineCh]);
+  assert.deepEqual([other.verified, other.hidden], [false, false]);
+  const mine = (await desk.mine([mineCh])).channels[0];
+  assert.deepEqual(mine.hidden.map((v) => [v.videoId, v.by]), [['mmmmmmmmmm1', 'owner']]);
+  await assert.rejects(desk.ownerShow(otherCh, [mineCh], { videoId: 'mmmmmmmmmm1' }), { code: 'not_your_channel' });
+  await assert.rejects(desk.ownerShow(mineCh, [mineCh], { videoId: 'constructor' }), { code: 'video_not_hidden' });
+  assert.deepEqual(await desk.ownerShow(mineCh, [mineCh], { videoId: 'mmmmmmmmmm1' }), { videoId: 'mmmmmmmmmm1', hidden: false });
+  now += 10 * 60_000;
+  assert.equal((await desk.optedOut()).has('mmmmmmmmmm1'), false);
+  // 管理者：一覧（新しい順）→ 外す → 対応済み（外したまま）→ 戻す
+  const list = await desk.corrections();
+  assert.equal(list.items.length, 3);
+  assert.equal(list.items.find((x) => x.id === anon.id).message, '醤油は大さじ1です');
+  await assert.rejects(desk.decideCorrection(anon.id, { decision: 'delete' }), { code: 'invalid_decision' });
+  await assert.rejects(desk.decideCorrection('toString', { decision: 'done' }), { code: 'correction_not_found' });
+  await desk.decideCorrection(other.id, { decision: 'hide' });
+  now += 10 * 60_000;
+  assert.ok((await desk.optedOut()).has('ooooooooooo'));
+  assert.equal((await desk.decideCorrection(other.id, { decision: 'done', note: '分量を直した' })).status, 'done');
+  assert.ok((await desk.corrections()).items.find((x) => x.id === other.id).hidden, 'done does not show it again by itself');
+  await desk.decideCorrection(other.id, { decision: 'show' });
+  now += 10 * 60_000;
+  assert.equal((await desk.optedOut()).has('ooooooooooo'), false);
+  // 運営が外した動画も、持ち主なら戻せる（よその持ち主は戻せない）
+  await desk.decideCorrection(own.id, { decision: 'hide' });
+  await assert.rejects(desk.ownerShow(otherCh, [otherCh], { videoId: 'mmmmmmmmmm1' }), { code: 'video_not_hidden' });
+  assert.equal((await desk.ownerShow(mineCh, [mineCh], { videoId: 'mmmmmmmmmm1' })).hidden, false);
+  // チャンネルの停止の管理（§38）と同じ文書でも、動画の印を消さない
+  await desk.decideCorrection(anon.id, { decision: 'hide' });
+  assert.equal((await desk.corrections()).hiddenVideos.length, 1);
+});
+
+test('HTTP: corrections from the public page, the verified mark with the owner token, and the admin screen with its token', async (t) => {
+  const g = fakeGoogle();
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token', GOOGLE_CLIENT_ID: CLIENT }, { recipeStore: createMemorySyncStore(), syncStore: null, photoStore: null, fetch: g.fetch, resolveChannel: async () => ({ channelId: mineCh, title: 'わたしの台所' }) });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, body, headers = {}) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  const anon = await (await post('/api/creators/corrections', { video: 'https://youtu.be/mmmmmmmmmm1', kind: 'amount', message: '分量が違います', hide: true })).json();
+  assert.deepEqual([anon.verified, anon.hidden], [false, false]);
+  assert.equal((await post('/api/creators/corrections', { video: 'https://youtu.be/mmmmmmmmmm1', kind: 'amount', message: 'x' }, { Authorization: 'Bearer broken' })).status, 401, 'a broken owner token is refused, not silently treated as anyone');
+  const v = await (await post('/api/creators/verify', { accessToken: TOKEN })).json();
+  const me = { Authorization: `Bearer ${v.token}` };
+  const own = await (await post('/api/creators/corrections', { video: 'https://youtu.be/mmmmmmmmmm1', kind: 'steps', message: '手順が違います', hide: true }, me)).json();
+  assert.deepEqual([own.verified, own.hidden], [true, true]);
+  assert.equal((await (await post(`/api/creators/me/${mineCh}/show`, { videoId: 'mmmmmmmmmm1' }, me)).json()).hidden, false);
+  assert.equal((await fetch(base + '/api/admin/creators/corrections')).status, 403);
+  const admin = { Authorization: 'Bearer admin-test-token' };
+  const list = await (await fetch(base + '/api/admin/creators/corrections', { headers: admin })).json();
+  assert.equal(list.items.length, 2);
+  assert.equal((await post(`/api/admin/creators/corrections/${anon.id}/decide`, { decision: 'done' })).status, 403);
+  assert.equal((await (await post(`/api/admin/creators/corrections/${anon.id}/decide`, { decision: 'done' }, admin)).json()).status, 'done');
+});
+
+test('a hidden video (by its id) leaves the lists that read the opt-out set, while the rest of its channel stays', async () => {
+  const { createVariantSearch } = await import('../src/variants.js');
+  const search = async () => [{ videoId: 'mmmmmmmmmm1', channelId: mineCh, title: 'a', channelTitle: 'c' }, { videoId: 'mmmmmmmmmm2', channelId: mineCh, title: 'b', channelTitle: 'c' }];
+  const found = await createVariantSearch(createMemorySyncStore(), { search, optedOut: async () => new Set(['mmmmmmmmmm1']) }).find({ q: '親子丼' }, 'home');
+  assert.deepEqual(found.items.map((x) => x.videoId), ['mmmmmmmmmm2']);
+});

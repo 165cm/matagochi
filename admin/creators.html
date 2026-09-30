@@ -46,11 +46,14 @@
   </section>
   <section aria-labelledby="apps-h"><h2 id="apps-h">参加の申請</h2><div id="apps"><p class="empty">合言葉を入れると表示します。</p></div></section>
   <section aria-labelledby="stops-h"><h2 id="stops-h">掲載停止の申し込み</h2><div id="stops"><p class="empty">合言葉を入れると表示します。</p></div></section>
+  <section aria-labelledby="fix-h"><h2 id="fix-h">修正依頼</h2><p class="meta">「一覧から外す」は、その動画だけを新着・みんなの定番・ほかの作り方から外します（10分ほどで反映）。「対応済み」「見送り」にしても、外した動画は「一覧に戻す」まで外したままです。</p><div id="fixes"><p class="empty">合言葉を入れると表示します。</p></div></section>
 </main>
 <script>
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
   const CONSENTS = { aiExtract: "AIで材料・作り方を書き出す", store: "サーバーに保存する", summary: "作り方を短くまとめる", scale: "分量を人数に合わせて換算する", publicCatalog: "みんなが見る一覧に載せる" };
   const APP_STATE = { pending: "確認待ち", approved: "承認ずみ", rejected: "見送り", withdrawn: "参加をやめた" };
+  const FIX_KIND = { amount: "分量", ingredient: "材料", steps: "作り方", servings: "何人分", credit: "出典・投稿者の表示", other: "その他" };
+  const FIX_STATE = { open: "未対応", done: "対応済み", declined: "見送り" };
   const status = document.getElementById("status");
   let token = "";
   try { token = sessionStorage.getItem("ripigochi-admin") || ""; } catch {}
@@ -114,14 +117,33 @@
     }
     if (!any) box.append(el("p", "申し込みはありません。", "empty"));
   }
+  function renderFixes(data) {
+    const box = document.getElementById("fixes"); box.textContent = "";
+    const items = data.items || [];
+    if (!items.length) return box.append(el("p", "修正依頼はありません。", "empty"));
+    for (const f of items) {
+      const item = el("article", undefined, `item${f.status === "open" ? " is-pending" : ""}`);
+      const h = el("h3"); const a = el("a", `動画 ${f.videoId}`); a.href = `https://www.youtube.com/watch?v=${encodeURIComponent(f.videoId)}`; a.target = "_blank"; a.rel = "noopener"; h.append(a); item.append(h);
+      const who = el("p", undefined, "meta");
+      if (f.channelId) who.append(channelLink(f.channelId, f.channelTitle));
+      who.append(` ・${FIX_KIND[f.kind] || f.kind}・${FIX_STATE[f.status] || f.status}${f.verified ? "・ご本人（YouTubeでログイン）" : "・ご本人かは未確認"}${f.hidden ? "・いま一覧から外している" : ""}・${String(f.at || "").slice(0, 16).replace("T", " ")}`);
+      item.append(who);
+      item.append(el("p", f.message, "msg"));
+      if (f.contact) item.append(el("p", `連絡先：${f.contact}`, "meta"));
+      if (f.note) item.append(el("p", `メモ：${f.note}`, "meta"));
+      const choices = [...(f.hidden ? [["show", "一覧に戻す", true]] : [["hide", "一覧から外す", true]]), ...(f.status === "open" ? [["done", "対応済み"], ["declined", "見送り", true]] : [])];
+      decideButtons(item, choices, (decision, note) => api(`/api/admin/creators/corrections/${encodeURIComponent(f.id)}/decide`, { decision, note }));
+      box.append(item);
+    }
+  }
   async function load() {
     if (!token) return;
     status.textContent = "読み込んでいます…";
     try {
-      const [apps, stops] = await Promise.all([api("/api/admin/creators/applications"), api("/api/admin/creators")]);
-      renderApps(apps.items || []); renderStops(stops);
+      const [apps, stops, fixes] = await Promise.all([api("/api/admin/creators/applications"), api("/api/admin/creators"), api("/api/admin/creators/corrections")]);
+      renderApps(apps.items || []); renderStops(stops); renderFixes(fixes);
       document.getElementById("logout").hidden = false;
-      status.textContent = `確認待ち：参加 ${(apps.items || []).filter((a) => a.status === "pending").length}件・停止 ${(stops.pending || []).length}件`;
+      status.textContent = `確認待ち：参加 ${(apps.items || []).filter((a) => a.status === "pending").length}件・停止 ${(stops.pending || []).length}件・修正依頼 ${(fixes.items || []).filter((f) => f.status === "open").length}件`;
     } catch (error) { status.textContent = error.message; }
   }
   document.getElementById("login").addEventListener("submit", (ev) => {
@@ -133,7 +155,7 @@
   });
   document.getElementById("logout").addEventListener("click", () => {
     token = ""; try { sessionStorage.removeItem("ripigochi-admin"); } catch {}
-    document.getElementById("apps").textContent = ""; document.getElementById("stops").textContent = "";
+    document.getElementById("apps").textContent = ""; document.getElementById("stops").textContent = ""; document.getElementById("fixes").textContent = "";
     status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;
   });
   load();
