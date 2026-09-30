@@ -1,5 +1,16 @@
 # レビュー資料（Codex 向け）：動画の取り込みで止まった理由を分けて伝える（PR 3 の残り）
 
+## 再レビュー3（Codex の指摘への対応、`f86755d` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`「review fix (#105, round 3)…」） |
+|---|---|---|
+| [P2] 作り方なしで残した埋め込み不可の印が、別の端末に届かない（更新日時を進めていなかった。同期は同じ日時なら手元を使う） | `fillRecipeFromVideo` で印が変わった時は、作り方の有無にかかわらず `updatedAt` も進める。もう印がある時は動かさない（同期を増やさない） | 端末A で作り方なし・`embeddable:false` → A の同期の中身を B が取り込むと、B にも印が届く |
+
+- `f86755d` では失敗することを確認。`node --test test/*.test.cjs`：187件 成功。`npm test --prefix api`：141件 成功（#102〜#104 の公開後に main を取り込み済み）
+- 版：`APP_VERSION` `20261001-import4`・`CACHE_NAME` `ripigochi-v126`
+
+---
+
 ## 再レビュー2（Codex の指摘への対応、`b0e0275` → この版）
 
 | 指摘 | 直したこと | 再現テスト（`test/import-states.test.cjs`「review fix (#105, round 2)…」） |

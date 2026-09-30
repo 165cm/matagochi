@@ -2120,7 +2120,8 @@ async function fillRecipeFromVideo(id) {
     const result = await importRecipeFromYouTube(own.videoUrl, { mode: "video" });
     const steps = (result.steps || []).map((x) => String(x || "").trim()).filter(Boolean);
     // 埋め込み再生を許可していない動画の印は、作り方が読めたかどうかにかかわらず先に残す（YouTube で開く）。
-    if (result.embeddable === false) own.embeddable = false;
+    // 変わった時は更新日時も進める（同期は更新日時の新しいほうを使うので、進めないと別の端末に届かない）。
+    if (result.embeddable === false && own.embeddable !== false) Object.assign(own, { embeddable: false, updatedAt: nowIso() });
     if (!steps.length) {
       // AI の上限・混雑・停止中で読めなかった時は、その理由を伝える（サーバーは説明欄の結果を 200 で返す）。
       const reason = result.analysis?.ok === false ? importReason(result.analysis.code) : null;

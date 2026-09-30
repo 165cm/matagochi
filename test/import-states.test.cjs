@@ -137,3 +137,20 @@ test("review fix (#105, round 2): the mark is kept even when no steps come back,
     assert.doesNotMatch(run("toasts.join()"), /上限|明日また/);
   }
 });
+
+test("review fix (#105, round 3): the 'not embeddable' mark saved without steps reaches the other device by sync", async () => {
+  const A = app(), B = app();
+  const base = { id: "r1", title: "親子丼", videoUrl: "https://www.youtube.com/watch?v=abcdefghijk", mealType: "dinner", ingredients: [], steps: [], savedAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z" };
+  for (const run of [A, B]) run(`state.recipes = normalizeRecipes([${JSON.stringify(base)}]);`);
+  A(`reply = { status: 200, body: { title: "親子丼", ingredients: [], steps: [], videoId: "abcdefghijk", embeddable: false, analysis: { ok: false, code: "analysis_budget_exceeded" } } };`);
+  await A(`fillRecipeFromVideo("r1")`);
+  assert.equal(A("state.recipes[0].embeddable"), false);
+  assert.notEqual(A("state.recipes[0].updatedAt"), base.updatedAt, "the change moves the update time");
+  const server = A("JSON.stringify(buildSyncPayload())");
+  B(`applySyncPayload(mergeSyncPayloads(buildSyncPayload(), ${server}))`);
+  assert.equal(B("state.recipes[0].embeddable"), false, "B gets the mark");
+  // もう印がある時は、更新日時を動かさない（同期を増やさない）
+  const at = A("state.recipes[0].updatedAt");
+  await A(`fillRecipeFromVideo("r1")`);
+  assert.equal(A("state.recipes[0].updatedAt"), at);
+});
