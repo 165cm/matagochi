@@ -394,7 +394,7 @@ function dailyShopping() {
       : p.shoppingFrequency === "weekly"
         ? 7
         : state.planLength || 3;
-  return Lifestyle.shopping({
+  const list = Lifestyle.shopping({
     slots: tripSlots(),
     start: today(),
     end: addDays(today(), length - 1),
@@ -404,6 +404,25 @@ function dailyShopping() {
     marks: state.shoppingMarks || {},
     manual: state.manualShopping || {},
   });
+  // 献立を変える前の「予定している食材」も添える（買い物完了の後は、このリストが空でも差分が分かるように）。
+  Object.defineProperty(list, "planned", { value: plannedIngredients(), enumerable: false });
+  return list;
+}
+// 今日から先の、決めた献立で使う食材。bought：前の買い物で買った料理の材料か、買った印がある。
+function plannedIngredients() {
+  const trip = tripSlots(), shopped = !!lastShoppedAt(), marks = state.shoppingMarks || {};
+  const out = new Map();
+  for (const s of Object.values(state.mealSlots || {})) {
+    if (s?.status !== "confirmed" || !s.recipe || s.date < today()) continue;
+    const onTrip = shopped && !trip[s.date];
+    for (const i of s.recipe.ingredients || []) {
+      const name = Lifestyle.shoppingName(i.name);
+      if (!name || !Lifestyle.isBought(name)) continue;
+      const bought = onTrip || marks[Lifestyle.shoppingKey(name)]?.status === "purchased";
+      out.set(name, out.get(name) || bought);
+    }
+  }
+  return out;
 }
 // ⓘ：毎回読まなくていい説明は、押した時だけ吹き出しで出す。
 const tip = (text) => `<button type="button" class="tip" data-tip="${escapeAttr(text)}" aria-label="${escapeAttr(text)}">ⓘ</button>`;
@@ -974,10 +993,13 @@ function changedShopping(before) {
   const after = dailyShopping();
   const names = (list) => [...new Set(list.map((x) => x.name))];
   const gone = before.filter((x) => !after.some((b) => b.id === x.id));
+  // 買ってあるのに使わなくなった品：リストから消えた「購入済み」と、前の買い物で買った料理の材料のうち、もうどの献立でも使わないもの。
+  const nowPlanned = after.planned || plannedIngredients();
+  const boughtGone = [...(before.planned || new Map())].filter(([n, b]) => b && !nowPlanned.has(n)).map(([n]) => n);
   const diff = {
     added: names(after.filter((x) => x.status === "buy" && !before.some((b) => b.id === x.id))),
     removed: names(gone.filter((x) => x.status === "buy")),
-    bought: names(gone.filter((x) => x.status === "purchased")),
+    bought: [...new Set([...names(gone.filter((x) => x.status === "purchased")), ...boughtGone])],
     more: names(after.filter((x) => x.recheck && before.some((b) => b.id === x.id && b.signature !== x.signature))),
   };
   if (!Object.values(diff).some((l) => l.length)) return;
@@ -994,7 +1016,9 @@ function activeLeftovers() {
 function setLeftover(name, on) {
   const n = String(name || "").normalize("NFKC").trim().slice(0, 30);
   if (!n) return;
-  const items = { ...(state.leftovers?.items || {}) };
+  // 期限を過ぎたものは、書く時に外す（たまって新しい物が上限で落ちないように）。
+  const since = addDays(today(), -LEFTOVER_DAYS);
+  const items = Object.fromEntries(Object.entries(state.leftovers?.items || {}).filter(([, v]) => (v?.at || "").slice(0, 10) >= since));
   if (on) items[n] = { at: nowIso() }; else delete items[n];
   state.leftovers = { items, updatedAt: nowIso() };
 }
@@ -1006,7 +1030,8 @@ function leftoverCandidates() {
   const byId = new Map();
   const pantry = dailyProfile().pantry || {};
   const add = (name) => { const n = Lifestyle.shoppingName(name); if (n && Lifestyle.isBought(n) && pantry[n] !== "have" && !byId.has(n)) byId.set(n, n); };
-  for (const [id, m] of Object.entries(state.shoppingMarks || {})) if (m?.status === "purchased" && (m.updatedAt || "").slice(0, 10) >= since && !now.has(id)) add(id);
+  // 手入力の品は、印の鍵（manual-…）ではなく、入力した品名で。
+  for (const [id, m] of Object.entries(state.shoppingMarks || {})) if (m?.status === "purchased" && (m.updatedAt || "").slice(0, 10) >= since && !now.has(id)) add(state.manualShopping?.[id]?.name || (/^manual-/.test(id) ? "" : id));
   for (const s of Object.values(state.mealSlots || {})) if (s?.status === "confirmed" && s.recipe && s.date < today() && s.date >= since) (s.recipe.ingredients || []).forEach((i) => add(i.name));
   return [...byId.values()].slice(0, 20);
 }

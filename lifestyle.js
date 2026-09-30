@@ -1129,6 +1129,7 @@
     mergeMap,
     shopping,
     shoppingName,
+    shoppingKey: (name) => key(shoppingName(name)),
     isBought: (name) => !notPurchased.test(shoppingName(name)),
     curated,
     traits,

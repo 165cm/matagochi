@@ -86,7 +86,7 @@ test("PR 5b: leftovers are chosen by the person (candidates are only suggestions
   assert.deepEqual(J(run, "activeLeftovers()"), ["豆腐"]);
   // 形の検査・同期
   const messy = J(run, `normalizeLeftovers({ items: { "  ": {}, ["x".repeat(50)]: { at: "bad" }, "卵": { at: "2026-09-30T00:00:00.000Z" } }, updatedAt: 5 })`);
-  assert.deepEqual(Object.keys(messy.items), ["x".repeat(30), "卵"]);
+  assert.deepEqual(Object.keys(messy.items), ["卵", "x".repeat(30)], "newest confirmation first");
   assert.deepEqual(J(run, `normalizeLeftovers(${JSON.stringify(messy)})`), messy);
   const newer = { items: { "にんじん": { at: "2026-10-01T00:00:00.000Z" } }, updatedAt: "2026-10-01T01:00:00.000Z" };
   run(`applySyncPayload(mergeSyncPayloads(buildSyncPayload(), { ...buildSyncPayload(), leftovers: ${JSON.stringify(newer)} }))`);
@@ -122,4 +122,43 @@ test("PR 5b: rebuilding with leftovers redraws only the undecided days (confirme
     assert.equal(row.status === "buy" || row.status === "have", true);
     assert.match(run("renderDailyShopping()"), /🧺 残りあり/);
   }
+});
+
+test("review fix (#107): after '買い物完了', swapping a dish still shows the bought ingredient it no longer needs", () => {
+  const run = app();
+  run(`const d = dailyPlan().find((x) => x.candidate && x.date >= today()); confirmDaily(d); globalThis.day = d.date;`);
+  const day = run("day");
+  const item = J(run, "dailyShopping().find((x) => x.status === 'buy')");
+  run(`state.shoppingMarks[${JSON.stringify(item.id)}] = { status: "purchased", signature: ${JSON.stringify(item.signature)}, updatedAt: nowIso() };`);
+  // 買い物完了：いまのリストは空になる
+  run(`state.shopDone = { [today()]: new Date(Date.now() + 1000).toISOString() };`);
+  assert.equal(J(run, "dailyShopping().length"), 0, "the list is empty after shopping");
+  const other = run(`allDinnerRecipes().find((r) => Lifestyle.fit(r, dailyProfile(), ${JSON.stringify(day)}).ok && !r.ingredients.some((i) => Lifestyle.shoppingName(i.name) === ${JSON.stringify(item.name)}) && r.id !== state.mealSlots[${JSON.stringify(day)}].recipe.id)?.id`);
+  run(`handleDailyAction("life-choose", { date: ${JSON.stringify(day)}, recipe: ${JSON.stringify(other)} })`);
+  const diff = J(run, "shoppingNotice");
+  assert.ok(diff.bought.includes(item.name), `bought: ${diff.bought}`);
+  assert.match(run("renderDailyShopping()"), /もう買ってあるのに、使わなくなった/);
+});
+
+test("review fix (#107): with 30 old leftovers kept, a newly added one survives reloading and sync", () => {
+  const run = app();
+  const old = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`古い品${i}`, { at: "2026-09-01T00:00:00.000Z" }]));
+  run(`state.leftovers = normalizeLeftovers({ items: ${JSON.stringify(old)}, updatedAt: "2026-09-01T00:00:00.000Z" })`);
+  run(`setLeftover("キャベツ", true)`);
+  assert.deepEqual(J(run, "activeLeftovers()"), ["キャベツ"]);
+  run("state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{}; render=()=>{};");
+  assert.deepEqual(J(run, "activeLeftovers()"), ["キャベツ"], "still there after reloading");
+  // 期限切れがたまったデータが届いても、新しい物を上限で落とさない
+  const many = { ...old, キャベツ: { at: "2026-10-01T00:00:00.000Z" } };
+  assert.ok(Object.keys(J(run, `normalizeLeftovers({ items: ${JSON.stringify(many)} }).items`)).includes("キャベツ"));
+});
+
+test("review fix (#107): a manually added item is suggested by its name, not its internal id", () => {
+  const run = app();
+  run(`state.shopDone = { "2026-09-28": "2026-09-27T09:00:00.000Z" };
+    state.manualShopping = { "manual-abc": { name: "キャベツ", amount: "1玉", deleted: true, updatedAt: "2026-09-30T00:00:00.000Z" } };
+    state.shoppingMarks = { "manual-abc": { status: "purchased", signature: "x", updatedAt: "2026-09-30T00:00:00.000Z" }, "manual-zzz": { status: "purchased", signature: "x", updatedAt: "2026-09-30T00:00:00.000Z" } };`);
+  const cand = J(run, "leftoverCandidates()");
+  assert.ok(cand.includes("キャベツ"), cand.join());
+  assert.ok(!cand.some((n) => /^manual-/.test(n)), "no internal ids");
 });

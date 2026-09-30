@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261001-leftover";
+const APP_VERSION = "20261001-leftover2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -589,13 +589,14 @@ function buildSyncPayload() {
 }
 // 残っている食材：名前（30字まで）と確かめた日時。30品まで。何度通しても同じ。
 function normalizeLeftovers(raw) {
-  const items = {};
+  // 30品を超える時は、確かめた日時が新しいものから残す（古いものがたまって、新しく足した物が落ちないように）。
+  const entries = [];
   for (const [name, v] of Object.entries(raw?.items && typeof raw.items === "object" && !Array.isArray(raw.items) ? raw.items : {})) {
     const n = String(name || "").normalize("NFKC").trim().slice(0, 30);
-    if (!n || Object.keys(items).length >= 30) continue;
-    items[n] = { at: normalizeTimestamp(v?.at) };
+    if (n && !entries.some(([x]) => x === n)) entries.push([n, { at: normalizeTimestamp(v?.at) }]);
   }
-  return { items, updatedAt: normalizeTimestamp(raw?.updatedAt) };
+  entries.sort((a, b) => (b[1].at || "").localeCompare(a[1].at || "") || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return { items: Object.fromEntries(entries.slice(0, 30)), updatedAt: normalizeTimestamp(raw?.updatedAt) };
 }
 
 function recipeStamp(recipe) {

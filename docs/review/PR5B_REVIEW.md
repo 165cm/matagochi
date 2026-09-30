@@ -1,5 +1,18 @@
 # PR 5b レビュー資料（Codex 向け）：買い物の差分を品名で・残っている食材で後半を組み直す
 
+## 再レビュー（Codex の指摘への対応、`9c8c253` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`test/leftovers.test.cjs`） |
+|---|---|---|
+| [P2] 「買い物完了」の後に入れ替えると、買ったのに不要になった品が出ない（変更前の買い物リストが空だった） | `dailyShopping()` に、変更前の「予定している食材」（`plannedIngredients`：今日から先の決めた献立の材料と、前の買い物で買った／買った印がある か）を添える。差分は、リストから消えた「購入済み」に加えて、買ってある材料のうち、変更後にどの献立でも使わなくなったものも `bought` に入れる | 「review fix (#107): after '買い物完了', swapping a dish…」 |
+| [P2] 古い残りの食材が30品たまると、新しく足した物が読み込み直しで消える | `normalizeLeftovers` は、確かめた日時が新しいものから30品を残す。`setLeftover` は書く時に期限（7日）を過ぎたものを外す | 「review fix (#107): with 30 old leftovers kept…」 |
+| [P3] 手入力した買い物の内部ID（`manual-…`）が、残りの候補に出る | 手入力の品は `state.manualShopping[id].name` の品名で。名前が分からない `manual-…` は出さない | 「review fix (#107): a manually added item is suggested by its name…」 |
+
+- 3件とも `9c8c253` では失敗することを確認。`node --test test/*.test.cjs`：201件 成功
+- 版：`APP_VERSION` `20261001-leftover2`・`CACHE_NAME` `ripigochi-v130`
+
+---
+
 指示書：`docs/PERSONALIZE_PLAN.md` §9（「後半は前半の実績と利用者が確認した残り食材で組み直せる。使ったはずとAIだけで在庫を断定しない」「購入済みチェックを維持し、入れ替えで増えた／不要になった品を示す」「確定済み献立を新着で勝手に置換しない」）。仕様：`docs/APP_MAP.md` §14（今回追記）。
 
 ## 1. 対象
