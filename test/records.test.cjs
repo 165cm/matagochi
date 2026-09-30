@@ -113,3 +113,32 @@ test("PR 6a: the done sheet's 'あとで' and the per-item 'あとで買う' are
   assert.equal(J(run, `dailyShopping().find((i) => i.name === "もやし").status`), "later");
   assert.equal(J(run, "shopDoneLater"), false, "the per-item button does not hide the done sheet");
 });
+
+test("review fix (#109): two saved copies of the same starter recipe count as the same dish for 'cook it again'", () => {
+  const run = app();
+  const copy = (id) => ({ ...RECIPE, id, starterId: "starter-karaage", videoUrl: "" });
+  run(`state.recipes.push(${JSON.stringify(copy("copy-a"))}, ${JSON.stringify(copy("copy-b"))}); state.evaluations = [];`);
+  run(`state.mealSlots[today()] = { date: today(), status: "confirmed", servings: 2, updatedAt: nowIso(), recipe: state.recipes.find((r) => r.id === "copy-b") };`);
+  run(`handleDailyAction("life-replan", { recipe: "copy-a" })`);
+  assert.deepEqual(J(run, "state.planOverrides"), {}, "copy A is not added again");
+  assert.match(J(run, "toasts.at(-1)"), /10月1日（木）の献立にもう入っています/);
+  // 元のおすすめが別のもの（starterId が違う）なら、別の料理として入る
+  const other = app();
+  other(`state.recipes.push(${JSON.stringify(copy("copy-a"))}, ${JSON.stringify({ ...copy("copy-c"), starterId: "starter-other" })}); state.evaluations = [{ id: "m", recipeId: "copy-a", cookedAt: "2026-09-20", familyRepeatCycles: { me: "monthly" } }];`);
+  other(`state.mealSlots[today()] = { date: today(), status: "confirmed", servings: 2, updatedAt: nowIso(), recipe: state.recipes.find((r) => r.id === "copy-c") };`);
+  other(`handleDailyAction("life-replan", { recipe: "copy-a" })`);
+  assert.equal(J(other, "Object.values(state.planOverrides).includes('copy-a')"), true);
+});
+
+test("review fix (#109): one person's newer rating does not drop the other's 'weekly' from the staples", () => {
+  const run = app();
+  setup(run, [
+    evalOf("e1", "2026-09-10", { A: "weekly", B: "monthly" }),
+    evalOf("e2", "2026-09-20", { A: "weekly", B: "monthly" }),
+    evalOf("e3", "2026-09-28", { B: "monthly" }), // A はまだ答えていない
+  ]);
+  assert.deepEqual(J(run, "stapleRecipes((e) => recipeById(e.recipeId)).map((x) => [x.recipe.title, x.times, x.last])"), [["唐揚げ", 3, "2026-09-28"]]);
+  // A が新しい記録で「月1回」にしたら、定番から外れる
+  run(`state.evaluations.push({ ...state.evaluations[0], id: "e4", cookedAt: "2026-09-29", familyRepeatCycles: { A: "monthly" }, updatedAt: "2026-09-29T12:00:00Z" })`);
+  assert.deepEqual(J(run, "stapleRecipes((e) => recipeById(e.recipeId))"), []);
+});

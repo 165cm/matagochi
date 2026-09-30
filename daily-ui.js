@@ -914,7 +914,8 @@ function replanRecipe(id) {
   const p = dailyProfile();
   const plan = dailyPlan(), locks = lockedDates(plan);
   // もう入っている日があれば、それを知らせるだけ（同じ料理を2回入れない）。
-  const same = (x) => x && (x.id === r.id || x.starterId === r.id || r.starterId === x.id);
+  // 同じ料理：同じID・どちらかが元のおすすめ・同じおすすめから保存したコピー同士（家族の別の端末で保存した時など）。
+  const same = (x) => x && (x.id === r.id || (x.starterId && (x.starterId === r.id || x.starterId === r.starterId)) || (r.starterId && r.starterId === x.id));
   const has = plan.find((d) => d.date >= today() && !d.off && d.slot?.status !== "off" && same(d.slot?.recipe || d.candidate?.recipe));
   if (has) return { date: has.date, already: true };
   // 本人がほかの料理を選んだ日（下書きの入れ替え）も置き換えない。
@@ -963,7 +964,8 @@ function renderInsights(recipeOf, favId = "") {
   if (!body) return "";
   return `<section class="insight-card">${yohaku("open", "ic-yohaku")}<h3>💡 わかってきたこと ${tip("評価から見えた好み。献立の提案にも使っています")}</h3>${body}</section>`;
 }
-// 🏆 わが家の定番：2回以上つくって、だれかのいちばん新しい評価が「明日でも／毎週」の料理。もう一度、献立に入れられる。
+// 🏆 わが家の定番：2回以上つくって、だれかの（人ごとの）いちばん新しい評価が「明日でも／毎週」の料理。もう一度、献立に入れられる。
+// 回数・前回の日は記録全体から。評価は Lifestyle.latestRatings（片方だけの新しい記録で、もう片方の評価を落とさない）。
 function stapleRecipes(recipeOf) {
   const latest = new Map();
   const times = new Map();
@@ -973,7 +975,8 @@ function stapleRecipes(recipeOf) {
     const cur = latest.get(e.recipeId);
     if (!cur || e.cookedAt > cur.cookedAt) latest.set(e.recipeId, e);
   }
-  return [...times].filter(([id, n]) => n >= 2 && Object.values(latest.get(id).familyRepeatCycles || {}).some((c) => c === "weekly" || c === "tomorrow"))
+  const ratings = Lifestyle.latestRatings(state.evaluations);
+  return [...times].filter(([id, n]) => n >= 2 && Object.values(ratings.get(id)?.cycles || {}).some((c) => c === "weekly" || c === "tomorrow"))
     .sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, n]) => ({ recipe: recipeOf(latest.get(id)), times: n, last: latest.get(id).cookedAt.slice(0, 10) }));
 }
 function renderStaples(recipeOf) {
