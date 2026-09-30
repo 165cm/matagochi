@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | 作業中 | `claude/optimistic-albattani-jg5211` | PR 2a：初回設定の整理（重複の質問・宣言・時間だけで進む「作成中」をやめ、わが家のごはん方針の会話を初回に入れる。結果は実際の中身と最初の提案） | `daily-ui.js`（FUNNEL・初回の画面）・`talk-ui.js`（初回の中での会話）・`lifestyle.js`（`profile` の `funnelV`）・`styles.css`・`index.html`・`sw.js`・`app.js`（版）・`test/lifestyle.test.cjs`・`test/profile-talk.test.cjs`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
