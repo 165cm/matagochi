@@ -791,12 +791,14 @@ function renderDailyShopping() {
   const items = dailyShopping();
   // 残っている食材は、買う物から勝手に外さない（量が分からない）。「残りあり」と知らせるだけ。
   const left = new Set(activeLeftovers().map((n) => Lifestyle.shoppingName(n)));
+  const laterOf = new Map(items.map((i) => [i.id, freshLater(i)]));
+  const later = (i) => laterOf.get(i.id);
   const aisle = (i) => Aisles.aisleLabel(Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}));
   const order = Aisles.AISLES.map(([, label]) => label);
   const count = (status) => items.filter((i) => i.status === status).length;
   const fix = (i) => aisleEdit ? `<select class="aisle-select" data-aisle-name="${escapeAttr(i.name)}" aria-label="${escapeAttr(i.name)}の売り場">${Aisles.AISLES.map(([id, label]) => `<option value="${id}" ${Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}) === id ? "selected" : ""}>${label}</option>`).join("")}</select>` : "";
   const uses = (i) => i.uses?.length ? `<span class="use-icons" aria-label="${escapeAttr(i.uses.join("・"))}に使う">${useIcons(i.uses)}</span>` : "";
-  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}${left.has(i.name) ? '<small class="leftover-hint">🧺 残りあり</small>' : ""}</span></label>${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
+  const row = (i, status) => `<div class="daily-shopping-row ${aisleEdit ? "is-fixing" : ""}">${fix(i)}<label class="daily-shopping-check"><input type="checkbox" data-shopping-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を購入済みにする" ${status==="purchased" ? "checked" : ""}><span class="shop-line"><strong>${escapeHtml(i.name)}</strong><small>${escapeHtml(i.amount)}</small>${i.recheck ? '<small class="notice">要確認</small>' : ""}${left.has(i.name) ? '<small class="leftover-hint">🧺 残りあり</small>' : ""}${later(i) ? `<small class="later-hint" title="${escapeAttr(`${later(i).label}は傷みやすい食材です`)}">🗓 ${escapeHtml(formatDate(later(i).date))}（${weekdayLabel(later(i).date)}）に使う・傷みやすいので、その前に買うと安心</small>` : ""}</span></label>${later(i) && !isViewer() ? `<button type="button" class="shopping-inline later-btn" data-action="life-shop-later" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}をあとで買う">あとで</button>` : ""}${uses(i)}${status === "purchased" || isViewer() ? "" : `<button type="button" class="shopping-inline" data-action="life-shopping-status" data-id="${escapeAttr(i.id)}" data-status="${status==="have" ? "buy" : "have"}" aria-label="${escapeAttr(i.name)}を${status==="have" ? "買うものに戻す" : "家にあるにする"}">${status==="have" ? "買う" : "🏠"}</button>`}${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shopping-inline" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}</div>`;
   const groups = (status) => order.map((category) => {
     const list = items.filter((i) => i.status === status && aisle(i) === category);
     return list.length ? `<section class="aisle-group"><h4 class="aisle-tag" title="${escapeAttr(category)}"><span class="sr-only">${category}</span><span aria-hidden="true">${AISLE_SHORT[Aisles.AISLES.find(([, l]) => l === category)?.[0]] || category}</span></h4><div class="aisle-items">${list.map((i) => row(i, status)).join("")}</div></section>` : "";
@@ -814,7 +816,7 @@ function renderDailyShopping() {
   ${aisleEdit ? '<button type="button" class="primary-button full-button" data-action="life-aisle-edit">売り場の直しを終える</button>' : ""}
   ${buy ? `<div class="shop-list">${groups("buy")}</div>` : ""}
   ${isViewer() ? "" : `<details class="shop-add"><summary>＋ 買い足す</summary><div class="shopping-add"><input id="manual-name" class="input" maxlength="100" placeholder="品名（例：牛乳）" aria-label="品名"><input id="manual-amount" class="input" maxlength="80" placeholder="数量" aria-label="数量"><button type="button" class="primary-button" data-action="life-add-item" aria-label="買い足すものに追加">追加</button></div></details>`}
-  ${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "🧂調味料は次も家にある・「買う」で切れた")}${isViewer() ? "" : renderShopPantry()}${sheet}${shopUndo && !sheet ? `<div class="shop-undo" role="status"><span>${escapeHtml(shopUndo.text)}</span><button type="button" data-action="life-shop-undo">↩ 元に戻す</button><button type="button" class="shop-undo-x" data-action="life-shop-undo-close" aria-label="閉じる">✕</button></div><div class="shop-undo-space" aria-hidden="true"></div>` : ""}`;
+  ${folded("later", "あとで買う", "この品は「◯日の分」として、買い足すものに入れました")}${folded("purchased", "購入済み", "チェックを外すと戻ります")}${folded("have", "家にある", "🧂調味料は次も家にある・「買う」で切れた")}${isViewer() ? "" : renderShopPantry()}${sheet}${shopUndo && !sheet ? `<div class="shop-undo" role="status"><span>${escapeHtml(shopUndo.text)}</span><button type="button" data-action="life-shop-undo">↩ 元に戻す</button><button type="button" class="shop-undo-x" data-action="life-shop-undo-close" aria-label="閉じる">✕</button></div><div class="shop-undo-space" aria-hidden="true"></div>` : ""}`;
 }
 // 常備品だけを直すページ。設定ウィザードと同じデータ（householdProfile / foodProfile / 下書き）を書き換える。
 let pantryReturn = "shopping";
@@ -1034,6 +1036,23 @@ function leftoverCandidates() {
   for (const [id, m] of Object.entries(state.shoppingMarks || {})) if (m?.status === "purchased" && (m.updatedAt || "").slice(0, 10) >= since && !now.has(id)) add(state.manualShopping?.[id]?.name || (/^manual-/.test(id) ? "" : id));
   for (const s of Object.values(state.mealSlots || {})) if (s?.status === "confirmed" && s.recipe && s.date < today() && s.date >= since) (s.recipe.ingredients || []).forEach((i) => add(i.name));
   return [...byId.values()].slice(0, 20);
+}
+// 傷みやすい食材を、買い物の日から何日も後に初めて使う時の目安（docs/PERSONALIZE_PLAN.md §9「保存できる日数を推測で保証しない」）。
+// 何日もつとは言わない。急ぎ度（Lifestyle.freshness の表）が高い物ほど早めに「その前に買うと安心」と知らせ、「あとで買う」は本人が押す。
+// 急ぎ度5（刺身・もやし）は2日目から、4（葉もの・魚介）は3日目から、3（ひき肉・豆腐）は4日目から。冷凍品・缶詰などは急がない。
+const LATER_AFTER = { 5: 2, 4: 3, 3: 4 };
+function shopDayFor(date) {
+  if (rhythmOn()) { const b = blocksFrom(today(), 28).find((x) => x.dates.includes(date)); if (b) return b.shopAt.slice(0, 10) < today() ? today() : b.shopAt.slice(0, 10); }
+  return today();
+}
+function freshLater(item) {
+  if (item.status !== "buy" || item.id.startsWith("manual-")) return null;
+  const dates = (item.parts || []).map((p) => String(p).split(":")[0]).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  if (!dates.length) return null;
+  const f = Lifestyle.freshness({ ingredients: [{ name: item.name }] });
+  const after = LATER_AFTER[f.urgency];
+  if (!after || daysBetween(shopDayFor(dates[0]), dates[0]) < after) return null;
+  return { date: dates[0], label: f.label };
 }
 function renderLeftoverPanel() {
   if (isViewer() || !lastShoppedAt()) return "";
@@ -1477,6 +1496,18 @@ function handleDailyAction(action, data) {
       e.familyRepeatCycles = {...e.familyRepeatCycles, [state.family[0]]:data.cycle};
       e.personalPreference = true; e.preferencePending = false; e.updatedAt = nowIso();
       preferencePromptId = "";
+    }
+  }
+  // 傷みやすい食材を「あとで買う」：今回の買い物からは外し（印 later）、「◯日の分」として買い足すものに入れる（買い物完了の後も残る）。
+  if (action === "life-shop-later") {
+    const item = dailyShopping().find((i) => i.id === data.id);
+    const when = item && freshLater(item);
+    if (when) {
+      const prevMark = state.shoppingMarks[item.id] ? { ...state.shoppingMarks[item.id] } : null;
+      const id = generateId("manual-");
+      state.shoppingMarks[item.id] = { status: "later", signature: item.signature, updatedAt: nowIso() };
+      state.manualShopping[id] = { name: `${item.name}（${formatDate(when.date)}の分）`.slice(0, 100), amount: String(item.amount || "").slice(0, 80), updatedAt: nowIso() };
+      shopUndo = { text: `🗓 ${item.name}は${formatDate(when.date)}の前に買う`, undo: () => { if (prevMark) state.shoppingMarks[item.id] = { ...prevMark, updatedAt: nowIso() }; else delete state.shoppingMarks[item.id]; state.manualShopping[id] = { ...state.manualShopping[id], deleted: true, updatedAt: nowIso() }; } };
     }
   }
   if (action === "life-shopping-status" && ["buy","have"].includes(data.status)) {

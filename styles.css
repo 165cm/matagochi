@@ -4055,3 +4055,8 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .shop-diff { position: relative; display: grid; gap: 4px; margin: 0 0 12px; padding: 12px 44px 12px 12px; border-radius: 16px; background: #fff7e8; border: 1.5px solid #f2d9a6; font-size: 14px; overflow-wrap: anywhere; }
 .shop-diff p { margin: 0; }
 .shop-diff .todo-x { position: absolute; top: 4px; right: 4px; }
+
+/* ---- 傷みやすい食材の「その前に買うと安心」・あとで買う（PR 5c） ---- */
+.shop-line:has(.later-hint) { flex-wrap: wrap; row-gap: 2px; }
+.shop-line small.later-hint { flex: 1 1 100%; white-space: normal; overflow: visible; color: #9a5b00; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+.shopping-inline.later-btn { min-width: 52px; font-size: 13px; }
