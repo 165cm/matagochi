@@ -123,7 +123,7 @@ test("housekeeping runs once a day: catalog sweep with a saved cursor, old searc
   await store.put("trends/icons", { at: ago(40), map: { UCold: "https://yt3.ggpht.com/old", UCnew: { url: "https://yt3.ggpht.com/new", at: ago(2) }, UCstale: { url: "https://yt3.ggpht.com/s", at: ago(31) } } });
   const hk = createHousekeeping(store, { catalog, now: () => now });
   const out = await hk.run();
-  assert.deepEqual(out.variants, { seen: 2, removed: 1 });
+  assert.deepEqual(out.variants, { seen: 2, removed: 1, next: "" });
   assert.equal(await store.get("variant-search/old"), null);
   assert.ok(await store.get("variant-search/new"));
   assert.ok(await store.get("variant-search-quota/2026-09-01/home"), "other keys are untouched");
@@ -143,4 +143,31 @@ test("housekeeping runs once a day: catalog sweep with a saved cursor, old searc
 test("icons: the old string-only shape uses the document date; entries carry their own date", () => {
   assert.deepEqual(pruneIcons({ at: ago(3), map: { UC1: "https://a", UC2: { url: "https://b", at: ago(40) }, UC3: { url: "", at: ago(1) } } }, NOW), { UC1: { url: "https://a", at: ago(3) } });
   assert.deepEqual(pruneIcons(null, NOW), {});
+});
+
+test("review fix (#103): a video still gone 30 days after it was found gone is removed on day 30, not only at the next 25-day check", async () => {
+  const store = createMemorySyncStore();
+  await store.put("youtube-del0000000b", recipe("del0000000b", 26));
+  let now = NOW;
+  const catalog = createRecipeCatalog(store, async () => ({}), { now: () => now, checkVideos: async (ids) => Object.fromEntries(ids.map((id) => [id, { status: "not_found" }])) });
+  await catalog.sweep({ max: 10 });
+  assert.equal((await store.get("youtube-del0000000b")).envelope.result.unavailable.since, new Date(NOW).toISOString());
+  for (let day = 1; day <= 29; day++) { now = NOW + day * DAY; await catalog.sweep({ max: 10 }); }
+  assert.ok(await store.get("youtube-del0000000b"), "kept until 30 days");
+  now = NOW + 30 * DAY;
+  const out = await catalog.sweep({ max: 10 });
+  assert.equal(out.removed, 1);
+  assert.equal(await store.get("youtube-del0000000b"), null, "removed on day 30");
+});
+
+test("review fix (#103): old search results after the first page are reached, because the search cleanup continues from where it stopped", async () => {
+  const store = createMemorySyncStore();
+  let now = NOW;
+  for (let i = 0; i < 5; i++) await store.put(`variant-search/a${i}`, { items: [], at: ago(0) }); // 先頭：いつも新しい
+  await store.put("variant-search/z-old", { items: [{ title: "古い" }], at: ago(10) });
+  const hk = createHousekeeping(store, { catalog: { sweep: async () => ({ next: "" }) }, now: () => now, variantsPerDay: 3 });
+  const seen = [];
+  for (let d = 0; d < 3; d++) { const out = await hk.run(); seen.push(out.variants.next); now += DAY; for (let i = 0; i < 5; i++) await store.put(`variant-search/a${i}`, { items: [], at: new Date(now).toISOString() }); }
+  assert.equal(await store.get("variant-search/z-old"), null, "the old one at the end is reached");
+  assert.deepEqual(seen, ["variant-search/a2", "", "variant-search/a2"], "continues, then starts over");
 });

@@ -167,7 +167,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         out.seen += 1;
         const r = entry.envelope.result;
         const checkedAt = Date.parse(r.snippetFetchedAt || r.catalog?.analyzedAt || 0) || 0;
-        if (now() - checkedAt >= RECHECK_AFTER_MS) due.push({ key, entry, id: r.videoId || key.replace(/^youtube-/, "") });
+        // 見られなくなってから30日たったものは、前に確かめた日にかかわらず確かめる（戻っていなければ消す）。
+        const goneDue = r.unavailable && now() - (Date.parse(r.unavailable.since || 0) || 0) >= GONE_AFTER_MS;
+        if (goneDue || now() - checkedAt >= RECHECK_AFTER_MS) due.push({ key, entry, id: r.videoId || key.replace(/^youtube-/, "") });
       }
       const write = (d, result) => store.put(d.key, { status: "ready", result }, { ifGeneration: d.entry.generation }).catch(() => null);
       for (let i = 0; i < due.length; i += 50) {

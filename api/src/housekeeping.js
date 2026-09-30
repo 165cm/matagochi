@@ -10,16 +10,17 @@ const DAY = 86_400_000;
 export const VARIANT_KEEP_MS = 4 * DAY;
 export function createHousekeeping(store, { catalog, now = Date.now, catalogPerDay = 200, variantsPerDay = 500 } = {}) {
   const dayOf = (ms) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 10);
-  async function variants() {
-    if (typeof store.list !== "function") return { skipped: true };
-    const page = await store.list("variant-search/", { max: variantsPerDay });
+  // 名前の順に1日 variantsPerDay 件ずつ。続きは次の日（最後まで行ったら最初から）。
+  async function variants(cursor = "") {
+    if (typeof store.list !== "function") return { skipped: true, next: "" };
+    const page = await store.list("variant-search/", { pageToken: cursor, max: variantsPerDay });
     let removed = 0;
     for (const key of page.names) {
       const entry = await store.get(key).catch(() => null);
       if (!entry) continue;
       if (now() - (Date.parse(entry.envelope?.at || 0) || 0) > VARIANT_KEEP_MS && await store.remove(key, { ifGeneration: entry.generation }).catch(() => false)) removed += 1;
     }
-    return { seen: page.names.length, removed };
+    return { seen: page.names.length, removed, next: page.next };
   }
   async function icons() {
     const cur = await store.get("trends/icons");
@@ -40,10 +41,11 @@ export function createHousekeeping(store, { catalog, now = Date.now, catalogPerD
       const out = { day: today };
       const part = async (name, fn) => { try { out[name] = await fn(); } catch (error) { out[name] = { error: error?.code || "failed" }; } };
       await part("catalog", () => (catalog?.sweep ? catalog.sweep({ cursor: state?.envelope.catalogCursor || "", max: catalogPerDay }) : { skipped: true }));
-      await part("variants", variants);
+      await part("variants", () => variants(state?.envelope.variantCursor || ""));
       await part("icons", icons);
       const cursor = typeof out.catalog?.next === "string" ? out.catalog.next : state?.envelope.catalogCursor || "";
-      await store.put("housekeeping/state", { day: today, catalogCursor: cursor, finishedAt: new Date(now()).toISOString(), last: out }, { ifGeneration: claim.generation }).catch(() => {});
+      const variantCursor = typeof out.variants?.next === "string" ? out.variants.next : state?.envelope.variantCursor || "";
+      await store.put("housekeeping/state", { day: today, catalogCursor: cursor, variantCursor, finishedAt: new Date(now()).toISOString(), last: out }, { ifGeneration: claim.generation }).catch(() => {});
       return out;
     }
   };

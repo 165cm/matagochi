@@ -1,5 +1,16 @@
 # レビュー資料（Codex 向け）：YouTube の情報の定期的な確かめ直しと削除（PR 3 の残り）
 
+## 再レビュー（Codex の指摘への対応、`3c2d84a` → この版）
+
+| 指摘 | 直したこと | 再現テスト（`api/test/housekeeping.test.js`） |
+|---|---|---|
+| [P2] 削除・非公開を見つけてから30日ではなく、50日目まで残る（消す判定が「前に確かめてから25日」の内側だった） | `sweep` の確かめる対象に「`unavailable.since` から30日たったもの」を足した（前に確かめた日にかかわらず）。戻っていなければその日に消す | 「review fix (#103): a video still gone 30 days…」：29日目までは残り、30日目に消える |
+| [P2] 検索結果の掃除が毎回先頭の500件だけで、後ろの古いものに届かない | 続きの位置（`variantCursor`）を `housekeeping/state` に残し、次の日は続きから。最後まで行ったら最初から | 「review fix (#103): old search results after the first page…」：先頭がいつも新しくても、後ろの古いものが消える |
+
+- 2件とも `3c2d84a` のコードでは失敗することを確認。`npm test --prefix api`：135件 成功（#101 の公開後に main を取り込み済み）
+
+---
+
 指示書：`docs/PERSONALIZE_PLAN.md` §8「保存期間と取り消し」・§7.3「定期更新・非掲載化」。仕様：`docs/APP_MAP.md` §41（新規）。
 
 ## 1. 対象
