@@ -2306,6 +2306,8 @@ span.tile-photo { cursor: default; }
 .cal-cell.is-today { outline: 2.5px solid var(--tomato); outline-offset: -2.5px; }
 .cal-cell.is-future { opacity: .55; outline: 1.5px dashed #d8c4ad; outline-offset: -1.5px; }
 .cal-cell.is-picked { outline: 3px solid var(--marker); outline-offset: -3px; opacity: 1; }
+/* 条件に合う料理が少ない時の知らせ PR 4a */
+.plan-short { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 14px; background: #fff7ea; border: 1px dashed #f0c98f; }
 /* ふりかえりの記録のカレンダー PR 6c */
 .record-cal { margin: 0 0 6px; }
 .record-cal .cal-head { margin-bottom: 4px; text-align: center; font-size: 11px; font-weight: 800; color: var(--muted); }
