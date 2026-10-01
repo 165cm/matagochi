@@ -451,7 +451,10 @@ function renderDailyPlan() {
       return `<article class="plan-card ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${recipeTitleHtml(recipe)}</button>${minutes ? `<p class="plan-time"><span class="marker">${minutes}</span></p>` : ""}<p class="hand plan-note">${escapeHtml(note)}</p>${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : `🎬 動画で作り方をそろえる${ticketPrice()}`}</button>` : ""}<div class="plan-controls">${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}${renderPlanMenu(plan, day)}${renderSkipPanel(day.date)}`;
     })
     ;
-  const cards = cardList.map((html, i) => {
+  // 条件に合う料理が足りず、同じ料理が2回出ている時は、条件をゆるめずにそう伝える（PR 4a・docs/PERSONALIZE_PLAN.md §7.2）。
+  const repeats = plan.filter((d) => d.candidate?.repeated && !locks.has(d.date)).length;
+  const shortNote = repeats && !isViewer() ? `<p class="plan-short small" role="status"><span>🔁 合う料理が少なく、同じ料理が${repeats}回出ています ${tip("食べられないもの・時間などの条件はゆるめません。レシピを足すと、ちがう料理が出せます")}</span>${dailyButton("go-view", "レシピを足す", 'data-view="collection"')}</p>` : "";
+  const cards = shortNote + cardList.map((html, i) => {
     if (!rhythmOn()) return html;
     const date = plan[i].date;
     const b = currentBlocks().find((x) => x.dates.includes(date));
