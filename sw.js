@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v135";
-const APP_VERSION = "20261001-calendar";
+const CACHE_NAME = "ripigochi-v137";
+const APP_VERSION = "20261001-allergy";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -38,12 +38,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20261001-calendar",
-  "./icons/favicon-32.png?v=20261001-calendar",
-  "./icons/icon-192.png?v=20261001-calendar",
-  "./icons/icon-512.png?v=20261001-calendar",
-  "./icons/icon-maskable-512.png?v=20261001-calendar",
-  "./icons/apple-touch-icon.png?v=20261001-calendar"
+  "./manifest.webmanifest?v=20261001-allergy",
+  "./icons/favicon-32.png?v=20261001-allergy",
+  "./icons/icon-192.png?v=20261001-allergy",
+  "./icons/icon-512.png?v=20261001-allergy",
+  "./icons/icon-maskable-512.png?v=20261001-allergy",
+  "./icons/apple-touch-icon.png?v=20261001-allergy"
 ];
 
 self.addEventListener("install", (event) => {
