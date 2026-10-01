@@ -423,6 +423,7 @@ function planMeta(recipe, reasons = []) {
 function renderDailyPlan() {
   const plan = dailyPlan();
   const locks = lockedDates(plan);
+  shareShown(plan.filter((d) => !locks.has(d.date) && !d.off));
   const n = state.planLength || 3;
   const cardList = plan
     .map((day) => {

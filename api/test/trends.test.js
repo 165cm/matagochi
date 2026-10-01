@@ -21,7 +21,7 @@ function fakeCatalog(overrides = {}) {
 }
 const ids = Array.from({ length: 14 }, (_, i) => `vid${String(i).padStart(8, '0')}`);
 
-test('weekly trends: 10 per week, a bounded number of tries, video read only when steps are missing, gone after 28 days', async () => {
+test('weekly trends: a bounded number of tries, video read only when steps are missing, gone after 28 days', async () => {
   let now = Date.parse('2026-09-28T01:00:00Z');
   const store = createMemorySyncStore();
   const catalog = fakeCatalog({ [ids[0]]: 'fail', [ids[1]]: { title: 'チョコケーキ' }, [ids[2]]: 'nosteps' });
@@ -160,7 +160,7 @@ test('trend items without a catch line get one from a single batched call, saved
   assert.ok((await again.list()).items.every((i) => i.catch)); assert.equal(calls, 1, 'saved catches are reused');
 });
 
-test('collecting and showing are separate: a few a day even after 10 are shown, a new day looks at new uploads, the list shows at most 10 a week and never calls the AI', async () => {
+test('collecting and showing are separate: a few a day even after 10 are shown, a new day looks at new uploads, the list shows the last 28 days and never calls the AI', async () => {
   let now = Date.parse('2026-09-28T01:00:00Z'); // 月曜 10:00 JST
   const store = createMemorySyncStore();
   const ch = 'UC' + 'c'.repeat(22);
@@ -186,11 +186,13 @@ test('collecting and showing are separate: a few a day even after 10 are shown, 
   now += DAY; book = make();
   const thu = await book.step();
   assert.deepEqual([thu.items, thu.today, thu.done], [12, 0, true], 'the weekly maximum bounds the AI cost');
-  // 見せる：1週10品まで、新しい順。読み出すだけ。
+  // 見せる：28日以内のものすべてを、日ごとに決まるランダムな順で（2026-10-01 の判断）。読み出すだけ。
   const before = catalog.calls.length;
   const list = await make().list();
-  assert.equal(list.items.length, 10);
-  assert.equal(list.items[0].videoId, (await store.get('trends/index')).envelope.weeks[0].items.at(-1).videoId, 'newest first');
+  assert.equal(list.items.length, 12, 'all of the last 28 days');
+  const order = list.items.map((i) => i.videoId);
+  assert.deepEqual((await make().list()).items.map((i) => i.videoId), order, 'the same order all day');
+  assert.deepEqual([...order].sort(), (await store.get('trends/index')).envelope.weeks[0].items.map((i) => i.videoId).sort());
   assert.equal(catalog.calls.length, before, 'GET /api/trends does not start any reading');
   assert.equal(keyword, 0, 'keyword searches (costly) only when the channels run out');
 });

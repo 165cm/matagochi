@@ -53,9 +53,11 @@ export function createApp(env = process.env, deps = {}) {
   const trendBook = createTrendBook(recipeStore, { catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
     ...(Number(env.TREND_PER_DAY) > 0 ? { perDay: Number(env.TREND_PER_DAY) } : {}), ...(Number(env.TREND_WEEK_MAX) > 0 ? { weekMax: Number(env.TREND_WEEK_MAX) } : {}),
-    ...(Number(env.TREND_AI_PER_DAY) > 0 ? { aiPerDay: Number(env.TREND_AI_PER_DAY) } : {}), ...(Number(env.TREND_AI_PER_WEEK) > 0 ? { aiPerWeek: Number(env.TREND_AI_PER_WEEK) } : {}) });
+    ...(Number(env.TREND_AI_PER_DAY) > 0 ? { aiPerDay: Number(env.TREND_AI_PER_DAY) } : {}), ...(Number(env.TREND_AI_PER_WEEK) > 0 ? { aiPerWeek: Number(env.TREND_AI_PER_WEEK) } : {}),
+    // 月の費用の上限（円）と、AI を1回呼ぶ費用の目安（円）。β版の間は月1,000円（docs/PERSONALIZE_PLAN.md §2）。
+    ...(Number(env.TREND_YEN_PER_MONTH) >= 0 && env.TREND_YEN_PER_MONTH !== undefined && env.TREND_YEN_PER_MONTH !== "" ? { yenPerMonth: Number(env.TREND_YEN_PER_MONTH) } : {}), ...(Number(env.TREND_YEN_PER_AI) > 0 ? { yenPerAi: Number(env.TREND_YEN_PER_AI) } : {}) });
   const housekeeping = createHousekeeping(recipeStore, { catalog, now: deps.now || Date.now });
-  const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut() });
+  const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut(), isTrend: (videoId) => trendBook.has(videoId) });
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
@@ -276,6 +278,27 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, usageBook.report(String(req.query?.from || ""), String(req.query?.to || "")));
+  });
+  // 品ぞろえの管理（PR 4b）：動画ごとの採用率・残しているか・投稿者の同意、月ごとの新着集めの AI の回数と目安の費用、
+  // 同意をお願いしたい投稿者（献立によく入るのに「みんなが見る一覧」の同意がない）。読み出すだけ（AI・YouTube API を呼ばない）。
+  app.get("/api/admin/catalog", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, (async () => {
+      const stats = await popularBook.stats();
+      const items = [];
+      for (const s of stats.slice(0, 300)) {
+        const r = await catalog.peek(`https://www.youtube.com/watch?v=${s.videoId}`).catch(() => null);
+        const consent = r?.channelId ? (await creatorDesk.consentsFor(r.channelId)).publicCatalog : false;
+        items.push({ ...s, title: r?.title || "", channelId: r?.channelId || "", channelTitle: r?.channelTitle || "", available: !!r, publicConsent: consent });
+      }
+      const ask = {};
+      for (const i of items) if (i.available && !i.publicConsent && i.channelId && (i.kept || i.planned >= 3)) {
+        const a = (ask[i.channelId] ||= { channelId: i.channelId, channelTitle: i.channelTitle, videos: 0, planned: 0 });
+        a.videos += 1; a.planned += i.planned;
+      }
+      return { cost: await trendBook.cost(), items, askConsent: Object.values(ask).sort((a, b) => b.planned - a.planned) };
+    })());
   });
   app.get("/api/admin/feedback", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
