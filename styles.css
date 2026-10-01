@@ -2132,6 +2132,13 @@ span.tile-photo { cursor: default; }
 .staple-list small { color: var(--muted); font-size: 12px; }
 .staple-list .secondary-button { min-height: 36px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
 .staple-photo { width: 48px; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; }
+/* 記録からの提案（方針に入れる？）PR 6b */
+.evidence-card { margin: 8px 0 0; padding: 10px 12px; border-radius: 14px; background: #fff7ea; border: 1px dashed #f0c98f; }
+.evidence-card p { margin: 0 0 4px; line-height: 1.6; }
+.evidence-card small { color: var(--muted); }
+.evidence-ask { font-size: 14px; }
+.evidence-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 6px; }
+.evidence-reflect .evidence-card { margin-top: 0; }
 .refl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
 .refl-stats p { margin: 0; padding: 12px 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
 .refl-stats strong { display: block; font-size: 24px; color: var(--tomato); }
