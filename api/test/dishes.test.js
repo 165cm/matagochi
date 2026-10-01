@@ -77,3 +77,33 @@ test('parents: GET /api/trends gives each item its parent; the admin endpoints n
   assert.deepEqual(o2.removed.map((r) => r.name), ['八宝菜']);
   assert.equal((await fetch(base + '/api/admin/dishes', { method: 'POST', headers: auth, body: '{"op":"bad"}' })).status, 400);
 });
+
+test('admin recipe list: new dishes and planned/kept ones, each with its parent and adoption numbers; the token is needed', async (t) => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const titles = { b0000000001: '王将風 八宝菜', b0000000002: '陳健一さんの八宝菜', b0000000003: 'お豆腐ふわふわ焼き', b0000000004: '塩こんぶ肉じゃが' };
+  const recipe = (v) => ({ title: titles[v], videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: 'c' + v.slice(-1), channelTitle: 'ch' + v.slice(-1), ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'], tags: [], planning: { minutes: 15 }, snippetFetchedAt: new Date(now).toISOString(), catalog: { analyzedAt: new Date(now).toISOString(), extractorVersion: 99 } });
+  for (const v of Object.keys(titles)) await store.put(`youtube-${v}`, { status: 'ready', result: recipe(v) }, { ifGeneration: 0 });
+  // 新着は1〜3、4は新着ではないが献立に入って残した料理
+  await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: ['b0000000001', 'b0000000002', 'b0000000003'].map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
+  await store.put('popular/2026-10', { recipes: { b0000000001: { shown: 4, planned: 1, cooked: 0, all: 1 }, b0000000004: { shown: 2, planned: 2, cooked: 1, all: 2 } } }, { ifGeneration: 0 });
+  await store.put('popular/kept', { videos: { b0000000004: { at: '2026-10-04' } } }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], now: () => now });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  assert.equal((await fetch(base + '/api/admin/recipes')).status, 403);
+  const auth = { Authorization: 'Bearer admin-test-token' };
+  const { recipes } = await (await fetch(base + '/api/admin/recipes', { headers: auth })).json();
+  const by = Object.fromEntries(recipes.map((r) => [r.videoId, r]));
+  assert.deepEqual(Object.keys(by).sort(), Object.keys(titles).sort());
+  assert.equal(by.b0000000001.dish.name, '八宝菜');
+  assert.equal(by.b0000000002.dish.name, '八宝菜');
+  assert.equal(by.b0000000003.dish, null);
+  assert.equal(by.b0000000004.dish.name, '肉じゃが');
+  assert.deepEqual([by.b0000000001.trend, by.b0000000001.shown, by.b0000000001.planned, by.b0000000001.rate], [true, 4, 1, 25]);
+  assert.deepEqual([by.b0000000004.trend, by.b0000000004.kept, by.b0000000004.minutes], [false, true, 15]);
+  const one = await (await fetch(base + '/api/admin/recipes/b0000000002', { headers: auth })).json();
+  assert.equal(one.dish.name, '八宝菜');
+});
