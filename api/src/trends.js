@@ -633,11 +633,13 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // 表示用：取得から28日以内のものすべてを、日ごとに決まるランダムな順で。保存済みの結果を読み出すだけ（AIを呼ばない）。
     // 親の料理名を直した時など、表示のキャッシュを捨てる。
     clearCache() { cache = null; },
-    async list() {
+    // promote：親の料理名の格上げもする（公開の GET /api/trends）。管理の読み出しでは false（辞書を書きかえない）。
+    async list({ promote = true } = {}) {
       required();
       const day = new Date(now() + 9 * 3_600_000).toISOString().slice(0, 10);
       // 日ごとの順なので、日本時間の日付が変わったらキャッシュも使わない。
       if (cache && cache.until > now() && cache.day === day) return cache.value;
+      const keep = promote; // 格上げしない読み出しの結果は、キャッシュに入れない（公開の GET で格上げされるように）
       const entry = await readIndex();
       const excluded = await optedOut();
       const saved = (await store.get("trends/catches"))?.envelope || {};
@@ -661,11 +663,11 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const iconMap = pruneIcons((await store.get("trends/icons"))?.envelope, now());
       items.forEach((i) => { if (iconMap[i.channelId]) i.channelThumb = iconMap[i.channelId].url; });
       // 親の料理名（APP_MAP §48）：同じ料理名がそろったら、ここで格上げも（AI は使わない）。
-      const dishes = await (dishBook || createDishBook(store, { now })).classify(items, { promote: true }).catch(() => ({}));
+      const dishes = await (dishBook || createDishBook(store, { now })).classify(items, { promote }).catch(() => ({}));
       items.forEach((i) => { if (dishes[i.videoId]) i.dish = dishes[i.videoId]; });
       items.sort((a, b) => dailyRank(day, a.videoId) - dailyRank(day, b.videoId));
       const value = { items, updatedAt: new Date(now()).toISOString() };
-      cache = { value, until: now() + 10 * 60_000, day };
+      if (keep) cache = { value, until: now() + 10 * 60_000, day };
       return value;
     }
   };

@@ -107,3 +107,28 @@ test('admin recipe list: new dishes and planned/kept ones, each with its parent 
   const one = await (await fetch(base + '/api/admin/recipes/b0000000002', { headers: auth })).json();
   assert.equal(one.dish.name, '八宝菜');
 });
+
+test('review fix (#124): every adoption count reaches the new dishes (beyond 500), and the admin reads never promote the dictionary', async (t) => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const titles = { c0000000001: 'ふわふわ豆腐焼き', c0000000002: '絶品 ふわふわ豆腐焼き', c0000000003: 'ふわふわ豆腐焼き｜簡単' };
+  const recipe = (v) => ({ title: titles[v], videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: v.endsWith('1') ? 'ca' : 'cb', channelTitle: 'ch', ingredients: [{ name: '豆腐' }, { name: '卵' }, { name: '塩' }], steps: ['混ぜる', '焼く'], tags: [], snippetFetchedAt: new Date(now).toISOString(), catalog: { analyzedAt: new Date(now).toISOString(), extractorVersion: 99 } });
+  for (const v of Object.keys(titles)) await store.put(`youtube-${v}`, { status: 'ready', result: recipe(v) }, { ifGeneration: 0 });
+  await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: Object.keys(titles).map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
+  const many = Object.fromEntries(Array.from({ length: 520 }, (_, i) => [`z${String(i).padStart(10, '0')}`, { shown: 20, planned: 10, cooked: 0, all: 10 }]));
+  await store.put('popular/2026-10', { recipes: { ...many, c0000000001: { shown: 4, planned: 1, cooked: 0, all: 1 } } }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], now: () => now });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = { Authorization: 'Bearer admin-test-token' };
+  const { recipes } = await (await fetch(base + '/api/admin/recipes', { headers: auth })).json();
+  const mine = recipes.find((r) => r.videoId === 'c0000000001');
+  assert.deepEqual([mine.shown, mine.planned, mine.rate], [4, 1, 25], 'the 521st count still reaches the new dish');
+  await fetch(base + '/api/admin/dishes', { headers: auth });
+  assert.equal(Object.keys((await store.get('dishes/book'))?.envelope?.promoted || {}).length, 0, 'admin reads do not promote');
+  // 公開の一覧では格上げされる
+  await fetch(base + '/api/trends');
+  assert.ok((await store.get('dishes/book')).envelope.promoted[dishKey('ふわふわ豆腐焼き')]);
+});
