@@ -963,10 +963,14 @@ function renderStaples(recipeOf) {
 }
 // 「わたしの食卓」の見せ方：月のカレンダー（既定）か、写真の一覧。端末ごとに覚える（なくても動く）。
 let reflView = (() => { try { return localStorage.getItem("ripigochi-refl-view") === "grid" ? "grid" : "cal"; } catch { return "cal"; } })();
-// 記録の月のカレンダー（日曜はじまり）。作った日は写真、2品以上は「+1」。タップでその日の記録を開く。先の日は空。
+// 記録の月のカレンダー（日曜はじまり）。作った日は写真、2品以上は「+1」。タップでその日のいちばん新しい記録を開く。先の日は空。
 function renderRecordCalendar(list, monthKey, recipeOf, photoOf) {
+  // 同じ日の記録は新しい順：更新した日時、同じなら保存の順（新しい記録は state.evaluations の先頭に入る）。
+  const order = new Map(state.evaluations.map((e, i) => [e, i]));
+  const newer = (a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")) || (order.get(a) ?? 0) - (order.get(b) ?? 0);
   const byDay = new Map();
-  list.slice().sort((a, b) => a.cookedAt.localeCompare(b.cookedAt)).forEach((e) => { const k = e.cookedAt.slice(0, 10); byDay.set(k, [...(byDay.get(k) || []), e]); });
+  list.forEach((e) => { const k = e.cookedAt.slice(0, 10); byDay.set(k, [...(byDay.get(k) || []), e]); });
+  byDay.forEach((recs) => recs.sort(newer));
   const first = `${monthKey}-01`;
   const lead = new Date(first + "T12:00:00").getDay();
   const days = new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0).getDate();
@@ -975,7 +979,7 @@ function renderRecordCalendar(list, monthKey, recipeOf, photoOf) {
     const date = addDays(first, i), n = i + 1, recs = byDay.get(date) || [];
     const cls = ["cal-cell", date === t ? "is-today" : "", date > t ? "is-later" : ""].filter(Boolean).join(" ");
     if (!recs.length) return `<span class="${cls} is-empty"><span>${n}</span></span>`;
-    const e = recs[recs.length - 1], r = recipeOf(e);
+    const e = recs[0], r = recipeOf(e);
     const names = recs.map((x) => recipeOf(x).title).join("・");
     return `<button type="button" class="${cls}" data-action="life-edit-record" data-id="${escapeAttr(e.id)}" aria-label="${escapeAttr(`${formatDate(date)} ${names}の記録を開く`)}">${photoOf(e, r)}<span>${n}</span>${recs.length > 1 ? `<b class="cal-more">+${recs.length - 1}</b>` : ""}</button>`;
   })].join("");

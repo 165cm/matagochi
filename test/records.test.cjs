@@ -151,7 +151,7 @@ test("PR 6c: the records calendar shows the month (Sunday first), a photo on coo
   assert.match(html, /class="record-cal"/, "calendar is the default view");
   assert.equal((html.match(/cal-cell is-blank/g) || []).length, 4, "Oct 1 2026 is a Thursday → 4 blanks");
   assert.equal((html.match(/class="cal-cell[^"]*"/g) || []).length - 4, 31, "31 days");
-  assert.match(html, /data-action="life-edit-record" data-id="e2" aria-label="10月1日 唐揚げ・さばと豆腐のみそ丼の記録を開く"/);
+  assert.match(html, /data-action="life-edit-record" data-id="e1" aria-label="10月1日 唐揚げ・さばと豆腐のみそ丼の記録を開く"/, "e1 has the newer update time");
   assert.match(html, /<b class="cal-more">\+1<\/b>/);
   assert.match(html, /cal-cell is-today/);
   assert.doesNotMatch(html, /data-id="e0"/, "only this month");
@@ -175,4 +175,19 @@ test("PR 6c: 'cook it again' is counted (meal_replanned) only when it actually a
   run(`handleDailyAction("life-replan", { recipe: "own-karaage" })`); // もう入っている
   assert.equal(J(run, "state.experienceEvents.filter((e) => e.name === 'meal_replanned').length"), 1);
   assert.equal(J(run, "usageSummary(today()).events.meal_replanned"), 1);
+});
+
+test("review fix (#113): on a day with two records the calendar shows and opens the newest one (saved first in the list)", () => {
+  const run = app();
+  run(`state.recipes.push(${JSON.stringify(RECIPE)});`);
+  // ふつうの保存（新しい記録が先頭）：A を記録 → B を記録。更新日時は同じ（同じ分に記録）
+  run(`state.evaluations = [];
+    state.evaluations.unshift({ id: "a", recipeId: "own-karaage", cookedAt: "2026-10-01", familyRepeatCycles: {}, updatedAt: "2026-10-01T10:00:00Z" });
+    state.evaluations.unshift({ id: "b", recipeId: "starter-04", cookedAt: "2026-10-01", familyRepeatCycles: {}, updatedAt: "2026-10-01T10:00:00Z" });`);
+  let html = run("renderReflection()");
+  assert.match(html, /data-id="b" aria-label="10月1日 さばと豆腐のみそ丼・唐揚げの記録を開く">[^]*?starter-04/);
+  // 更新した日時が新しい方を開く（並びにかかわらず）
+  run(`state.evaluations.find((e) => e.id === "a").updatedAt = "2026-10-01T12:00:00Z";`);
+  html = run("renderReflection()");
+  assert.match(html, /data-id="a" aria-label="10月1日 唐揚げ・さばと豆腐のみそ丼の記録を開く"/);
 });
