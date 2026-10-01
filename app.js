@@ -1364,12 +1364,16 @@ function renderCollection() {
   const allSaved = getFilteredRecipes({ allMeals: true });
   // Photographed dishes first, so the grid opens with pictures.
   // 今週の人気・みんなの定番（好みの順）を先に、写真のある定番を次に。
-  let allStarters = recipeTab === "saved" || recipeTab === "creators" ? [] : starterRecipeList().sort((a, b) => !!b.discover - !!a.discover || (!a.discover && !b.discover ? !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id] : 0));
-  // 同じ親（料理名）の集めた料理は、いちばん上の1品にまとめる（「ほか◯つの作り方」で全部見られる。探している時はまとめない）。
+  const allStarters = recipeTab === "saved" || recipeTab === "creators" ? [] : starterRecipeList().sort((a, b) => !!b.discover - !!a.discover || (!a.discover && !b.discover ? !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id] : 0));
+  const pool = [...(recipeTab === "starter" ? [] : allSaved), ...allStarters];
+  const saved = allSaved.filter((r) => facetMatch(r));
+  let starters = allStarters.filter((r) => facetMatch(r));
+  // 同じ親（料理名）の集めた料理は、絞り込んだあとで、いちばん上の1品にまとめる（条件に合う子が親ごと消えないように）。
+  // 「ほか◯つの作り方」で全部見られる。探している時はまとめない。
   starterVariants = new Map();
   if (!state.searchText.trim()) {
     const first = new Map();
-    allStarters = allStarters.filter((r) => {
+    starters = starters.filter((r) => {
       const k = r.discover && r.dish ? parentKeyOf(r) : "";
       if (!k) return true;
       const top = first.get(k);
@@ -1378,9 +1382,6 @@ function renderCollection() {
       return true;
     });
   }
-  const pool = [...(recipeTab === "starter" ? [] : allSaved), ...allStarters];
-  const saved = allSaved.filter((r) => facetMatch(r));
-  const starters = allStarters.filter((r) => facetMatch(r));
   const query = state.searchText.trim();
   const filtering = Object.values(recipeFacets).some(Boolean);
   const shownStarters = recipeTab === "starter" || starterShowAll || query || filtering || selecting ? starters : starters.slice(0, 6);

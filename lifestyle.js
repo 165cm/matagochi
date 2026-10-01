@@ -615,7 +615,8 @@
       const favourites = eligible.filter((x) => x.request || (x.repeat.known && x.repeat.due));
       const pool = newCount >= MAX_NEW_PER_PLAN && favourites.length ? favourites : eligible;
       const dow = String(new Date(date + "T12:00:00").getDay());
-      const pinned = !overrides[date] && pins[dow] ? candidates.find((x) => x.recipe.id === pins[dow] && free(x)) : null;
+      // ピン留め（毎週◯曜はこの料理）は、親の「1回まで・6日あける」に関係なく入れる（本人が決めたこと）。
+      const pinned = !overrides[date] && pins[dow] ? candidates.find((x) => x.recipe.id === pins[dow]) : null;
       // 自分で決めた一皿（URLから入れた・選んだ料理）は、条件に合わなくてもその日に入れる。
       const forcedRecipe = overrides[date] && !candidates.some((x) => x.recipe.id === overrides[date]) ? recipes.find((r) => r.id === overrides[date]) : null;
       const forced = forcedRecipe

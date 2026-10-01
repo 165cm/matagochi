@@ -59,3 +59,27 @@ test("collection: new dishes with the same parent show as one tile with 'ほか�
   assert.equal(run("parentKeyOf(findDiscover(discoverRecipes()[0].id))"), "fabc");
   assert.equal(run("parentKeyOf(discoverRecipes().find((r)=>!r.dish))"), "");
 });
+
+test("review fix (#122): a weekday pin is planned even if its parent was eaten within 6 days", () => {
+  const recipes = [...kids("八宝菜", 3), ...kids("肉じゃが", 3), ...kids("回鍋肉", 3)];
+  const history = [{ date: "2026-10-03", recipe: recipes[0] }];
+  // 2026-10-05 は月曜（"1"）
+  const plan = L.propose({ recipes, profile: L.profile({}), start: "2026-10-05", length: 2, addDays, parentOf, history, pins: { 1: "trend-八宝菜-1" } });
+  assert.equal(plan[0].candidate?.recipe.id, "trend-八宝菜-1");
+});
+
+test("review fix (#122): grouping happens after the filters (a child that matches is shown); 'ほか◯つの作り方' also finds children merged by spelling", async () => {
+  const withAuthor = (x, a) => ({ ...x, channelTitle: a, channelId: `UC${a}` });
+  const run = app([withAuthor(item(1, "王将風 八宝菜", "八宝菜"), "A"), withAuthor(item(2, "陳健一さんの八宝菜", "八宝菜"), "B"), item(3, "唐揚げ", "唐揚げ"), item(4, "ジューシーからあげ", "唐揚げ")]);
+  await run("loadDiscover({ force: true })");
+  const keyB = run("creatorKey(discoverRecipes().find((r)=>r.author==='B'))");
+  run(`recipeTab='starter';recipeFacets.author=${JSON.stringify(keyB)}`);
+  const filtered = run("renderCollection()");
+  assert.match(filtered, /陳健一さんの八宝菜/, "B's dish is shown when filtering by B");
+  run("recipeFacets.author=''");
+  const grouped = run("renderCollection()");
+  assert.match(grouped, /唐揚げ：ほか1つの作り方/);
+  run("handleDailyAction('life-dish-variants',{dish:'唐揚げ'})");
+  const found = run("renderCollection()");
+  assert.match(found, /ジューシーからあげ/, "the child spelled からあげ is found by its parent name");
+});

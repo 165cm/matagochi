@@ -2409,7 +2409,8 @@ function starterRecipeList() {
     .filter((r) => !saved.has(r.id) && !hidden.has(r.id))
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => (r.discover ? discoverSafe(r) : Lifestyle.fit(r, dailyProfile(), today()).ok))
-    .filter((r) => !query || [r.title, ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
+    // 親の料理名（dish）でも探せる（表記ゆれでまとめた子も「ほか◯つの作り方」から見られるように）。
+    .filter((r) => !query || [r.title, r.dish || "", ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
 }
 
 // ----- レシピの詳細（閲覧が基本。編集は「編集する」から） -----
