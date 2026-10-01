@@ -33,6 +33,17 @@ function normalizeFolders(raw) {
   }
   return out;
 }
+// 親（料理名）のキー（APP_MAP §48）：自分の定番フォルダ → 集めた料理の親の料理名（同じ名前のフォルダがあればそこへ）。
+// 献立の「同じ親は、自動では週1回まで」と、レシピの一覧で同じ親をまとめるのに使う。
+function parentKeyOf(r) {
+  if (!r) return "";
+  const own = r.folder || (r.id && recipeById(r.id)?.folder);
+  if (own && state.folders?.[own] && !state.folders[own].deleted) return own;
+  if (!r.dish) return "";
+  const n = folderNorm(r.dish);
+  const f = folderList().find((x) => folderNorm(x.name) === n);
+  return f ? f.key : `d:${n}`;
+}
 const folderList = () => Object.values(state.folders || {}).filter((f) => !f.deleted).sort((a, b) => a.name.localeCompare(b.name, "ja"));
 function folderOfRecipe(r) {
   const key = r?.folder || (r?.id && recipeById(r.id)?.folder);

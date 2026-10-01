@@ -136,6 +136,7 @@
     <button type="button" role="tab" id="tab-seed" aria-controls="panel-seed" aria-selected="true">📥 集める</button>
     <button type="button" role="tab" id="tab-adopt" aria-controls="panel-adopt" aria-selected="false">📈 採用率</button>
     <button type="button" role="tab" id="tab-creators" aria-controls="panel-creators" aria-selected="false">🤝 投稿者</button>
+    <button type="button" role="tab" id="tab-dishes" aria-controls="panel-dishes" aria-selected="false">🍲 親の料理名</button>
   </div>
 
   <div id="panel-seed" role="tabpanel" aria-labelledby="tab-seed" style="display:grid;gap:10px">
@@ -177,6 +178,17 @@
   <div id="panel-adopt" role="tabpanel" aria-labelledby="tab-adopt" hidden style="display:grid;gap:10px">
     <section><div class="head"><h2>料理ごとの採用率（この月と前の月）</h2><span class="meta">行を押すとレシピ</span></div><div id="items" class="scroll" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div></section>
     <section><h2>月の費用（新着集め）</h2><div id="cost" style="margin-top:8px"><p class="empty">—</p></div></section>
+  </div>
+
+  <div id="panel-dishes" role="tabpanel" aria-labelledby="tab-dishes" hidden style="display:grid;gap:10px">
+    <section><div class="head"><h2>親の料理名</h2><details class="info"><summary>ⓘ しくみ</summary><div>集めた料理を、題名の料理名（親）ごとにまとめます。アレンジ（塩こんぶ肉じゃが）も同じ親です。献立は自動では同じ親を週1回まで、レシピの一覧は親ごとに1品にまとめます。辞書は、定番の料理名から始まり、辞書にない料理名が<b id="dish-rule">3本・投稿者2人</b>以上そろうと自動で格上げされます。まちがったまとめ方は「外す」、表記ゆれは「まとめる」で直せます。</div></details></div>
+      <div id="dish-parents" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div></section>
+    <div class="grid2">
+      <section><h2>もう少しで格上げ</h2><div id="dish-candidates" style="margin-top:8px"><p class="empty">—</p></div></section>
+      <section><h2>まとめる（表記ゆれ）・外した料理名</h2>
+        <form id="dish-alias" class="row" style="margin-top:8px"><input id="alias-from" placeholder="例：からあげ" aria-label="まとめる料理名" style="flex:1 1 120px"><span class="meta">→</span><input id="alias-to" placeholder="例：唐揚げ" aria-label="まとめ先の料理名" style="flex:1 1 120px"><button type="submit" class="small">まとめる</button></form>
+        <div id="dish-other" style="margin-top:8px"></div></section>
+    </div>
   </div>
 
   <div id="panel-creators" role="tabpanel" aria-labelledby="tab-creators" hidden>
@@ -394,6 +406,34 @@
     const list = data.items || [];
     items.append(list.length ? table(["料理", "投稿者", "候補に出た", "献立に入った", "作った", "採用率", "残す", "同意"], list.map((i) => [i.title || i.videoId, i.channelTitle, i.shown, i.planned, i.cooked, i.rate == null ? "—" : `${i.rate}%`, i.kept ? "✓" : "", i.publicConsent ? "✓" : ""]), [2, 3, 4, 5], (ri) => openRecipe(list[ri].videoId), { wide: true }) : el("p", "まだありません（献立の候補に出ると数えます）。", "empty"));
   }
+  // 🍲 親の料理名
+  const SOURCE = { seed: "最初の辞書", promoted: "格上げ", alias: "別名" };
+  function actionButton(label, body, quiet = true) {
+    const b = el("button", label, `${quiet ? "quiet " : ""}small`); b.type = "button";
+    b.addEventListener("click", async () => { b.disabled = true; try { await api("/api/admin/dishes", body); await loadDishes(); } catch (error) { status.textContent = error.message; b.disabled = false; } });
+    return b;
+  }
+  function withButtons(t, rows, make) { [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = el("td"); td.append(make(rows[i])); tr.append(td); }); t.querySelector("tr").append(el("th", "")); return t; }
+  function renderDishes() {
+    const d = last.dishes; if (!d) return;
+    document.getElementById("dish-rule").textContent = `${d.rule.videos}本・投稿者${d.rule.channels}人`;
+    const box = document.getElementById("dish-parents"); box.textContent = "";
+    box.append(el("p", `いまの新着で親のある料理名 ${d.parents.length}・子 ${d.parents.reduce((a, p) => a + p.videos, 0)}品`, "meta"));
+    box.append(d.parents.length ? scroll(withButtons(table(["親", "どこから", "子", "投稿者", "例"], d.parents.map((p) => [p.name, `${SOURCE[p.source] || p.source}${p.since ? `（${p.since}）` : ""}`, { text: String(p.videos), value: p.videos }, p.channels, p.examples.join(" / ")]), [2, 3], null, { wide: true, bars: [2] }), d.parents, (p) => actionButton("外す", { op: "remove", key: p.key }))) : el("p", "まだありません。", "empty"));
+    const c = document.getElementById("dish-candidates"); c.textContent = "";
+    c.append(d.candidates.length ? scroll(withButtons(table(["料理名", "動画", "投稿者", "例"], d.candidates.map((x) => [x.name, x.videos, x.channels, x.examples.join(" / ")]), [1, 2]), d.candidates, (x) => actionButton("親にする", { op: "promote", name: x.name }))) : el("p", "いまはありません。", "empty"));
+    const o = document.getElementById("dish-other"); o.textContent = "";
+    if ((d.aliases || []).length) { o.append(el("h3", "まとめた表記")); o.append(table(["表記", "まとめ先"], d.aliases.map((a) => [a.from, a.to]))); }
+    const h = el("h3", "外した料理名"); h.style.marginTop = "8px"; o.append(h);
+    o.append((d.removed || []).length ? withButtons(table(["料理名"], d.removed.map((r) => [r.name])), d.removed, (r) => actionButton("戻す", { op: "restore", key: r.key })) : el("p", "ありません。", "empty"));
+  }
+  async function loadDishes() { const my = session; const d = await api("/api/admin/dishes"); if (my !== session) return; last.dishes = d; renderDishes(); }
+  document.getElementById("dish-alias").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const from = document.getElementById("alias-from").value.trim(), to = document.getElementById("alias-to").value.trim();
+    if (!from || !to) return;
+    try { await api("/api/admin/dishes", { op: "alias", from, to }); document.getElementById("alias-from").value = ""; document.getElementById("alias-to").value = ""; await loadDishes(); } catch (error) { status.textContent = error.message; }
+  });
   function renderAll() { renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderQueries(); renderCatalog(); }
   async function load() {
     if (!token) return;
@@ -402,7 +442,8 @@
     try {
       const [seed, catalog] = await Promise.all([api("/api/admin/trends/seed"), api("/api/admin/catalog")]);
       if (my !== session) return;
-      last = { seed, catalog };
+      last = { seed, catalog, dishes: last.dishes };
+      loadDishes().catch(() => {});
       renderAll();
       // 読み込めたら、合言葉の欄は畳む（上の「合言葉を消す」で戻せる）。
       document.getElementById("login-box").hidden = true;
@@ -464,7 +505,7 @@
   document.getElementById("axis").addEventListener("change", (e) => { try { localStorage.setItem("ripigochi-admin-axis", e.target.value); } catch {} });
   document.getElementById("stop").addEventListener("click", () => { stopAuto = true; runStatus.textContent = "この回が終わったら止めます…"; });
   // ── タブ ──
-  const TABS = ["seed", "adopt", "creators"];
+  const TABS = ["seed", "adopt", "creators", "dishes"];
   function showTab(name) {
     for (const t of TABS) { document.getElementById(`tab-${t}`).setAttribute("aria-selected", String(t === name)); document.getElementById(`panel-${t}`).hidden = t !== name; }
     try { localStorage.setItem("ripigochi-admin-tab", name); } catch {}
@@ -548,7 +589,7 @@
     runStatus.textContent = ""; progress(false);
     document.querySelector("#added-box > summary").textContent = "増えた料理";
     const dlg = document.getElementById("recipe"); if (dlg.open) dlg.close();
-    for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left"]) document.getElementById(id).textContent = "";
+    for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left", "dish-parents", "dish-candidates", "dish-other"]) document.getElementById(id).textContent = "";
     document.getElementById("seed-run").disabled = true;
     document.getElementById("login-box").hidden = false; document.getElementById("reload").hidden = true;
     status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;

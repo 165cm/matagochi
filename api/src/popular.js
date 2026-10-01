@@ -17,7 +17,7 @@ const KINDS = ["planned", "cooked", "shown"];
 const KEPT = "popular/kept";
 const KEPT_MAX = 2000;
 
-export function createPopularBook(store, { catalog, now = Date.now, optedOut = async () => new Set(), isTrend = async () => false } = {}) {
+export function createPopularBook(store, { catalog, now = Date.now, optedOut = async () => new Set(), isTrend = async () => false, dishBook = null } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   const recent = new Map(); // 同じ接続元・同じ動画は1日1回だけ数える
   let cache = new Map();
@@ -102,6 +102,8 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
           items.push({ videoId, score: t.same * 3 + t.all, ...(t.kept ? { kept: true } : {}), title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
         } catch {}
       }
+      // 親の料理名（APP_MAP §48。格上げは新着の側で行う）。
+      if (dishBook) { const dishes = await dishBook.classify(items).catch(() => ({})); items.forEach((i) => { if (dishes[i.videoId]) i.dish = dishes[i.videoId]; }); }
       const value = { items, minimum: POPULAR_MIN };
       cache.set(seg, { value, until: now() + 10 * 60_000 });
       return value;

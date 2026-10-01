@@ -1,6 +1,7 @@
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
+import { createDishBook } from "./dishes.js";
 
 // 新着レシピ：YouTubeから選んで読み取り、28日で消す（YouTube APIのデータは30日を超えて持たない）。
 // 集める処理と、見せる枠を分ける（docs/PERSONALIZE_PLAN.md §7.3・§12-7）：
@@ -177,7 +178,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const catches = { at: 0 };
@@ -630,6 +631,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       return Object.entries(months).sort((a, b) => b[0].localeCompare(a[0])).map(([month, m]) => ({ month, ai: m.ai || 0, yen: Math.round((m.ai || 0) * (m.yenPerAi ?? yenPerAi)), cap: m.cap ?? yenPerMonth }));
     },
     // 表示用：取得から28日以内のものすべてを、日ごとに決まるランダムな順で。保存済みの結果を読み出すだけ（AIを呼ばない）。
+    // 親の料理名を直した時など、表示のキャッシュを捨てる。
+    clearCache() { cache = null; },
     async list() {
       required();
       const day = new Date(now() + 9 * 3_600_000).toISOString().slice(0, 10);
@@ -657,6 +660,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       // 投稿者のアイコン：集める側が保存したものを使うだけ。
       const iconMap = pruneIcons((await store.get("trends/icons"))?.envelope, now());
       items.forEach((i) => { if (iconMap[i.channelId]) i.channelThumb = iconMap[i.channelId].url; });
+      // 親の料理名（APP_MAP §48）：同じ料理名がそろったら、ここで格上げも（AI は使わない）。
+      const dishes = await (dishBook || createDishBook(store, { now })).classify(items, { promote: true }).catch(() => ({}));
+      items.forEach((i) => { if (dishes[i.videoId]) i.dish = dishes[i.videoId]; });
       items.sort((a, b) => dailyRank(day, a.videoId) - dailyRank(day, b.videoId));
       const value = { items, updatedAt: new Date(now()).toISOString() };
       cache = { value, until: now() + 10 * 60_000, day };
