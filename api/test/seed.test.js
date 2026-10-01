@@ -67,7 +67,8 @@ test('seed: a stage collects up to its yen, skips duplicates / already-read / no
   const r2 = await book.seed({ yen: 20 });
   assert.equal(r2.stage.n, 2);
   assert.deepEqual(r2.stage.added.map((a) => a.videoId), [id(10), id(11)]);
-  assert.equal(r2.reason, 'exhausted', 'all the search words used');
+  assert.equal(r2.queriesLeft, 0, 'all the fixed search words used');
+  assert.equal(r2.reason, 'search_day_limit', 'then it widens (trend / classic) until the daily search cap (seedWaves.test.js)');
   assert.equal(catalog.calls.length, 6);
   // 新着集め（毎日）は、seed の週を自分の週にしない
   const daily = createTrendBook(store, { catalog, now: () => now, search: async () => [] });

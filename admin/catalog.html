@@ -117,6 +117,13 @@
           <label class="row" style="font-weight:700"><input type="checkbox" id="auto" style="width:auto"> 段階が終わるまで自動で続ける</label>
           <button type="button" class="quiet small" id="stop" hidden>止める</button>
         </div>
+        <label class="row" for="axis" style="font-weight:700">検索語を使い切った後に広げる方向
+          <select id="axis" style="width:auto">
+            <option value="both">話題と定番を交互に</option>
+            <option value="trend">最新で話題（公開60日以内）</option>
+            <option value="classic">定番で長く愛される（公開1年より前）</option>
+          </select>
+        </label>
         <p class="run-status" id="run-status" role="status" aria-live="polite"></p>
         <div id="run-progress" hidden>
           <div class="bar is-busy" role="progressbar" aria-label="今回の処理の進み具合（目安）" aria-valuemin="0" aria-valuemax="100"><i style="width:0"></i></div>
@@ -148,7 +155,7 @@
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
   const APP = "https://165cm.github.io/matagochi/";
   const RUN_MS = 150_000; // サーバーが1回に動く時間の目安
-  const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語を使い切りました", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
+  const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語も、話題・定番の広げ方も使い切りました（話題は14日たつとまた使えます）", axis_exhausted: "選んだ方向を使い切りました（方向を変えると続けられます）", search_day_limit: "今日の検索の上限（30回）に届きました（明日また続けられます）", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
   // 外した理由。pre：AI の前に外した（0円）／post：AI で読んだが料理にならなかった
   const SKIP = {
     description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
@@ -279,7 +286,28 @@
     const sc = el("div", undefined, "scroll");
     const t = table(["検索語", "分野", "状態"], qs.map((q) => [q.q, q.label, LABEL[q.status]]));
     [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = tr.lastChild; td.textContent = ""; td.append(el("span", LABEL[qs[i].status], `chip ${qs[i].status}`)); });
-    sc.append(t); box.append(sc);
+    sc.append(t);
+    // 使い切った後の広げ方（話題・定番）
+    const w = last.seed?.waves;
+    if (!w) { box.append(sc); return; }
+    const det = el("details"); det.open = !!last.seed.queriesLeft; // 使い切ったら畳む det.append(sc);
+    const sum_ = el("summary", `決めた検索語（${qs.length}）`); det.prepend(sum_);
+    const h = el("h3", "使い切った後の広げ方"); h.style.marginTop = "12px";
+    box.append(det, h);
+    box.append(el("p", `話題：いま使える検索語 ${w.trendReady} / ${w.trendTotal}（同じ語は14日あけて${w.trendNextAt ? `・次は ${String(w.trendNextAt).slice(0, 10)} から` : ""}）・定番：残りの料理 ${w.classicLeft} / ${w.classicTotal}`, "meta"));
+    const g = el("div", undefined, "kpis");
+    const byAxis = { trend: 0, classic: 0 };
+    for (const s of last.seed.stages || []) for (const [k, v] of Object.entries(s.byAxis || {})) byAxis[k] = (byAxis[k] || 0) + v;
+    const searched = { trend: 0, classic: 0 };
+    for (const e of w.log || []) if (!e.skipped) searched[e.axis] += 1;
+    for (const [label, key] of [["話題で増えた料理", "trend"], ["定番で増えた料理", "classic"]]) { const k = el("div", undefined, "kpi"); k.append(el("small", label), el("b", `${byAxis[key]}品`), el("small", `直近の検索 ${searched[key]}回`)); g.append(k); }
+    box.append(g);
+    const log = w.log || [];
+    if (!log.length) { box.append(el("p", "まだ広げていません。", "empty")); return; }
+    const AX = { trend: "話題", classic: "定番" };
+    const sc2 = el("div", undefined, "scroll"); sc2.style.marginTop = "8px";
+    sc2.append(table(["方向", "検索語・料理", "日", "候補", "増えた"], log.map((e) => [AX[e.axis] || e.axis, e.q, String(e.at).slice(0, 10), e.skipped === "enough" ? "もう2品ある（検索しない）" : e.picked, e.skipped ? "—" : e.added]), [3, 4]));
+    box.append(sc2);
   }
   function renderStages() {
     const box = document.getElementById("stages"); box.textContent = "";
@@ -338,7 +366,7 @@
         runStatus.textContent = `集めています…${auto ? `（自動 ${round}回目）` : ""}　このままお待ちください`;
         progress(true);
         let r;
-        try { r = await api("/api/admin/trends/seed", { yen: 100 }); }
+        try { r = await api("/api/admin/trends/seed", { yen: 100, axis: document.getElementById("axis").value }); }
         catch (error) { runStatus.textContent = `止まりました：${error.message}`; break; }
         finally { progress(false); }
         if (r.busy) { runStatus.textContent = "ほかの収集が動いています。少し待ってからもう一度どうぞ。"; break; }
@@ -358,6 +386,9 @@
     }
   }
   document.getElementById("seed-run").addEventListener("click", collect);
+  // 広げる方向は、この端末に覚えておく。
+  try { const a = localStorage.getItem("ripigochi-admin-axis"); if (["both", "trend", "classic"].includes(a)) document.getElementById("axis").value = a; } catch {}
+  document.getElementById("axis").addEventListener("change", (e) => { try { localStorage.setItem("ripigochi-admin-axis", e.target.value); } catch {} });
   document.getElementById("stop").addEventListener("click", () => { stopAuto = true; runStatus.textContent = "この回が終わったら止めます…"; });
   // ── タブ ──
   const TABS = ["seed", "adopt", "creators"];

@@ -35,3 +35,11 @@
 
 ## 8. ロールバック
 - revert で戻る。直した時刻は残る（古い版でもそのまま使われる）
+
+## 追加：検索語を使い切った後の広げ方（話題・定番）
+
+- 仕様：`docs/APP_MAP.md` §46-3
+- 変更：`api/src/trends.js`（`nextWave`・`waveStatus`・`seed({ axis })`）・`api/src/youtube.js`（`publishedBefore`）・`api/src/server.js`（`axis`・`waves`）・`admin/catalog.html`（方向の選択・広げ方の記録）
+- テスト：`api/test/seedWaves.test.js`（交互・公開日で重ならない・もう2品ある定番は検索しない・14日あけて使い直す・片方だけ使い切っても段階は続く・失敗した検索はやり直す・1日30回まで・管理の API）
+- 画面：`docs/review/wave/phone-seed.jpg`・`docs/review/wave/pc-seed.jpg`
+- 見てほしい点：2方向の公開日の分け方（60日以内／1年より前）で重複がないこと・YouTube の枠（1日30回＝3,000単位）・費用の予約と数え方が今までと同じであること
