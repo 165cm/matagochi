@@ -142,6 +142,20 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (now() - fetchedAt > SNIPPET_MAX_AGE_MS) Object.assign(result, { caption: "", channelTitle: "" });
       return { ...localizeRecipe(result), cacheHit: true };
     },
+    // 管理：保存済みの読み取り結果の、手順の時刻（stepTimes）を運営が直す（新着・みんなの定番の一覧に出る時刻）。AI は呼ばない。
+    async setStepTimes(rawUrl, stepTimes) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      const result = structuredClone(current.envelope.result);
+      const count = (result.steps || []).length;
+      const raw = Array.isArray(stepTimes) ? stepTimes : [];
+      result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : Math.floor(Number(t)); });
+      result.stepTimesFrom = "admin";
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
+      return { stepTimes: result.stepTimes };
+    },
     // 定期実行用：保存済みの結果の説明文・チャンネル名を、30日ルールに沿って取り直す（AIでの読み直しはしない）。
     async refresh(rawUrl) {
       required();

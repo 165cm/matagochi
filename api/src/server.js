@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createTicketBook, START_TICKETS } from "./tickets.js";
 import { createAuth } from "./auth.js";
-import { createTrendBook, SEED_QUERIES } from "./trends.js";
+import { createTrendBook, SEED_QUERIES, TREND_YEN_PER_AI, waveStatus } from "./trends.js";
 import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
@@ -304,12 +304,43 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/admin/trends/seed", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.seed({ yen: Number(req.body?.yen) || 100 }));
+    // axis：検索語を使い切った後に広げる方向（both＝話題と定番を交互／trend＝話題／classic＝定番）。
+    send(res, trendBook.seed({ yen: Number(req.body?.yen) || 100, axis: String(req.body?.axis || "both") }));
   });
   app.get("/api/admin/trends/seed", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.seedStatus().then((d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length })));
+    send(res, trendBook.seedStatus().then((d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length,
+      // 検索語の一覧と進み具合（済み／いまの候補を読んでいる／これから）。段階の上限の回数を出すための目安の単価。
+      queries: SEED_QUERIES.map(([q, label], i) => ({ q, label, status: i < (d.q || 0) - ((d.candidates || []).some((c) => !c.wave) ? 1 : 0) ? "done" : i < (d.q || 0) ? "current" : "todo" })),
+      waves: waveStatus(d, (deps.now || Date.now)()),
+      yenPerAi: Number(env.TREND_YEN_PER_AI) > 0 ? Number(env.TREND_YEN_PER_AI) : TREND_YEN_PER_AI })));
+  });
+  // 管理：読み取り済みのレシピを見る（材料・手順・手順の時刻）と、手順の時刻を直す。読み出すだけで AI は呼ばない。
+  app.get("/api/admin/recipes/:videoId", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, catalog.peek(canonicalYouTubeUrl(videoId)).then((r) => {
+      if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      return { videoId, title: r.title || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", planning: r.planning || null };
+    }));
+  });
+  app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, (async () => {
+      const url = canonicalYouTubeUrl(videoId);
+      const saved = await catalog.setStepTimes(url, req.body?.stepTimes);
+      // 作る画面の「▶ 2:15」（同じ動画・同じ手順を見る全員）にも、運営が直した時刻として使う。
+      const r = await catalog.peek(url);
+      // すべて消した時も同じように反映する（管理の画面と作る画面を一致させる）。
+      if ((r?.steps || []).filter(Boolean).length >= 2) await timecodeBook.fix({ url, steps: r.steps, stepTimes: saved.stepTimes }, "", { admin: true }).catch(() => {});
+      return saved;
+    })());
   });
   app.get("/api/admin/feedback", (req, res) => {
     res.setHeader("Cache-Control", "no-store");

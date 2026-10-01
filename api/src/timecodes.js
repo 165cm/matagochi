@@ -62,6 +62,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         const cached = await store.get(key);
         const entry = cached?.envelope;
         if (found(entry?.stepTimes) && TRUSTED.has(entry.source)) return answer(entry, true);
+        if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         if (!entry?.chaptersChecked) {
           const info = await snippet(videoId).catch(() => null);
           const chapters = await fromChapters(key, videoId, list, cached, household, info);
@@ -91,20 +92,24 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
       }
     },
     // だれかが直した時刻を保存して、同じ動画・同じ手順を見る全員で使う（最後に直したものが使われる）。
-    async fix({ url, steps, stepTimes }, household = "") {
+    async fix({ url, steps, stepTimes }, household = "", { admin = false } = {}) {
       required();
       const videoId = extractYouTubeVideoId(url);
       const list = normalize(steps);
       if (list.filter(Boolean).length < 2) throw new ApiError(400, "steps_required", "手順が2つ以上いります。");
       const times = cleanTimes(stepTimes, list);
-      if (!found(times)) throw new ApiError(400, "times_required", "直した時刻がありません。");
-      const dayKey = `${dayKeyOf(household)}-fix`;
-      const quota = await store.get(dayKey);
-      if ((quota?.envelope.used || 0) >= 30) throw new ApiError(429, "timecode_fix_quota", "今日はここまでです。");
-      await store.put(dayKey, { used: (quota?.envelope.used || 0) + 1 }, { ifGeneration: quota?.generation ?? 0 }).catch(() => {});
+      // 運営は「時刻をすべて消す」もできる（作る画面でも ▶ を出さない。AI で探し直さない）。
+      if (!found(times) && !admin) throw new ApiError(400, "times_required", "直した時刻がありません。");
+      // 運営（管理画面）が直す時は、1日の回数の上限を使わない。
+      if (!admin) {
+        const dayKey = `${dayKeyOf(household)}-fix`;
+        const quota = await store.get(dayKey);
+        if ((quota?.envelope.used || 0) >= 30) throw new ApiError(429, "timecode_fix_quota", "今日はここまでです。");
+        await store.put(dayKey, { used: (quota?.envelope.used || 0) + 1 }, { ifGeneration: quota?.generation ?? 0 }).catch(() => {});
+      }
       const key = keyOf(videoId, list);
       const cached = await store.get(key);
-      await store.put(key, { stepTimes: times, source: "fix", chaptersChecked: true, by: createHash("sha256").update(String(household)).digest("hex").slice(0, 12), at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 });
+      await store.put(key, { stepTimes: times, source: "fix", chaptersChecked: true, ...(found(times) ? {} : { cleared: true }), by: admin ? "admin" : createHash("sha256").update(String(household)).digest("hex").slice(0, 12), at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 });
       return { stepTimes: times, source: "fix" };
     }
   };
