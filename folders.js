@@ -141,8 +141,8 @@ function suggestFolder(title) {
 function planRecipes(list = allDinnerRecipes()) {
   const keep = new Set(Object.values(state.planOverrides || {}));
   const pick = new Map(folderList().map((f) => [f.key, folderPick(f)?.id]));
-  const hidden = hiddenParents();
-  return list.filter((r) => keep.has(r.id) || ((!r.folder || !pick.has(r.folder) || pick.get(r.folder) === r.id) && !(hidden.size && hidden.has(parentKeyOf(r)))));
+  // 「もう出さない」にした親の作り方は、ここでは外さない（自分で選んだ日・ピン留めの日だけ入るように、日ごとに propose の autoBlocked で外す）。
+  return list.filter((r) => keep.has(r.id) || !r.folder || !pick.has(r.folder) || pick.get(r.folder) === r.id);
 }
 function folderPins() {
   return Object.fromEntries(folderList().filter((f) => f.pinDay).map((f) => [f.pinDay, folderPick(f)?.id]).filter(([, id]) => id));

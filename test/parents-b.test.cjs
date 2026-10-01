@@ -67,9 +67,10 @@ test("hide a parent: not in the list or the auto plan (a chosen day stays); rest
   run(`handleDailyAction('life-dish-hide',{parent:${JSON.stringify(key)},dish:'八宝菜'})`);
   assert.deepEqual(JSON.parse(run("JSON.stringify(normalizeStarterPref(state.starterPref).hiddenDishes)")), [key]);
   assert.equal(run("starterRecipeList().filter((r)=>r.dish==='八宝菜').length"), 0);
-  assert.equal(run("planRecipes().filter((r)=>r.dish==='八宝菜').length"), 0);
+  run("state.planLength=4");
+  assert.equal(run("dailyPlan().filter((d)=>d.candidate?.recipe.dish==='八宝菜').length"), 0, "not planned automatically");
   run("state.planOverrides[today()]=discoverRecipes().find((r)=>r.dish==='八宝菜').id");
-  assert.equal(run("planRecipes().filter((r)=>r.dish==='八宝菜').length"), 1, "a day you chose yourself stays");
+  assert.equal(run("dailyPlan().filter((d)=>d.candidate?.recipe.dish==='八宝菜').length"), 1, "a day you chose yourself stays");
   assert.match(run("renderParentLine(detailRecipe())"), /出すように戻す/);
   run(`handleDailyAction('life-dish-unhide',{parent:${JSON.stringify(key)}})`);
   assert.equal(run("starterRecipeList().filter((r)=>r.dish==='八宝菜').length"), 3);
@@ -99,4 +100,16 @@ test("review fix (#123): a hidden parent's dish chosen for one day is not planne
   const ids = JSON.parse(run("JSON.stringify(dailyPlan().map((d)=>d.candidate?.recipe.id||''))"));
   assert.equal(ids[0], "hap1");
   assert.ok(ids.slice(1).every((id) => id !== "hap1"), `only the chosen day: ${ids}`);
+});
+
+test("review fix (#123 r2): a pinned dish of a hidden parent still comes on its pinned day (only that day)", async () => {
+  const run = app(items);
+  await run("loadDiscover({ force: true })");
+  run(`state.recipes.push({ ...clone(discoverRecipes().find((r)=>r.dish==='肉じゃが')), id: "nik1", folder: "fnik", curated: undefined, discover: undefined });
+       state.folders = { fnik: { key: "fnik", name: "肉じゃが", ranking: [], pinDay: String(new Date(today()+"T12:00:00").getDay()), updatedAt: nowIso() } };
+       state.planLength = 4`);
+  run(`handleDailyAction('life-dish-hide',{parent:"fnik",dish:'肉じゃが'})`);
+  const ids = JSON.parse(run("JSON.stringify(dailyPlan().map((d)=>d.candidate?.recipe.id||''))"));
+  assert.equal(ids[0], "nik1", "the pinned day keeps the pinned dish");
+  assert.ok(ids.slice(1).every((id) => id !== "nik1"), `not on other days: ${ids}`);
 });
