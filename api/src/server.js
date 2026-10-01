@@ -337,7 +337,8 @@ export function createApp(env = process.env, deps = {}) {
       const saved = await catalog.setStepTimes(url, req.body?.stepTimes);
       // 作る画面の「▶ 2:15」（同じ動画・同じ手順を見る全員）にも、運営が直した時刻として使う。
       const r = await catalog.peek(url);
-      if (saved.stepTimes.some((t) => t !== null) && (r?.steps || []).filter(Boolean).length >= 2) await timecodeBook.fix({ url, steps: r.steps, stepTimes: saved.stepTimes }, "", { admin: true }).catch(() => {});
+      // すべて消した時も同じように反映する（管理の画面と作る画面を一致させる）。
+      if ((r?.steps || []).filter(Boolean).length >= 2) await timecodeBook.fix({ url, steps: r.steps, stepTimes: saved.stepTimes }, "", { admin: true }).catch(() => {});
       return saved;
     })());
   });

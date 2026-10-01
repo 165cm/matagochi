@@ -114,9 +114,10 @@ export const WAVE_CLASSIC_DISHES = [
 ];
 // 料理名を比べる時の形（全角半角・カタカナとひらがなの違いをそろえる）。
 const dishKey = (s) => String(s || "").normalize("NFKC").replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/\s+/g, "");
+const emptyWaves = () => ({ turn: 0, trend: 0, trendAt: {}, classic: 0, log: [], n: 0 });
 // 次に使う広げ方の検索（使えるものがなければ null）。doc.waves を進める。haveDish(料理名) は、もう新着にある品数。
 export async function nextWave(doc, axis, nowMs, haveDish = async () => 0) {
-  const w = (doc.waves ||= { turn: 0, trend: 0, trendAt: {}, classic: 0, log: [], n: 0 });
+  const w = (doc.waves ||= emptyWaves());
   const trend = () => {
     for (let k = 0; k < WAVE_TREND_WORDS.length; k++) {
       const i = (w.trend + k) % WAVE_TREND_WORDS.length, q = WAVE_TREND_WORDS[i];
@@ -511,7 +512,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             else {
               const day = doc.waves?.day?.on === today ? doc.waves.day.n : 0;
               if (day >= WAVE_SEARCH_PER_DAY) { reason = "search_day_limit"; break; }
-              const waveDoc = structuredClone(doc.waves || null);
+              doc.waves ||= emptyWaves();
+              const waveDoc = structuredClone(doc.waves);
               wave = await nextWave(doc, axis, now(), haveDish);
               // 選んだ方向だけ使い切った時は、段階を終わりにしない（もう一方の方向で続けられる）。
               if (!wave) { reason = axis === "both" ? "exhausted" : "axis_exhausted"; break; }
@@ -520,7 +522,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               waveUndo = waveDoc;
             }
             let found;
-            try { found = await search(q, opts); } catch { if (wave) { doc.waves = waveUndo; } reason = "search_failed"; break; }
+            // 失敗した時は、同じ検索語をあとでやり直せるように位置を戻す（呼んだ検索の回数 day は戻さない＝1日の上限を守る）。
+            const undoWave = () => { if (wave) doc.waves = { ...waveUndo, day: doc.waves.day }; };
+            try { found = await search(q, opts); } catch { undoWave(); reason = "search_failed"; break; }
             const perChannel = {};
             const picked = [];
             for (const c of found) {
@@ -534,7 +538,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               const need = [];
               for (const c of picked) if (!(await peek(c.videoId).catch(() => null))) need.push(c.videoId);
               let details = {};
-              try { details = need.length ? await videoDetails(need) : {}; } catch { if (wave) doc.waves = waveUndo; reason = "search_failed"; break; }
+              try { details = need.length ? await videoDetails(need) : {}; } catch { undoWave(); reason = "search_failed"; break; }
               for (const c of picked) {
                 const d = details[c.videoId];
                 if (!need.includes(c.videoId)) doc.candidates.push(c);

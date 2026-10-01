@@ -105,7 +105,7 @@ test('waves: a failed search is retried later with the same word; searches per d
   const second = await book.seed({ yen: 50 });
   assert.equal(searched[1], searched[0], 'the same word again');
   assert.equal(second.reason, 'search_day_limit');
-  assert.equal(searched.length, 1 + WAVE_SEARCH_PER_DAY);
+  assert.equal(searched.length, WAVE_SEARCH_PER_DAY, 'the failed search also counts (review fix #119)');
   assert.equal(second.stage.done, false, 'continue tomorrow');
 });
 
@@ -126,4 +126,24 @@ test('waves: the admin endpoint shows the directions and passes the chosen one',
   const r = await (await fetch(base + '/api/admin/trends/seed', { method: 'POST', headers: auth, body: JSON.stringify({ yen: 10, axis: 'classic' }) })).json();
   assert.equal(r.axis, 'classic');
   assert.ok(searched.length > 0 && searched.every(([, o]) => o.publishedBefore && !o.publishedAfter), 'only classic searches');
+});
+
+test('review fix (#119): a failed search (or a failed description check after it) still counts toward the 30 searches a day, while the same word is retried', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const catalog = fakeCatalog();
+  const searched = [];
+  let searchOk = false;
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
+    videoDetails: async () => { throw new Error('quota'); },
+    search: async (q) => { searched.push(q); if (!searchOk) throw new Error('quota'); return [{ videoId: id(1), channelId: 'c1', title: '料理' }]; } });
+  for (let i = 0; i < WAVE_SEARCH_PER_DAY + 1; i++) {
+    if (i === 10) searchOk = true; // 後半は検索は通るが、説明欄の確認で失敗する
+    const r = await book.seed({ yen: 50 });
+    assert.equal(r.reason, i < WAVE_SEARCH_PER_DAY ? 'search_failed' : 'search_day_limit');
+  }
+  assert.equal(searched.length, WAVE_SEARCH_PER_DAY, 'never more than 30 searches a day');
+  assert.ok(searched.every((q) => q === WAVE_TREND_WORDS[0]), 'the same word is retried each time');
+  assert.equal((await store.get('trends/seed')).envelope.waves.day.n, WAVE_SEARCH_PER_DAY);
 });

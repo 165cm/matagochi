@@ -56,3 +56,17 @@ test('admin: the seed status lists the search words with their progress', async 
   assert.ok(s.queries[0].q && s.queries[0].label);
   assert.equal(s.yenPerAi, 1);
 });
+
+test('review fix (#119): clearing all step times also clears the shared ▶ times (no stale times, no AI search again); users still cannot clear', async (t) => {
+  const { base } = await serve(t);
+  const put = (stepTimes) => fetch(`${base}/api/admin/recipes/${V}/step-times`, { method: 'PUT', headers: admin, body: JSON.stringify({ stepTimes }) });
+  const shared = async () => (await (await fetch(`${base}/api/import/youtube/timecodes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, peek: true }) })).json());
+  assert.equal((await put([10, 20, null])).status, 200);
+  assert.deepEqual((await shared()).stepTimes, [10, 20, null]);
+  assert.equal((await put([null, null, null])).status, 200);
+  const after = await shared();
+  assert.deepEqual(after.stepTimes, [null, null, null], 'the cooking screen matches the admin screen');
+  assert.equal(after.source, 'fix');
+  const user = await fetch(`${base}/api/import/youtube/timecodes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, stepTimes: [null, null, null] }) });
+  assert.equal(user.status, 400, 'a user fix still needs at least one time');
+});
