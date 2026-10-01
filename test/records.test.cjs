@@ -142,3 +142,37 @@ test("review fix (#109): one person's newer rating does not drop the other's 'we
   run(`state.evaluations.push({ ...state.evaluations[0], id: "e4", cookedAt: "2026-09-29", familyRepeatCycles: { A: "monthly" }, updatedAt: "2026-09-29T12:00:00Z" })`);
   assert.deepEqual(J(run, "stapleRecipes((e) => recipeById(e.recipeId))"), []);
 });
+
+test("PR 6c: the records calendar shows the month (Sunday first), a photo on cooked days, '+1' for two dishes, and opens the record", () => {
+  const run = app();
+  setup(run, [evalOf("e1", "2026-10-01", {}), evalOf("e0", "2026-09-28", {})]);
+  run(`state.evaluations.push({ id: "e2", recipeId: "starter-04", recipeTitle: "さば", cookedAt: "2026-10-01", familyRepeatCycles: {} });`);
+  const html = run("renderReflection()");
+  assert.match(html, /class="record-cal"/, "calendar is the default view");
+  assert.equal((html.match(/cal-cell is-blank/g) || []).length, 4, "Oct 1 2026 is a Thursday → 4 blanks");
+  assert.equal((html.match(/class="cal-cell[^"]*"/g) || []).length - 4, 31, "31 days");
+  assert.match(html, /data-action="life-edit-record" data-id="e2" aria-label="10月1日 唐揚げ・さばと豆腐のみそ丼の記録を開く"/);
+  assert.match(html, /<b class="cal-more">\+1<\/b>/);
+  assert.match(html, /cal-cell is-today/);
+  assert.doesNotMatch(html, /data-id="e0"/, "only this month");
+  // 写真の一覧に切り替え（覚えていなくても動く）
+  run(`handleDailyAction("life-refl-view", { view: "grid" })`);
+  const grid = run("renderReflection()");
+  assert.doesNotMatch(grid, /record-cal/);
+  assert.match(grid, /class="table-grid"/);
+  assert.match(grid, /aria-pressed="true">🖼 写真/);
+  // 前の月
+  run(`handleDailyAction("life-refl-view", { view: "cal" }); reflMonth = -1;`);
+  const prev = run("renderReflection()");
+  assert.match(prev, /data-id="e0"/);
+  assert.equal((prev.match(/cal-cell is-blank/g) || []).length, 2, "Sep 1 2026 is a Tuesday");
+});
+
+test("PR 6c: 'cook it again' is counted (meal_replanned) only when it actually adds a day", () => {
+  const run = app();
+  setup(run, [evalOf("e1", "2026-09-20", { me: "monthly" })]);
+  run(`handleDailyAction("life-replan", { recipe: "own-karaage" })`);
+  run(`handleDailyAction("life-replan", { recipe: "own-karaage" })`); // もう入っている
+  assert.equal(J(run, "state.experienceEvents.filter((e) => e.name === 'meal_replanned').length"), 1);
+  assert.equal(J(run, "usageSummary(today()).events.meal_replanned"), 1);
+});

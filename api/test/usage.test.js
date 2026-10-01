@@ -12,7 +12,7 @@ test('usage: one anonymous row a day per device, merged, only known events; the 
   await assert.rejects(book.record({ anon: 'Bad Id', day: '2026-10-08' }), { code: 'invalid_usage' });
   await assert.rejects(book.record({ anon: 'cccccccc3', day: '2026-01-01' }), { code: 'invalid_usage' });
   const r = await book.report('2026-10-08', '2026-10-08');
-  assert.deepEqual(r.byDay[0], { day: '2026-10-08', users: 2, synced: 1, cooked: 100, rated: 50, decided: 50 });
+  assert.deepEqual(r.byDay[0], { day: '2026-10-08', users: 2, synced: 1, cooked: 100, rated: 50, decided: 50, replanned: 0 });
   assert.deepEqual(r.byAge.d0, { users: 1, cooked: 1, rated: 0, decided: 1 }, 'events of the day are merged');
   assert.deepEqual(r.byAge['d7-13'], { users: 1, cooked: 1, rated: 1, decided: 0 });
   await assert.rejects(book.report('2026-10-09', '2026-10-08'), { code: 'invalid_range' });
@@ -25,4 +25,14 @@ test('usage: the dining-policy talk is counted by number only (started / follow-
   await book.record({ anon: 'dddddddd4', day: '2026-10-08', n: 0, events: { talk_started: 1, talk_followup: 2, talk_fixed: 1, talk_saved: 1, talk_text: 3 } });
   const row = (await store.get('usage/2026-10-08')).envelope.users.dddddddd4;
   assert.deepEqual(row.e, { talk_started: 1, talk_followup: 2, talk_fixed: 1, talk_saved: 1 }, 'unknown keys (and any text) are dropped');
+});
+
+test('usage: "cook it again" from a record is counted by number only (meal_replanned, PR 6c)', async () => {
+  const now = Date.parse('2026-10-08T03:00:00Z');
+  const store = createMemorySyncStore();
+  const book = createUsageBook(store, { now: () => now });
+  await book.record({ anon: 'eeeeeeee5', day: '2026-10-08', n: 3, events: { meal_replanned: 2, recipe_title: 1 } });
+  await book.record({ anon: 'ffffffff6', day: '2026-10-08', n: 3, events: { meal_cooked: 1 } });
+  assert.deepEqual((await store.get('usage/2026-10-08')).envelope.users.eeeeeeee5.e, { meal_replanned: 2 });
+  assert.equal((await book.report('2026-10-08', '2026-10-08')).byDay[0].replanned, 50);
 });

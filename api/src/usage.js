@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 // 使われ方の集計（個人・家庭を特定しない）。端末ごとのランダムな番号で、1日1行：
 //   何日目か（使い始めた日から）・その日に起きたこと（献立を決めた・作った・評価した…の回数）・同期しているか・家族の人数・レシピ数。
 // 「1週間後にまた開いてくれているか」「ふたりの評価が何日目にたまるか」を確かめるため。設定から止められる。
-export const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "plan_url_inserted", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick", "talk_started", "talk_followup", "talk_fixed", "talk_saved"];
+export const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "plan_url_inserted", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick", "talk_started", "talk_followup", "talk_fixed", "talk_saved", "meal_replanned"];
 const DAY_USERS = 20_000;
 const DAY = 86_400_000;
 const BUCKETS = [[0, 0], [1, 1], [2, 2], [3, 6], [7, 13], [14, 27], [28, 99999]];
@@ -41,7 +41,7 @@ export function createUsageBook(store, { now = Date.now } = {}) {
       for (const day of days) {
         const users = Object.values((await store.get(key(day)))?.envelope.users || {});
         const share = (ev) => users.length ? Math.round((users.filter((u) => u.e?.[ev]).length / users.length) * 100) : 0;
-        byDay.push({ day, users: users.length, synced: users.filter((u) => u.s).length, cooked: share("meal_cooked"), rated: share("meal_rated"), decided: share("plan_confirmed") });
+        byDay.push({ day, users: users.length, synced: users.filter((u) => u.s).length, cooked: share("meal_cooked"), rated: share("meal_rated"), decided: share("plan_confirmed"), replanned: share("meal_replanned") });
         for (const u of users) { const b = bucketOf(u.n); byAge[b] ||= { users: 0, cooked: 0, rated: 0, decided: 0 }; byAge[b].users += 1; for (const [k, ev] of [["cooked", "meal_cooked"], ["rated", "meal_rated"], ["decided", "plan_confirmed"]]) if (u.e?.[ev]) byAge[b][k] += 1; }
       }
       return { from, to, byDay, byAge };
