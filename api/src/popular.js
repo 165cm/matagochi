@@ -11,6 +11,8 @@ const VIDEO = /^[\w-]{11}$/;
 const SEGMENT = /^(any|[LR]{3})-[0-5]$/;
 export const POPULAR_MIN = 3;
 const monthOf = (ms) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 7);
+// 日本時間の暦で、この月と前の月（「31日前」だと、10月1日に8月を選んでしまう）。
+const thisAndLastMonth = (ms) => { const m = monthOf(ms); const [y, mo] = m.split("-").map(Number); return [m, mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, "0")}`]; };
 const KINDS = ["planned", "cooked", "shown"];
 const KEPT = "popular/kept";
 const KEPT_MAX = 2000;
@@ -58,7 +60,7 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
     // 管理用：この月と前の月の、動画ごとの候補に出した回数・献立に入れた回数・作った回数と採用率、残しているか。
     async stats() {
       required();
-      const months = [monthOf(now()), monthOf(now() - 31 * 86_400_000)];
+      const months = thisAndLastMonth(now());
       const totals = {};
       for (const m of months) {
         for (const [id, r] of Object.entries((await store.get(`popular/${m}`))?.envelope.recipes || {})) {
@@ -77,7 +79,7 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
       const seg = SEGMENT.test(segment) ? segment : "any-0";
       const hit = cache.get(seg);
       if (hit && hit.until > now()) return hit.value;
-      const months = [monthOf(now()), monthOf(now() - 31 * 86_400_000)];
+      const months = thisAndLastMonth(now());
       const totals = {};
       for (const m of months) {
         const entry = await store.get(`popular/${m}`);

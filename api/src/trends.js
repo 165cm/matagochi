@@ -208,23 +208,32 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         for (const id of excluded) delete channels.channels[id];
         const quota = () => Math.min(perDay - (current.byDay[today] || 0), weekMax - current.items.length);
         const aiWeek = () => Object.values(current.aiByDay).reduce((a, b) => a + b, 0);
-        // 月の費用：これまでの回数（trends/cost）＋この実行で呼んだ回数。上限の回数＝月の上限（円）÷ 1回の目安（円）。
+        // 月の費用：上限の回数＝月の上限（円）÷ 1回の目安（円）。AI を呼ぶ前に、この実行で使ってよい回数を trends/cost に**先に書いて予約**する
+        // （書けなければ、この実行では AI を呼ばない）。終わりに、使わなかった分を戻す（戻せなくても、多めに数えたままになるだけ＝上限は超えない）。
         const month = today.slice(0, 7);
-        const costEntry = await store.get("trends/cost");
-        const costDoc = { months: { ...(costEntry?.envelope.months || {}) } };
-        let monthUsed = costDoc.months[month]?.ai || 0;
         const monthCap = Math.max(0, Math.floor(yenPerMonth / Math.max(0.01, yenPerAi)));
-        const canSpend = () => (current.aiByDay[today] || 0) < aiPerDay && aiWeek() < aiPerWeek && monthUsed < monthCap;
-        const spend = () => { current.aiByDay[today] = (current.aiByDay[today] || 0) + 1; monthUsed += 1; };
-        const saveCost = async () => {
-          costDoc.months[month] = { ai: monthUsed, yenPerAi, cap: yenPerMonth };
-          for (const m of Object.keys(costDoc.months).sort().slice(0, -12)) delete costDoc.months[m];
+        const writeCost = async (change) => {
           for (let attempt = 0; attempt < 2; attempt++) {
             const cur = await store.get("trends/cost");
-            if (await store.put("trends/cost", costDoc, { ifGeneration: cur?.generation ?? 0 }).catch(() => false)) return;
+            const doc = { months: { ...(cur?.envelope.months || {}) } };
+            const ai = change(doc.months[month]?.ai || 0);
+            if (ai === null) return null;
+            doc.months[month] = { ai, yenPerAi, cap: yenPerMonth };
+            for (const m of Object.keys(doc.months).sort().slice(0, -12)) delete doc.months[m];
+            if (await store.put("trends/cost", doc, { ifGeneration: cur?.generation ?? 0 }).catch(() => false)) return ai;
           }
+          return null;
         };
-        const budgetReason = () => (monthUsed >= monthCap ? "trend_month_budget" : "trend_ai_budget");
+        let reserved = 0, spent = 0, monthUsed = 0;
+        const wanted = Math.max(0, Math.min(aiPerDay - (current.aiByDay[today] || 0), aiPerWeek - aiWeek()));
+        const after = await writeCost((used) => { monthUsed = used; reserved = Math.max(0, Math.min(wanted, monthCap - used)); return reserved ? used + reserved : null; });
+        // 予約を書けなかった（保存先の失敗・競合）：この実行では AI を呼ばず、失敗として次の実行でやり直す（done にしない）。
+        const reserveFailed = after === null && reserved > 0;
+        if (after === null) reserved = 0;
+        const canSpend = () => (current.aiByDay[today] || 0) < aiPerDay && aiWeek() < aiPerWeek && spent < reserved;
+        const spend = () => { current.aiByDay[today] = (current.aiByDay[today] || 0) + 1; spent += 1; };
+        const saveCost = async () => { if (reserved > spent) await writeCost((used) => Math.max(0, used - (reserved - spent))); };
+        const budgetReason = () => (monthUsed + spent >= monthCap ? "trend_month_budget" : "trend_ai_budget");
         // 検索は1つずつ。失敗したものがあれば、その組は「済み」にしない（次の実行でやり直す。既出の動画は重ねない）。
         const fetchAll = async (calls) => { const out = []; let failed = 0; for (const c of calls) { try { out.push(...(await c())); } catch { failed += 1; } } return { out, failed }; };
         const addCandidates = (found, seen) => {
@@ -242,7 +251,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         let paused = "", limited = "", scannedNow = false, searchFailedNow = false;
         while (quota() > 0 && now() - started < budgetMs) {
           if ((await aiUsedToday()) >= Math.floor(dailyLimit / 2)) { paused = "ai_budget"; break; }
-          if (!canSpend()) { limited = budgetReason(); break; }
+          if (!canSpend()) { if (reserveFailed) paused = "cost_not_saved"; else limited = budgetReason(); break; }
           const seen = () => new Set([...index.weeks.flatMap((w) => w.items.map((i) => i.videoId)), ...current.candidates]);
           const publishedAfter = new Date(now() - 14 * DAY).toISOString();
           // ① その日の最初に、当たりやすいチャンネルの新着動画（直近2週間）を見る。残っている候補より先。
@@ -282,7 +291,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               current.tried.pop();
               if (kind === "retry") { current.retries[videoId] = (current.retries[videoId] || 0) + 1; paused = "temporary_error"; skip("retry"); }
               else if (kind === "wait") paused = "temporary_error"; // 直前の失敗の待ち時間・分析中。失敗の回数には入れない
-              else if (kind === "budget") limited = budgetReason();
+              else if (kind === "budget") { if (reserveFailed) paused = "cost_not_saved"; else limited = budgetReason(); }
               else paused = STOP_CODES[error.code];
               await writeIndex(index);
               break;
@@ -300,7 +309,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // done：今日はもう集めなくてよい（今日の分・今週の分がそろった／新着集めの AI の枠を使い切った／候補がもうない）。
         // 失敗（通信・一時的な失敗・AI全体の枠・設定の不足）で止めた時は done にしない（paused を見て、次の実行でやり直す）。
         return { week, day: today, items: current.items.length, today: current.byDay[today] || 0, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds, skipped: current.skipped || {}, catches: catchesWritten,
-          ai: { today: current.aiByDay[today] || 0, week: aiWeek(), perDay: aiPerDay, perWeek: aiPerWeek, month: monthUsed, monthCap, yen: Math.round(monthUsed * yenPerAi), yenCap: yenPerMonth }, ...(paused ? { paused } : {}), ...(limited ? { limited } : {}),
+          ai: { today: current.aiByDay[today] || 0, week: aiWeek(), perDay: aiPerDay, perWeek: aiPerWeek, month: monthUsed + spent, monthCap, yen: Math.round((monthUsed + spent) * yenPerAi), yenCap: yenPerMonth }, ...(paused ? { paused } : {}), ...(limited ? { limited } : {}),
           done: !paused && (quota() <= 0 || !!limited || exhausted) };
       } finally { await unlock(); }
     },
@@ -317,7 +326,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // 表示用：取得から28日以内のものすべてを、日ごとに決まるランダムな順で。保存済みの結果を読み出すだけ（AIを呼ばない）。
     async list() {
       required();
-      if (cache && cache.until > now()) return cache.value;
+      const day = new Date(now() + 9 * 3_600_000).toISOString().slice(0, 10);
+      // 日ごとの順なので、日本時間の日付が変わったらキャッシュも使わない。
+      if (cache && cache.until > now() && cache.day === day) return cache.value;
       const entry = await readIndex();
       const excluded = await optedOut();
       const saved = (await store.get("trends/catches"))?.envelope || {};
@@ -340,10 +351,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       // 投稿者のアイコン：集める側が保存したものを使うだけ。
       const iconMap = pruneIcons((await store.get("trends/icons"))?.envelope, now());
       items.forEach((i) => { if (iconMap[i.channelId]) i.channelThumb = iconMap[i.channelId].url; });
-      const day = new Date(now() + 9 * 3_600_000).toISOString().slice(0, 10);
       items.sort((a, b) => dailyRank(day, a.videoId) - dailyRank(day, b.videoId));
       const value = { items, updatedAt: new Date(now()).toISOString() };
-      cache = { value, until: now() + 10 * 60_000 };
+      cache = { value, until: now() + 10 * 60_000, day };
       return value;
     }
   };

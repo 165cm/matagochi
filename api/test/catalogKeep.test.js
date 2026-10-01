@@ -91,3 +91,64 @@ test('PR 4b: GET /api/admin/catalog needs the admin token and lists adoption, co
   const body = await r.json();
   assert.deepEqual(Object.keys(body).sort(), ['askConsent', 'cost', 'items']);
 });
+
+test('review fix (#116): the AI calls are reserved in trends/cost before calling; if that cannot be saved, no AI is called and the run is not "done"', async () => {
+  let now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const put = store.put.bind(store);
+  let failCost = true;
+  store.put = async (key, ...rest) => (failCost && key === 'trends/cost' ? false : put(key, ...rest));
+  const catalog = fakeCatalog();
+  const make = () => createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 20, aiPerDay: 99, aiPerWeek: 99, yenPerMonth: 20, yenPerAi: 5,
+    search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
+  const first = await make().step();
+  assert.equal(catalog.ai, 0, 'no reservation → no AI call');
+  assert.equal(first.paused, 'cost_not_saved');
+  assert.equal(first.done, false);
+  now += DAY;
+  await make().step();
+  assert.equal(catalog.ai, 0, 'still nothing on the next day');
+  failCost = false;
+  now += DAY;
+  await make().step();
+  now += DAY;
+  await make().step();
+  assert.equal(catalog.ai, 4, 'never more than the monthly cap (20円 ÷ 5円)');
+  // 予約したあと、使わなかった分を戻せなくても、上限は超えない（多めに数えたまま）
+  const store2 = createMemorySyncStore();
+  const put2 = store2.put.bind(store2);
+  let writes = 0;
+  store2.put = async (key, ...rest) => (key === 'trends/cost' && ++writes > 1 ? false : put2(key, ...rest));
+  const c2 = fakeCatalog();
+  const b2 = createTrendBook(store2, { catalog: c2, now: () => now, perDay: 1, weekMax: 20, aiPerDay: 3, aiPerWeek: 99, yenPerMonth: 20, yenPerAi: 5, search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
+  await b2.step();
+  assert.equal(c2.ai, 1);
+  assert.equal((await store2.get('trends/cost')).envelope.months['2026-10'].ai, 3, 'the reservation (3) stays: counted high, never low');
+});
+
+test('review fix (#116): admin stats use the previous calendar month in Japan (on Oct 1 that is September, not August)', async () => {
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  await store.put('popular/2026-09', { recipes: { [ids[0]]: { all: 2, seg: {}, shown: 5, planned: 2 } } }, { ifGeneration: 0 });
+  const book = createPopularBook(store, { catalog, now: () => Date.parse('2026-09-30T16:00:00Z') }); // 10月1日 01:00 JST
+  const s = (await book.stats()).find((x) => x.videoId === ids[0]);
+  assert.deepEqual([s.shown, s.planned, s.rate], [5, 2, 40]);
+  const jan = createPopularBook(store, { catalog, now: () => Date.parse('2027-01-01T03:00:00Z') });
+  await store.put('popular/2026-12', { recipes: { [ids[1]]: { all: 1, seg: {}, shown: 1, planned: 1 } } }, { ifGeneration: 0 });
+  assert.ok((await jan.stats()).some((x) => x.videoId === ids[1]), 'January sees December');
+});
+
+test('review fix (#116): the cached trend list is not reused across midnight in Japan, so a day has one order', async () => {
+  let now = Date.parse('2026-10-05T14:59:00Z'); // 23:59 JST
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  for (const id of ids) await catalog.import(`https://www.youtube.com/watch?v=${id}`);
+  await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: ids.map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
+  const a = createTrendBook(store, { catalog, now: () => now, search: async () => [] });
+  const before = (await a.list()).items.map((i) => i.videoId);
+  now += 2 * 60_000; // 00:01 JST
+  const sameInstance = (await a.list()).items.map((i) => i.videoId);
+  const fresh = (await createTrendBook(store, { catalog, now: () => now, search: async () => [] }).list()).items.map((i) => i.videoId);
+  assert.deepEqual(sameInstance, fresh);
+  assert.notDeepEqual(before, fresh, 'a new day, a new order');
+});
