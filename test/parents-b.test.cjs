@@ -74,3 +74,29 @@ test("hide a parent: not in the list or the auto plan (a chosen day stays); rest
   run(`handleDailyAction('life-dish-unhide',{parent:${JSON.stringify(key)}})`);
   assert.equal(run("starterRecipeList().filter((r)=>r.dish==='八宝菜').length"), 3);
 });
+
+test("review fix (#123): compare does not overwrite a weekday pin", async () => {
+  const run = app(items);
+  await run("loadDiscover({ force: true })");
+  run(`state.recipes.push({ ...clone(discoverRecipes().find((r)=>r.dish==='肉じゃが')), id: "nik1", folder: "fnik", curated: undefined, discover: undefined });
+       state.folders = { fnik: { key: "fnik", name: "肉じゃが", ranking: [], pinDay: String(new Date(today()+"T12:00:00").getDay()), updatedAt: nowIso() } };
+       state.planLength = 3`);
+  const key = run("parentKeyOf(discoverRecipes().find((r)=>r.dish==='八宝菜'))");
+  run(`handleDailyAction('life-dish-compare',{parent:${JSON.stringify(key)},dish:'八宝菜'})`);
+  assert.equal(run("state.planOverrides[today()] || ''"), "", "the pinned day is left alone");
+  assert.equal(run("dailyPlan()[0].candidate?.recipe.id"), "nik1");
+});
+
+test("review fix (#123): a hidden parent's dish chosen for one day is not planned automatically on other days", async () => {
+  const run = app(items);
+  await run("loadDiscover({ force: true })");
+  run(`state.recipes.push({ ...clone(discoverRecipes()[0]), id: "hap1", curated: undefined, discover: undefined });
+       state.starterPref = { ...normalizeStarterPref(state.starterPref), show: false, updatedAt: nowIso() };
+       state.planLength = 4`);
+  const key = run("parentKeyOf(recipeById('hap1'))");
+  run(`handleDailyAction('life-dish-hide',{parent:${JSON.stringify(key)},dish:'八宝菜'})`);
+  run("state.planOverrides[today()]='hap1'");
+  const ids = JSON.parse(run("JSON.stringify(dailyPlan().map((d)=>d.candidate?.recipe.id||''))"));
+  assert.equal(ids[0], "hap1");
+  assert.ok(ids.slice(1).every((id) => id !== "hap1"), `only the chosen day: ${ids}`);
+});

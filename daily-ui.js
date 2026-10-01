@@ -332,6 +332,8 @@ function dailyPlan({ exclude = [] } = {}) {
     rounds: rhythmOn() ? currentBlocks().map((b) => b.dates) : null,
     pins: folderPins(),
     parentOf: parentKeyOf,
+    // 「もう出さない」にした親の作り方は、自分で選んだ日だけ（ほかの日に自動では入れない）。
+    autoBlocked: (() => { const hp = hiddenParents(); return hp.size ? (r) => hp.has(parentKeyOf(r)) : () => false; })(),
     // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みと、家族が「見せる」にした好み（✓ だけ）を加点に使う。
     preferenceOf: state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : undefined,
   });

@@ -513,6 +513,8 @@
     preferenceOf = () => null,
     // 親（料理名・定番フォルダ）のキー。同じ親は、自動の献立では週1回まで（APP_MAP §48）。
     parentOf = (r) => r?.folder || "",
+    // 自動では選ばない料理（「もう出さない」にした親の作り方など）。自分で選んだ日・ピン留めの日だけ入る。
+    autoBlocked = () => false,
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -572,7 +574,7 @@
       )
         return { date, off: true };
       const candidates = recipes
-        .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity)
+        .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity && (!autoBlocked(r) || overrides[date] === r.id || pins[String(new Date(date + "T12:00:00").getDay())] === r.id))
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
         .filter((x) => x.ok && (!x.challenge || challenges < 1))
         .map((x) => ({

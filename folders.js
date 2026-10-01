@@ -81,9 +81,11 @@ function dishCompare(key) {
   const kids = parentChildren(key);
   const p = dailyProfile();
   const used = new Set(Object.values(state.planOverrides || {}));
+  const pins = folderPins();
   let n = 0;
   for (const d of dailyPlan()) {
-    if (d.off || d.slot || state.planOverrides[d.date] || d.date < today()) continue;
+    // 決めた日・自分で選んだ日・曜日のピン留め・お休み・過去の日には入れない。
+    if (d.off || d.slot || state.planOverrides[d.date] || pins[String(new Date(d.date + "T12:00:00").getDay())] || d.date < today()) continue;
     const pick = kids.filter((r) => !used.has(r.id)).map((r) => ({ r, fit: Lifestyle.fit(r, p, d.date) })).filter((x) => x.fit.ok).sort((a, b) => (b.fit.score || 0) - (a.fit.score || 0))[0];
     if (!pick) break;
     state.planOverrides[d.date] = pick.r.id; used.add(pick.r.id); n += 1;
