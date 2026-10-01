@@ -138,7 +138,7 @@ export async function nextWave(doc, axis, nowMs, haveDish = async () => 0) {
   const order = axis === "trend" ? [trend] : axis === "classic" ? [classic] : (w.turn++ % 2 ? [classic, trend] : [trend, classic]);
   for (const f of order) {
     const next = await f();
-    if (next) { const entry = { n: ++w.n, axis: next.axis, q: next.q, label: next.label, at: new Date(nowMs).toISOString(), picked: 0, added: 0 }; w.log.push(entry); w.log = w.log.slice(-200); return { ...next, n: entry.n }; }
+    if (next) { const entry = { n: ++w.n, axis: next.axis, q: next.q, label: next.label, at: new Date(nowMs).toISOString(), picked: 0, added: 0, ai: 0, aiAdded: 0 }; /* ai・aiAdded は0から数える（記録がない古い検索と区別する） */ w.log.push(entry); w.log = w.log.slice(-200); return { ...next, n: entry.n }; }
   }
   w.log = w.log.slice(-200);
   return null;
@@ -149,7 +149,8 @@ export function waveStatus(doc, nowMs) {
   const ready = WAVE_TREND_WORDS.filter((q) => nowMs - (Date.parse(w.trendAt?.[q] || 0) || 0) >= WAVE_TREND_REUSE_DAYS * DAY).length;
   const next = WAVE_TREND_WORDS.map((q) => Date.parse(w.trendAt?.[q] || 0) || 0).filter((t) => nowMs - t < WAVE_TREND_REUSE_DAYS * DAY).sort((a, b) => a - b)[0];
   return { trendReady: ready, trendTotal: WAVE_TREND_WORDS.length, trendNextAt: !ready && next ? new Date(next + WAVE_TREND_REUSE_DAYS * DAY).toISOString() : null,
-    classicLeft: Math.max(0, WAVE_CLASSIC_DISHES.length - (w.classic || 0)), classicTotal: WAVE_CLASSIC_DISHES.length, log: (w.log || []).slice(-60).reverse() };
+    classicLeft: Math.max(0, WAVE_CLASSIC_DISHES.length - (w.classic || 0)), classicTotal: WAVE_CLASSIC_DISHES.length,
+    searchedToday: w.day?.on === new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10) ? w.day.n : 0, searchPerDay: WAVE_SEARCH_PER_DAY, log: (w.log || []).slice(-60).reverse() };
 }
 // 対象の国と言語。いまは日本の動画だけ（タイトルに日本語がない動画は外す）。海外展開の時はここに国を足す。
 export const TREND_MARKET = { regionCode: "JP", relevanceLanguage: "ja", titleLooksLocal: (title) => /[ぁ-んァ-ヶ一-龠]/.test(String(title || "")) };
@@ -569,6 +570,11 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             catch (error) { return { c, error }; }
           }));
           const back = [];
+          // 方向ごとの効率を比べるため、AI で読んだ本数を検索ごとに数える（戻した候補・0円は数えない）。
+          for (const { c, free, error } of results) {
+            if (!c.wave || free || (error && (error.code === "trend_ai_budget" || WAIT_CODES.has(error.code) || STOP_CODES[error.code]))) continue;
+            const e = (doc.waves?.log || []).find((x) => x.n === c.wave); if (e) e.ai = (e.ai || 0) + 1;
+          }
           for (const { c, r, free, error } of results) {
             if (error) {
               if (error.code === "trend_ai_budget") { back.push(c); reason ||= why(); continue; }
@@ -585,7 +591,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             stage.added.push({ videoId: c.videoId, label: c.label, minutes: r.planning?.minutes || null, free });
             stage.byQuery[c.label] = (stage.byQuery[c.label] || 0) + 1;
             if (c.axis) { stage.byAxis = stage.byAxis || {}; stage.byAxis[c.axis] = (stage.byAxis[c.axis] || 0) + 1; }
-            if (c.wave) { const e = (doc.waves?.log || []).find((x) => x.n === c.wave); if (e) e.added += 1; }
+            // aiAdded：AI で読んで料理になった本数（0円の料理は数えない。「当たり」＝ aiAdded ÷ ai の分子）。
+            if (c.wave) { const e = (doc.waves?.log || []).find((x) => x.n === c.wave); if (e) { e.added += 1; if (!free) e.aiAdded = (e.aiAdded || 0) + 1; } }
           }
           // 読めなかった候補（AI の枠・止める理由）は、次に押した時のために先頭へ戻す。
           if (back.length) doc.candidates.unshift(...back);
