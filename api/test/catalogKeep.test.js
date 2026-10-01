@@ -152,3 +152,30 @@ test('review fix (#116): the cached trend list is not reused across midnight in 
   assert.deepEqual(sameInstance, fresh);
   assert.notDeepEqual(before, fresh, 'a new day, a new order');
 });
+
+test('review fix (#116 r2): if returning the unused calls is saved but the reply is lost, it is not applied twice (never counted low)', async () => {
+  let now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const put = store.put.bind(store);
+  let costWrites = 0;
+  // 2回目の trends/cost の書き込み（使わなかった分を返す）は、保存されたあとで通信が切れる
+  store.put = async (key, ...rest) => {
+    if (key !== 'trends/cost') return put(key, ...rest);
+    costWrites += 1;
+    const ok = await put(key, ...rest);
+    if (costWrites === 2) throw Object.assign(new Error('connection reset'), { code: 'ECONNRESET' });
+    return ok;
+  };
+  const catalog = fakeCatalog();
+  let catches = 0; // ひとことキャッチも AI を1回使う
+  const calls = () => catalog.ai + catches;
+  const make = () => createTrendBook(store, { catalog, now: () => now, writeCatches: async () => { catches += 1; return {}; }, perDay: 1, weekMax: 20, aiPerDay: 3, aiPerWeek: 99, yenPerMonth: 20, yenPerAi: 5,
+    search: async () => ids.map((videoId, i) => ({ videoId, channelId: `ch${i}`, title: 'レシピ' })) });
+  await make().step();
+  const used = calls();
+  assert.equal(used, 2, 'the recipe and its catch copy');
+  assert.equal((await store.get('trends/cost')).envelope.months['2026-10'].ai, used, 'reserved 3, the unused 1 returned only once');
+  for (let d = 0; d < 6; d++) { now += DAY; await make().step(); }
+  assert.ok(calls() <= 4, `never more than the monthly cap of 4 (${calls()})`);
+  assert.ok((await store.get('trends/cost')).envelope.months['2026-10'].ai >= calls(), 'never counted low');
+});

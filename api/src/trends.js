@@ -220,7 +220,11 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             if (ai === null) return null;
             doc.months[month] = { ai, yenPerAi, cap: yenPerMonth };
             for (const m of Object.keys(doc.months).sort().slice(0, -12)) delete doc.months[m];
-            if (await store.put("trends/cost", doc, { ifGeneration: cur?.generation ?? 0 }).catch(() => false)) return ai;
+            // 断られた（競合＝書かれていない）時だけ、読み直してもう一度。例外（通信が切れた等）は、書けたかどうか分からないので
+            // やり直さない（返す処理を2回当てて少なく数えないため。予約なら AI を呼ばず、返す処理なら多めに数えたままにする）。
+            let ok;
+            try { ok = await store.put("trends/cost", doc, { ifGeneration: cur?.generation ?? 0 }); } catch { return null; }
+            if (ok) return ai;
           }
           return null;
         };
