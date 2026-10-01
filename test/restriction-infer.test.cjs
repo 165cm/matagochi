@@ -25,3 +25,11 @@ test("dislikes are not widened by the guesses (e.g. miso is not 'fish' for someo
   assert.equal(ok(dish("豆腐のみそ汁", ["豆腐", "みそ"]), { restrictions: ["魚"] }), false, "a restriction is careful: miso may contain fish stock");
   assert.equal(ok(dish("鮭のホイル焼き", ["鮭"]), { dislikes: ["鮭"] }), false, "named ingredients still count for dislikes");
 });
+
+test("review fix (#115): 牛蒡 is not meat, and common spellings (katakana, half-width, kanji) are caught", () => {
+  assert.equal(ok(dish("きんぴら", ["牛蒡", "にんじん"]), { restrictions: ["肉"] }), true, "牛蒡 (burdock) is a vegetable");
+  for (const name of ["タラ", "ﾀﾗ", "ブリ", "マグロ", "サーモン", "アジ", "カジキ", "鱈", "鰤", "鮪"]) assert.equal(ok(dish(`${name}の料理`, [name]), { restrictions: ["魚"] }), false, name);
+  for (const name of ["ササミ", "笹身", "合挽き肉", "合挽き", "合びき", "牛こま", "ベーコン", "ｳｲﾝﾅｰ"]) assert.equal(ok(dish(`${name}の料理`, [name]), { restrictions: ["肉"] }), false, name);
+  // 似た名前の別のもの
+  for (const name of ["タラゴン", "ブリオッシュ", "アジアンソース"]) assert.equal(ok(dish(`${name}の料理`, [name]), { restrictions: ["魚"] }), true, name);
+});
