@@ -223,11 +223,14 @@ ${snippet.description || ""}
 `.trim();
 }
 
-function parseJsonResponse(text) {
+export function parseJsonResponse(text) {
   const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch {
+    // 答えの前後に文がついている時は、最初の「{」から最後の「}」までを読み直す（AI をもう一度呼ばない）。
+    const start = cleaned.indexOf("{"), end = cleaned.lastIndexOf("}");
+    if (start >= 0 && end > start) { try { return JSON.parse(cleaned.slice(start, end + 1)); } catch {} }
     throw new ApiError(502, "gemini_invalid_json", "Geminiの解析結果をJSONとして読み取れませんでした。");
   }
 }

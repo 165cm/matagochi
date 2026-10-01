@@ -7,143 +7,429 @@
 <title>品ぞろえ｜リピごち 管理</title>
 <link rel="icon" href="../icons/favicon-32.png">
 <style>
-  /* 運営だけが使う品ぞろえの画面（APP_MAP §45・§46）。管理用の合言葉がないと、何も読めない・動かせない。 */
-  :root { --bg: #fff8ee; --surface: #fffdf8; --ink: #2a2420; --muted: #7a6e64; --line: #efe4d6; --tomato: #ee6a4c; --ok: #2f7d4f; }
+  /* 運営だけが使う品ぞろえのダッシュボード（APP_MAP §45・§46）。管理用の合言葉がないと、何も読めない・動かせない。 */
+  :root {
+    --bg: #fff8ee; --surface: #fffdf8; --ink: #2a2420; --muted: #7a6e64; --line: #efe4d6; --tomato: #ee6a4c; --ok: #2f7d4f;
+    /* グラフの色（分類の順は固定。docs: dataviz の既定の並び。明るい面で検証ずみ・数字はいつも文字でも出す） */
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --track: #f1e8dc;
+  }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Hiragino Maru Gothic ProN", "Zen Maru Gothic", system-ui, sans-serif; line-height: 1.7; }
-  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; display: grid; gap: 16px; }
-  h1 { font-size: 22px; margin: 0; } h2 { font-size: 17px; margin: 0 0 8px; }
-  section { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 14px; }
+  main > *, .run > *, .grid2 > * { min-width: 0; }
+  h1 { font-size: 22px; margin: 0; } h2 { font-size: 17px; margin: 0 0 8px; } h3 { font-size: 15px; margin: 0 0 6px; }
+  section, .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; min-width: 0; }
   label { display: grid; gap: 4px; font-weight: 700; font-size: 14px; }
-  input, textarea { font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; width: 100%; }
+  input { font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; width: 100%; }
   button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--tomato); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
   button.quiet { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
-  button:disabled { opacity: .6; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
-  .item { border: 1.5px solid var(--line); border-radius: 14px; padding: 12px; margin-top: 10px; }
-  .item.is-pending { border-color: var(--tomato); }
-  .item h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+  button.small { min-height: 34px; padding: 0 12px; font-size: 13px; }
+  button:disabled { opacity: .55; cursor: default; }
+  a { color: #b4462c; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .meta { color: var(--muted); font-size: 13px; margin: 2px 0 0; overflow-wrap: anywhere; }
-  .msg { white-space: pre-wrap; background: #fff; border-radius: 10px; padding: 8px 10px; margin: 8px 0 0; font-size: 14px; overflow-wrap: anywhere; }
-  .consents { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 2px; font-size: 14px; }
-  .tag { display: inline-block; padding: 1px 10px; border-radius: 999px; background: #fff1ec; font-size: 12px; font-weight: 700; }
   .empty { color: var(--muted); margin: 0; }
-  #status { font-weight: 700; margin: 8px 0 0; }
   [hidden] { display: none !important; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
-  th { color: var(--muted); font-weight: 700; }
-  td.num, th.num { text-align: right; white-space: nowrap; }
-  main > section { min-width: 0; }
+  /* 上の数字 */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .kpi { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+  .kpi small { display: block; color: var(--muted); font-size: 12px; }
+  .kpi b { font-size: 22px; }
+  /* タブ */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tabs button { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  /* 集める */
+  .run { display: grid; gap: 8px; }
+  .run-status { font-weight: 700; margin: 0; min-height: 1.7em; }
+  .bar { position: relative; height: 12px; border-radius: 999px; background: var(--track); overflow: hidden; }
+  .bar > i { position: absolute; inset: 0 auto 0 0; background: var(--s1); border-radius: 999px; transition: width .4s ease; }
+  .bar.is-busy > i { background: repeating-linear-gradient(45deg, var(--s1) 0 10px, #3987e5 10px 20px); }
+  .bar-label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  /* 積み上げ棒（AI を使った結果） */
+  .stack { display: flex; gap: 2px; height: 22px; border-radius: 6px; overflow: hidden; background: var(--track); }
+  .stack > span { display: block; min-width: 3px; }
+  .legend { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+  .legend li { display: flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
+  /* 横の棒（1つの系列） */
+  .hbars { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+  .hbars li { display: grid; grid-template-columns: minmax(90px, 38%) 1fr 3.2em; gap: 8px; align-items: center; }
+  .hbars .track { height: 12px; background: var(--track); border-radius: 0 4px 4px 0; }
+  .hbars .fill { height: 100%; background: var(--s1); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .hbars b { text-align: right; font-variant-numeric: tabular-nums; }
+  /* 表 */
   .scroll { overflow-x: auto; max-width: 100%; }
-  .scroll table { min-width: 620px; }
-  td.nowrap { white-space: nowrap; }
-  .big { font-size: 20px; font-weight: 800; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
-  .stats p { margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
-  .stats small { display: block; color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .scroll table { min-width: 560px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  th { color: var(--muted); font-weight: 700; }
+  td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tr.clickable { cursor: pointer; } tr.clickable:hover td { background: #fff3e6; }
+  .chip { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--track); white-space: nowrap; }
+  .chip.done { background: #e2f1e8; color: var(--ok); } .chip.current { background: #fff0e0; color: #b4462c; }
+  /* レシピ */
+  dialog { width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 24px); border: 0; border-radius: 18px; padding: 0; background: var(--surface); color: var(--ink); }
+  dialog::backdrop { background: rgba(42, 36, 32, .45); }
+  .dlg { padding: 16px; display: grid; gap: 10px; }
+  .dlg-head { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
+  .player { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 12px; overflow: hidden; }
+  .player > * { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .steps li { display: grid; grid-template-columns: 2em 1fr; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .steps .n { font-weight: 800; color: var(--muted); }
+  .steps .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+  .steps input { width: 6.5em; padding: 6px 8px; }
+  .steps input.is-bad { border-color: var(--tomato); }
+  .sticky { position: sticky; bottom: 0; background: var(--surface); padding: 10px 0 0; border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
 <main>
   <h1>品ぞろえ（管理）</h1>
-  <section>
+  <section aria-label="合言葉">
     <form id="login" class="row">
       <label style="flex:1 1 260px">管理用の合言葉（RECIPE_ADMIN_TOKEN）<input id="token" type="password" autocomplete="off" required></label>
       <button type="submit">読み込む</button>
       <button type="button" class="quiet" id="logout" hidden>合言葉を消す</button>
     </form>
     <p class="meta">サーバー（Cloud Run の matagochi-api）に設定してある管理用のパスワードです。入れた合言葉は保存せず、このタブを閉じると消えます（次に開いた時はまた入れます）。</p>
-    <p id="status" role="status" aria-live="polite"></p>
+    <p id="status" class="meta" role="status" aria-live="polite"></p>
   </section>
-  <section aria-labelledby="seed-h">
-    <h2 id="seed-h">新着の手動の一括収集（初期投資）</h2>
-    <p class="meta">品ぞろえが足りない分野（野菜が主役・10分以内の肉・パン・卵乳小麦なし など）の検索語で探し、説明欄だけで読める動画を集めます。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安。AI 1回＝1円で数える）まで。説明欄にレシピがない動画は AI の前に外し、3本ずつ読みます・月の上限の中に入ります。集めた料理は28日間「新着」に出ます。</p>
-    <div class="row"><button type="button" id="seed-run" disabled>100円分集める</button><span class="meta" id="seed-note"></span></div>
-    <div id="seed"><p class="empty">合言葉を入れると表示します。</p></div>
-  </section>
-  <section aria-labelledby="cost-h"><h2 id="cost-h">月の費用（新着集め）</h2><div id="cost"><p class="empty">合言葉を入れると表示します。</p></div></section>
-  <section aria-labelledby="ask-h"><h2 id="ask-h">同意をお願いしたい投稿者</h2><p class="meta">献立によく入るのに「みんなが見る一覧に載せる」の同意がない投稿者です（連絡は運営が判断して行います）。</p><div id="ask"><p class="empty">合言葉を入れると表示します。</p></div></section>
-  <section aria-labelledby="items-h"><h2 id="items-h">料理ごとの採用率（この月と前の月）</h2><div id="items" class="scroll"><p class="empty">合言葉を入れると表示します。</p></div></section>
+
+  <div class="kpis" id="kpis" aria-label="全体の数字"></div>
+
+  <div class="tabs" role="tablist" aria-label="画面の切り替え">
+    <button type="button" role="tab" id="tab-seed" aria-controls="panel-seed" aria-selected="true">📥 集める</button>
+    <button type="button" role="tab" id="tab-adopt" aria-controls="panel-adopt" aria-selected="false">📈 採用率</button>
+    <button type="button" role="tab" id="tab-creators" aria-controls="panel-creators" aria-selected="false">🤝 投稿者</button>
+  </div>
+
+  <div id="panel-seed" role="tabpanel" aria-labelledby="tab-seed" class="run">
+    <section>
+      <h2>新着の手動の一括収集（初期投資）</h2>
+      <p class="meta">品ぞろえが足りない分野の検索語で探します。説明欄にレシピがない動画は AI の前に外し、3本ずつ読みます。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安。AI 1回＝1円で数える）まで・月の上限の中。集めた料理は28日間「新着」に出ます。</p>
+      <div class="run">
+        <div class="row">
+          <button type="button" id="seed-run" disabled>100円分集める</button>
+          <label class="row" style="font-weight:700"><input type="checkbox" id="auto" style="width:auto"> 段階が終わるまで自動で続ける</label>
+          <button type="button" class="quiet small" id="stop" hidden>止める</button>
+        </div>
+        <p class="run-status" id="run-status" role="status" aria-live="polite"></p>
+        <div id="run-progress" hidden>
+          <div class="bar is-busy" role="progressbar" aria-label="今回の処理の進み具合（目安）" aria-valuemin="0" aria-valuemax="100"><i style="width:0"></i></div>
+          <div class="bar-label"><span>今回の処理（目安・最大2分半）</span><span id="run-elapsed"></span></div>
+        </div>
+        <div id="stage-progress"></div>
+      </div>
+    </section>
+    <div id="stage"><section><p class="empty">合言葉を入れると表示します。</p></section></div>
+    <div class="grid2">
+      <section><h2>検索語</h2><div id="queries"><p class="empty">—</p></div></section>
+      <section><h2>段階の記録</h2><div id="stages"><p class="empty">—</p></div></section>
+    </div>
+  </div>
+
+  <div id="panel-adopt" role="tabpanel" aria-labelledby="tab-adopt" hidden>
+    <section><h2>料理ごとの採用率（この月と前の月）</h2><p class="meta">行を押すとレシピを開きます。</p><div id="items" class="scroll"><p class="empty">合言葉を入れると表示します。</p></div></section>
+    <section style="margin-top:14px"><h2>月の費用（新着集め）</h2><div id="cost"><p class="empty">—</p></div></section>
+  </div>
+
+  <div id="panel-creators" role="tabpanel" aria-labelledby="tab-creators" hidden>
+    <section><h2>同意をお願いしたい投稿者</h2><p class="meta">献立によく入るのに「みんなが見る一覧に載せる」の同意がない投稿者です（連絡は運営が判断して行います）。</p><div id="ask"><p class="empty">合言葉を入れると表示します。</p></div></section>
+  </div>
 </main>
+
+<dialog id="recipe" aria-labelledby="recipe-title"><div class="dlg" id="recipe-body"></div></dialog>
+
 <script>
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
-  const SKIP = { description_not_recipe: "説明欄にレシピがない（AI の前に外した）", not_public: "公開されていない（AI の前に外した）", filtered: "重複・晩ごはんでない・掲載停止", duplicate: "重複", same_channel: "同じ投稿者の3本目以降", no_steps_in_description: "説明欄に作り方がない", not_dinner: "晩ごはんでない", too_short: "材料・手順が少ない", opted_out: "掲載停止", video_not_found: "動画が見つからない", non_public_video: "公開されていない", empty_description: "説明欄が空", incomplete_recipe: "材料・手順を読めない", analysis_uncertain: "AI の応答を確認できない" };
+  const APP = "https://165cm.github.io/matagochi/";
+  const RUN_MS = 150_000; // サーバーが1回に動く時間の目安
   const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語を使い切りました", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
+  // 外した理由。pre：AI の前に外した（0円）／post：AI で読んだが料理にならなかった
+  const SKIP = {
+    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
+    no_steps_in_description: ["post", "作り方がない"], incomplete_recipe: ["post", "材料・手順を読めない"], gemini_invalid_json: ["post", "AI の答えの形が崩れた"], too_short: ["post", "材料・手順が少ない"], not_dinner: ["post", "晩ごはんでない"], analysis_uncertain: ["post", "AI の応答を確認できない"],
+    video_not_found: ["post", "動画が見つからない"], non_public_video: ["post", "公開されていない"], empty_description: ["post", "説明欄が空"], sync_storage_failed: ["post", "保存先が一時的に混んでいた"], catalog_conflict: ["post", "保存が重なった"],
+  };
+  const OUTCOME = [["made", "料理になった", "--s3"], ["nosteps", "作り方がない", "--s2"], ["unread", "材料・手順を読めない", "--s4"], ["json", "AI の答えの形が崩れた", "--s5"], ["other", "そのほか", "--s1"]];
+  const outcomeOf = (k) => (k === "no_steps_in_description" ? "nosteps" : ["incomplete_recipe", "too_short"].includes(k) ? "unread" : k === "gemini_invalid_json" ? "json" : "other");
   const status = document.getElementById("status");
-  let token = "";
+  let token = "", last = { seed: null, catalog: null }, busy = false, stopAuto = false;
   try { token = sessionStorage.getItem("ripigochi-admin") || ""; } catch {}
-  // 動画の題名などは外から来る文章なので、HTML として入れない（textContent だけで組み立てる）。
-  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = String(text); if (cls) e.className = cls; return e; };
-  async function api(path, body) {
-    const response = await fetch(`${API}${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  // 外から来る文字（題名・投稿者名など）は、HTML として入れない（textContent だけで組み立てる）。
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined && text !== null) e.textContent = String(text); if (cls) e.className = cls; return e; };
+  async function api(path, body, method) {
+    const response = await fetch(`${API}${path}`, { method: method || (body ? "POST" : "GET"), headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data?.error?.message || `読み込めませんでした（${response.status}）`);
     return data;
   }
-  const yen = (n) => `${Math.round(Number(n) * 100) / 100}円`;
-  function table(head, rows, nums = []) {
+  const yen = (n) => `${Math.round(Number(n || 0) * 100) / 100}円`;
+  const sec = (s) => (Number.isFinite(s) && s !== null ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "");
+  const parseSec = (v) => { const t = String(v || "").trim(); if (!t) return null; const m = t.match(/^(\d+):([0-5]?\d)$/); if (m) return Number(m[1]) * 60 + Number(m[2]); return /^\d+$/.test(t) ? Number(t) : NaN; };
+  function table(head, rows, nums = [], onRow) {
     const t = el("table"), tr = el("tr");
     head.forEach((h, i) => { const th = el("th", h); if (nums.includes(i)) th.className = "num"; tr.append(th); });
     t.append(tr);
-    for (const r of rows) { const row = el("tr"); r.forEach((v, i) => { const td = el("td", v ?? "—"); if (nums.includes(i)) td.className = "num"; row.append(td); }); t.append(row); }
+    rows.forEach((r, ri) => {
+      const row = el("tr");
+      r.forEach((v, i) => { const td = el("td", v ?? "—"); if (nums.includes(i)) td.className = "num"; row.append(td); });
+      if (onRow) { row.className = "clickable"; row.tabIndex = 0; row.addEventListener("click", () => onRow(ri)); row.addEventListener("keydown", (e) => { if (e.key === "Enter") onRow(ri); }); }
+      t.append(row);
+    });
     return t;
   }
-  function renderSeed(data) {
-    const box = document.getElementById("seed"); box.textContent = "";
-    const stages = data.stages || [];
-    const open = stages.length && !stages[stages.length - 1].done;
-    const btn = document.getElementById("seed-run");
-    btn.disabled = false;
-    btn.textContent = open ? `第${stages[stages.length - 1].n}段階の続きを集める` : `第${stages.length + 1}段階：100円分集める`;
-    document.getElementById("seed-note").textContent = `残りの検索語 ${data.queriesLeft ?? "—"}・残りの候補 ${data.candidatesLeft ?? "—"}`;
-    if (!stages.length) { box.append(el("p", "まだ集めていません。", "empty")); return; }
-    for (const s of [...stages].reverse()) {
-      const item = el("div", undefined, "item");
-      item.append(el("h3", `第${s.n}段階（${String(s.startedAt).slice(0, 10)}）${s.done ? "" : "・続きあり"}`));
-      const added = (s.added || []).length;
-      const stats = el("div", undefined, "stats");
-      for (const [label, value] of [["増えた料理", `${added}品`], ["AI を使った回数", `${s.ai}回`], ["費用（実測のトークン数から）", yen(s.yenMeasured || 0)], ["費用（目安の単価で）", yen(s.yenEstimate || 0)], ["1品あたり（実測）", added ? yen((s.yenMeasured || 0) / added) : "—"], ["読んだ・書いたトークン", `${s.input || 0}・${s.output || 0}`]]) {
-        const p = el("p"); p.append(el("small", label), el("span", value, "big")); stats.append(p);
-      }
-      item.append(stats);
-      if (s.reason) item.append(el("p", `止まった理由：${REASON[s.reason] || s.reason}`, "meta"));
-      const by = Object.entries(s.byQuery || {});
-      if (by.length) item.append(el("p", `分野ごと：${by.map(([k, v]) => `${k} ${v}品`).join("・")}`, "meta"));
-      const sk = Object.entries(s.skipped || {});
-      if (sk.length) item.append(el("p", `外したもの：${sk.map(([k, v]) => `${SKIP[k] || k} ${v}`).join("・")}`, "meta"));
-      if (added) { const d = el("details"); d.append(el("summary", `増えた料理（${added}）`)); const sc = el("div", undefined, "scroll"); d.append(sc); sc.append(table(["料理", "分野", "時間", "費用"], s.added.map((a) => [a.title, a.label, a.minutes ? `${a.minutes}分` : "—", a.free ? "0円（読んだことあり）" : "AI"]))); item.append(d); }
-      box.append(item);
+  function bar(value, max, label, right) {
+    const box = el("div");
+    const b = el("div", undefined, "bar"); b.setAttribute("role", "progressbar"); b.setAttribute("aria-label", label); b.setAttribute("aria-valuemin", "0"); b.setAttribute("aria-valuemax", String(max)); b.setAttribute("aria-valuenow", String(value));
+    const i = el("i"); i.style.width = `${max ? Math.min(100, (value / max) * 100) : 0}%`; b.append(i);
+    const l = el("div", undefined, "bar-label"); l.append(el("span", label), el("span", right));
+    box.append(b, l); return box;
+  }
+  function hbars(rows) {
+    const max = Math.max(1, ...rows.map((r) => r[1]));
+    const ul = el("ul", undefined, "hbars");
+    for (const [label, n] of rows) {
+      const li = el("li"); li.title = `${label}：${n}`;
+      const track = el("div", undefined, "track"), fill = el("div", undefined, "fill"); fill.style.width = `${(n / max) * 100}%`; track.append(fill);
+      li.append(el("span", label), track, el("b", n)); ul.append(li);
+    }
+    return ul;
+  }
+  // ── 段階の数字をまとめる ──
+  function summarize(s) {
+    const added = s.added || [];
+    const viaAi = added.filter((a) => !a.free).length;
+    const out = { made: viaAi, nosteps: 0, unread: 0, json: 0, other: 0 };
+    const pre = [];
+    for (const [k, v] of Object.entries(s.skipped || {})) {
+      const kind = SKIP[k]?.[0] || "post";
+      if (kind === "pre") pre.push([SKIP[k][1], v]); else out[outcomeOf(k)] += v;
+    }
+    return { added: added.length, free: added.length - viaAi, out, pre: pre.sort((a, b) => b[1] - a[1]), perDish: added.length ? (s.yenMeasured || 0) / added.length : null };
+  }
+  function renderKpis() {
+    const box = document.getElementById("kpis"); box.textContent = "";
+    const stages = last.seed?.stages || [];
+    const total = stages.reduce((a, s) => ({ added: a.added + (s.added || []).length, ai: a.ai + (s.ai || 0), yen: a.yen + (s.yenMeasured || 0) }), { added: 0, ai: 0, yen: 0 });
+    const month = (last.catalog?.cost || [])[0];
+    for (const [label, value] of [["一括収集で増えた料理", `${total.added}品`], ["一括収集の費用（実測）", yen(total.yen)], ["1品あたり（実測）", total.added ? yen(total.yen / total.added) : "—"], ["今月の新着集め（目安）", month ? `${yen(month.yen)} / ${yen(month.cap)}` : "—"]]) {
+      const k = el("div", undefined, "kpi"); k.append(el("small", label), el("b", value)); box.append(k);
     }
   }
-  function renderCatalog(data) {
+  function renderStage() {
+    const box = document.getElementById("stage"); box.textContent = "";
+    const d = last.seed || {};
+    const stages = d.stages || [];
+    const s = stages[stages.length - 1];
+    const btn = document.getElementById("seed-run");
+    btn.disabled = busy;
+    btn.textContent = s && !s.done ? `第${s.n}段階の続きを集める` : `第${stages.length + 1}段階：100円分集める`;
+    const sp = document.getElementById("stage-progress"); sp.textContent = "";
+    if (!s) { const empty = el("section"); empty.append(el("p", "まだ集めていません。", "empty")); box.append(empty); return; }
+    const limit = Math.floor((s.yen || 100) / (d.yenPerAi || 1));
+    sp.append(bar(s.ai || 0, limit, `第${s.n}段階の AI の回数`, `${s.ai || 0} / ${limit}回`));
+    const sum = summarize(s);
+    const sec_ = el("section");
+    sec_.append(el("h2", `第${s.n}段階（${String(s.startedAt).slice(0, 10)}）${s.done ? "・終わり" : "・続きあり"}`));
+    const k = el("div", undefined, "kpis");
+    for (const [label, value] of [["増えた料理", `${sum.added}品`], ["うち0円（読んだことあり）", `${sum.free}品`], ["AI を使った回数", `${s.ai || 0}回`], ["費用（実測）", yen(s.yenMeasured)], ["1品あたり（実測）", sum.perDish === null ? "—" : yen(sum.perDish)], ["読んだ・書いたトークン", `${s.input || 0}・${s.output || 0}`]]) { const kk = el("div", undefined, "kpi"); kk.append(el("small", label), el("b", value)); k.append(kk); }
+    sec_.append(k);
+    if (s.reason) sec_.append(el("p", `止まった理由：${REASON[s.reason] || s.reason}`, "meta"));
+    const g = el("div", undefined, "grid2"); g.style.marginTop = "12px";
+    // ① AI を使った結果（積み上げ）
+    const c1 = el("div"); c1.append(el("h3", "AI で読んだ結果"));
+    const totalAi = OUTCOME.reduce((a, [key]) => a + sum.out[key], 0);
+    const stack = el("div", undefined, "stack"); stack.setAttribute("role", "img"); stack.setAttribute("aria-label", OUTCOME.map(([key, label]) => `${label} ${sum.out[key]}`).join("、"));
+    const legend = el("ul", undefined, "legend");
+    for (const [key, label, color] of OUTCOME) {
+      const n = sum.out[key];
+      if (n) { const seg = el("span"); seg.style.flex = String(n); seg.style.background = `var(${color})`; seg.title = `${label}：${n}`; stack.append(seg); }
+      const li = el("li"); const sw = el("i"); sw.style.background = `var(${color})`; li.append(sw, el("span", label), el("b", `${n}${totalAi ? `（${Math.round((n / totalAi) * 100)}%）` : ""}`)); legend.append(li);
+    }
+    c1.append(stack, legend);
+    // ② AI の前に外した（0円）
+    const c2 = el("div"); c2.append(el("h3", "AI の前に外した（0円）"), sum.pre.length ? hbars(sum.pre) : el("p", "まだありません。", "empty"));
+    // ③ 分野ごと
+    const c3 = el("div"); const by = Object.entries(s.byQuery || {}).sort((a, b) => b[1] - a[1]);
+    c3.append(el("h3", "分野ごとに増えた料理"), by.length ? hbars(by) : el("p", "まだありません。", "empty"));
+    g.append(c1, c2, c3);
+    sec_.append(g);
+    // 増えた料理（押すとレシピ）
+    const list = s.added || [];
+    if (list.length) {
+      const det = el("details"); det.open = true; det.style.marginTop = "12px";
+      det.append(el("summary", `増えた料理（${list.length}）— 押すとレシピと手順の時刻を見られます`));
+      const sc = el("div", undefined, "scroll");
+      sc.append(table(["料理", "分野", "時間", "費用"], list.map((a) => [a.title || "（題名は保存していません）", a.label, a.minutes ? `${a.minutes}分` : "—", a.free ? "0円" : "AI"]), [], (i) => openRecipe(list[i].videoId)));
+      det.append(sc); sec_.append(det);
+    }
+    box.append(sec_);
+  }
+  function renderQueries() {
+    const box = document.getElementById("queries"); box.textContent = "";
+    const qs = last.seed?.queries || [];
+    if (!qs.length) { box.append(el("p", "—", "empty")); return; }
+    const LABEL = { done: "済み", current: "候補を読んでいる", todo: "これから" };
+    box.append(el("p", `残りの検索語 ${last.seed.queriesLeft}・読む前の候補 ${last.seed.candidatesLeft}`, "meta"));
+    const sc = el("div", undefined, "scroll");
+    const t = table(["検索語", "分野", "状態"], qs.map((q) => [q.q, q.label, LABEL[q.status]]));
+    [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = tr.lastChild; td.textContent = ""; td.append(el("span", LABEL[qs[i].status], `chip ${qs[i].status}`)); });
+    sc.append(t); box.append(sc);
+  }
+  function renderStages() {
+    const box = document.getElementById("stages"); box.textContent = "";
+    const stages = last.seed?.stages || [];
+    if (!stages.length) { box.append(el("p", "—", "empty")); return; }
+    box.append(table(["段階", "品数", "AI", "費用（実測）", "1品あたり"], stages.map((s) => { const sum = summarize(s); return [`第${s.n}段階${s.done ? "" : "（続きあり）"}`, sum.added, s.ai || 0, yen(s.yenMeasured), sum.perDish === null ? "—" : yen(sum.perDish)]; }), [1, 2, 3, 4]));
+    const rows = stages.filter((s) => (s.added || []).length).map((s) => [`第${s.n}段階`, Math.round(summarize(s).perDish * 100) / 100]);
+    if (rows.length > 1) { const h = el("h3", "1品あたりの費用（円）"); h.style.marginTop = "12px"; box.append(h, hbars(rows)); }
+  }
+  function renderCatalog() {
+    const data = last.catalog || {};
     const cost = document.getElementById("cost"); cost.textContent = "";
-    cost.append((data.cost || []).length ? table(["月", "AI の回数", "目安の費用", "上限"], data.cost.map((m) => [m.month, m.ai, yen(m.yen), yen(m.cap)]), [1, 2, 3]) : el("p", "まだありません。", "empty"));
+    if ((data.cost || []).length) { const m = data.cost[0]; cost.append(bar(m.yen, m.cap, `${m.month} の新着集め（目安）`, `${yen(m.yen)} / ${yen(m.cap)}`)); const sc = el("div", undefined, "scroll"); sc.style.marginTop = "8px"; sc.append(table(["月", "AI の回数", "目安の費用", "上限"], data.cost.map((x) => [x.month, x.ai, yen(x.yen), yen(x.cap)]), [1, 2, 3])); cost.append(sc); }
+    else cost.append(el("p", "まだありません。", "empty"));
     const ask = document.getElementById("ask"); ask.textContent = "";
     ask.append((data.askConsent || []).length ? table(["投稿者", "動画", "献立に入った回数"], data.askConsent.map((a) => [a.channelTitle || a.channelId, a.videos, a.planned]), [1, 2]) : el("p", "いまはいません。", "empty"));
     const items = document.getElementById("items"); items.textContent = "";
-    items.append((data.items || []).length ? table(["料理", "投稿者", "候補に出た", "献立に入った", "作った", "採用率", "残す", "同意"], data.items.map((i) => [i.title || i.videoId, i.channelTitle, i.shown, i.planned, i.cooked, i.rate == null ? "—" : `${i.rate}%`, i.kept ? "✓" : "", i.publicConsent ? "✓" : ""]), [2, 3, 4, 5]) : el("p", "まだありません。", "empty"));
+    const list = data.items || [];
+    items.append(list.length ? table(["料理", "投稿者", "候補に出た", "献立に入った", "作った", "採用率", "残す", "同意"], list.map((i) => [i.title || i.videoId, i.channelTitle, i.shown, i.planned, i.cooked, i.rate == null ? "—" : `${i.rate}%`, i.kept ? "✓" : "", i.publicConsent ? "✓" : ""]), [2, 3, 4, 5], (ri) => openRecipe(list[ri].videoId)) : el("p", "まだありません（献立の候補に出ると数えます）。", "empty"));
   }
+  function renderAll() { renderKpis(); renderStage(); renderQueries(); renderStages(); renderCatalog(); }
   async function load() {
     if (!token) return;
     status.textContent = "読み込んでいます…";
     try {
       const [seed, catalog] = await Promise.all([api("/api/admin/trends/seed"), api("/api/admin/catalog")]);
-      renderSeed(seed); renderCatalog(catalog);
+      last = { seed, catalog };
+      renderAll();
       document.getElementById("logout").hidden = false;
-      status.textContent = "読み込みました。";
+      status.textContent = `読み込みました（${new Date().toLocaleTimeString("ja-JP")}）`;
     } catch (error) { status.textContent = error.message; }
   }
-  document.getElementById("seed-run").addEventListener("click", async (ev) => {
-    const btn = ev.currentTarget;
-    if (!confirm("新着を100円分（目安）まで集めます。AI の費用がかかります。よろしいですか？")) return;
-    btn.disabled = true; status.textContent = "集めています…（2〜3分かかります。このままお待ちください）";
+  // ── 集める（目安の進み具合つき・自動で続ける） ──
+  const runStatus = document.getElementById("run-status");
+  function progress(on) {
+    const box = document.getElementById("run-progress"), fill = box.querySelector("i"), t0 = Date.now();
+    clearInterval(progress.timer);
+    box.hidden = !on;
+    if (!on) return;
+    const tick = () => { const ms = Date.now() - t0; const pct = Math.min(97, (ms / RUN_MS) * 100); fill.style.width = `${pct}%`; box.querySelector("[role=progressbar]").setAttribute("aria-valuenow", String(Math.round(pct))); document.getElementById("run-elapsed").textContent = `${Math.floor(ms / 60000)}分${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}秒`; };
+    tick(); progress.timer = setInterval(tick, 500);
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function collect() {
+    if (busy) return;
+    const auto = document.getElementById("auto").checked;
+    const s = (last.seed?.stages || []).at(-1);
+    if (!(s && !s.done) && !confirm("新しい段階を始めます。AI の費用が100円（目安）までかかります。よろしいですか？")) return;
+    busy = true; stopAuto = false;
+    document.getElementById("seed-run").disabled = true;
+    document.getElementById("stop").hidden = !auto;
+    let round = 0;
     try {
-      const r = await api("/api/admin/trends/seed", { yen: 100 });
-      status.textContent = r.busy ? "ほかの収集が動いています。少し待ってからもう一度どうぞ。" : `第${r.stage.n}段階：${(r.stage.added || []).length}品・${REASON[r.reason] || r.reason}`;
-    } catch (error) { status.textContent = error.message; }
-    await load();
-  });
+      while (true) {
+        round += 1;
+        runStatus.textContent = `集めています…${auto ? `（自動 ${round}回目）` : ""}　このままお待ちください`;
+        progress(true);
+        let r;
+        try { r = await api("/api/admin/trends/seed", { yen: 100 }); }
+        catch (error) { runStatus.textContent = `止まりました：${error.message}`; break; }
+        finally { progress(false); }
+        if (r.busy) { runStatus.textContent = "ほかの収集が動いています。少し待ってからもう一度どうぞ。"; break; }
+        await load();
+        const added = (r.stage.added || []).length;
+        runStatus.textContent = `第${r.stage.n}段階：いままでに ${added}品・${REASON[r.reason] || r.reason}`;
+        if (!auto || stopAuto || r.stage.done || !["time", "wait"].includes(r.reason)) break;
+        if (r.reason === "wait") {
+          for (let left = 65; left > 0 && !stopAuto; left--) { runStatus.textContent = `待ち時間です。あと${left}秒で続けます…`; await sleep(1000); }
+          if (stopAuto) break;
+        }
+      }
+    } finally {
+      busy = false; document.getElementById("stop").hidden = true;
+      renderStage();
+      if (stopAuto) runStatus.textContent += "（自動を止めました）";
+    }
+  }
+  document.getElementById("seed-run").addEventListener("click", collect);
+  document.getElementById("stop").addEventListener("click", () => { stopAuto = true; runStatus.textContent = "この回が終わったら止めます…"; });
+  // ── タブ ──
+  const TABS = ["seed", "adopt", "creators"];
+  function showTab(name) {
+    for (const t of TABS) { document.getElementById(`tab-${t}`).setAttribute("aria-selected", String(t === name)); document.getElementById(`panel-${t}`).hidden = t !== name; }
+    try { localStorage.setItem("ripigochi-admin-tab", name); } catch {}
+  }
+  TABS.forEach((t) => document.getElementById(`tab-${t}`).addEventListener("click", () => showTab(t)));
+  try { const saved = localStorage.getItem("ripigochi-admin-tab"); if (TABS.includes(saved)) showTab(saved); } catch {}
+  // ── レシピ（材料・手順・手順の時刻を見て直す） ──
+  let player = null, ytReady = null;
+  function loadYT() {
+    if (ytReady) return ytReady;
+    ytReady = new Promise((resolve) => { window.onYouTubeIframeAPIReady = () => resolve(window.YT); const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; s.onerror = () => resolve(null); document.head.append(s); });
+    return ytReady;
+  }
+  async function openRecipe(videoId) {
+    const dlg = document.getElementById("recipe"), body = document.getElementById("recipe-body");
+    body.textContent = ""; body.append(el("p", "読み込んでいます…", "meta"));
+    if (!dlg.open) dlg.showModal();
+    let r;
+    try { r = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}`); } catch (error) { body.textContent = ""; body.append(el("p", error.message), closeBtn()); return; }
+    body.textContent = "";
+    const head = el("div", undefined, "dlg-head");
+    const h = el("div"); const title = el("h2", r.title); title.id = "recipe-title"; h.append(title, el("p", [r.channelTitle, r.planning?.minutes ? `⏱${r.planning.minutes}分` : "", r.sourceServings ? `${r.sourceServings}人分` : ""].filter(Boolean).join("・"), "meta"));
+    head.append(h, closeBtn());
+    const links = el("div", undefined, "row");
+    const yt = el("a", "YouTube で開く"); yt.href = r.videoUrl; yt.target = "_blank"; yt.rel = "noopener";
+    const app = el("a", "アプリの取り込み画面で開く"); app.href = `${APP}?url=${encodeURIComponent(r.videoUrl)}`; app.target = "_blank"; app.rel = "noopener";
+    links.append(yt, el("span", "・", "meta"), app);
+    body.append(head, links);
+    const playerBox = el("div", undefined, "player"); const slot = el("div"); slot.id = "yt-slot"; playerBox.append(slot);
+    if (r.embeddable) body.append(playerBox); else body.append(el("p", "この動画は埋め込みで再生できません。時刻は YouTube で確かめてください。", "meta"));
+    const ing = el("details"); ing.append(el("summary", `材料（${(r.ingredients || []).length}）`));
+    const ul = el("ul"); (r.ingredients || []).forEach((i) => ul.append(el("li", `${i.name}　${i.amount || ""}`))); ing.append(ul); body.append(ing);
+    body.append(el("h3", "手順と時刻"), el("p", `時刻は「分:秒」（例 2:15）。▶ でその時刻から再生、⏱ で再生中の時刻を入れます。${r.stepTimesFrom === "admin" ? "（運営が直した時刻です）" : ""}`, "meta"));
+    const ol = el("ol", undefined, "steps");
+    const inputs = [];
+    (r.steps || []).forEach((step, i) => {
+      const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
+      const right = el("div"); right.append(el("div", step));
+      const tools = el("div", undefined, "tools");
+      const input = el("input"); input.value = sec(r.stepTimes?.[i] ?? null); input.placeholder = "なし"; input.setAttribute("aria-label", `手順${i + 1}の時刻`); inputs.push(input);
+      input.addEventListener("input", () => input.classList.toggle("is-bad", Number.isNaN(parseSec(input.value))));
+      const play = el("button", "▶", "quiet small"); play.type = "button"; play.setAttribute("aria-label", `手順${i + 1}の時刻から再生`);
+      play.addEventListener("click", () => { const t = parseSec(input.value); if (player?.seekTo && Number.isFinite(t)) { player.seekTo(t, true); player.playVideo?.(); } });
+      const now = el("button", "⏱ いまの時刻", "quiet small"); now.type = "button";
+      now.addEventListener("click", () => { if (player?.getCurrentTime) { input.value = sec(Math.floor(player.getCurrentTime())); input.classList.remove("is-bad"); } });
+      tools.append(input, play, now); right.append(tools); li.append(right); ol.append(li);
+    });
+    body.append(ol);
+    const foot = el("div", undefined, "sticky row");
+    const save = el("button", "時刻を保存"); save.type = "button";
+    const note = el("span", "", "meta");
+    save.addEventListener("click", async () => {
+      const times = inputs.map((x) => parseSec(x.value));
+      if (times.some((t) => Number.isNaN(t))) { note.textContent = "「分:秒」の形で入れてください（赤い枠）。"; return; }
+      save.disabled = true; note.textContent = "保存しています…";
+      try { await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/step-times`, { stepTimes: times }, "PUT"); note.textContent = "✓ 保存しました（新着・作る画面の ▶ に使われます）"; }
+      catch (error) { note.textContent = error.message; }
+      finally { save.disabled = false; }
+    });
+    foot.append(save, note); body.append(foot);
+    if (r.embeddable) {
+      const YT = await loadYT();
+      if (YT?.Player && document.getElementById("yt-slot")) player = new YT.Player("yt-slot", { videoId, playerVars: { rel: 0, playsinline: 1 } });
+      else playerBox.replaceChildren(el("p", "プレーヤーを読み込めませんでした。", "meta"));
+    }
+  }
+  function closeBtn() { const b = el("button", "閉じる", "quiet small"); b.type = "button"; b.addEventListener("click", () => document.getElementById("recipe").close()); return b; }
+  document.getElementById("recipe").addEventListener("close", () => { try { player?.destroy?.(); } catch {} player = null; });
+  // ── 合言葉 ──
   document.getElementById("login").addEventListener("submit", (ev) => {
     ev.preventDefault();
     token = document.getElementById("token").value.trim();
@@ -153,7 +439,8 @@
   });
   document.getElementById("logout").addEventListener("click", () => {
     token = ""; try { sessionStorage.removeItem("ripigochi-admin"); } catch {}
-    for (const id of ["seed", "cost", "ask", "items"]) document.getElementById(id).textContent = "";
+    last = { seed: null, catalog: null };
+    for (const id of ["stage", "queries", "stages", "items", "cost", "ask", "kpis", "stage-progress"]) document.getElementById(id).textContent = "";
     document.getElementById("seed-run").disabled = true;
     status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;
   });

@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | 品ぞろえのダッシュボード（タブ・進み具合・図・検索語・レシピと手順の時刻を直す）・AI の答えの形が崩れた時の読み直し | `admin/catalog.html`・`api/src/analyzer.js`・`api/src/recipeCatalog.js`・`api/src/timecodes.js`・`api/src/server.js`・`api/test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
