@@ -58,7 +58,7 @@
   </section>
   <section aria-labelledby="seed-h">
     <h2 id="seed-h">新着の手動の一括収集（初期投資）</h2>
-    <p class="meta">品ぞろえが足りない分野（野菜が主役・10分以内の肉・パン・卵乳小麦なし など）の検索語で探し、説明欄だけで読める動画を集めます。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安）まで・月の上限の中に入ります。集めた料理は28日間「新着」に出ます。</p>
+    <p class="meta">品ぞろえが足りない分野（野菜が主役・10分以内の肉・パン・卵乳小麦なし など）の検索語で探し、説明欄だけで読める動画を集めます。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安。AI 1回＝1円で数える）まで。説明欄にレシピがない動画は AI の前に外し、3本ずつ読みます・月の上限の中に入ります。集めた料理は28日間「新着」に出ます。</p>
     <div class="row"><button type="button" id="seed-run" disabled>100円分集める</button><span class="meta" id="seed-note"></span></div>
     <div id="seed"><p class="empty">合言葉を入れると表示します。</p></div>
   </section>
@@ -68,7 +68,7 @@
 </main>
 <script>
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
-  const SKIP = { filtered: "重複・晩ごはんでない・掲載停止", duplicate: "重複", same_channel: "同じ投稿者の3本目以降", no_steps_in_description: "説明欄に作り方がない", not_dinner: "晩ごはんでない", too_short: "材料・手順が少ない", opted_out: "掲載停止", video_not_found: "動画が見つからない", non_public_video: "公開されていない", empty_description: "説明欄が空", incomplete_recipe: "材料・手順を読めない", analysis_uncertain: "AI の応答を確認できない" };
+  const SKIP = { description_not_recipe: "説明欄にレシピがない（AI の前に外した）", not_public: "公開されていない（AI の前に外した）", filtered: "重複・晩ごはんでない・掲載停止", duplicate: "重複", same_channel: "同じ投稿者の3本目以降", no_steps_in_description: "説明欄に作り方がない", not_dinner: "晩ごはんでない", too_short: "材料・手順が少ない", opted_out: "掲載停止", video_not_found: "動画が見つからない", non_public_video: "公開されていない", empty_description: "説明欄が空", incomplete_recipe: "材料・手順を読めない", analysis_uncertain: "AI の応答を確認できない" };
   const REASON = { exhausted: "検索語を使い切りました", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
   const status = document.getElementById("status");
   let token = "";

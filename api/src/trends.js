@@ -16,7 +16,16 @@ export const TREND_KEEP_DAYS = 28;
 export const TREND_PER_WEEK = 10; // 以前の見せる枠（1週あたり）。いまは28日以内をすべて、日ごとのランダムな順で見せる
 // 月の費用の上限（β版の間、2026-10-01 のユーザーの判断で月1,000円）と、AI を1回呼ぶ費用の目安（円。実測で直す）。
 export const TREND_YEN_PER_MONTH = 1000;
-export const TREND_YEN_PER_AI = 5;
+export const TREND_YEN_PER_AI = 1; // 2026-10-01 の実測（説明欄の読み取り1回 約0.86円）から。考える部分を使わない読み取りならもっと安い
+// 手動の一括収集で、同時に読む本数（AI 1回に10秒ほどかかるので、1回押して集められる量を増やす）。
+export const SEED_PARALLEL = 3;
+// 説明欄にレシピが書いてありそうか（AI を呼ぶ前のふるい）：分量の書き方が3つ以上と、作り方の書き出しがある。
+const AMOUNT = /大さじ|小さじ|適量|少々|ひとつまみ|\d+(?:\.\d+)?\s*(?:g|ｇ|kg|ml|cc|個|本|枚|片|かけ|束|袋|丁|パック|合|カップ|切れ|尾|玉)/g;
+const STEPS = /作り方|手順|レシピ\s*[】\]]|(?:^|\n)\s*(?:[1１①]|step\s*1)\s*[.．、:：)）]?\s*\S/i;
+export function looksLikeRecipe(text) {
+  const t = String(text || "").normalize("NFKC");
+  return (t.match(AMOUNT) || []).length >= 3 && STEPS.test(t);
+}
 // 日ごとに決まる順（同じ日・同じ動画なら同じ値）。
 const dailyRank = (day, id) => { let h = 2166136261; for (const c of `${day}|${id}`) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 export const TREND_PER_DAY = 2; // 集める数（1日あたりの上限）
@@ -87,7 +96,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const catches = { at: 0 };
@@ -157,7 +166,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
   async function analyze(videoId, aiGate) {
     const url = canonicalYouTubeUrl(videoId);
     let result = null;
-    try { result = await catalog.import(url, { aiGate }); } catch (error) {
+    // 説明欄の読み取りは軽く（考える部分を使わない）。動画から読む時は今のまま。
+    try { result = await usage.run({ lite: true }, () => catalog.import(url, { aiGate })); } catch (error) {
       // 説明文が空・読めない（ショート動画に多い）時も、動画から読む。
       if (!["empty_description", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) throw error;
     }
@@ -386,15 +396,19 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             reserved = 0; reserveFailed = true;
           }
         }
-        const gate = { allow: () => spent < reserved, used: () => { spent += 1; } };
-        const why = () => (reserveFailed ? "cost_not_saved" : committed + spent >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : "month_budget");
+        // 3本を同時に読むので、AI を呼んでよいかの確認（allow）の時点で1回分を確保する（確保したら、呼べなかった時も使った扱い＝多めに数える）。
+        let claimed = 0;
+        const gate = { allow: () => (claimed < reserved ? ((claimed += 1), true) : false), used: () => { spent += 1; } };
+        const why = () => (reserveFailed ? "cost_not_saved" : committed + claimed >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : "month_budget");
         const ixEntry = await readIndex();
         const index = { weeks: (ixEntry?.envelope.weeks || []).filter(fresh), ...(ixEntry?.envelope.refreshedOn ? { refreshedOn: ixEntry.envelope.refreshedOn } : {}) };
         let week = index.weeks.find((w) => w.seed && w.stage === stage.n);
         if (!week) { week = { week: weekOf(now()), seed: true, stage: stage.n, startedAt: stage.startedAt, candidates: [], tried: [], items: [], skipped: {} }; index.weeks.push(week); }
         const seen = new Set([...index.weeks.flatMap((w) => w.items.map((i) => i.videoId)), ...doc.tried]);
         const excluded = await optedOut();
-        const collector = {};
+        // lite：説明欄の読み取りで AI に「考える」部分を使わせない（費用を下げる。analyzer.js）。
+        const collector = { lite: true };
+        const done = (c, why) => { doc.tried.push(c.videoId); seen.add(c.videoId); if (why) skip(why); };
         let reason = "";
         while (now() - started < budgetMs) {
           if (!doc.candidates.length) {
@@ -402,41 +416,69 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             const [q, label] = SEED_QUERIES[doc.q];
             let found;
             try { found = await search(q, { videoDuration: "medium" }); } catch { reason = "search_failed"; break; }
-            doc.q += 1;
             const perChannel = {};
+            const picked = [];
             for (const c of found) {
-              if (seen.has(c.videoId) || doc.candidates.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { skip("filtered"); continue; }
+              if (seen.has(c.videoId) || picked.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { skip("filtered"); continue; }
               if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) { skip("same_channel"); continue; }
-              doc.candidates.push({ videoId: c.videoId, channelId: c.channelId || "", label });
+              picked.push({ videoId: c.videoId, channelId: c.channelId || "", label });
             }
+            // AI の前に、説明欄に作り方が書いてあるかを YouTube の情報で確かめる（50本で1単位。AI の費用はかからない）。
+            // もう読んだ動画（0円）は確かめずに残す。説明欄は記録に残さない。
+            if (videoDetails && picked.length) {
+              const need = [];
+              for (const c of picked) if (!(await peek(c.videoId).catch(() => null))) need.push(c.videoId);
+              let details = {};
+              try { details = need.length ? await videoDetails(need) : {}; } catch { reason = "search_failed"; break; }
+              for (const c of picked) {
+                const d = details[c.videoId];
+                if (!need.includes(c.videoId)) doc.candidates.push(c);
+                else if (d?.status !== "public") done(c, "not_public");
+                else if (!looksLikeRecipe(d.snippet?.description)) done(c, "description_not_recipe");
+                else doc.candidates.push({ ...c, channelId: c.channelId || d.snippet?.channelId || "" });
+              }
+            } else doc.candidates.push(...picked);
+            doc.q += 1;
             continue;
           }
-          const c = doc.candidates[0];
-          if (seen.has(c.videoId)) { doc.candidates.shift(); skip("duplicate"); continue; }
-          // 持ち越した候補も、読む前に掲載停止（動画・チャンネル）を確かめ直す（あとから止められた動画に費用を使わない）。
-          if (excluded.has(c.videoId) || (c.channelId && excluded.has(c.channelId))) { doc.candidates.shift(); doc.tried.push(c.videoId); seen.add(c.videoId); skip("opted_out"); continue; }
-          // もう読んだ動画は、保存済みの結果を使う（AI を呼ばない）。
-          let r = await peek(c.videoId).catch(() => null);
-          const free = !!r;
-          if (!r) {
-            if (!gate.allow()) { reason = why(); break; }
-            try { r = await usage.run(collector, () => catalog.import(canonicalYouTubeUrl(c.videoId), { aiGate: gate })); }
-            catch (error) {
-              if (error?.code === "trend_ai_budget") { reason = why(); break; }
-              if (STOP_CODES[error?.code]) { reason = STOP_CODES[error.code]; break; }
-              doc.candidates.shift(); doc.tried.push(c.videoId); seen.add(c.videoId); skip(String(error?.code || "error").slice(0, 40)); continue;
-            }
+          // 次の3本（重複・掲載停止は読む前に外す）。
+          const batch = [];
+          while (batch.length < SEED_PARALLEL && doc.candidates.length) {
+            const c = doc.candidates.shift();
+            if (seen.has(c.videoId) || batch.some((x) => x.videoId === c.videoId)) { skip("duplicate"); continue; }
+            // 持ち越した候補も、読む前に掲載停止（動画・チャンネル）を確かめ直す（あとから止められた動画に費用を使わない）。
+            if (excluded.has(c.videoId) || (c.channelId && excluded.has(c.channelId))) { done(c, "opted_out"); continue; }
+            batch.push(c);
           }
-          doc.candidates.shift(); doc.tried.push(c.videoId); seen.add(c.videoId);
-          if ((r?.channelId && excluded.has(r.channelId)) || excluded.has(c.videoId)) { skip("opted_out"); continue; }
-          if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short"); continue; }
-          week.items.push({ videoId: c.videoId, day: today });
-          // 題名は YouTube の情報なので、記録には残さない（見せる時に保存済みの結果から読む＝30日ルールの中）。
-          stage.added.push({ videoId: c.videoId, label: c.label, minutes: r.planning?.minutes || null, free });
-          stage.byQuery[c.label] = (stage.byQuery[c.label] || 0) + 1;
+          if (!batch.length) continue;
+          const results = await Promise.all(batch.map(async (c) => {
+            // もう読んだ動画は、保存済みの結果を使う（AI を呼ばない）。
+            const cached = await peek(c.videoId).catch(() => null);
+            if (cached) return { c, r: cached, free: true };
+            try { return { c, r: await usage.run(collector, () => catalog.import(canonicalYouTubeUrl(c.videoId), { aiGate: gate })), free: false }; }
+            catch (error) { return { c, error }; }
+          }));
+          const back = [];
+          for (const { c, r, free, error } of results) {
+            if (error) {
+              if (error.code === "trend_ai_budget") { back.push(c); reason ||= why(); continue; }
+              if (STOP_CODES[error.code]) { back.push(c); reason ||= STOP_CODES[error.code]; continue; }
+              done(c, String(error.code || "error").slice(0, 40)); continue;
+            }
+            done(c);
+            if ((r?.channelId && excluded.has(r.channelId)) || excluded.has(c.videoId)) { skip("opted_out"); continue; }
+            if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short"); continue; }
+            week.items.push({ videoId: c.videoId, day: today });
+            // 題名は YouTube の情報なので、記録には残さない（見せる時に保存済みの結果から読む＝30日ルールの中）。
+            stage.added.push({ videoId: c.videoId, label: c.label, minutes: r.planning?.minutes || null, free });
+            stage.byQuery[c.label] = (stage.byQuery[c.label] || 0) + 1;
+          }
+          // 読めなかった候補（AI の枠・止める理由）は、次に押した時のために先頭へ戻す。
+          if (back.length) doc.candidates.unshift(...back);
+          if (reason) break;
         }
         if (!reason) reason = "time"; // 時間切れ：もう一度押すと続きから
-        stage.ai = committed + spent;
+        stage.ai = committed + claimed;
         stage.input += collector.input || 0;
         stage.output += collector.output || 0;
         stage.yenEstimate = Math.round(stage.ai * yenPerAi);
@@ -445,11 +487,11 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         stage.reason = reason;
         if (!week.items.length) index.weeks = index.weeks.filter((w) => w !== week);
         await writeIndex(index);
-        if (reserved > spent) await writeMonthCost(month, (used) => Math.max(0, used - (reserved - spent)));
+        if (reserved > claimed) await writeMonthCost(month, (used) => Math.max(0, used - (reserved - claimed)));
         cache = null;
         // 記録を保存できなければ、成功として返さない（段階の回数は予約した多めのまま。試した動画はもう読んだ結果があるので、次は0円）。
-        if (!(await saveSeed())) throw new ApiError(503, "seed_not_saved", spent ? "集めた結果の記録を保存できませんでした。少し待ってから、もう一度押してください（費用は多めに数えたままです）。" : "記録を保存できませんでした（AI は使っていません）。少し待ってから、もう一度押してください。");
-        return { stage: await withTitles(stage), reason, queriesLeft: SEED_QUERIES.length - doc.q, candidatesLeft: doc.candidates.length, month: { ai: monthUsed + spent, cap: monthCap, yen: Math.round((monthUsed + spent) * yenPerAi), yenCap: yenPerMonth } };
+        if (!(await saveSeed())) throw new ApiError(503, "seed_not_saved", claimed ? "集めた結果の記録を保存できませんでした。少し待ってから、もう一度押してください（費用は多めに数えたままです）。" : "記録を保存できませんでした（AI は使っていません）。少し待ってから、もう一度押してください。");
+        return { stage: await withTitles(stage), reason, queriesLeft: SEED_QUERIES.length - doc.q, candidatesLeft: doc.candidates.length, month: { ai: monthUsed + claimed, cap: monthCap, yen: Math.round((monthUsed + claimed) * yenPerAi), yenCap: yenPerMonth } };
       } finally { await unlock(); }
     },
     async seedStatus() {

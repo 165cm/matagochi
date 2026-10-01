@@ -14,6 +14,21 @@
 
 ---
 
+## 改善（第1段階の結果から、`efd1f27` 公開後 → この版）
+
+第1段階の結果：AI 14回・実測12.07円（1回約0.86円。書いたトークン29,411＞読んだ23,066＝考える部分が大きい）・4品・説明欄に作り方がない7本・時間切れ（AI 1回 約11秒）。
+
+| 改善 | 変更 | テスト（`api/test/seed.test.js`） |
+|---|---|---|
+| ① AI の前に説明欄を確かめる | `looksLikeRecipe`（分量の書き方3つ以上＋作り方の書き出し）。検索で残した候補を `videoDetails`（`fetchYouTubeStatuses`、50本で1単位）で確かめ、公開でない・レシピがない動画は AI を使わずに外す。もう読んだ動画は確かめない。確かめられなければ `search_failed`（同じ検索を次にやり直す） | 「improve ①」2件 |
+| ② 考える部分を使わない | `aiUsage.liteMode()`。`descriptionConfig(model)` が lite かつ flash の時だけ `thinkingConfig: { thinkingBudget: 0 }`。一括収集の `usage.run({ lite: true })`、毎日の新着集めの説明欄の取り込みも lite。動画から読む・利用者の取り込みは今のまま | 「improve ② ④」 |
+| ③ 3本ずつ | `SEED_PARALLEL = 3`、`Promise.all`。`gate.allow()` で1回分を確保（同時でも `reserved` を超えない）。段階・月の回数は確保した数で数える。読めなかった候補は先頭へ戻す | 「improve ③」：同時3本・予約5回で5回まで・残りは次へ |
+| ④ 目安の単価 | `TREND_YEN_PER_AI` の既定を5 → 1円 | 「improve ② ④」 |
+
+- `npm test --prefix api`：159件 成功。`admin/catalog.html` に外した理由の言葉を追加
+
+---
+
 ## 1. 対象
 - ブランチ：`claude/optimistic-albattani-jg5211`（main `de7b785` から）
 

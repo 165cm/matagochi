@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | 一括収集の改善：AI の前に説明欄を確かめる・考える部分を使わない・3本ずつ・目安の単価1円 | `api/src/trends.js`・`api/src/aiUsage.js`・`api/src/analyzer.js`・`api/src/server.js`・`admin/catalog.html`・`api/test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
