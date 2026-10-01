@@ -97,6 +97,21 @@ function sharePopular(recipe, kind) {
   if (!API_BASE_URL || !videoId || !shareStatsOn() || isViewer()) return;
   globalThis.fetch?.(`${API_BASE_URL}/api/popular/event`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ videoId, segment: tasteSegment(), kind }) })?.catch(() => {});
 }
+// 採用率のために、新着・みんなの定番の料理を献立の候補に出したことを知らせる（PR 4b）。同じ料理は1日1回だけ。名前は送らない。
+function shareShown(plan) {
+  if (!API_BASE_URL || !shareStatsOn() || isViewer()) return;
+  const day = today();
+  let sent = {};
+  try { sent = JSON.parse(localStorage.getItem("ripigochi-shown") || "{}"); } catch {}
+  if (sent.day !== day) sent = { day, ids: [] };
+  const fresh = plan.map((d) => !d.slot && d.candidate?.recipe?.discover ? youtubeVideoId(d.candidate.recipe.videoUrl) : "").filter((id) => id && !sent.ids.includes(id));
+  if (!fresh.length) return;
+  for (const id of [...new Set(fresh)]) {
+    sent.ids.push(id);
+    globalThis.fetch?.(`${API_BASE_URL}/api/popular/event`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ videoId: id, segment: tasteSegment(), kind: "shown" }) })?.catch(() => {});
+  }
+  try { localStorage.setItem("ripigochi-shown", JSON.stringify(sent)); } catch {}
+}
 // オンボーディング：気になる料理を選ぶ（今週の人気が中心。足りなければ写真のある定番で埋める）。
 function funnelPickCandidates() {
   const profile = Lifestyle.profile(profileDraft());
