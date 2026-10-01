@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | 作業中 | `claude/optimistic-albattani-jg5211` | PR 6c：ふりかえりの「わたしの食卓」に月のカレンダー（写真と切り替え）・「もう一度、献立に入れる」の計測（meal_replanned）・使っていない古いカレンダーの片付け | `daily-ui.js`・`plus.js`・`api/src/usage.js`・`app.js`（版）・`styles.css`・`index.html`・`sw.js`・`test/*`・`api/test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
