@@ -13,7 +13,7 @@
 - `docs/CATALOG_COVERAGE.md`：いまのおすすめ料理38品の表（生成物）
 - `daily-ui.js`：献立で `candidate.repeated` の日があれば、上に「🔁 合う料理が少なく、同じ料理がN回出ています」「レシピを足す」（`go-view` collection）。見ているだけの人には出さない。条件はゆるめない（献立の作り方は変えていない）
 - `styles.css`：`.plan-short`
-- 版：`APP_VERSION` `20261001-coverage`・`CACHE_NAME` `ripigochi-v136`
+- 版：`APP_VERSION` `20261001-coverage2`・`CACHE_NAME` `ripigochi-v138`（#115 の v137 の公開後に main を取り込み、1つ上げた）
 
 **含めない範囲**（判断待ち）：基本の料理をどこから集めるか・同意のないチャンネルの扱い・サーバーの公開カタログ（新着）の棚卸し・日次ジョブの変更。目標の数（ひとますに3品・7品・14品）は仮
 

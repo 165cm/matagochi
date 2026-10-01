@@ -194,12 +194,15 @@
       乳:/牛乳|チーズ|バター|生クリーム|ヨーグルト|パン粉|鶏ガラ/,
       小麦:/小麦|しょうゆ|醤油|うどん|パスタ|パン|餃子|めんつゆ|ポン酢|豆板醤|鶏ガラ/,
       大豆:/大豆|豆腐|豆乳|納豆|みそ|味噌|しょうゆ|醤油|油揚げ|厚揚げ|サラダ油|ツナ|めんつゆ|ポン酢|豆板醤|鶏ガラ/,
-      魚:/魚|鮭|さけ|さば|鯖|ツナ|かつお|鰹|しらす|めんつゆ|ポン酢|ナンプラー|みそ|味噌|キムチ/,
-      肉:/肉|鶏|豚|牛ひき|ベーコン|ハム|ソーセージ|鶏ガラ/,
+      魚:/魚|鮭|さけ|サーモン|さば|鯖|ツナ|かつお|鰹|しらす|たら(?!ご)|鱈|ぶり(?!お)|鰤|まぐろ|鮪|あじ(?!あ)|鯵|いわし|鰯|さんま|秋刀魚|かじき|梶木|めんつゆ|ポン酢|ナンプラー|みそ|味噌|キムチ/,
+      肉:/肉|鶏|ささみ|笹身|手羽|豚|牛(?!乳|蒡)|合いびき|合びき|合挽|挽き肉|挽肉|ベーコン|ハム|ソーセージ|ウインナー|鶏ガラ/,
       えび:/えび|エビ|海老|キムチ/, かに:/かに|カニ|蟹/,
       そば:/そば|蕎麦/, 落花生:/落花生|ピーナッツ/, くるみ:/くるみ|クルミ/,
     };
-    const contains = Object.entries(rules).filter(([, re]) => re.test(names)).map(([c]) => c);
+    // 表記ゆれ：半角を全角にした名前と、カタカナをひらがなにした名前の両方で照らす（タラ → たら、ササミ → ささみ）。カタカナで書いた決まりは元の名前で当たる。
+    const full = names.normalize("NFKC");
+    const hira = full.replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    const contains = Object.entries(rules).filter(([, re]) => re.test(full) || re.test(hira)).map(([c]) => c);
     const tasks = [];
     if (/肉/.test(names) && /切|刻/.test(steps)) tasks.push("肉を切る");
     if (/揚げ/.test(steps)) tasks.push("揚げる");
@@ -228,9 +231,11 @@
         ...(/ケチャップ|中濃ソース/.test(n) ? ["トマト"] : []),
         ...(/みそ|しめじ/.test(n) ? ["きのこ"] : []),
       ])];
-    const blocked = [...p.restrictions, ...p.dislikes].find((x) =>
-      searchable.some((n) => matches(n, x)),
-    );
+    // 食べられないもの（restrictions）は、原材料の印がなくても、材料名からの推測（suggestPlanning の contains：豚こま → 肉、鮭 → 魚、しょうゆ → 小麦 など）でも外す。
+    // 苦手（dislikes）は材料名と印だけで見る（だしのような推測で外しすぎない）。
+    const inferred = p.restrictions.length ? suggestPlanning(recipe).contains : [];
+    const blocked = p.restrictions.find((x) => [...searchable, ...inferred].some((n) => matches(n, x)))
+      || p.dislikes.find((x) => searchable.some((n) => matches(n, x)));
     if (blocked) return { ok: false, reason: "避けたい食材を含みます" };
     if (
       p.restrictions.length &&
