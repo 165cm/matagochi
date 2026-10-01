@@ -350,6 +350,19 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const today = dayOf(now()), month = today.slice(0, 7);
         const entry = await store.get("trends/seed");
         const doc = { stages: [], q: 0, candidates: [], tried: [], ...(entry?.envelope || {}) };
+        // 段階の記録を保存する（世代つき。断られた時だけやり直し、例外ではやり直さない）。保存できたら true。
+        const saveSeed = async () => {
+          doc.tried = doc.tried.slice(-5000);
+          doc.candidates = doc.candidates.slice(0, 200);
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const cur = await store.get("trends/seed");
+            let ok;
+            // その時点の写しを保存する（あとで doc を書きかえても、保存した記録は変わらない）。
+            try { ok = await store.put("trends/seed", structuredClone(doc), { ifGeneration: cur?.generation ?? 0 }); } catch { return false; }
+            if (ok) return true;
+          }
+          return false;
+        };
         let stage = doc.stages[doc.stages.length - 1];
         if (!stage || stage.done) {
           stage = { n: (stage?.n || 0) + 1, yen: Math.max(1, Math.min(1000, Math.round(Number(yen) || 100))), startedAt: new Date(now()).toISOString(), ai: 0, input: 0, output: 0, added: [], skipped: {}, byQuery: {}, done: false };
@@ -360,10 +373,21 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const monthCap = monthCapCalls();
         let reserved = 0, spent = 0, monthUsed = 0;
         const after = await writeMonthCost(month, (used) => { monthUsed = used; reserved = Math.max(0, Math.min(allowed, monthCap - used)); return reserved ? used + reserved : null; });
-        const reserveFailed = after === null && reserved > 0;
+        let reserveFailed = after === null && reserved > 0;
         if (after === null) reserved = 0;
+        // 段階の側も、AI を呼ぶ前に予約した回数を「使った」として先に保存する（保存できなければ AI を呼ばない）。
+        // あとで実際の回数に直す。直せなくても、多めに数えたまま＝段階の金額は超えない。
+        const committed = stage.ai;
+        if (reserved) {
+          stage.ai = committed + reserved;
+          if (!(await saveSeed())) {
+            stage.ai = committed;
+            await writeMonthCost(month, (used) => Math.max(0, used - reserved));
+            reserved = 0; reserveFailed = true;
+          }
+        }
         const gate = { allow: () => spent < reserved, used: () => { spent += 1; } };
-        const why = () => (reserveFailed ? "cost_not_saved" : stage.ai + spent >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : "month_budget");
+        const why = () => (reserveFailed ? "cost_not_saved" : committed + spent >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : "month_budget");
         const ixEntry = await readIndex();
         const index = { weeks: (ixEntry?.envelope.weeks || []).filter(fresh), ...(ixEntry?.envelope.refreshedOn ? { refreshedOn: ixEntry.envelope.refreshedOn } : {}) };
         let week = index.weeks.find((w) => w.seed && w.stage === stage.n);
@@ -383,12 +407,14 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             for (const c of found) {
               if (seen.has(c.videoId) || doc.candidates.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { skip("filtered"); continue; }
               if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) { skip("same_channel"); continue; }
-              doc.candidates.push({ videoId: c.videoId, label });
+              doc.candidates.push({ videoId: c.videoId, channelId: c.channelId || "", label });
             }
             continue;
           }
           const c = doc.candidates[0];
           if (seen.has(c.videoId)) { doc.candidates.shift(); skip("duplicate"); continue; }
+          // 持ち越した候補も、読む前に掲載停止（動画・チャンネル）を確かめ直す（あとから止められた動画に費用を使わない）。
+          if (excluded.has(c.videoId) || (c.channelId && excluded.has(c.channelId))) { doc.candidates.shift(); doc.tried.push(c.videoId); seen.add(c.videoId); skip("opted_out"); continue; }
           // もう読んだ動画は、保存済みの結果を使う（AI を呼ばない）。
           let r = await peek(c.videoId).catch(() => null);
           const free = !!r;
@@ -402,7 +428,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             }
           }
           doc.candidates.shift(); doc.tried.push(c.videoId); seen.add(c.videoId);
-          if ((r?.channelId && excluded.has(r.channelId))) { skip("opted_out"); continue; }
+          if ((r?.channelId && excluded.has(r.channelId)) || excluded.has(c.videoId)) { skip("opted_out"); continue; }
           if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short"); continue; }
           week.items.push({ videoId: c.videoId, day: today });
           // 題名は YouTube の情報なので、記録には残さない（見せる時に保存済みの結果から読む＝30日ルールの中）。
@@ -410,7 +436,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           stage.byQuery[c.label] = (stage.byQuery[c.label] || 0) + 1;
         }
         if (!reason) reason = "time"; // 時間切れ：もう一度押すと続きから
-        stage.ai += spent;
+        stage.ai = committed + spent;
         stage.input += collector.input || 0;
         stage.output += collector.output || 0;
         stage.yenEstimate = Math.round(stage.ai * yenPerAi);
@@ -420,13 +446,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         if (!week.items.length) index.weeks = index.weeks.filter((w) => w !== week);
         await writeIndex(index);
         if (reserved > spent) await writeMonthCost(month, (used) => Math.max(0, used - (reserved - spent)));
-        doc.tried = doc.tried.slice(-5000);
-        doc.candidates = doc.candidates.slice(0, 200);
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const cur = await store.get("trends/seed");
-          if (await store.put("trends/seed", doc, { ifGeneration: cur?.generation ?? 0 }).catch(() => false)) break;
-        }
         cache = null;
+        // 記録を保存できなければ、成功として返さない（段階の回数は予約した多めのまま。試した動画はもう読んだ結果があるので、次は0円）。
+        if (!(await saveSeed())) throw new ApiError(503, "seed_not_saved", spent ? "集めた結果の記録を保存できませんでした。少し待ってから、もう一度押してください（費用は多めに数えたままです）。" : "記録を保存できませんでした（AI は使っていません）。少し待ってから、もう一度押してください。");
         return { stage: await withTitles(stage), reason, queriesLeft: SEED_QUERIES.length - doc.q, candidatesLeft: doc.candidates.length, month: { ai: monthUsed + spent, cap: monthCap, yen: Math.round((monthUsed + spent) * yenPerAi), yenCap: yenPerMonth } };
       } finally { await unlock(); }
     },

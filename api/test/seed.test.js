@@ -113,3 +113,45 @@ test('seed: the admin endpoints need the token', async (t) => {
   assert.equal(r.status, 200);
   assert.equal((await r.json()).queriesLeft, SEED_QUERIES.length);
 });
+
+test('review fix (#117): the stage reserves its calls in trends/seed before any AI call; if that cannot be saved no AI is called, and a failed final save is not reported as success', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const put = store.put.bind(store);
+  let failSeed = true;
+  store.put = async (key, ...rest) => (failSeed && key === 'trends/seed' ? false : put(key, ...rest));
+  const catalog = fakeCatalog();
+  const make = () => createTrendBook(store, { catalog, now: () => now, yenPerAi: 5, yenPerMonth: 1000,
+    search: async () => [1, 2, 3].map((n) => ({ videoId: id(n), channelId: `c${n}`, title: `料理${n}` })) });
+  for (let i = 0; i < 2; i++) await assert.rejects(make().seed({ yen: 5 }), (e) => e.code === 'seed_not_saved' && /AI は使っていません/.test(e.message), 'never reported as success');
+  assert.equal(catalog.calls.length, 0, 'no stage record → no AI');
+  assert.equal((await store.get('trends/cost'))?.envelope.months['2026-10'].ai || 0, 0, 'the monthly reservation is returned');
+  // 予約は保存でき、最後の保存だけ失敗 → 成功として返さない。次は同じ段階の金額を超えない
+  failSeed = false;
+  let writes = 0;
+  store.put = async (key, ...rest) => (key === 'trends/seed' && ++writes >= 2 ? false : put(key, ...rest)); // 予約の保存だけ通り、最後の保存（やり直しも）は断られる
+  await assert.rejects(make().seed({ yen: 5 }), { code: 'seed_not_saved' });
+  assert.equal(catalog.calls.length, 1);
+  assert.equal((await store.get('trends/seed')).envelope.stages[0].ai, 1, 'the reserved count stays');
+  store.put = put;
+  const again = await make().seed({ yen: 5 });
+  assert.equal(catalog.calls.length, 1, 'the 5円 stage does not spend again');
+  assert.equal(again.stage.n, 1);
+  assert.equal(again.reason, 'stage_budget');
+});
+
+test('review fix (#117): a carried-over candidate stopped later (video or channel) is skipped before any AI read', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  let excluded = new Set();
+  const make = () => createTrendBook(store, { catalog, now: () => now, yenPerAi: 5, yenPerMonth: 1000, optedOut: async () => excluded,
+    search: async () => [1, 2, 3].map((n) => ({ videoId: id(n), channelId: `c${n}`, title: `料理${n}` })) });
+  const r1 = await make().seed({ yen: 5 }); // 1本だけ読んで、2本を持ち越す
+  assert.deepEqual(r1.stage.added.map((a) => a.videoId), [id(1)]);
+  excluded = new Set([id(2), 'c3']); // あとから動画Bとチャンネルを止める
+  const r2 = await make().seed({ yen: 10 });
+  assert.equal(catalog.calls.length, 1, 'no AI on stopped videos');
+  assert.deepEqual(r2.stage.added, []);
+  assert.equal(r2.stage.skipped.opted_out, 2);
+});
