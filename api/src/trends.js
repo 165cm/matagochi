@@ -591,7 +591,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             stage.added.push({ videoId: c.videoId, label: c.label, minutes: r.planning?.minutes || null, free });
             stage.byQuery[c.label] = (stage.byQuery[c.label] || 0) + 1;
             if (c.axis) { stage.byAxis = stage.byAxis || {}; stage.byAxis[c.axis] = (stage.byAxis[c.axis] || 0) + 1; }
-            if (c.wave) { const e = (doc.waves?.log || []).find((x) => x.n === c.wave); if (e) e.added += 1; }
+            // aiAdded：AI で読んで料理になった本数（0円の料理は数えない。「当たり」＝ aiAdded ÷ ai の分子）。
+            if (c.wave) { const e = (doc.waves?.log || []).find((x) => x.n === c.wave); if (e) { e.added += 1; if (!free) e.aiAdded = (e.aiAdded || 0) + 1; } }
           }
           // 読めなかった候補（AI の枠・止める理由）は、次に押した時のために先頭へ戻す。
           if (back.length) doc.candidates.unshift(...back);

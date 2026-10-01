@@ -149,3 +149,16 @@ test('review fix (#119): a failed search (or a failed description check after it
   assert.ok(searched.every((q) => q === WAVE_TREND_WORDS[0]), 'the same word is retried each time');
   assert.equal((await store.get('trends/seed')).envelope.waves.day.n, WAVE_SEARCH_PER_DAY);
 });
+
+test('review fix (#120): the hit rate counts only dishes read by the AI (aiAdded), not ones taken for free from saved results', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const catalog = fakeCatalog();
+  catalog.ready.set(id(2), recipe(id(2))); // もう読んだ動画（0円）
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
+    search: async () => [{ videoId: id(1), channelId: 'c1', title: '料理1' }, { videoId: id(2), channelId: 'c2', title: '料理2' }] });
+  const r = await book.seed({ yen: 1 });
+  const e = r.waves.log.find((x) => !x.skipped);
+  assert.deepEqual([e.ai, e.added, e.aiAdded], [1, 2, 1], 'AI 1, added 2 (one free), AI hits 1 → 100%, never 200%');
+});

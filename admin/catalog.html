@@ -202,6 +202,8 @@
   const outcomeOf = (k) => (k === "no_steps_in_description" ? "nosteps" : ["incomplete_recipe", "too_short"].includes(k) ? "unread" : k === "gemini_invalid_json" ? "json" : "other");
   const status = document.getElementById("status");
   let token = "", last = { seed: null, catalog: null }, busy = false, stopAuto = false;
+  // 合言葉を消したら session を進める。それより前に始めた読み込み・収集の答えは、画面に出さない。
+  let session = 0;
   try { token = sessionStorage.getItem("ripigochi-admin") || ""; } catch {}
   // 外から来る文字（題名・投稿者名など）は、HTML として入れない（textContent だけで組み立てる）。
   const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined && text !== null) e.textContent = String(text); if (cls) e.className = cls; return e; };
@@ -331,9 +333,14 @@
     document.getElementById("waves-left").textContent = w ? `残り：話題 ${w.trendReady}/${w.trendTotal}語・定番 ${w.classicLeft}/${w.classicTotal}品` : "";
     const log = w?.log || [];
     if (log.length) {
-      const agg = { trend: { s: 0, ai: 0, add: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, skip: 0 } };
-      for (const e of log) { const a = agg[e.axis]; if (!a) continue; if (e.skipped) { a.skip += 1; continue; } a.s += 1; a.ai += e.ai || 0; a.add += e.added || 0; }
-      const rows = [["話題", agg.trend], ["定番", agg.classic]].map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.ai ? pct(a.add, a.ai) : "—"]);
+      // 当たり＝ AI で読んだうち料理になった割合。分子も分母も AI で読んだ分だけ（0円の料理は入れない。記録に aiAdded がある検索だけで数える）。
+      const agg = { trend: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 } };
+      for (const e of log) {
+        const a = agg[e.axis]; if (!a) continue; if (e.skipped) { a.skip += 1; continue; }
+        a.s += 1; a.ai += e.ai || 0; a.add += e.added || 0;
+        if (Number.isFinite(e.ai)) { a.hitAi += e.ai; a.hit += e.aiAdded || 0; }
+      }
+      const rows = [["話題", agg.trend], ["定番", agg.classic]].map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—"]);
       box.append(scroll(table(["広げ方", "検索", "AI", "増えた", "1検索で", "当たり"], rows, [1, 2, 3, 4, 5], null, { bars: [4] })));
       const skipped = agg.classic.skip;
       box.append(el("p", `話題＝公開60日以内・定番＝公開1年より前。当たり＝AI で読んだうち料理になった割合。${skipped ? `定番の ${skipped}品は、もう新着に2品あるので検索せず（0円）。` : ""}`, "meta"));
@@ -390,16 +397,18 @@
   function renderAll() { renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderQueries(); renderCatalog(); }
   async function load() {
     if (!token) return;
+    const my = session;
     status.textContent = "読み込んでいます…";
     try {
       const [seed, catalog] = await Promise.all([api("/api/admin/trends/seed"), api("/api/admin/catalog")]);
+      if (my !== session) return;
       last = { seed, catalog };
       renderAll();
       // 読み込めたら、合言葉の欄は畳む（上の「合言葉を消す」で戻せる）。
       document.getElementById("login-box").hidden = true;
       document.getElementById("logout").hidden = false; document.getElementById("reload").hidden = false;
       status.textContent = `✓ ${new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })} に読み込み`;
-    } catch (error) { status.textContent = error.message; document.getElementById("login-box").hidden = false; }
+    } catch (error) { if (my !== session) return; status.textContent = error.message; document.getElementById("login-box").hidden = false; }
   }
   document.getElementById("reload").addEventListener("click", load);
   // ── 集める（目安の進み具合つき・自動で続ける） ──
@@ -419,6 +428,7 @@
     const s = (last.seed?.stages || []).at(-1);
     if (!(s && !s.done) && !confirm("新しい段階を始めます。AI の費用が100円（目安）までかかります。よろしいですか？")) return;
     busy = true; stopAuto = false;
+    const my = session;
     document.getElementById("seed-run").disabled = true;
     document.getElementById("stop").hidden = !auto;
     let round = 0;
@@ -429,10 +439,12 @@
         progress(true);
         let r;
         try { r = await api("/api/admin/trends/seed", { yen: 100, axis: document.getElementById("axis").value }); }
-        catch (error) { runStatus.textContent = `止まりました：${error.message}`; break; }
-        finally { progress(false); }
+        catch (error) { if (my === session) runStatus.textContent = `止まりました：${error.message}`; break; }
+        finally { if (my === session) progress(false); }
+        if (my !== session) break;
         if (r.busy) { runStatus.textContent = "ほかの収集が動いています。少し待ってからもう一度どうぞ。"; break; }
         await load();
+        if (my !== session) break;
         const added = (r.stage.added || []).length;
         runStatus.textContent = `第${r.stage.n}段階：いままでに ${added}品・${REASON[r.reason] || r.reason}`;
         if (!auto || stopAuto || r.stage.done || !["time", "wait"].includes(r.reason)) break;
@@ -443,8 +455,7 @@
       }
     } finally {
       busy = false; document.getElementById("stop").hidden = true;
-      renderControls();
-      if (stopAuto) runStatus.textContent += "（自動を止めました）";
+      if (my === session) { renderControls(); if (stopAuto) runStatus.textContent += "（自動を止めました）"; }
     }
   }
   document.getElementById("seed-run").addEventListener("click", collect);
@@ -532,7 +543,11 @@
   });
   document.getElementById("logout").addEventListener("click", () => {
     token = ""; try { sessionStorage.removeItem("ripigochi-admin"); } catch {}
+    session += 1; stopAuto = true;
     last = { seed: null, catalog: null };
+    runStatus.textContent = ""; progress(false);
+    document.querySelector("#added-box > summary").textContent = "増えた料理";
+    const dlg = document.getElementById("recipe"); if (dlg.open) dlg.close();
     for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left"]) document.getElementById(id).textContent = "";
     document.getElementById("seed-run").disabled = true;
     document.getElementById("login-box").hidden = false; document.getElementById("reload").hidden = true;
