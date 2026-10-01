@@ -366,7 +366,8 @@
     return stapleLabel[traits(recipe).staple];
   }
   const dayWord = (gap) => (gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `${gap}日前`);
-  const sameDish = (a, b) => !!a && !!b && (a.id === b.id || (!!a.folder && a.folder === b.folder) || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id) || (!!a.starterId && a.starterId === b.starterId) || (!!a.title && a.title === b.title));
+  // 同じ親の料理名（dish・APP_MAP §48）も同じ料理として数える（前回からの日数・好物の頃合いは親で見る）。
+  const sameDish = (a, b) => !!a && !!b && (a.id === b.id || (!!a.folder && a.folder === b.folder) || (!!a.dish && a.dish === b.dish) || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id) || (!!a.starterId && a.starterId === b.starterId) || (!!a.title && a.title === b.title));
   // timeline: [{date, recipe}] of meals already eaten or already picked, any order.
   // Penalises the same staple / protein / cuisine within three days. Repeating the same
   // dish is handled by the repeat cycle (repeatFit), not here.
@@ -512,6 +513,8 @@
     preferenceOf = () => null,
     // 親（料理名・定番フォルダ）のキー。同じ親は、自動の献立では週1回まで（APP_MAP §48）。
     parentOf = (r) => r?.folder || "",
+    // 自動では選ばない料理（「もう出さない」にした親の作り方など）。自分で選んだ日・ピン留めの日だけ入る。
+    autoBlocked = () => false,
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -571,7 +574,7 @@
       )
         return { date, off: true };
       const candidates = recipes
-        .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity)
+        .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity && (!autoBlocked(r) || overrides[date] === r.id || pins[String(new Date(date + "T12:00:00").getDay())] === r.id))
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
         .filter((x) => x.ok && (!x.challenge || challenges < 1))
         .map((x) => ({
