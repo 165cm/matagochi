@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude | レビュー待ち | `claude/restriction-infer` | 食べられないものの判定：原材料の印がない料理でも、材料名からの推測（豚こま → 肉・鮭 → 魚 など）で外す（PR 4a の棚卸しで見つけた） | `lifestyle.js`・`app.js`（版）・`index.html`・`sw.js`・`test/restriction-infer.test.cjs`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
