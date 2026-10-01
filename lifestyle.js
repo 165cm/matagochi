@@ -366,7 +366,8 @@
     return stapleLabel[traits(recipe).staple];
   }
   const dayWord = (gap) => (gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `${gap}日前`);
-  const sameDish = (a, b) => !!a && !!b && (a.id === b.id || (!!a.folder && a.folder === b.folder) || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id) || (!!a.starterId && a.starterId === b.starterId) || (!!a.title && a.title === b.title));
+  // 同じ親の料理名（dish・APP_MAP §48）も同じ料理として数える（前回からの日数・好物の頃合いは親で見る）。
+  const sameDish = (a, b) => !!a && !!b && (a.id === b.id || (!!a.folder && a.folder === b.folder) || (!!a.dish && a.dish === b.dish) || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id) || (!!a.starterId && a.starterId === b.starterId) || (!!a.title && a.title === b.title));
   // timeline: [{date, recipe}] of meals already eaten or already picked, any order.
   // Penalises the same staple / protein / cuisine within three days. Repeating the same
   // dish is handled by the repeat cycle (repeatFit), not here.

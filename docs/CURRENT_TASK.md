@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | PR 122b 親の料理名：食べ比べ・子の評価と親の連動・親を「もう出さない」（版 20261001-compare。APP_MAP §48） | `folders.js`・`daily-ui.js`・`lifestyle.js`・`styles.css`・版・`test/parents-b.test.cjs`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

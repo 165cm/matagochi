@@ -324,7 +324,8 @@ function dailyPlan({ exclude = [] } = {}) {
     length: rhythmOn() ? rhythmPlanDays() : state.planLength || p.period,
     addDays,
     overrides: state.planOverrides,
-    cyclesOf: (r) => ({ ...likedCycles(r), ...recipeRatings(r) }),
+    // 子の評価がなければ親の評価を引き継ぐ（APP_MAP §48）。
+    cyclesOf: plannedCycles(),
     offUntil: prestartUntil(),
     requestOf: openRequestFor,
     // 1回の買い物で作る日。日持ちしない食材の料理を、買い物のすぐあとに回すのに使う。
@@ -1465,7 +1466,19 @@ function handleDailyAction(action, data) {
   if (action === "life-swap-more") swapShowAll = true;
   if (action === "life-starter-more") starterShowAll = true;
   // 同じ親の作り方を並べて見る（料理名で探す）。
-  if (action === "life-dish-variants" && data.dish) { state.searchText = String(data.dish).slice(0, 20); recipeTab = "all"; }
+  if (action === "life-dish-variants" && data.dish) { state.searchText = String(data.dish).slice(0, 20); recipeTab = "all"; state.view = "collection"; }
+  // 食べ比べ：空いている日に、同じ親の別の作り方を入れる（自分で選んだ日として。入れ替えで戻せる）。
+  if (action === "life-dish-compare" && data.parent && !isViewer()) {
+    const n = dishCompare(data.parent);
+    if (n) { trackDaily("dish_compare"); changedShopping(before); }
+    showToast(n ? `「${String(data.dish || "").slice(0, 20)}」の食べ比べ：${n}日分を献立に入れました（入れ替えで戻せます）` : "空いている日がないか、条件に合う作り方がありません。");
+  }
+  if ((action === "life-dish-hide" || action === "life-dish-unhide") && data.parent && !isViewer()) {
+    const pref = normalizeStarterPref(state.starterPref), set = new Set(pref.hiddenDishes);
+    if (action === "life-dish-hide") set.add(data.parent); else set.delete(data.parent);
+    state.starterPref = { ...pref, hiddenDishes: [...set], updatedAt: nowIso() };
+    showToast(action === "life-dish-hide" ? `「${String(data.dish || "").slice(0, 20)}」は、おすすめと自動の献立に出しません（設定で戻せます）` : "出すように戻しました。");
+  }
   if (action === "life-facet" && data.facet in recipeFacets) recipeFacets[data.facet] = recipeFacets[data.facet] === data.value ? "" : data.value;
   if (action === "life-facet-clear") recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
   if (action === "life-refl-view") { reflView = data.view === "grid" ? "grid" : "cal"; try { localStorage.setItem("ripigochi-refl-view", reflView); } catch {} }
@@ -1660,7 +1673,7 @@ function handleDailyAction(action, data) {
     showToast(data.show === "true" ? "おすすめレシピを表示します。" : "おすすめを隠しました。自分のレシピだけで献立を作ります。");
   }
   if (action === "life-share-stats") { try { localStorage.setItem("ripigochi-share-stats", shareStatsOn() ? "off" : "on"); } catch {} }
-  if (action === "life-starters-unhide" && !isViewer()) { state.starterPref = { ...normalizeStarterPref(state.starterPref), hidden: [], updatedAt: nowIso() }; showToast("非表示にしたおすすめを戻しました。"); }
+  if (action === "life-starters-unhide" && !isViewer()) { state.starterPref = { ...normalizeStarterPref(state.starterPref), hidden: [], hiddenDishes: [], updatedAt: nowIso() }; showToast("非表示にしたおすすめを戻しました。"); }
   if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
   if (action === "life-skill-growth" && state.skillProfile) { state.skillProfile = { ...state.skillProfile, growth: data.value === "grow" ? "grow" : "steady", updatedAt: nowIso() }; state.planOverrides = {}; }
   // The first-plan welcome stays until the next real action on the plan.
@@ -2405,8 +2418,9 @@ function starterRecipeList() {
   const saved = new Set(state.recipes.map((r) => r.starterId).filter(Boolean));
   const query = (state.searchText || "").trim().toLowerCase();
   const hidden = starterHidden();
+  const hp = hiddenParents();
   return [...rankByTaste(discoverRecipes()), ...Lifestyle.curated]
-    .filter((r) => !saved.has(r.id) && !hidden.has(r.id))
+    .filter((r) => !saved.has(r.id) && !hidden.has(r.id) && !(hp.size && r.dish && hp.has(parentKeyOf(r))))
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => (r.discover ? discoverSafe(r) : Lifestyle.fit(r, dailyProfile(), today()).ok))
     // 親の料理名（dish）でも探せる（表記ゆれでまとめた子も「ほか◯つの作り方」から見られるように）。
@@ -2447,6 +2461,7 @@ function renderRecipeDetail() {
     <div class="detail-tags">${tagLabels(r).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
     ${renderSkillLine(r)}
     ${saved || edit ? renderFolderLine(r) : ""}
+    ${renderParentLine(r)}
     <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
     <div class="detail-actions">${requestButton(r)}${edit ? (saved ? dailyButton("edit-recipe", "✏️ 編集する", `data-recipe="${escapeAttr(r.id)}"`) : dailyButton("life-save-starter", "🔖 自分のレシピに保存", `data-recipe="${escapeAttr(r.id)}"`)) : ""}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>
     ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? `🎬 作り方がおかしい？動画から読み直す${ticketPrice()}` : `🎬 動画から読み取る${ticketPrice()}`}</button></div>` : ""}
@@ -2467,7 +2482,9 @@ function showStarters() {
 }
 function normalizeStarterPref(raw) {
   const hidden = Array.isArray(raw?.hidden) ? [...new Set(raw.hidden.filter((id) => typeof id === "string" && id.length < 80))] : [];
-  return { show: raw?.show !== false, asked: !!raw?.asked, hidden, updatedAt: normalizeTimestamp(raw?.updatedAt) };
+  // 親（料理名）ごと「もう出さない」（APP_MAP §48）。
+  const hiddenDishes = Array.isArray(raw?.hiddenDishes) ? [...new Set(raw.hiddenDishes.filter((k) => typeof k === "string" && k.length < 60))].slice(0, 200) : [];
+  return { show: raw?.show !== false, asked: !!raw?.asked, hidden, hiddenDishes, updatedAt: normalizeTimestamp(raw?.updatedAt) };
 }
 // 一覧から選んで「非表示」にしたおすすめ。一覧にも献立にも出さない（設定で戻せる）。
 const starterHidden = () => new Set(state.starterPref?.hidden || []);
@@ -2484,7 +2501,7 @@ function renderStarterSettings() {
   return `<section class="panel starter-settings"><h3>🍳 おすすめレシピ</h3>
     <button type="button" class="role-toggle" data-action="life-starters" data-show="${!showStarters()}" aria-pressed="${showStarters()}"><span>最初から入っている料理を使う<small>${showStarters() ? "レシピ一覧と献立に、おすすめも出します" : "自分のレシピだけで献立を作ります"}</small></span><i aria-hidden="true"></i></button>
     <button type="button" class="role-toggle" data-action="life-share-stats" aria-pressed="${shareStatsOn()}"><span>みんなの定番づくりに協力する<small>献立に入れた・作ったYouTubeレシピを、名前を伏せて数えます。写真・メモ・手入力のレシピは送りません。</small></span><i aria-hidden="true"></i></button>
-    ${state.starterPref?.hidden?.length ? `<p class="small starter-hidden">非表示にしたおすすめ <b>${state.starterPref.hidden.length}品</b> <button type="button" class="text-button" data-action="life-starters-unhide">すべて戻す</button></p>` : ""}
+    ${state.starterPref?.hidden?.length || state.starterPref?.hiddenDishes?.length ? `<p class="small starter-hidden">非表示にしたおすすめ <b>${state.starterPref.hidden?.length || 0}品</b>${state.starterPref.hiddenDishes?.length ? `・出さない料理名 <b>${state.starterPref.hiddenDishes.length}</b>` : ""} <button type="button" class="text-button" data-action="life-starters-unhide">すべて戻す</button></p>` : ""}
     ${!showStarters() && n < 6 ? `<p class="notice">自分の夜ごはんのレシピが${n}品です。少ないと、献立が組めない日があります。</p>` : ""}</section>`;
 }
 

@@ -44,6 +44,63 @@ function parentKeyOf(r) {
   const f = folderList().find((x) => folderNorm(x.name) === n);
   return f ? f.key : `d:${n}`;
 }
+// 子の評価を親に連動（APP_MAP §48・122b）：親ごとに、人ごとのいちばん高い「また食べたい」（しばらく休み・もう作らないは入れない）。
+const PARENT_CYCLES = ["tomorrow", "weekly", "twice_month", "monthly"];
+function parentCycles() {
+  const out = new Map();
+  for (const r of state.recipes) {
+    const k = parentKeyOf(r); if (!k) continue;
+    for (const [name, c] of Object.entries(recipeRatings(r))) {
+      if (!PARENT_CYCLES.includes(c)) continue;
+      const m = out.get(k) || {};
+      if (!m[name] || PARENT_CYCLES.indexOf(c) < PARENT_CYCLES.indexOf(m[name])) m[name] = c;
+      out.set(k, m);
+    }
+  }
+  return out;
+}
+// 献立に渡す「また食べたい」：その作り方に評価があればそれ（もう作らない＝その作り方だけ外す）。なければ親の評価を引き継ぐ。
+function plannedCycles(parents = parentCycles()) {
+  return (r) => {
+    const own = { ...likedCycles(r), ...recipeRatings(r) };
+    if (Object.keys(own).length) return own;
+    const k = parentKeyOf(r);
+    return k && parents.has(k) ? { ...parents.get(k) } : own;
+  };
+}
+// 親そのものを「もう出さない」（親の画面で選んだ時だけ）。おすすめの一覧にも、自動の献立にも出さない（自分で選んだ日は別）。
+const hiddenParents = () => new Set(state.starterPref?.hiddenDishes || []);
+// 同じ親の作り方（自分のレシピ＋おすすめ）。
+function parentChildren(key) {
+  if (!key) return [];
+  const seen = new Set();
+  return [...state.recipes, ...(showStarters() ? discoverRecipes() : [])].filter((r) => r.mealType === "dinner" && parentKeyOf(r) === key && !seen.has(r.id) && seen.add(r.id));
+}
+// 食べ比べ：献立の空いている日（決めた日・自分で選んだ日・お休みは除く）に、同じ親の別の作り方を1日1つずつ。その日に合う順。
+function dishCompare(key) {
+  const kids = parentChildren(key);
+  const p = dailyProfile();
+  const used = new Set(Object.values(state.planOverrides || {}));
+  let n = 0;
+  for (const d of dailyPlan()) {
+    if (d.off || d.slot || state.planOverrides[d.date] || d.date < today()) continue;
+    const pick = kids.filter((r) => !used.has(r.id)).map((r) => ({ r, fit: Lifestyle.fit(r, p, d.date) })).filter((x) => x.fit.ok).sort((a, b) => (b.fit.score || 0) - (a.fit.score || 0))[0];
+    if (!pick) break;
+    state.planOverrides[d.date] = pick.r.id; used.add(pick.r.id); n += 1;
+  }
+  return n;
+}
+// レシピの詳細：親（料理名）の行。作り方の数・食べ比べ・ほかの作り方・親をもう出さない／戻す。
+function renderParentLine(r) {
+  const key = parentKeyOf(r);
+  if (!key || isViewer()) return "";
+  const f = state.folders?.[key];
+  const name = f ? f.name : r.dish;
+  if (!name) return "";
+  const kids = parentChildren(key);
+  if (hiddenParents().has(key)) return `<div class="parent-line"><p class="small">🍲 「${escapeHtml(name)}」は、おすすめと自動の献立に出さない設定です。</p>${dailyButton("life-dish-unhide", "出すように戻す", `data-parent="${escapeAttr(key)}"`)}</div>`;
+  return `<div class="parent-line"><p class="small">🍲 「${escapeHtml(name)}」の作り方 <b>${kids.length}</b>つ</p><div class="row">${kids.length >= 2 ? dailyButton("life-dish-compare", "この料理で食べ比べ", `data-parent="${escapeAttr(key)}" data-dish="${escapeAttr(name)}"`) : ""}${kids.length >= 2 ? dailyButton("life-dish-variants", "ほかの作り方", `data-dish="${escapeAttr(name)}"`) : ""}<button type="button" class="text-button danger" data-action="life-dish-hide" data-parent="${escapeAttr(key)}" data-dish="${escapeAttr(name)}">「${escapeHtml(name)}」はもう出さない</button></div></div>`;
+}
 const folderList = () => Object.values(state.folders || {}).filter((f) => !f.deleted).sort((a, b) => a.name.localeCompare(b.name, "ja"));
 function folderOfRecipe(r) {
   const key = r?.folder || (r?.id && recipeById(r.id)?.folder);
@@ -82,7 +139,8 @@ function suggestFolder(title) {
 function planRecipes(list = allDinnerRecipes()) {
   const keep = new Set(Object.values(state.planOverrides || {}));
   const pick = new Map(folderList().map((f) => [f.key, folderPick(f)?.id]));
-  return list.filter((r) => !r.folder || !pick.has(r.folder) || pick.get(r.folder) === r.id || keep.has(r.id));
+  const hidden = hiddenParents();
+  return list.filter((r) => keep.has(r.id) || ((!r.folder || !pick.has(r.folder) || pick.get(r.folder) === r.id) && !(hidden.size && hidden.has(parentKeyOf(r)))));
 }
 function folderPins() {
   return Object.fromEntries(folderList().filter((f) => f.pinDay).map((f) => [f.pinDay, folderPick(f)?.id]).filter(([, id]) => id));
@@ -195,8 +253,8 @@ function renderFolderLine(r) {
   if (f) return `<div class="folder-line">📁 <button type="button" class="link-inline" data-action="life-folder-open" data-folder="${f.key}">${escapeHtml(f.name)}</button> の ${childLabel(r)}<button type="button" class="text-button" data-action="life-folder-leave" data-recipe="${escapeAttr(r.id)}">外す</button></div>`;
   const hit = suggestFolder(r.title);
   const others = folderList().filter((x) => x !== hit);
-  return `<div class="folder-line">${hit ? dailyButton("life-folder-add", `📁「${escapeHtml(hit.name)}」に入れる`, `data-recipe="${escapeAttr(r.id)}" data-folder="${hit.key}"`) : dailyButton("life-folder-add", `📁 定番フォルダを作る（${escapeHtml(dishNameOf(r.title))}）`, `data-recipe="${escapeAttr(r.id)}" data-folder="new"`)}
-    ${others.length || hit ? `<details class="folder-other"><summary>ほかのフォルダ</summary><div>${others.map((x) => `<button type="button" class="text-button" data-action="life-folder-add" data-recipe="${escapeAttr(r.id)}" data-folder="${x.key}">${escapeHtml(x.name)}</button>`).join("")}${hit ? `<button type="button" class="text-button" data-action="life-folder-add" data-recipe="${escapeAttr(r.id)}" data-folder="new">＋ 新しいフォルダ（${escapeHtml(dishNameOf(r.title))}）</button>` : ""}</div></details>` : ""}</div>`;
+  return `<div class="folder-line">${hit ? dailyButton("life-folder-add", `📁「${escapeHtml(hit.name)}」に入れる`, `data-recipe="${escapeAttr(r.id)}" data-folder="${hit.key}"`) : dailyButton("life-folder-add", `📁 定番フォルダを作る（${escapeHtml((r.dish || dishNameOf(r.title)))}）`, `data-recipe="${escapeAttr(r.id)}" data-folder="new"`)}
+    ${others.length || hit ? `<details class="folder-other"><summary>ほかのフォルダ</summary><div>${others.map((x) => `<button type="button" class="text-button" data-action="life-folder-add" data-recipe="${escapeAttr(r.id)}" data-folder="${x.key}">${escapeHtml(x.name)}</button>`).join("")}${hit ? `<button type="button" class="text-button" data-action="life-folder-add" data-recipe="${escapeAttr(r.id)}" data-folder="new">＋ 新しいフォルダ（${escapeHtml((r.dish || dishNameOf(r.title)))}）</button>` : ""}</div></details>` : ""}</div>`;
 }
 async function searchFolderVariants(f) {
   if (!API_BASE_URL) return;
@@ -229,7 +287,7 @@ function handleFolderAction(action, data) {
     let key = data.folder;
     if (key === "new" || !state.folders?.[key]) {
       key = generateId("f");
-      state.folders = { ...(state.folders || {}), [key]: { key, name: dishNameOf(own.title), ranking: [], pinDay: "", updatedAt: nowIso() } };
+      state.folders = { ...(state.folders || {}), [key]: { key, name: own.dish || dishNameOf(own.title), ranking: [], pinDay: "", updatedAt: nowIso() } };
     }
     own.folder = key;
     own.updatedAt = nowIso();
