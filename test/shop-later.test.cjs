@@ -42,7 +42,7 @@ test("PR 5c: perishables first used many days after the shopping day get a gentl
   const html = run("renderDailyShopping()");
   assert.match(html, /10月3日（土）に使う・傷みやすいので、その前に買うと安心/);
   assert.match(html, /もやし・豆苗は傷みやすい食材です/);
-  assert.equal((html.match(/data-action="life-shop-later"/g) || []).length, 2);
+  assert.equal((html.match(/data-action="life-item-later"/g) || []).length, 2);
   assert.doesNotMatch(html, /日もつ|日持ちします/, "no promise of shelf life");
 });
 
@@ -50,7 +50,7 @@ test("PR 5c: 'あとで' moves the item out of this trip (not 'at home') and kee
   const run = app();
   setup(run);
   const id = run(`dailyShopping().find((i) => i.name === "もやし").id`);
-  run(`handleDailyAction("life-shop-later", { id: ${JSON.stringify(id)} })`);
+  run(`handleDailyAction("life-item-later", { id: ${JSON.stringify(id)} })`);
   const items = J(run, "dailyShopping().map((i) => ({ name: i.name, status: i.status }))");
   assert.equal(items.find((i) => i.name === "もやし").status, "later");
   assert.ok(items.some((i) => i.name === "もやし（10月3日の分）" && i.status === "buy"), JSON.stringify(items));
@@ -65,12 +65,12 @@ test("PR 5c: 'あとで' moves the item out of this trip (not 'at home') and kee
   // 取り消し
   const run2 = app(); setup(run2);
   const id2 = run2(`dailyShopping().find((i) => i.name === "もやし").id`);
-  run2(`handleDailyAction("life-shop-later", { id: ${JSON.stringify(id2)} }); shopUndo.undo();`);
+  run2(`handleDailyAction("life-item-later", { id: ${JSON.stringify(id2)} }); shopUndo.undo();`);
   assert.equal(J(run2, `dailyShopping().find((i) => i.name === "もやし").status`), "buy");
   assert.equal(J(run2, "dailyShopping().some((i) => i.name.startsWith('もやし（'))"), false);
   // 目安のない品には効かない
   const pork = run2(`dailyShopping().find((i) => i.name === "豚こま").id`);
-  run2(`handleDailyAction("life-shop-later", { id: ${JSON.stringify(pork)} })`);
+  run2(`handleDailyAction("life-item-later", { id: ${JSON.stringify(pork)} })`);
   assert.equal(J(run2, `dailyShopping().find((i) => i.name === "豚こま").status`), "buy");
   // 保存・読み込み直しても「あとで」は残る
   run(`state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{}; render=()=>{};`);
@@ -94,7 +94,7 @@ test("review fix (#108): undoing 'あとで' after a sync writes a newer 'buy' m
   const run = app();
   setup(run);
   const id = run(`dailyShopping().find((i) => i.name === "もやし").id`);
-  run(`handleDailyAction("life-shop-later", { id: ${JSON.stringify(id)} })`);
+  run(`handleDailyAction("life-item-later", { id: ${JSON.stringify(id)} })`);
   // 同期が済む（サーバーには later の印）。同期の組み合わせは買った印を Lifestyle.mergeMap で新しいほうにする
   const serverMarks = run("JSON.stringify(state.shoppingMarks)");
   run(`nowIso = (() => { let t = Date.now() + 5000; return () => new Date(t += 1000).toISOString(); })(); shopUndo.undo();`);
@@ -109,7 +109,7 @@ test("review fix (#108): an item put off with 'あとで' is not 'already bought
   const run = app();
   setup(run);
   const id = run(`dailyShopping().find((i) => i.name === "もやし").id`);
-  run(`handleDailyAction("life-shop-later", { id: ${JSON.stringify(id)} }); state.shopDone = { [today()]: new Date(Date.now() + 1000).toISOString() };`);
+  run(`handleDailyAction("life-item-later", { id: ${JSON.stringify(id)} }); state.shopDone = { [today()]: new Date(Date.now() + 1000).toISOString() };`);
   assert.equal(J(run, `plannedIngredients().get("もやし")`), false, "put off, so not bought");
   assert.equal(J(run, `plannedIngredients().get("豆腐")`), true, "the rest of the trip was bought");
   const egg = JSON.stringify({ id: "卵焼き", title: "卵焼き", sourceServings: 2, ingredients: [{ name: "卵", amount: "3個" }] });
