@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | ダッシュボードの見直し（見る順・情報の密度・ⓘ・候補のゆくえ・どこから増えたか） | `admin/catalog.html`・`api/src/trends.js`・`api/test/seedWaves.test.js`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

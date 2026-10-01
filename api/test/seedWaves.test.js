@@ -57,7 +57,9 @@ test('waves: after the fixed words, trend (recent) and classic (old) searches al
   assert.equal(r.stage.byQuery[`定番・${WAVE_CLASSIC_DISHES[1][1]}`] >= 2, true);
   const log = r.waves.log;
   assert.equal(log.find((e) => e.skipped === 'enough').q, dish0);
-  assert.ok(log.filter((e) => !e.skipped).every((e) => e.picked === 2 && e.added === 2), 'each search records how many it picked and added');
+  assert.ok(log.filter((e) => !e.skipped).every((e) => e.picked === 2 && e.added === 2 && e.ai === 2), 'each search records how many it picked, read with the AI and added');
+  assert.equal(r.waves.searchedToday, 4);
+  assert.equal(r.waves.searchPerDay, WAVE_SEARCH_PER_DAY);
   assert.equal(r.waves.trendReady, WAVE_TREND_WORDS.length - 2);
   assert.equal(r.waves.classicLeft, WAVE_CLASSIC_DISHES.length - 3);
   assert.equal(JSON.stringify((await store.get('trends/seed')).envelope).includes('料理'), false, 'no YouTube titles are stored');

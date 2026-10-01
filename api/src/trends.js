@@ -149,7 +149,8 @@ export function waveStatus(doc, nowMs) {
   const ready = WAVE_TREND_WORDS.filter((q) => nowMs - (Date.parse(w.trendAt?.[q] || 0) || 0) >= WAVE_TREND_REUSE_DAYS * DAY).length;
   const next = WAVE_TREND_WORDS.map((q) => Date.parse(w.trendAt?.[q] || 0) || 0).filter((t) => nowMs - t < WAVE_TREND_REUSE_DAYS * DAY).sort((a, b) => a - b)[0];
   return { trendReady: ready, trendTotal: WAVE_TREND_WORDS.length, trendNextAt: !ready && next ? new Date(next + WAVE_TREND_REUSE_DAYS * DAY).toISOString() : null,
-    classicLeft: Math.max(0, WAVE_CLASSIC_DISHES.length - (w.classic || 0)), classicTotal: WAVE_CLASSIC_DISHES.length, log: (w.log || []).slice(-60).reverse() };
+    classicLeft: Math.max(0, WAVE_CLASSIC_DISHES.length - (w.classic || 0)), classicTotal: WAVE_CLASSIC_DISHES.length,
+    searchedToday: w.day?.on === new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10) ? w.day.n : 0, searchPerDay: WAVE_SEARCH_PER_DAY, log: (w.log || []).slice(-60).reverse() };
 }
 // 対象の国と言語。いまは日本の動画だけ（タイトルに日本語がない動画は外す）。海外展開の時はここに国を足す。
 export const TREND_MARKET = { regionCode: "JP", relevanceLanguage: "ja", titleLooksLocal: (title) => /[ぁ-んァ-ヶ一-龠]/.test(String(title || "")) };
@@ -569,6 +570,11 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             catch (error) { return { c, error }; }
           }));
           const back = [];
+          // 方向ごとの効率を比べるため、AI で読んだ本数を検索ごとに数える（戻した候補・0円は数えない）。
+          for (const { c, free, error } of results) {
+            if (!c.wave || free || (error && (error.code === "trend_ai_budget" || WAIT_CODES.has(error.code) || STOP_CODES[error.code]))) continue;
+            const e = (doc.waves?.log || []).find((x) => x.n === c.wave); if (e) e.ai = (e.ai || 0) + 1;
+          }
           for (const { c, r, free, error } of results) {
             if (error) {
               if (error.code === "trend_ai_budget") { back.push(c); reason ||= why(); continue; }
