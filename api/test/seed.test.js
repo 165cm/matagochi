@@ -231,3 +231,41 @@ test('improve ② ④: collection reads descriptions without thinking (users\' i
   await createTrendBook(createMemorySyncStore(), { catalog, now: () => now, perDay: 1, aiPerDay: 9, aiPerWeek: 9, search: async () => [{ videoId: id(2), channelId: 'c2', title: '料理' }] }).step();
   assert.deepEqual(seenLite, [true, true]);
 });
+
+test('review fix (#118): amounts at the start of a line are not steps, and "作り方は動画で" alone is not a recipe', () => {
+  assert.equal(looksLikeRecipe('材料\n100g 豚肉\n1個 玉ねぎ\n大さじ1 しょうゆ'), false);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\nしょうゆ 大さじ1\n作り方は動画をご覧ください'), false);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\nしょうゆ 大さじ1\n作り方\n詳しくは動画で！\nhttps://example.com'), false);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\n醤油 大さじ1\n作り方\n玉ねぎを切る\nフライパンで炒める'), true, 'steps without numbers after the heading');
+  assert.equal(looksLikeRecipe('材料\n豚肉 1.5kg\n玉ねぎ 1個\n塩 少々\n(1) 切る\n(2) 煮る'), true);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\n塩 少々\n①切る\n②煮る'), true, 'circled numbers (NFKC turns them into digits)');
+});
+
+test('review fix (#118): a candidate in the 1-minute cooldown (or being read elsewhere) goes back to the list instead of being dropped', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  const cooling = new Set();
+  const orig = catalog.import.bind(catalog);
+  catalog.import = async (url, o) => {
+    const v = url.match(/v=([\w-]{11})/)[1];
+    if (cooling.has(v)) throw Object.assign(new Error('cooldown'), { code: 'analysis_cooldown', status: 429 });
+    return orig(url, o);
+  };
+  const make = () => createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
+    search: async () => [1, 2, 3].map((n) => ({ videoId: id(n), channelId: `c${n}`, title: `料理${n}` })) });
+  const first = await make().seed({ yen: 1 }); // 予算1回：1本読んで、2本が戻る
+  assert.equal(catalog.calls.length, 1);
+  assert.equal(first.candidatesLeft, 2);
+  // 本物のカタログは、予算で断った動画に1分の待ちを残す。すぐ次の段階を押す
+  cooling.add(id(2)); cooling.add(id(3));
+  const second = await make().seed({ yen: 5 });
+  assert.equal(second.reason, 'wait');
+  assert.equal(second.stage.done, false);
+  assert.equal(second.candidatesLeft, 2, 'not dropped');
+  assert.equal((await store.get('trends/seed')).envelope.tried.includes(id(2)), false);
+  // 1分後：読める
+  cooling.clear();
+  const third = await make().seed({ yen: 5 });
+  assert.deepEqual(third.stage.added.map((a) => a.videoId).sort(), [id(2), id(3)]);
+});

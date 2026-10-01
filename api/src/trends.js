@@ -21,10 +21,21 @@ export const TREND_YEN_PER_AI = 1; // 2026-10-01 の実測（説明欄の読み�
 export const SEED_PARALLEL = 3;
 // 説明欄にレシピが書いてありそうか（AI を呼ぶ前のふるい）：分量の書き方が3つ以上と、作り方の書き出しがある。
 const AMOUNT = /大さじ|小さじ|適量|少々|ひとつまみ|\d+(?:\.\d+)?\s*(?:g|ｇ|kg|ml|cc|個|本|枚|片|かけ|束|袋|丁|パック|合|カップ|切れ|尾|玉)/g;
-const STEPS = /作り方|手順|レシピ\s*[】\]]|(?:^|\n)\s*(?:[1１①]|step\s*1)\s*[.．、:：)）]?\s*\S/i;
+// 作り方の行：番号のあとに区切りがある（「1. 」「2、」「(3)」。「100g」「1個」「1.5」のような分量は数えない）・①〜⑳・STEP1／手順1。
+const STEP_LINE = /^\s*(?:[①-⑳]|(?:step|ステップ|手順)\s*\d{1,2}|[(（]\d{1,2}[)）]|\d{1,2}\s*[.．、:：)）](?!\d))\s*\S/i;
+// 「作り方」の見出しのあとの、調理の動きがある行（番号なしで書く人のため）。
+const COOK_VERB = /切|刻|炒め|焼|煮|入れ|混ぜ|加え|茹で|ゆで|蒸|揚げ|のせ|かけ|和え|漬け|レンジ|加熱/;
 export function looksLikeRecipe(text) {
-  const t = String(text || "").normalize("NFKC");
-  return (t.match(AMOUNT) || []).length >= 3 && STEPS.test(t);
+  const raw = String(text || "");
+  const t = raw.normalize("NFKC");
+  if ((t.match(AMOUNT) || []).length < 3) return false;
+  // ①〜⑳ は NFKC で数字に変わるので、元の文字のまま行を見る。
+  const lines = raw.split(/\r?\n/);
+  if (lines.filter((l) => STEP_LINE.test(l.normalize("NFKC")) || /^\s*[①-⑳]\s*\S/.test(l)).length >= 2) return true;
+  const head = lines.findIndex((l) => /作り方|手順/.test(l));
+  if (head < 0) return false;
+  // 見出しのあとに、調理の動きの行が2つ以上（「作り方は動画をご覧ください」だけでは通さない）。
+  return lines.slice(head + 1).filter((l) => COOK_VERB.test(l) && !/動画|概要|ブログ|http/.test(l)).length >= 2;
 }
 // 日ごとに決まる順（同じ日・同じ動画なら同じ値）。
 const dailyRank = (day, id) => { let h = 2166136261; for (const c of `${day}|${id}`) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
@@ -462,6 +473,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           for (const { c, r, free, error } of results) {
             if (error) {
               if (error.code === "trend_ai_budget") { back.push(c); reason ||= why(); continue; }
+              // 直前に断られた動画の待ち時間（1分）・ほかで読んでいる最中：試し終わりにせず候補に戻し、ひと休み（次に押すと続きから）。
+              if (WAIT_CODES.has(error.code)) { back.push(c); reason ||= "wait"; continue; }
               if (STOP_CODES[error.code]) { back.push(c); reason ||= STOP_CODES[error.code]; continue; }
               done(c, String(error.code || "error").slice(0, 40)); continue;
             }

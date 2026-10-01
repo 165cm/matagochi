@@ -69,7 +69,7 @@
 <script>
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
   const SKIP = { description_not_recipe: "説明欄にレシピがない（AI の前に外した）", not_public: "公開されていない（AI の前に外した）", filtered: "重複・晩ごはんでない・掲載停止", duplicate: "重複", same_channel: "同じ投稿者の3本目以降", no_steps_in_description: "説明欄に作り方がない", not_dinner: "晩ごはんでない", too_short: "材料・手順が少ない", opted_out: "掲載停止", video_not_found: "動画が見つからない", non_public_video: "公開されていない", empty_description: "説明欄が空", incomplete_recipe: "材料・手順を読めない", analysis_uncertain: "AI の応答を確認できない" };
-  const REASON = { exhausted: "検索語を使い切りました", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
+  const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語を使い切りました", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
   const status = document.getElementById("status");
   let token = "";
   try { token = sessionStorage.getItem("ripigochi-admin") || ""; } catch {}
