@@ -138,7 +138,7 @@ export async function nextWave(doc, axis, nowMs, haveDish = async () => 0) {
   const order = axis === "trend" ? [trend] : axis === "classic" ? [classic] : (w.turn++ % 2 ? [classic, trend] : [trend, classic]);
   for (const f of order) {
     const next = await f();
-    if (next) { const entry = { n: ++w.n, axis: next.axis, q: next.q, label: next.label, at: new Date(nowMs).toISOString(), picked: 0, added: 0 }; w.log.push(entry); w.log = w.log.slice(-200); return { ...next, n: entry.n }; }
+    if (next) { const entry = { n: ++w.n, axis: next.axis, q: next.q, label: next.label, at: new Date(nowMs).toISOString(), picked: 0, added: 0, ai: 0, aiAdded: 0 }; /* ai・aiAdded は0から数える（記録がない古い検索と区別する） */ w.log.push(entry); w.log = w.log.slice(-200); return { ...next, n: entry.n }; }
   }
   w.log = w.log.slice(-200);
   return null;

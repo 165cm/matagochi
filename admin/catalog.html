@@ -333,12 +333,12 @@
     document.getElementById("waves-left").textContent = w ? `残り：話題 ${w.trendReady}/${w.trendTotal}語・定番 ${w.classicLeft}/${w.classicTotal}品` : "";
     const log = w?.log || [];
     if (log.length) {
-      // 当たり＝ AI で読んだうち料理になった割合。分子も分母も AI で読んだ分だけ（0円の料理は入れない。記録に aiAdded がある検索だけで数える）。
+      // 当たり＝ AI で読んだうち料理になった割合。分子も分母も AI で読んだ分だけ（0円の料理は入れない。ai と aiAdded の両方が記録されている検索だけで数える＝古い記録は「不明」として外す）。
       const agg = { trend: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 } };
       for (const e of log) {
         const a = agg[e.axis]; if (!a) continue; if (e.skipped) { a.skip += 1; continue; }
         a.s += 1; a.ai += e.ai || 0; a.add += e.added || 0;
-        if (Number.isFinite(e.ai)) { a.hitAi += e.ai; a.hit += e.aiAdded || 0; }
+        if (Number.isFinite(e.ai) && Number.isFinite(e.aiAdded)) { a.hitAi += e.ai; a.hit += e.aiAdded; }
       }
       const rows = [["話題", agg.trend], ["定番", agg.classic]].map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—"]);
       box.append(scroll(table(["広げ方", "検索", "AI", "増えた", "1検索で", "当たり"], rows, [1, 2, 3, 4, 5], null, { bars: [4] })));

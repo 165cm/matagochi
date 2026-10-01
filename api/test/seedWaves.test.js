@@ -162,3 +162,16 @@ test('review fix (#120): the hit rate counts only dishes read by the AI (aiAdded
   const e = r.waves.log.find((x) => !x.skipped);
   assert.deepEqual([e.ai, e.added, e.aiAdded], [1, 2, 1], 'AI 1, added 2 (one free), AI hits 1 → 100%, never 200%');
 });
+
+test('review fix (#120 r2): a new search that read with the AI but added nothing records aiAdded: 0 (told apart from old records without it)', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const catalog = fakeCatalog();
+  catalog.import = async (url, o = {}) => { if (o.aiGate && !o.aiGate.allow()) throw Object.assign(new Error('budget'), { code: 'trend_ai_budget' }); o.aiGate?.used(); return { ...recipe(url.match(/v=([\w-]{11})/)[1]), steps: [] }; };
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async () => [{ videoId: id(1), channelId: 'c1', title: '料理1' }] });
+  const r = await book.seed({ yen: 1 });
+  const e = r.waves.log.find((x) => !x.skipped);
+  assert.deepEqual([e.ai, e.added, e.aiAdded], [1, 0, 0]);
+  assert.ok(Object.hasOwn(e, 'aiAdded'));
+});
