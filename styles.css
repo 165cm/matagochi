@@ -2306,6 +2306,15 @@ span.tile-photo { cursor: default; }
 .cal-cell.is-today { outline: 2.5px solid var(--tomato); outline-offset: -2.5px; }
 .cal-cell.is-future { opacity: .55; outline: 1.5px dashed #d8c4ad; outline-offset: -1.5px; }
 .cal-cell.is-picked { outline: 3px solid var(--marker); outline-offset: -3px; opacity: 1; }
+/* ふりかえりの記録のカレンダー PR 6c */
+.record-cal { margin: 0 0 6px; }
+.record-cal .cal-head { margin-bottom: 4px; text-align: center; font-size: 11px; font-weight: 800; color: var(--muted); }
+.cal-cell.is-blank { background: none; cursor: default; }
+.cal-cell.is-later > span { color: #d5c8b8; }
+.cal-more { position: absolute; right: 3px; bottom: 3px; padding: 0 5px; border-radius: 8px; background: var(--tomato); color: #fff; font-size: 10px; line-height: 1.6; }
+.view-switch { display: flex; gap: 4px; }
+.view-switch .chip-button { min-height: 36px; padding: 4px 10px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.view-switch .chip-button[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--sage-dark); }
 .cal-caption { margin: 8px 2px 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
 .cal-caption b { color: var(--ink); }
 

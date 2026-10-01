@@ -334,31 +334,7 @@ function dailyPlan({ exclude = [] } = {}) {
     preferenceOf: state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : undefined,
   });
 }
-// ----- 最近のごはんカレンダー（日曜はじまり、今週を含む3週・今日まで写真、先は予定） -----
-let calPick = "";
-function renderMealCalendar() {
-  const eaten = new Map();
-  mealHistory(21).slice().reverse().forEach((m) => eaten.set(m.date, m.recipe));
-  const planned = new Map(dailyPlan().map((d) => [d.date, d.slot?.status === "off" || d.off ? null : d.slot?.recipe || d.candidate?.recipe]));
-  const t = today();
-  const dow = new Date(t + "T12:00:00").getDay();
-  const start = addDays(addDays(t, -dow), -14);
-  const cells = Array.from({ length: 21 }, (_, i) => {
-    const date = addDays(start, i);
-    const future = date > t;
-    const r = future ? planned.get(date) : eaten.get(date) || (date === t ? planned.get(date) : null);
-    const cls = ["cal-cell", date === t ? "is-today" : "", future ? "is-future" : "", calPick === date ? "is-picked" : ""].filter(Boolean).join(" ");
-    const day = Number(date.slice(8, 10));
-    return r
-      ? `<button type="button" class="${cls}" data-action="life-cal-pick" data-date="${date}" aria-label="${escapeAttr(`${formatDate(date)} ${r.title}`)}">${dishTile(r)}<span>${day}</span></button>`
-      : `<span class="${cls} is-empty"><span>${day}</span></span>`;
-  }).join("");
-  const pickRecipe = calPick ? (calPick > t ? planned.get(calPick) : eaten.get(calPick) || planned.get(calPick)) : null;
-  return `<section class="meal-cal" aria-label="最近のごはん"><h3 class="section-title"><span class="marker">最近のごはん</span><small>3週間</small></h3>
-    <div class="cal-head">${["日", "月", "火", "水", "木", "金", "土"].map((w) => `<span>${w}</span>`).join("")}</div>
-    <div class="cal-grid">${cells}</div>
-    <p class="cal-caption">${pickRecipe ? `${formatDate(calPick)}（${weekdayLabel(calPick)}）${calPick > t ? "の予定" : ""}：<b>${escapeHtml(pickRecipe.title)}</b>` : "写真をタップすると料理名が出ます。点線は予定です。"}</p></section>`;
-}
+let calPick = ""; // 献立の週の表（household.js）でタップした日
 // Why this dish on this day, most important first: request, who wants it again (and when), variety, season.
 function planReason(day) {
   const c = day.candidate;
@@ -985,6 +961,30 @@ function renderStaples(recipeOf) {
   const can = (r) => !isViewer() && allDinnerRecipes().some((x) => x.id === r.id);
   return `<section class="staple-card"><h3>🏆 わが家の定番 ${tip("2回以上つくって、「また食べたい」がついた料理")}</h3><ul class="staple-list">${list.map(({ recipe, times, last }) => `<li>${dishTile(recipe, "staple-photo")}<div><b>${escapeHtml(recipe.title)}</b><small>${times}回・前回 ${escapeHtml(formatDate(last))}</small></div>${can(recipe) ? `<button type="button" class="secondary-button" data-action="life-replan" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}をもう一度、献立に入れる">🔁 もう一度</button>` : ""}</li>`).join("")}</ul></section>`;
 }
+// 「わたしの食卓」の見せ方：月のカレンダー（既定）か、写真の一覧。端末ごとに覚える（なくても動く）。
+let reflView = (() => { try { return localStorage.getItem("ripigochi-refl-view") === "grid" ? "grid" : "cal"; } catch { return "cal"; } })();
+// 記録の月のカレンダー（日曜はじまり）。作った日は写真、2品以上は「+1」。タップでその日のいちばん新しい記録を開く。先の日は空。
+function renderRecordCalendar(list, monthKey, recipeOf, photoOf) {
+  // 同じ日の記録は新しい順：更新した日時、同じなら保存の順（新しい記録は state.evaluations の先頭に入る）。
+  const order = new Map(state.evaluations.map((e, i) => [e, i]));
+  const newer = (a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")) || (order.get(a) ?? 0) - (order.get(b) ?? 0);
+  const byDay = new Map();
+  list.forEach((e) => { const k = e.cookedAt.slice(0, 10); byDay.set(k, [...(byDay.get(k) || []), e]); });
+  byDay.forEach((recs) => recs.sort(newer));
+  const first = `${monthKey}-01`;
+  const lead = new Date(first + "T12:00:00").getDay();
+  const days = new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0).getDate();
+  const t = today();
+  const cells = [...Array.from({ length: lead }, () => '<span class="cal-cell is-blank" aria-hidden="true"></span>'), ...Array.from({ length: days }, (_, i) => {
+    const date = addDays(first, i), n = i + 1, recs = byDay.get(date) || [];
+    const cls = ["cal-cell", date === t ? "is-today" : "", date > t ? "is-later" : ""].filter(Boolean).join(" ");
+    if (!recs.length) return `<span class="${cls} is-empty"><span>${n}</span></span>`;
+    const e = recs[0], r = recipeOf(e);
+    const names = recs.map((x) => recipeOf(x).title).join("・");
+    return `<button type="button" class="${cls}" data-action="life-edit-record" data-id="${escapeAttr(e.id)}" aria-label="${escapeAttr(`${formatDate(date)} ${names}の記録を開く`)}">${photoOf(e, r)}<span>${n}</span>${recs.length > 1 ? `<b class="cal-more">+${recs.length - 1}</b>` : ""}</button>`;
+  })].join("");
+  return `<div class="record-cal"><div class="cal-head" aria-hidden="true">${["日", "月", "火", "水", "木", "金", "土"].map((w) => `<span>${w}</span>`).join("")}</div><div class="cal-grid">${cells}</div></div>`;
+}
 function renderReflection() {
   const month = reflectionMonth();
   const recipeOf = (e) => recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || { id: e.recipeId, title: e.recipeTitle || "保存済みの料理", ingredients: [] };
@@ -1002,9 +1002,10 @@ function renderReflection() {
   const favNote = fav ? (fav.love && bothLike(favRecipe) ? "ふたりとも「また食べたい」" : fav.times > 1 ? `${fav.times}回つくりました` : fav.love ? "「また食べたい」の一皿" : "今月の一皿") : "";
   const lovedCount = [...tally.values()].filter((t) => t.love).length;
   const nav = `<div class="month-nav"><button type="button" class="round-icon" data-action="life-month" data-delta="-1" aria-label="前の月">‹</button><strong>${month.label}</strong><button type="button" class="round-icon" data-action="life-month" data-delta="1" aria-label="次の月" ${reflMonth >= 0 ? "disabled" : ""}>›</button></div>`;
+  const photoOf = (e, r) => isDataPhoto(e.photo) ? `<img class="dish-tile" src="${escapeAttr(e.photo)}" alt="" loading="lazy">` : dishTile(r);
   const tiles = list.slice(0, 31).map((e) => {
     const r = recipeOf(e);
-    const photo = isDataPhoto(e.photo) ? `<img class="dish-tile" src="${escapeAttr(e.photo)}" alt="" loading="lazy">` : dishTile(r);
+    const photo = photoOf(e, r);
     return `<button type="button" class="table-tile" data-action="life-edit-record" data-id="${escapeAttr(e.id)}" aria-label="${escapeAttr(`${formatDate(e.cookedAt)} ${r.title}の記録を開く`)}">${photo}<span class="day-num">${Number(e.cookedAt.slice(8, 10))}</span>${loved(e) ? '<span class="tile-love" aria-hidden="true">😍</span>' : ""}<small>${escapeHtml(r.title)}</small></button>`;
   }).join("");
   return `<div class="page-actions">${nav}</div>
@@ -1014,8 +1015,8 @@ function renderReflection() {
   ${reflMonth === 0 ? renderReflectEvidence() : ""}
   ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
   ${reflMonth === 0 ? renderMenuAlbum() : ""}
-  <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3>${list.length ? '<small class="muted">タップで編集</small>' : ""}</div>
-  ${tiles ? `<div class="table-grid">${tiles}</div>` : `<div class="empty-state">${yohaku("bowl")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>`;
+  <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3>${list.length ? `<div class="view-switch" role="group" aria-label="見せ方"><button type="button" class="chip-button" data-action="life-refl-view" data-view="cal" aria-pressed="${reflView === "cal"}">📅 カレンダー</button><button type="button" class="chip-button" data-action="life-refl-view" data-view="grid" aria-pressed="${reflView === "grid"}">🖼 写真</button></div>` : ""}</div>
+  ${tiles ? (reflView === "cal" ? renderRecordCalendar(list, month.key, recipeOf, photoOf) : `<div class="table-grid">${tiles}</div>`) + '<p class="muted small">タップで記録を開く</p>' : `<div class="empty-state">${yohaku("bowl")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>`;
 }
 function saveOwnRecipe(recipe) {
   const existing = state.recipes.find(
@@ -1460,6 +1461,7 @@ function handleDailyAction(action, data) {
   if (action === "life-starter-more") starterShowAll = true;
   if (action === "life-facet" && data.facet in recipeFacets) recipeFacets[data.facet] = recipeFacets[data.facet] === data.value ? "" : data.value;
   if (action === "life-facet-clear") recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
+  if (action === "life-refl-view") { reflView = data.view === "grid" ? "grid" : "cal"; try { localStorage.setItem("ripigochi-refl-view", reflView); } catch {} }
   if (action === "life-month") reflMonth = Math.min(0, reflMonth + (Number(data.delta) || 0));
   if (action === "life-recipe-tab") { recipeTab = ["saved", "starter", "creators", "folders"].includes(data.tab) ? data.tab : "all"; folderOpen = ""; }
   if (action === "life-creator") { recipeFacets = { home: "", staple: "", main: "", style: "", author: data.name || "" }; recipeTab = "saved"; }
@@ -1619,6 +1621,7 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-replan" && data.recipe && !isViewer()) {
     const hit = replanRecipe(data.recipe);
+    if (hit && !hit.already) trackDaily("meal_replanned");
     if (hit) { state.view = "plan"; showToast(`${formatDate(hit.date)}（${weekdayLabel(hit.date)}）の献立に${hit.already ? "もう入っています" : "入れました（まだ決定前の下書き）"}`); }
     else showToast("入れられる日がありません（まだ決めていない日がない・条件に合わない）。献立タブで入れ替えもできます");
   }
