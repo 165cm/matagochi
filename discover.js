@@ -162,6 +162,8 @@ function recipeStepTimes(recipe) {
   const key = timecodeKey(recipe);
   if (timeFix?.key === key) return timeFix.times;
   const entry = timecodes.get(key);
+  // 運営がすべて消した時刻（cleared）は、手元に古い時刻があっても使わない。
+  if (entry?.cleared) return entry.times;
   if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.times;
   if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return recipe.stepTimes;
   return entry?.times || [];
@@ -170,7 +172,7 @@ function timecodesLoading(recipe) { return timecodes.get(timecodeKey(recipe))?.s
 // 見出しの横の小さな案内：探している間と、見つからなかった時（理由つき）。
 function timecodeHint(recipe) {
   const entry = timecodes.get(timecodeKey(recipe));
-  if (timeFix?.key === timecodeKey(recipe)) return "";
+  if (timeFix?.key === timecodeKey(recipe) || entry?.cleared) return "";
   if (entry?.status === "loading") return "▶ の場面を探しています…";
   if (entry?.status === "none") return `▶ の場面は付けられませんでした（${entry.reason}）`;
   if (entry?.source === "fix") return "▶ はみんなで直した時刻です";
@@ -190,6 +192,15 @@ function ensureTimecodes(recipe) {
     .then(async (r) => { const data = await r.json().catch(() => ({})); return r.ok ? data : { error: data.error?.message || `エラー ${r.status}` }; })
     .catch(() => ({ error: "通信できませんでした" }))
     .then((data) => {
+      // 運営がすべて消した時刻：「見つからなかった」とは分けて、手元の古い時刻も消す。
+      if (data?.cleared) {
+        const none = (recipe.steps || []).map(() => null);
+        timecodes.set(key, { status: "done", at: Date.now(), times: none, source: "fix", cleared: true });
+        const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
+        if (own && hasOwnTimes(own)) { own.stepTimes = none; saveState(); }
+        if (["recipe", "cooking"].includes(state.view)) patchStepTimes(recipe);
+        return;
+      }
       const times = stepTimesFor(recipe.steps, data?.stepTimes);
       if (peek) timecodes.set(key, { status: "done", at: Date.now(), times, source: times.length ? data.source : "" });
       else timecodes.set(key, { status: times.length ? "done" : "none", at: Date.now(), times, source: data?.source || "", reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });

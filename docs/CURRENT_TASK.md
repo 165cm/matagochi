@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | 品ぞろえのダッシュボード（タブ・進み具合・図・検索語・レシピと手順の時刻を直す）・AI の答えの形が崩れた時の読み直し・検索語を使い切った後の広げ方（話題・定番） | `admin/catalog.html`・`api/src/analyzer.js`・`api/src/recipeCatalog.js`・`api/src/timecodes.js`・`api/src/server.js`・`api/src/trends.js`・`api/src/youtube.js`・`api/test/*`・`docs/*` |
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | 品ぞろえのダッシュボード（タブ・進み具合・図・検索語・レシピと手順の時刻を直す）・AI の答えの形が崩れた時の読み直し・検索語を使い切った後の広げ方（話題・定番）・運営が時刻をすべて消した時のアプリの反映（版 20261001-tclear） | `admin/catalog.html`・`discover.js`・版（app.js・sw.js・index.html）・`api/src/analyzer.js`・`api/src/recipeCatalog.js`・`api/src/timecodes.js`・`api/src/server.js`・`api/src/trends.js`・`api/src/youtube.js`・`api/test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

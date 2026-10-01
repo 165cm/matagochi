@@ -62,7 +62,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         const cached = await store.get(key);
         const entry = cached?.envelope;
         if (found(entry?.stepTimes) && TRUSTED.has(entry.source)) return answer(entry, true);
-        if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cacheHit: true };
+        if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         if (!entry?.chaptersChecked) {
           const info = await snippet(videoId).catch(() => null);
           const chapters = await fromChapters(key, videoId, list, cached, household, info);

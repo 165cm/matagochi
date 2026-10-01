@@ -67,6 +67,7 @@ test('review fix (#119): clearing all step times also clears the shared ▶ time
   const after = await shared();
   assert.deepEqual(after.stepTimes, [null, null, null], 'the cooking screen matches the admin screen');
   assert.equal(after.source, 'fix');
+  assert.equal(after.cleared, true, 'the app can tell "cleared" from "not found"');
   const user = await fetch(`${base}/api/import/youtube/timecodes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, stepTimes: [null, null, null] }) });
   assert.equal(user.status, 400, 'a user fix still needs at least one time');
 });
