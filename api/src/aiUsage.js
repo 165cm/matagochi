@@ -6,6 +6,8 @@ const store = new AsyncLocalStorage();
 export const usage = {
   run: (collector, fn) => store.run(collector, fn),
 };
+// 集めている呼び出しが「軽く」（考える部分を使わずに）読む指定か。新着集め・一括収集の説明欄の読み取りで使う。
+export const liteMode = () => store.getStore()?.lite === true;
 // response.usageMetadata：promptTokenCount（読んだ）・candidatesTokenCount（書いた）・thoughtsTokenCount（考えた。書いた扱いの料金）。
 export function recordUsage(model, response) {
   const c = store.getStore();

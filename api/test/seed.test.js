@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { createTrendBook, weekOf, SEED_QUERIES } from '../src/trends.js';
-import { recordUsage, usage, usageYen } from '../src/aiUsage.js';
+import { createTrendBook, weekOf, SEED_QUERIES, looksLikeRecipe, TREND_YEN_PER_AI, SEED_PARALLEL } from '../src/trends.js';
+import { recordUsage, usage, usageYen, liteMode } from '../src/aiUsage.js';
+import { descriptionConfig } from '../src/analyzer.js';
 process.env.NODE_ENV = 'test';
 const { createApp } = await import('../src/server.js');
 
@@ -154,4 +155,117 @@ test('review fix (#117): a carried-over candidate stopped later (video or channe
   assert.equal(catalog.calls.length, 1, 'no AI on stopped videos');
   assert.deepEqual(r2.stage.added, []);
   assert.equal(r2.stage.skipped.opted_out, 2);
+});
+
+// ── 改善（2026-10-01 の第1段階の結果から）：①説明欄のふるい ②考える部分を使わない ③3本ずつ ④目安の単価1円 ──
+
+test('improve ①: a description with amounts and steps looks like a recipe; one with only a shop link or only ingredients does not', () => {
+  assert.equal(looksLikeRecipe('【材料】2人分\n豚こま 200g\nキャベツ 1/4個\nしょうゆ 大さじ1\n【作り方】\n1. 切る\n2. 炒める'), true);
+  assert.equal(looksLikeRecipe('材料\n鶏もも肉 300ｇ\n塩 少々\n酒 大さじ２\n①鶏肉を切る\n②焼く'), true, 'full-width numbers and ① steps');
+  assert.equal(looksLikeRecipe('今日は簡単な晩ごはん！\n詳しいレシピはブログへ https://example.com\n#料理'), false);
+  assert.equal(looksLikeRecipe('材料\n豚こま 200g\nキャベツ 1/4個\nしょうゆ 大さじ1'), false, 'ingredients only (steps are in the video)');
+  assert.equal(looksLikeRecipe(''), false);
+});
+
+test('improve ①: candidates whose description has no recipe (or are not public) are dropped before any AI; already-read ones skip the check; a failed check retries the same search later', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  catalog.ready.set(id(4), recipe(id(4)));
+  const recipeText = '材料\n豚こま 200g\nキャベツ 1/4個\nしょうゆ 大さじ1\n作り方\n1. 切る\n2. 炒める';
+  let fail = true, asked = [];
+  const videoDetails = async (ids) => {
+    asked.push(...ids);
+    if (fail) throw new Error('quota');
+    return { [id(1)]: { status: 'public', snippet: { description: recipeText } }, [id(2)]: { status: 'public', snippet: { description: '詳しくはブログで' } }, [id(3)]: { status: 'non_public' } };
+  };
+  const make = () => createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, videoDetails,
+    search: async () => [1, 2, 3, 4].map((n) => ({ videoId: id(n), channelId: `c${n}`, title: `料理${n}` })) });
+  const first = await make().seed({ yen: 10 });
+  assert.equal(first.reason, 'search_failed');
+  assert.equal(catalog.calls.length, 0);
+  assert.equal(first.queriesLeft, SEED_QUERIES.length, 'the same search runs again next time');
+  fail = false; asked = [];
+  const r = await make().seed({ yen: 10 });
+  assert.deepEqual(asked.sort(), [id(1), id(2), id(3)], 'the already-read video is not checked');
+  assert.deepEqual(catalog.calls.map(([v]) => v), [id(1)], 'only the recipe-looking one is read by the AI');
+  assert.deepEqual(r.stage.added.map((a) => [a.videoId, a.free]), [[id(1), false], [id(4), true]]);
+  assert.equal(r.stage.skipped.description_not_recipe, 1);
+  assert.equal(r.stage.skipped.not_public, 1);
+});
+
+test('improve ③: three are read at once, and the AI count never goes over the reservation even in parallel', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  let running = 0, peak = 0;
+  const slowImport = catalog.import.bind(catalog);
+  catalog.import = async (...a) => { running += 1; peak = Math.max(peak, running); await new Promise((r) => setTimeout(r, 20)); try { return await slowImport(...a); } finally { running -= 1; } };
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
+    search: async () => [1, 2, 3, 4, 5, 6, 7].map((n) => ({ videoId: id(n), channelId: `c${n}`, title: `料理${n}` })) });
+  const r = await book.seed({ yen: 5 });
+  assert.equal(SEED_PARALLEL, 3);
+  assert.equal(peak, 3);
+  assert.equal(catalog.calls.length, 5, '5円 ÷ 1円 = 5 calls, never more');
+  assert.equal(r.stage.ai, 5);
+  assert.equal(r.reason, 'stage_budget');
+  assert.equal(r.candidatesLeft, 2, 'the unread ones wait for the next stage');
+  assert.equal((await store.get('trends/cost')).envelope.months['2026-10'].ai, 5);
+});
+
+test('improve ② ④: collection reads descriptions without thinking (users\' imports unchanged); the default unit price is 1円', async () => {
+  assert.equal(TREND_YEN_PER_AI, 1);
+  assert.equal(descriptionConfig('gemini-2.5-flash').thinkingConfig, undefined, 'a user import thinks as before');
+  await usage.run({ lite: true }, async () => {
+    assert.equal(liteMode(), true);
+    assert.deepEqual(descriptionConfig('gemini-2.5-flash').thinkingConfig, { thinkingBudget: 0 });
+    assert.equal(descriptionConfig('gemini-2.5-pro').thinkingConfig, undefined, 'only flash accepts 0');
+  });
+  // 毎日の新着集めと一括収集の取り込みは lite で呼ばれる
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const seenLite = [];
+  const catalog = fakeCatalog();
+  const orig = catalog.import.bind(catalog);
+  catalog.import = async (...a) => { seenLite.push(liteMode()); return orig(...a); };
+  await createTrendBook(createMemorySyncStore(), { catalog, now: () => now, yenPerAi: 1, search: async () => [{ videoId: id(1), channelId: 'c1', title: '料理' }] }).seed({ yen: 3 });
+  await createTrendBook(createMemorySyncStore(), { catalog, now: () => now, perDay: 1, aiPerDay: 9, aiPerWeek: 9, search: async () => [{ videoId: id(2), channelId: 'c2', title: '料理' }] }).step();
+  assert.deepEqual(seenLite, [true, true]);
+});
+
+test('review fix (#118): amounts at the start of a line are not steps, and "作り方は動画で" alone is not a recipe', () => {
+  assert.equal(looksLikeRecipe('材料\n100g 豚肉\n1個 玉ねぎ\n大さじ1 しょうゆ'), false);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\nしょうゆ 大さじ1\n作り方は動画をご覧ください'), false);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\nしょうゆ 大さじ1\n作り方\n詳しくは動画で！\nhttps://example.com'), false);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\n醤油 大さじ1\n作り方\n玉ねぎを切る\nフライパンで炒める'), true, 'steps without numbers after the heading');
+  assert.equal(looksLikeRecipe('材料\n豚肉 1.5kg\n玉ねぎ 1個\n塩 少々\n(1) 切る\n(2) 煮る'), true);
+  assert.equal(looksLikeRecipe('材料\n豚肉 100g\n玉ねぎ 1個\n塩 少々\n①切る\n②煮る'), true, 'circled numbers (NFKC turns them into digits)');
+});
+
+test('review fix (#118): a candidate in the 1-minute cooldown (or being read elsewhere) goes back to the list instead of being dropped', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  const cooling = new Set();
+  const orig = catalog.import.bind(catalog);
+  catalog.import = async (url, o) => {
+    const v = url.match(/v=([\w-]{11})/)[1];
+    if (cooling.has(v)) throw Object.assign(new Error('cooldown'), { code: 'analysis_cooldown', status: 429 });
+    return orig(url, o);
+  };
+  const make = () => createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
+    search: async () => [1, 2, 3].map((n) => ({ videoId: id(n), channelId: `c${n}`, title: `料理${n}` })) });
+  const first = await make().seed({ yen: 1 }); // 予算1回：1本読んで、2本が戻る
+  assert.equal(catalog.calls.length, 1);
+  assert.equal(first.candidatesLeft, 2);
+  // 本物のカタログは、予算で断った動画に1分の待ちを残す。すぐ次の段階を押す
+  cooling.add(id(2)); cooling.add(id(3));
+  const second = await make().seed({ yen: 5 });
+  assert.equal(second.reason, 'wait');
+  assert.equal(second.stage.done, false);
+  assert.equal(second.candidatesLeft, 2, 'not dropped');
+  assert.equal((await store.get('trends/seed')).envelope.tried.includes(id(2)), false);
+  // 1分後：読める
+  cooling.clear();
+  const third = await make().seed({ yen: 5 });
+  assert.deepEqual(third.stage.added.map((a) => a.videoId).sort(), [id(2), id(3)]);
 });

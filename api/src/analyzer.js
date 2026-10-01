@@ -1,7 +1,7 @@
 import { unitPromptTable } from "./units.js";
 import { GoogleGenAI } from "@google/genai";
 import { ApiError } from "./errors.js";
-import { recordUsage } from "./aiUsage.js";
+import { recordUsage, liteMode } from "./aiUsage.js";
 
 // 動画（YouTubeのURL）をAIに読ませる。Vertex が動画を読めない時があるので、順に試す：
 // ① Gemini API（GEMINI_API_KEY がある時。YouTube動画に公式に対応）→ ② Vertex（いつもの地域）→ ③ Vertex（global）。
@@ -39,6 +39,17 @@ export async function generateFromVideo(env, { videoUrl, videoMetadata = null, p
 }
 const clipMetadata = (clipSeconds) => (clipSeconds ? { startOffset: "0s", endOffset: `${Math.round(clipSeconds)}s` } : null);
 
+// 説明欄の読み取りの設定。新着集め・一括収集の時（liteMode）だけ、考える部分を使わない（flash の型だけが 0 を受け付ける）。利用者の取り込みは今のまま。
+export function descriptionConfig(model) {
+  return {
+    httpOptions: { timeout: 60_000, retryOptions: { attempts: 1 } },
+    maxOutputTokens: 4096,
+    temperature: 0.2,
+    responseMimeType: "application/json",
+    ...(liteMode() && /flash/.test(String(model)) ? { thinkingConfig: { thinkingBudget: 0 } } : {})
+  };
+}
+
 export async function analyzeRecipeDescription(snippet, env = process.env) {
   const project = env.GOOGLE_CLOUD_PROJECT;
   if (!project) {
@@ -55,12 +66,7 @@ export async function analyzeRecipeDescription(snippet, env = process.env) {
   const response = await ai.models.generateContent({
     model,
     contents: buildPrompt(snippet),
-    config: {
-      httpOptions: { timeout: 60_000, retryOptions: { attempts: 1 } },
-      maxOutputTokens: 4096,
-      temperature: 0.2,
-      responseMimeType: "application/json"
-    }
+    config: descriptionConfig(model)
   }).catch(() => {
     // A lost response may still have incurred cost; do not automatically repeat it.
     throw new ApiError(503, "analysis_uncertain", "AIの応答を確認できませんでした。重複分析を防ぐため、このURLの再分析を保留しています。手動入力をご利用ください。");
