@@ -134,3 +134,19 @@ test("PR 6b: 'いまはいい' leaves the policy alone; a forged button or a vie
   run2(`handleDailyAction("life-talk-evidence", { id: "fish", kind: "add", answer: "yes" })`);
   assert.equal(run2("(state.tasteProfile?.snapshots || []).length"), 0);
 });
+
+test("review fix (#110): what came only from the records ('増やす' or 'いまはいい') can be erased with '答えを消す'", () => {
+  for (const answer of ["yes", "no"]) {
+    const run = app();
+    seed(run);
+    run(`handleDailyAction("life-talk-evidence", { id: "fish", kind: "add", answer: ${JSON.stringify(answer)} })`);
+    run(`handleDailyAction("life-talk-view", {}); handleDailyAction("life-talk-open-check", {})`);
+    assert.match(run("renderTalkCheck()"), /data-action="life-talk-reset"/, answer);
+    run(`handleDailyAction("life-talk-reset", {})`);
+    const p = JSON.parse(run("JSON.stringify(state.tasteProfile)"));
+    assert.deepEqual([p.snapshots.length, Object.keys(p.decisions).length, Object.keys(p.evidence || {}).length], [0, 0, 0], answer);
+    // 消したあとは、もう消すものがないのでボタンは出ない
+    run(`handleDailyAction("life-talk-open", {}); handleDailyAction("life-talk-open-check", {})`);
+    assert.doesNotMatch(run("renderTalkCheck()"), /life-talk-reset/, answer);
+  }
+});

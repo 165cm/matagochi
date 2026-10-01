@@ -132,8 +132,13 @@ function renderTalkCheck() {
     ${locked.length ? `<ul class="talk-locked">${locked.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : `<p class="muted small">食べられないもの・苦手：なし</p>`}
     ${answers.length ? `<details class="talk-answers"><summary>💬 答えたこと（${answers.length}）</summary><ul>${answers.map((q) => `<li><span>${escapeHtml(q.ask(a))}</span><b>${escapeHtml(talkAnswerLabel(q, a[q.id], a))}</b><button type="button" class="link-inline" data-action="life-talk-edit" data-q="${q.id}">直す</button></li>`).join("")}</ul></details>` : ""}
     <div class="wizard-footer">${more ? `<button type="button" class="text-button" data-action="life-talk-ask">質問にもどる</button>` : `<span></span>`}<button type="button" class="primary-button" data-action="life-talk-save">この方針で保存</button></div>
-    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">${talkInFunnel() ? "方針はあとで（次へ）" : "保存して閉じる"}</button>${p.answers.some((x) => x.member === s.member) || Object.keys(p.drafts || {}).some((k) => k.startsWith(`${s.member}\u0000`)) ? `<button type="button" class="text-button danger-text" data-action="life-talk-reset">答えを消す</button>` : ""}</div>
+    <div class="wizard-secondary"><button type="button" class="text-button" data-action="life-talk-close">${talkInFunnel() ? "方針はあとで（次へ）" : "保存して閉じる"}</button>${talkHasData(p, s.member) ? `<button type="button" class="text-button danger-text" data-action="life-talk-reset">答えを消す</button>` : ""}</div>
   </section>`;
+}
+// 「答えを消す」で消せるものがあるか：答え・書きかけ・決めたこと（✓／✕。記録から決めたものも）・方針の版・記録からの提案の見送り。
+function talkHasData(p, member) {
+  const mine = (obj) => Object.keys(obj || {}).some((k) => k.startsWith(`${member}\u0000`));
+  return p.answers.some((x) => x.member === member) || p.snapshots.some((x) => x.member === member) || mine(p.drafts) || mine(p.decisions) || mine(p.evidence);
 }
 // 最初の提案：いまの献立の決め方（条件はゆるめない）に、確かめた好みの加点を足した1品と、その理由。
 function talkPick() {
