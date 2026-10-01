@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createTicketBook, START_TICKETS } from "./tickets.js";
 import { createAuth } from "./auth.js";
-import { createTrendBook } from "./trends.js";
+import { createTrendBook, SEED_QUERIES } from "./trends.js";
 import { createPopularBook } from "./popular.js";
 import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
@@ -299,6 +299,17 @@ export function createApp(env = process.env, deps = {}) {
       }
       return { cost: await trendBook.cost(), items, askConsent: Object.values(ask).sort((a, b) => b.planned - a.planned) };
     })());
+  });
+  // 新着の手動の一括収集（初期投資）：1段階＝ yen 円まで（月の上限の中）。押すたびに、終わっていない段階の続きから。
+  app.post("/api/admin/trends/seed", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, trendBook.seed({ yen: Number(req.body?.yen) || 100 }));
+  });
+  app.get("/api/admin/trends/seed", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, trendBook.seedStatus().then((d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length })));
   });
   app.get("/api/admin/feedback", (req, res) => {
     res.setHeader("Cache-Control", "no-store");

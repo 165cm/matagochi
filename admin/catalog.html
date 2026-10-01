@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>品ぞろえ｜リピごち 管理</title>
+<link rel="icon" href="../icons/favicon-32.png">
+<style>
+  /* 運営だけが使う品ぞろえの画面（APP_MAP §45・§46）。管理用の合言葉がないと、何も読めない・動かせない。 */
+  :root { --bg: #fff8ee; --surface: #fffdf8; --ink: #2a2420; --muted: #7a6e64; --line: #efe4d6; --tomato: #ee6a4c; --ok: #2f7d4f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Hiragino Maru Gothic ProN", "Zen Maru Gothic", system-ui, sans-serif; line-height: 1.7; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; display: grid; gap: 16px; }
+  h1 { font-size: 22px; margin: 0; } h2 { font-size: 17px; margin: 0 0 8px; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  label { display: grid; gap: 4px; font-weight: 700; font-size: 14px; }
+  input, textarea { font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; width: 100%; }
+  button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--tomato); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+  button.quiet { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+  button:disabled { opacity: .6; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .item { border: 1.5px solid var(--line); border-radius: 14px; padding: 12px; margin-top: 10px; }
+  .item.is-pending { border-color: var(--tomato); }
+  .item h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: 13px; margin: 2px 0 0; overflow-wrap: anywhere; }
+  .msg { white-space: pre-wrap; background: #fff; border-radius: 10px; padding: 8px 10px; margin: 8px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+  .consents { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 2px; font-size: 14px; }
+  .tag { display: inline-block; padding: 1px 10px; border-radius: 999px; background: #fff1ec; font-size: 12px; font-weight: 700; }
+  .empty { color: var(--muted); margin: 0; }
+  #status { font-weight: 700; margin: 8px 0 0; }
+  [hidden] { display: none !important; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  th { color: var(--muted); font-weight: 700; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  main > section { min-width: 0; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+  .scroll table { min-width: 620px; }
+  td.nowrap { white-space: nowrap; }
+  .big { font-size: 20px; font-weight: 800; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
+  .stats p { margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+  .stats small { display: block; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>品ぞろえ（管理）</h1>
+  <section>
+    <form id="login" class="row">
+      <label style="flex:1 1 260px">管理用の合言葉（RECIPE_ADMIN_TOKEN）<input id="token" type="password" autocomplete="off" required></label>
+      <button type="submit">読み込む</button>
+      <button type="button" class="quiet" id="logout" hidden>合言葉を消す</button>
+    </form>
+    <p class="meta">サーバー（Cloud Run の matagochi-api）に設定してある管理用のパスワードです。入れた合言葉は保存せず、このタブを閉じると消えます（次に開いた時はまた入れます）。</p>
+    <p id="status" role="status" aria-live="polite"></p>
+  </section>
+  <section aria-labelledby="seed-h">
+    <h2 id="seed-h">新着の手動の一括収集（初期投資）</h2>
+    <p class="meta">品ぞろえが足りない分野（野菜が主役・10分以内の肉・パン・卵乳小麦なし など）の検索語で探し、説明欄だけで読める動画を集めます。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安）まで・月の上限の中に入ります。集めた料理は28日間「新着」に出ます。</p>
+    <div class="row"><button type="button" id="seed-run" disabled>100円分集める</button><span class="meta" id="seed-note"></span></div>
+    <div id="seed"><p class="empty">合言葉を入れると表示します。</p></div>
+  </section>
+  <section aria-labelledby="cost-h"><h2 id="cost-h">月の費用（新着集め）</h2><div id="cost"><p class="empty">合言葉を入れると表示します。</p></div></section>
+  <section aria-labelledby="ask-h"><h2 id="ask-h">同意をお願いしたい投稿者</h2><p class="meta">献立によく入るのに「みんなが見る一覧に載せる」の同意がない投稿者です（連絡は運営が判断して行います）。</p><div id="ask"><p class="empty">合言葉を入れると表示します。</p></div></section>
+  <section aria-labelledby="items-h"><h2 id="items-h">料理ごとの採用率（この月と前の月）</h2><div id="items" class="scroll"><p class="empty">合言葉を入れると表示します。</p></div></section>
+</main>
+<script>
+  const API = "https://matagochi-api-292190013809.us-central1.run.app";
+  const SKIP = { filtered: "重複・晩ごはんでない・掲載停止", duplicate: "重複", same_channel: "同じ投稿者の3本目以降", no_steps_in_description: "説明欄に作り方がない", not_dinner: "晩ごはんでない", too_short: "材料・手順が少ない", opted_out: "掲載停止", video_not_found: "動画が見つからない", non_public_video: "公開されていない", empty_description: "説明欄が空", incomplete_recipe: "材料・手順を読めない", analysis_uncertain: "AI の応答を確認できない" };
+  const REASON = { exhausted: "検索語を使い切りました", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
+  const status = document.getElementById("status");
+  let token = "";
+  try { token = sessionStorage.getItem("ripigochi-admin") || ""; } catch {}
+  // 動画の題名などは外から来る文章なので、HTML として入れない（textContent だけで組み立てる）。
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = String(text); if (cls) e.className = cls; return e; };
+  async function api(path, body) {
+    const response = await fetch(`${API}${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error?.message || `読み込めませんでした（${response.status}）`);
+    return data;
+  }
+  const yen = (n) => `${Math.round(Number(n) * 100) / 100}円`;
+  function table(head, rows, nums = []) {
+    const t = el("table"), tr = el("tr");
+    head.forEach((h, i) => { const th = el("th", h); if (nums.includes(i)) th.className = "num"; tr.append(th); });
+    t.append(tr);
+    for (const r of rows) { const row = el("tr"); r.forEach((v, i) => { const td = el("td", v ?? "—"); if (nums.includes(i)) td.className = "num"; row.append(td); }); t.append(row); }
+    return t;
+  }
+  function renderSeed(data) {
+    const box = document.getElementById("seed"); box.textContent = "";
+    const stages = data.stages || [];
+    const open = stages.length && !stages[stages.length - 1].done;
+    const btn = document.getElementById("seed-run");
+    btn.disabled = false;
+    btn.textContent = open ? `第${stages[stages.length - 1].n}段階の続きを集める` : `第${stages.length + 1}段階：100円分集める`;
+    document.getElementById("seed-note").textContent = `残りの検索語 ${data.queriesLeft ?? "—"}・残りの候補 ${data.candidatesLeft ?? "—"}`;
+    if (!stages.length) { box.append(el("p", "まだ集めていません。", "empty")); return; }
+    for (const s of [...stages].reverse()) {
+      const item = el("div", undefined, "item");
+      item.append(el("h3", `第${s.n}段階（${String(s.startedAt).slice(0, 10)}）${s.done ? "" : "・続きあり"}`));
+      const added = (s.added || []).length;
+      const stats = el("div", undefined, "stats");
+      for (const [label, value] of [["増えた料理", `${added}品`], ["AI を使った回数", `${s.ai}回`], ["費用（実測のトークン数から）", yen(s.yenMeasured || 0)], ["費用（目安の単価で）", yen(s.yenEstimate || 0)], ["1品あたり（実測）", added ? yen((s.yenMeasured || 0) / added) : "—"], ["読んだ・書いたトークン", `${s.input || 0}・${s.output || 0}`]]) {
+        const p = el("p"); p.append(el("small", label), el("span", value, "big")); stats.append(p);
+      }
+      item.append(stats);
+      if (s.reason) item.append(el("p", `止まった理由：${REASON[s.reason] || s.reason}`, "meta"));
+      const by = Object.entries(s.byQuery || {});
+      if (by.length) item.append(el("p", `分野ごと：${by.map(([k, v]) => `${k} ${v}品`).join("・")}`, "meta"));
+      const sk = Object.entries(s.skipped || {});
+      if (sk.length) item.append(el("p", `外したもの：${sk.map(([k, v]) => `${SKIP[k] || k} ${v}`).join("・")}`, "meta"));
+      if (added) { const d = el("details"); d.append(el("summary", `増えた料理（${added}）`)); const sc = el("div", undefined, "scroll"); d.append(sc); sc.append(table(["料理", "分野", "時間", "費用"], s.added.map((a) => [a.title, a.label, a.minutes ? `${a.minutes}分` : "—", a.free ? "0円（読んだことあり）" : "AI"]))); item.append(d); }
+      box.append(item);
+    }
+  }
+  function renderCatalog(data) {
+    const cost = document.getElementById("cost"); cost.textContent = "";
+    cost.append((data.cost || []).length ? table(["月", "AI の回数", "目安の費用", "上限"], data.cost.map((m) => [m.month, m.ai, yen(m.yen), yen(m.cap)]), [1, 2, 3]) : el("p", "まだありません。", "empty"));
+    const ask = document.getElementById("ask"); ask.textContent = "";
+    ask.append((data.askConsent || []).length ? table(["投稿者", "動画", "献立に入った回数"], data.askConsent.map((a) => [a.channelTitle || a.channelId, a.videos, a.planned]), [1, 2]) : el("p", "いまはいません。", "empty"));
+    const items = document.getElementById("items"); items.textContent = "";
+    items.append((data.items || []).length ? table(["料理", "投稿者", "候補に出た", "献立に入った", "作った", "採用率", "残す", "同意"], data.items.map((i) => [i.title || i.videoId, i.channelTitle, i.shown, i.planned, i.cooked, i.rate == null ? "—" : `${i.rate}%`, i.kept ? "✓" : "", i.publicConsent ? "✓" : ""]), [2, 3, 4, 5]) : el("p", "まだありません。", "empty"));
+  }
+  async function load() {
+    if (!token) return;
+    status.textContent = "読み込んでいます…";
+    try {
+      const [seed, catalog] = await Promise.all([api("/api/admin/trends/seed"), api("/api/admin/catalog")]);
+      renderSeed(seed); renderCatalog(catalog);
+      document.getElementById("logout").hidden = false;
+      status.textContent = "読み込みました。";
+    } catch (error) { status.textContent = error.message; }
+  }
+  document.getElementById("seed-run").addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    if (!confirm("新着を100円分（目安）まで集めます。AI の費用がかかります。よろしいですか？")) return;
+    btn.disabled = true; status.textContent = "集めています…（2〜3分かかります。このままお待ちください）";
+    try {
+      const r = await api("/api/admin/trends/seed", { yen: 100 });
+      status.textContent = r.busy ? "ほかの収集が動いています。少し待ってからもう一度どうぞ。" : `第${r.stage.n}段階：${(r.stage.added || []).length}品・${REASON[r.reason] || r.reason}`;
+    } catch (error) { status.textContent = error.message; }
+    await load();
+  });
+  document.getElementById("login").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    token = document.getElementById("token").value.trim();
+    try { sessionStorage.setItem("ripigochi-admin", token); } catch {}
+    document.getElementById("token").value = "";
+    load();
+  });
+  document.getElementById("logout").addEventListener("click", () => {
+    token = ""; try { sessionStorage.removeItem("ripigochi-admin"); } catch {}
+    for (const id of ["seed", "cost", "ask", "items"]) document.getElementById(id).textContent = "";
+    document.getElementById("seed-run").disabled = true;
+    status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;
+  });
+  load();
+</script>
+</body>
+</html>
