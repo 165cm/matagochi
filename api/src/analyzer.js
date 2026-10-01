@@ -1,6 +1,7 @@
 import { unitPromptTable } from "./units.js";
 import { GoogleGenAI } from "@google/genai";
 import { ApiError } from "./errors.js";
+import { recordUsage } from "./aiUsage.js";
 
 // 動画（YouTubeのURL）をAIに読ませる。Vertex が動画を読めない時があるので、順に試す：
 // ① Gemini API（GEMINI_API_KEY がある時。YouTube動画に公式に対応）→ ② Vertex（いつもの地域）→ ③ Vertex（global）。
@@ -25,6 +26,7 @@ export async function generateFromVideo(env, { videoUrl, videoMetadata = null, p
         { fileData: { fileUri: videoUrl, mimeType: "video/mp4" }, ...(videoMetadata ? { videoMetadata } : {}) },
         { text: prompt }
       ] }], config: { httpOptions: { timeout: 150_000, retryOptions: { attempts: 1 } }, ...config } });
+      recordUsage(model, response);
       return { response, via: client.name, failures };
     } catch (error) {
       const message = String(error?.message || "").slice(0, 200);
@@ -63,6 +65,7 @@ export async function analyzeRecipeDescription(snippet, env = process.env) {
     // A lost response may still have incurred cost; do not automatically repeat it.
     throw new ApiError(503, "analysis_uncertain", "AIの応答を確認できませんでした。重複分析を防ぐため、このURLの再分析を保留しています。手動入力をご利用ください。");
   });
+  recordUsage(model, response);
 
   return parseJsonResponse(response.text || "");
 }
@@ -108,6 +111,7 @@ ${chapters.map((c, i) => `${i + 1}. [${c.seconds}秒] ${c.label}`).join("\n")}
 ${steps.map((s, i) => `${i + 1}. ${String(s).slice(0, 200) || "（なし）"}`).join("\n")}`;
   const response = await ai.models.generateContent({ model: env.GEMINI_MODEL || "gemini-2.5-flash", contents: prompt,
     config: { httpOptions: { timeout: 60_000, retryOptions: { attempts: 1 } }, maxOutputTokens: 2048, temperature: 0.1, responseMimeType: "application/json" } });
+  recordUsage(env.GEMINI_MODEL || "gemini-2.5-flash", response);
   return parseJsonResponse(response.text || "");
 }
 
@@ -123,6 +127,7 @@ JSONのみ: {"catches":[{"id":"...","catch":"..."}]}
 ${list.map((x) => `- id:${x.videoId} / ${String(x.title).slice(0, 60)} / 材料:${(x.ingredients || []).slice(0, 6).map((i) => i.name).join("、").slice(0, 80)}`).join("\n")}`;
   const response = await ai.models.generateContent({ model: env.GEMINI_MODEL || "gemini-2.5-flash", contents: prompt,
     config: { httpOptions: { timeout: 60_000, retryOptions: { attempts: 1 } }, maxOutputTokens: 2048, temperature: 0.7, responseMimeType: "application/json" } });
+  recordUsage(env.GEMINI_MODEL || "gemini-2.5-flash", response);
   const out = parseJsonResponse(response.text || "");
   return Object.fromEntries((out.catches || []).filter((c) => list.some((x) => x.videoId === c.id) && typeof c.catch === "string").map((c) => [c.id, c.catch.trim().slice(0, 40)]));
 }
