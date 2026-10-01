@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | 新着を献立の候補に120品まで・同じ点数の候補を日付ごとの順に（版 20261001-widen。APP_MAP §47） | `discover.js`・`lifestyle.js`・版（app.js・sw.js・index.html）・`test/discover-widen.test.cjs`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

@@ -453,6 +453,12 @@
   }
   const SCORE = { request: 80, saved: 5 };
   const MAX_NEW_PER_PLAN = 1;
+  // 献立の日付と料理の id から決まる数（同じ点数の候補の並びに使う。FNV-1a）。
+  function tieRank(date, id) {
+    let h = 2166136261;
+    for (const c of `${date}|${id}`) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+    return h;
+  }
   // 日持ち：傷みやすく、冷凍しにくい食材ほど急ぐ（5がいちばん急ぐ）。買い物のあと、急ぐ料理から先に作る。
   // [食材名の正規表現, 急ぎ度, 表示名]。冷凍できる肉は低め、生で食べる葉物・もやし・刺身は高め。
   const FRESHNESS = [
@@ -592,8 +598,9 @@
                 ).length * 3
               : 0),
         }))
+        // 同じ点数の時は、その日（献立の日付）ごとに決まる順で（いつも同じ料理ばかりが選ばれないように。同じ日なら何度作っても同じ）。
         .sort(
-          (a, b) => b.score - a.score || a.recipe.id.localeCompare(b.recipe.id),
+          (a, b) => b.score - a.score || tieRank(date, a.recipe.id) - tieRank(date, b.recipe.id) || a.recipe.id.localeCompare(b.recipe.id),
         );
       const free = (x) => { const f = folderOf(x.recipe); return !f || (!usedFolders.has(f) && (!reserved.has(f) || reserved.get(f) === date)); };
       const unused = candidates.filter(x => !used.has(x.recipe.id) && free(x));
