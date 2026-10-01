@@ -17,6 +17,8 @@ function tasteSegment() {
   return `${code}-${Math.max(0, Math.min(5, Number(state.skillProfile?.level) || 0))}`;
 }
 let discoverTriedAt = 0;
+// 新着として受け取る数の上限（28日分の新着を、献立の候補にほぼすべて入れる。4週間かぶらない量のため。2026-10-01 に40から広げた）。
+const DISCOVER_TREND_MAX = 120;
 async function loadDiscover({ force = false } = {}) {
   if (!API_BASE_URL || discoverLoading) return;
   pruneDiscover();
@@ -32,7 +34,7 @@ async function loadDiscover({ force = false } = {}) {
       fetchWithTimeout(`${API_BASE_URL}/api/trends`, {}, 15_000).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       fetchWithTimeout(`${API_BASE_URL}/api/popular?segment=${encodeURIComponent(tasteSegment())}`, {}, 15_000).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ]);
-    if (t?.items) discover.trends = t.items.filter(liveItem).slice(0, 40);
+    if (t?.items) discover.trends = t.items.filter(liveItem).slice(0, DISCOVER_TREND_MAX);
     if (p?.items) discover.popular = p.items.slice(0, 20);
     if (t || p) { discover.savedAt = discover.trends.length ? new Date().toISOString() : ""; saveDiscover(); }
   } finally { discoverLoading = false; }
