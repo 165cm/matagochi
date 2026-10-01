@@ -5,6 +5,7 @@ import { createTicketBook, START_TICKETS } from "./tickets.js";
 import { createAuth } from "./auth.js";
 import { createTrendBook, SEED_QUERIES, TREND_YEN_PER_AI, waveStatus } from "./trends.js";
 import { createPopularBook } from "./popular.js";
+import { createDishBook } from "./dishes.js";
 import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
@@ -50,14 +51,15 @@ export function createApp(env = process.env, deps = {}) {
     snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.VIDEO_MAX_SECONDS || 600), now: deps.now || Date.now });
   const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now });
-  const trendBook = createTrendBook(recipeStore, { catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
+  const dishBook = createDishBook(recipeStore, { now: deps.now || Date.now });
+  const trendBook = createTrendBook(recipeStore, { dishBook, catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), videoDetails: deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
     ...(Number(env.TREND_PER_DAY) > 0 ? { perDay: Number(env.TREND_PER_DAY) } : {}), ...(Number(env.TREND_WEEK_MAX) > 0 ? { weekMax: Number(env.TREND_WEEK_MAX) } : {}),
     ...(Number(env.TREND_AI_PER_DAY) > 0 ? { aiPerDay: Number(env.TREND_AI_PER_DAY) } : {}), ...(Number(env.TREND_AI_PER_WEEK) > 0 ? { aiPerWeek: Number(env.TREND_AI_PER_WEEK) } : {}),
     // 月の費用の上限（円）と、AI を1回呼ぶ費用の目安（円）。β版の間は月1,000円（docs/PERSONALIZE_PLAN.md §2）。
     ...(Number(env.TREND_YEN_PER_MONTH) >= 0 && env.TREND_YEN_PER_MONTH !== undefined && env.TREND_YEN_PER_MONTH !== "" ? { yenPerMonth: Number(env.TREND_YEN_PER_MONTH) } : {}), ...(Number(env.TREND_YEN_PER_AI) > 0 ? { yenPerAi: Number(env.TREND_YEN_PER_AI) } : {}) });
   const housekeeping = createHousekeeping(recipeStore, { catalog, now: deps.now || Date.now });
-  const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut(), isTrend: (videoId) => trendBook.has(videoId) });
+  const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut(), isTrend: (videoId) => trendBook.has(videoId), dishBook });
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
@@ -281,6 +283,22 @@ export function createApp(env = process.env, deps = {}) {
   });
   // 品ぞろえの管理（PR 4b）：動画ごとの採用率・残しているか・投稿者の同意、月ごとの新着集めの AI の回数と目安の費用、
   // 同意をお願いしたい投稿者（献立によく入るのに「みんなが見る一覧」の同意がない）。読み出すだけ（AI・YouTube API を呼ばない）。
+  // 管理：親の料理名（APP_MAP §48）。いまの新着の題名から、親ごとの子の数・もう少しで格上げの候補。外す・戻す・別名にまとめる・手で親にする。
+  app.get("/api/admin/dishes", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, trendBook.list().then((d) => dishBook.overview(d.items || [])));
+  });
+  app.post("/api/admin/dishes", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const b = req.body || {};
+    send(res, dishBook.edit({ op: String(b.op || ""), key: String(b.key || ""), name: String(b.name || ""), from: String(b.from || ""), to: String(b.to || "") }).then((doc) => {
+      if (!doc) throw new ApiError(503, "dishes_not_saved", "保存できませんでした。少し待ってから、もう一度どうぞ。");
+      trendBook.clearCache?.();
+      return { ok: true };
+    }));
+  });
   app.get("/api/admin/catalog", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });

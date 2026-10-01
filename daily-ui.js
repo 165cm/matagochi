@@ -330,6 +330,7 @@ function dailyPlan({ exclude = [] } = {}) {
     // 1回の買い物で作る日。日持ちしない食材の料理を、買い物のすぐあとに回すのに使う。
     rounds: rhythmOn() ? currentBlocks().map((b) => b.dates) : null,
     pins: folderPins(),
+    parentOf: parentKeyOf,
     // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みと、家族が「見せる」にした好み（✓ だけ）を加点に使う。
     preferenceOf: state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : undefined,
   });
@@ -1463,6 +1464,8 @@ function handleDailyAction(action, data) {
   if (action === "life-close-swap") swapDate = "";
   if (action === "life-swap-more") swapShowAll = true;
   if (action === "life-starter-more") starterShowAll = true;
+  // 同じ親の作り方を並べて見る（料理名で探す）。
+  if (action === "life-dish-variants" && data.dish) { state.searchText = String(data.dish).slice(0, 20); recipeTab = "all"; }
   if (action === "life-facet" && data.facet in recipeFacets) recipeFacets[data.facet] = recipeFacets[data.facet] === data.value ? "" : data.value;
   if (action === "life-facet-clear") recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
   if (action === "life-refl-view") { reflView = data.view === "grid" ? "grid" : "cal"; try { localStorage.setItem("ripigochi-refl-view", reflView); } catch {} }
@@ -2406,7 +2409,8 @@ function starterRecipeList() {
     .filter((r) => !saved.has(r.id) && !hidden.has(r.id))
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => (r.discover ? discoverSafe(r) : Lifestyle.fit(r, dailyProfile(), today()).ok))
-    .filter((r) => !query || [r.title, ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
+    // 親の料理名（dish）でも探せる（表記ゆれでまとめた子も「ほか◯つの作り方」から見られるように）。
+    .filter((r) => !query || [r.title, r.dish || "", ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
 }
 
 // ----- レシピの詳細（閲覧が基本。編集は「編集する」から） -----

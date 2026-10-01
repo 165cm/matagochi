@@ -510,6 +510,8 @@
     // わが家のごはん方針（profile-talk.js）で本人が確かめた好み → { score, reason } か null。
     // 加点だけ。食べられないもの・時間・器具の条件（fit）はゆるめない。
     preferenceOf = () => null,
+    // 親（料理名・定番フォルダ）のキー。同じ親は、自動の献立では週1回まで（APP_MAP §48）。
+    parentOf = (r) => r?.folder || "",
   }) {
     const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
     // What was eaten before the plan starts, plus what the plan has picked so far.
@@ -530,10 +532,12 @@
         usage.set(slot.recipe.id, (usage.get(slot.recipe.id) || 0) + 1);
     }
     // 定番フォルダは、同じ献立（週）に1回まで。ピン留め・日付を指定した料理のフォルダは、その日のためにとっておく。
-    const folderOf = (r) => r?.folder || "";
+    const folderOf = (r) => (r ? parentOf(r) || "" : "");
     const byId = new Map(recipes.map((r) => [r.id, r]));
     const usedFolders = new Set(Object.values(slots).filter((x) => x.date >= start && x.date < addDays(start, length) && x.status !== "removed" && folderOf(x.recipe)).map((x) => folderOf(x.recipe)));
     const reserved = new Map();
+    const recentParents = new Map();
+    for (const m of timeline) { const f = folderOf(m.recipe); if (f && (!recentParents.has(f) || recentParents.get(f) < m.date)) recentParents.set(f, m.date); }
     for (let i = 0; i < length; i += 1) {
       const date = addDays(start, i);
       if (slots[date] && slots[date].status !== "removed") continue;
@@ -602,7 +606,8 @@
         .sort(
           (a, b) => b.score - a.score || tieRank(date, a.recipe.id) - tieRank(date, b.recipe.id) || a.recipe.id.localeCompare(b.recipe.id),
         );
-      const free = (x) => { const f = folderOf(x.recipe); return !f || (!usedFolders.has(f) && (!reserved.has(f) || reserved.get(f) === date)); };
+      // 同じ親は、献立の中で1回まで・献立の前の6日以内に食べた親も自動では選ばない（自分で選んだ日・ピン留めはこの限りでない）。
+      const free = (x) => { const f = folderOf(x.recipe); return !f || (!usedFolders.has(f) && !(recentParents.has(f) && between(recentParents.get(f), date) < 7) && (!reserved.has(f) || reserved.get(f) === date)); };
       const unused = candidates.filter(x => !used.has(x.recipe.id) && free(x));
       // Only reuse when every eligible recipe has already appeared in this plan.
       const eligible = unused.length ? unused : candidates.sort((a, b) => (usage.get(a.recipe.id) || 0) - (usage.get(b.recipe.id) || 0));
@@ -610,7 +615,8 @@
       const favourites = eligible.filter((x) => x.request || (x.repeat.known && x.repeat.due));
       const pool = newCount >= MAX_NEW_PER_PLAN && favourites.length ? favourites : eligible;
       const dow = String(new Date(date + "T12:00:00").getDay());
-      const pinned = !overrides[date] && pins[dow] ? candidates.find((x) => x.recipe.id === pins[dow] && free(x)) : null;
+      // ピン留め（毎週◯曜はこの料理）は、親の「1回まで・6日あける」に関係なく入れる（本人が決めたこと）。
+      const pinned = !overrides[date] && pins[dow] ? candidates.find((x) => x.recipe.id === pins[dow]) : null;
       // 自分で決めた一皿（URLから入れた・選んだ料理）は、条件に合わなくてもその日に入れる。
       const forcedRecipe = overrides[date] && !candidates.some((x) => x.recipe.id === overrides[date]) ? recipes.find((r) => r.id === overrides[date]) : null;
       const forced = forcedRecipe

@@ -4092,3 +4092,5 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .shop-line:has(.later-hint) { flex-wrap: wrap; row-gap: 2px; }
 .shop-line small.later-hint { flex: 1 1 100%; white-space: normal; overflow: visible; color: #9a5b00; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
 .shopping-inline.later-btn { min-width: 52px; font-size: 13px; }
+/* 同じ親（料理名）の作り方の数（APP_MAP §48）。押すと料理名で探す。 */
+button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; border: 1.5px solid var(--line, #efe4d6); border-radius: 999px; background: var(--surface, #fffdf8); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
