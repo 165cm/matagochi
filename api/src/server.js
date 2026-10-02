@@ -342,14 +342,16 @@ export function createApp(env = process.env, deps = {}) {
       const byId = new Map();
       for (const t of (await trendBook.list({ promote: false })).items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "" });
       // 集計は全件を新着に結びつける。新着でない料理を読み出す（peek）のは、多い順に500件まで。
+      // 掲載停止（動画・投稿者）は、新着と同じく一覧に出さない。
+      const excluded = await creatorDesk.optedOut().catch(() => new Set());
       let extra = 0;
       for (const s of await popularBook.stats()) {
         let x = byId.get(s.videoId);
         if (!x) {
-          if (extra >= 500) continue;
+          if (excluded.has(s.videoId) || extra >= 500) continue;
           extra += 1;
           const r = await catalog.peek(`https://www.youtube.com/watch?v=${s.videoId}`).catch(() => null);
-          if (!r) continue;
+          if (!r || (r.channelId && excluded.has(r.channelId))) continue;
           x = { videoId: s.videoId, title: r.title || "", channelTitle: r.channelTitle || "", channelId: r.channelId || "", minutes: r.planning?.minutes || null, trend: false, newUntil: "" };
           byId.set(s.videoId, x);
         }

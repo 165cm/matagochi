@@ -132,3 +132,23 @@ test('review fix (#124): every adoption count reaches the new dishes (beyond 500
   await fetch(base + '/api/trends');
   assert.ok((await store.get('dishes/book')).envelope.promoted[dishKey('ふわふわ豆腐焼き')]);
 });
+
+test('review fix (#124 r2): stopped channels and stopped videos do not come back into the admin list through the adoption counts', async (t) => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const chStop = 'UC' + 'x'.repeat(22);
+  const titles = { d0000000001: '王将風 八宝菜', d0000000002: '陳健一さんの八宝菜', d0000000003: 'プロが作る八宝菜' };
+  const ch = { d0000000001: chStop, d0000000002: 'UC' + 'y'.repeat(22), d0000000003: 'UC' + 'z'.repeat(22) };
+  const recipe = (v) => ({ title: titles[v], videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: ch[v], channelTitle: 'ch', ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'], tags: [], snippetFetchedAt: new Date(now).toISOString(), catalog: { analyzedAt: new Date(now).toISOString(), extractorVersion: 99 } });
+  for (const v of Object.keys(titles)) await store.put(`youtube-${v}`, { status: 'ready', result: recipe(v) }, { ifGeneration: 0 });
+  await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: [{ videoId: 'd0000000001' }], skipped: {} }] }, { ifGeneration: 0 });
+  await store.put('popular/2026-10', { recipes: { d0000000001: { shown: 3, planned: 1, cooked: 0, all: 1 }, d0000000002: { shown: 3, planned: 2, cooked: 0, all: 2 }, d0000000003: { shown: 1, planned: 1, cooked: 0, all: 1 } } }, { ifGeneration: 0 });
+  // 1 は投稿者ごと停止（新着・採用の両方にある）、2 は動画単位で停止、3 はそのまま
+  await store.put('creators/optout', { channels: { [chStop]: { title: '止めた投稿者', at: '2026-09-01T00:00:00Z' } }, videos: { d0000000002: { at: '2026-09-02T00:00:00Z' } } }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], now: () => now });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const { recipes } = await (await fetch(`http://127.0.0.1:${server.address().port}/api/admin/recipes`, { headers: { Authorization: 'Bearer admin-test-token' } })).json();
+  assert.deepEqual(recipes.map((r) => r.videoId), ['d0000000003']);
+});
