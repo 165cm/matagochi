@@ -183,4 +183,10 @@ test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish
   assert.equal(p('基本のハンバーグ｜丼にもおすすめ'), 'ハンバーグ');
   assert.equal(p('麻婆豆腐（丼にもおすすめ）'), '麻婆豆腐');
   assert.equal(p('親子丼の素で作る親子丼ぶり'), '親子丼');
+  // review fix (#126 r2)：句点・コロン・ハイフンの補足も見ない／補足の中の別の料理名に引っぱられない
+  assert.equal(p('基本のハンバーグ。丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('基本のハンバーグ：丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('基本のハンバーグ - 丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('八宝菜｜中華丼の具にも'), '八宝菜');
+  assert.equal(p('【ハンバーグの次に】豆腐ハンバーグ'), '豆腐ハンバーグ', 'the bracketed hook is looked at last');
 });
