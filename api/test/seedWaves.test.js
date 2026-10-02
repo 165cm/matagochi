@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { createTrendBook, weekOf, SEED_QUERIES, WAVE_TREND_WORDS, WAVE_CLASSIC_DISHES, WAVE_TREND_DAYS, WAVE_CLASSIC_AGE_DAYS, WAVE_TREND_REUSE_DAYS, WAVE_SEARCH_PER_DAY, WAVE_QUICK_WORDS } from '../src/trends.js';
+import { createTrendBook, weekOf, SEED_QUERIES, WAVE_TREND_WORDS, WAVE_CLASSIC_DISHES, WAVE_TREND_DAYS, WAVE_CLASSIC_AGE_DAYS, WAVE_TREND_REUSE_DAYS, WAVE_SEARCH_PER_DAY, QUICK_LONG_SHARE, needQuick, longRoom } from '../src/trends.js';
 import { recordUsage } from '../src/aiUsage.js';
 process.env.NODE_ENV = 'test';
 const { createApp } = await import('../src/server.js');
@@ -39,14 +39,12 @@ test('waves: after the fixed words, trend (recent) and classic (old) searches al
   let n = 0;
   const search = async (q, o) => { searched.push([q, o]); n += 1; return [{ videoId: id(n * 10 + 1), channelId: `c${n}`, title: `料理${n}` }, { videoId: id(n * 10 + 2), channelId: `d${n}`, title: `料理${n}b` }]; };
   const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search });
-  const r = await book.seed({ yen: 16 });
+  const r = await book.seed({ yen: 8 });
   assert.equal(r.reason, 'stage_budget');
-  assert.equal(searched.length, 8);
-  // おまかせ：時短 → 話題 → 時短 → 定番 の順（2026-10-02 時短を半分に）
-  const [q1, t1, q2, c1, q3, t2, q4, c2] = searched;
-  assert.deepEqual([q1, q2, q3, q4].map((x) => x[0]), WAVE_QUICK_WORDS.slice(0, 4));
-  assert.ok([q1, q2].every(([, o]) => !o.publishedAfter && !o.publishedBefore), 'quick searches do not filter by date');
-  assert.equal(t1[0], WAVE_TREND_WORDS[0]);
+  assert.equal(searched.length, 4);
+  const [t1, c1, t2, c2] = searched;
+  // まだ1品もない段階は時短の言葉から（2026-10-02）。その後は30分以上が2割未満なので、ふつうの検索
+  assert.equal(t1[0], `時短 ${WAVE_TREND_WORDS[0]}`);
   assert.equal(t1[1].publishedAfter, new Date(now - WAVE_TREND_DAYS * DAY).toISOString());
   assert.equal(t1[1].publishedBefore, undefined);
   assert.equal(c1[0], `${WAVE_CLASSIC_DISHES[1][0]} レシピ 材料 作り方`, 'the dish already in the list is skipped (no search)');
@@ -55,21 +53,20 @@ test('waves: after the fixed words, trend (recent) and classic (old) searches al
   assert.ok(Date.parse(t1[1].publishedAfter) > Date.parse(c1[1].publishedBefore), 'the two directions never share a video');
   assert.equal(t2[0], WAVE_TREND_WORDS[1]);
   assert.equal(c2[0], `${WAVE_CLASSIC_DISHES[2][0]} レシピ 材料 作り方`);
-  assert.deepEqual(r.stage.byAxis, { quick: 8, trend: 4, classic: 4 });
+  assert.deepEqual(r.stage.byAxis, { trend: 4, classic: 4 });
   assert.equal(r.stage.byQuery['話題の新作'], 4);
   assert.equal(r.stage.byQuery[`定番・${WAVE_CLASSIC_DISHES[1][1]}`] >= 2, true);
   const log = r.waves.log;
   assert.equal(log.find((e) => e.skipped === 'enough').q, dish0);
   assert.ok(log.filter((e) => !e.skipped).every((e) => e.picked === 2 && e.added === 2 && e.ai === 2), 'each search records how many it picked, read with the AI and added');
-  assert.equal(r.waves.searchedToday, 8);
+  assert.equal(r.waves.searchedToday, 4);
   assert.equal(r.waves.searchPerDay, WAVE_SEARCH_PER_DAY);
   assert.equal(r.waves.trendReady, WAVE_TREND_WORDS.length - 2);
-  assert.equal(r.waves.quickReady, WAVE_QUICK_WORDS.length - 4);
   assert.equal(r.waves.classicLeft, WAVE_CLASSIC_DISHES.length - 3);
   assert.equal(JSON.stringify((await store.get('trends/seed')).envelope).includes('料理'), false, 'no YouTube titles are stored');
 });
 
-test('waves: a trend word waits 14 days before reuse; one direction running out does not end the stage, both running out does', async () => {
+test('waves: a trend word waits 7 days before reuse; one direction running out does not end the stage, both running out does', async () => {
   let now = Date.parse('2026-10-05T01:00:00Z');
   const store = createMemorySyncStore();
   await usedUp(store);
@@ -79,13 +76,14 @@ test('waves: a trend word waits 14 days before reuse; one direction running out 
   const r = await book.seed({ yen: 50, axis: 'trend' });
   assert.equal(r.reason, 'axis_exhausted');
   assert.equal(r.stage.done, false, 'the other direction can continue the same stage');
-  assert.deepEqual(searched, WAVE_TREND_WORDS);
+  assert.deepEqual(searched, WAVE_TREND_WORDS.map((w) => `時短 ${w}`), 'nothing added yet → quick words');
   assert.equal(r.waves.trendReady, 0);
   assert.ok(r.waves.trendNextAt);
   searched.length = 0;
   now += WAVE_TREND_REUSE_DAYS * DAY;
   await book.seed({ yen: 50, axis: 'trend' });
-  assert.deepEqual(searched, WAVE_TREND_WORDS, 'after 14 days the words are used again (new videos by then)');
+  assert.equal(WAVE_TREND_REUSE_DAYS, 7);
+  assert.deepEqual(searched, WAVE_TREND_WORDS.map((w) => `時短 ${w}`), 'after 7 days the words are used again (new videos by then)');
   searched.length = 0;
   // 両方：定番を使い切り、話題は14日あけ中 → 終わり
   // 1日の検索の上限があるので、日をまたいで続ける
@@ -93,9 +91,8 @@ test('waves: a trend word waits 14 days before reuse; one direction running out 
   for (let i = 0; i < 4; i++) { end = await book.seed({ yen: 50 }); if (end.reason !== 'search_day_limit') break; now += DAY; }
   assert.equal(end.reason, 'exhausted');
   assert.equal(end.stage.done, true);
-  assert.equal(searched.length, WAVE_CLASSIC_DISHES.length + WAVE_QUICK_WORDS.length, 'both = all three directions run out');
+  assert.equal(searched.length, WAVE_CLASSIC_DISHES.length);
   assert.equal(end.waves.classicLeft, 0);
-  assert.equal(end.waves.quickReady, 0);
 });
 
 test('waves: a failed search is retried later with the same word; searches per day are capped', async () => {
@@ -151,7 +148,7 @@ test('review fix (#119): a failed search (or a failed description check after it
     assert.equal(r.reason, i < WAVE_SEARCH_PER_DAY ? 'search_failed' : 'search_day_limit');
   }
   assert.equal(searched.length, WAVE_SEARCH_PER_DAY, 'never more than 30 searches a day');
-  assert.ok(searched.every((q) => q === WAVE_QUICK_WORDS[0]), 'the same word is retried each time');
+  assert.ok(searched.every((q) => q === `時短 ${WAVE_TREND_WORDS[0]}`), 'the same word is retried each time');
   assert.equal((await store.get('trends/seed')).envelope.waves.day.n, WAVE_SEARCH_PER_DAY);
 });
 
@@ -181,39 +178,70 @@ test('review fix (#120 r2): a new search that read with the AI but added nothing
   assert.ok(Object.hasOwn(e, 'aiAdded'));
 });
 
-// 2026-10-02：平日の夜の時短レシピを補強する（時短の方向・調理時間の上限・定番は1回3本まで）。
-test('quick: the quick direction adds only dishes the AI timed at 20 minutes or less (long or unknown ones are counted as too_long)', async () => {
+// 2026-10-02：平日の夜の時短レシピを補強する（話題・定番のそれぞれに時短を組み込み、時短8割・30分以上2割。定番は1回3本まで）。
+test('quick mix: helpers keep 30-minute-or-longer dishes (and unknown times) to about 20% of a stage', () => {
+  const m = (...xs) => xs.map((minutes) => ({ minutes }));
+  assert.equal(QUICK_LONG_SHARE, 0.2);
+  assert.equal(needQuick([]), true, 'an empty stage starts with quick words');
+  assert.equal(needQuick(m(10, 15, 20, 10, 30)), true, '1 of 5 = 20% → quick words');
+  assert.equal(needQuick(m(10, 15, 20, 10, 10, 30)), false);
+  assert.equal(needQuick(m(10, null)), true, 'unknown time counts as long');
+  assert.equal(longRoom([]), false, 'a long dish waits until 4 quick ones are in');
+  assert.equal(longRoom(m(45)), false);
+  assert.equal(longRoom(m(10, 10, 10, 10)), true, '→ 1 of 5');
+  assert.equal(longRoom(m(10, 10, 10, 10, 45)), false, '2 of 6 would be 33%');
+  assert.equal(longRoom(m(10, 10, 10, 10, 45, 10, 10, 10, 10)), true, '→ 2 of 10');
+});
+
+test('quick mix: long dishes beyond 20% are not added (long_quota); after too many long ones the next search uses quick words', async () => {
   const now = Date.parse('2026-10-05T01:00:00Z');
   const store = createMemorySyncStore();
   await usedUp(store);
   const catalog = fakeCatalog();
-  const minutes = { [id(1)]: 10, [id(2)]: 20, [id(3)]: 30, [id(4)]: null, [id(5)]: 45 };
+  const minutes = [10, 45, 60, 10, 30, null];
+  const mins = new Map();
   const base = catalog.import;
-  catalog.import = async (url, o) => { const r = await base(url, o); const v = url.match(/v=([\w-]{11})/)[1]; return { ...r, planning: { minutes: minutes[v] } }; };
+  catalog.import = async (url, o) => { const r = await base(url, o); return { ...r, planning: { minutes: mins.get(url.match(/v=([\w-]{11})/)[1]) } }; };
   const searched = [];
+  let n = 0;
   const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
-    search: async (q, o) => { searched.push([q, o]); return searched.length > 1 ? [] : Object.keys(minutes).map((v, i) => ({ videoId: v, channelId: `c${i}`, title: `料理${i}` })); } });
-  const r = await book.seed({ yen: 5, axis: 'quick' });
-  assert.equal(searched[0][0], WAVE_QUICK_WORDS[0]);
-  assert.deepEqual(r.stage.added.map((a) => a.minutes).sort(), [10, 20]);
-  assert.equal(r.stage.skipped.too_long, 3);
-  assert.deepEqual(r.stage.byAxis, { quick: 2 });
-  assert.equal(r.stage.byQuery['時短'], 2);
-  const e = r.waves.log.find((x) => x.axis === 'quick');
-  assert.deepEqual([e.ai, e.added, e.aiAdded], [5, 2, 2]);
-  assert.equal(r.waves.quickReady, WAVE_QUICK_WORDS.length - searched.length);
+    search: async (q) => { searched.push(q); n += 1; return minutes.map((m, i) => { const v = id(n * 100 + i); mins.set(v, m); return { videoId: v, channelId: `c${n}-${i}`, title: `料理${i}` }; }); } });
+  const r = await book.seed({ yen: 13, axis: 'trend' });
+  assert.equal(r.reason, 'stage_budget');
+  // 1回目（まだ0品 → 時短の言葉）：10・10 が入り、45・60・30・不明 は入れない
+  // 2回目（30分以上 0/2 → ふつうの検索）：10・10 が入り、30分が5品目として入る（1/5=20%）
+  // 3回目（30分以上 1/5=20% → 時短の言葉）
+  assert.deepEqual(searched, [`時短 ${WAVE_TREND_WORDS[0]}`, WAVE_TREND_WORDS[1], `時短 ${WAVE_TREND_WORDS[2]}`]);
+  const added = r.stage.added.map((a) => a.minutes);
+  assert.deepEqual(added, [10, 10, 10, 10, 30, 10]);
+  assert.equal(r.stage.skipped.long_quota, 7);
+  const [e1, e2] = r.waves.log.filter((x) => !x.skipped).sort((x, y) => x.n - y.n);
+  assert.equal(e1.quick, true);
+  assert.equal(e2.quick, undefined);
+  assert.deepEqual([e1.ai, e1.added, e1.aiAdded], [6, 2, 2], 'dishes left out by the 20% rule were read by the AI but not added');
 });
 
-test('quick: other directions keep long dishes (the time limit is only for the quick direction)', async () => {
+test('quick mix: classic searches add the quick word to the dish name when long dishes reach 20%', async () => {
   const now = Date.parse('2026-10-05T01:00:00Z');
   const store = createMemorySyncStore();
   await usedUp(store);
+  const catalog = fakeCatalog();
+  const searched = [];
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async (q) => { searched.push(q); return []; } });
+  await book.seed({ yen: 50, axis: 'classic' });
+  assert.equal(searched[0], `${WAVE_CLASSIC_DISHES[0][0]} 時短 レシピ 材料`);
+});
+
+test('quick mix: the hand-picked search words (before the waves) are not limited by the 20% rule', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
   const catalog = fakeCatalog();
   const base = catalog.import;
   catalog.import = async (url, o) => ({ ...(await base(url, o)), planning: { minutes: 60 } });
-  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async () => [{ videoId: id(1), channelId: 'c1', title: '料理1' }] });
-  const r = await book.seed({ yen: 1, axis: 'trend' });
-  assert.deepEqual(r.stage.added.map((a) => a.minutes), [60]);
+  let n = 0;
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async () => { n += 1; return [{ videoId: id(n), channelId: `c${n}`, title: '料理' }]; } });
+  const r = await book.seed({ yen: 3 });
+  assert.deepEqual(r.stage.added.map((a) => a.minutes), [60, 60, 60]);
 });
 
 test('classic: one classic dish search picks at most 3 videos (no 8 variants of one dish)', async () => {
@@ -231,7 +259,7 @@ test('classic: one classic dish search picks at most 3 videos (no 8 variants of 
   assert.equal(r.stage.skipped.classic_enough, 10);
 });
 
-test('quick: the admin endpoint accepts the quick direction and shows how many quick words are left', async (t) => {
+test('quick mix: the admin status shows the 20-minute line, the 20% share and the 7-day wait; a stale "quick" axis falls back to both', async (t) => {
   const store = createMemorySyncStore();
   await usedUp(store);
   const searched = [];
@@ -242,10 +270,7 @@ test('quick: the admin endpoint accepts the quick direction and shows how many q
   const base = `http://127.0.0.1:${server.address().port}`;
   const auth = { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' };
   const before = await (await fetch(base + '/api/admin/trends/seed', { headers: auth })).json();
-  assert.deepEqual([before.waves.quickReady, before.waves.quickTotal, before.waves.quickMaxMinutes], [WAVE_QUICK_WORDS.length, WAVE_QUICK_WORDS.length, 20]);
+  assert.deepEqual([before.waves.quickMaxMinutes, before.waves.quickLongShare, before.waves.trendReuseDays], [20, 0.2, 7]);
   const r = await (await fetch(base + '/api/admin/trends/seed', { method: 'POST', headers: auth, body: JSON.stringify({ yen: 10, axis: 'quick' }) })).json();
-  assert.equal(r.axis, 'quick');
-  assert.equal(r.reason, 'axis_exhausted');
-  assert.deepEqual(searched.map(([q]) => q), WAVE_QUICK_WORDS);
-  assert.equal(r.waves.quickReady, 0);
+  assert.equal(r.axis, 'both');
 });

@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 一括収集に「時短」の方向（20分以内だけ入れる・おまかせは時短を多めに）・定番は1回3本まで・調理時間の内訳（APP_MAP §46-4） | api/src/trends.js・admin/catalog.html・api/test/seedWaves.test.js・docs |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 一括収集の話題・定番に時短を組み込む（時短8割・30分以上2割）・定番は1回3本まで・話題の待ち7日・調理時間の内訳（APP_MAP §46-4） | api/src/trends.js・admin/catalog.html・api/test/seedWaves.test.js・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
