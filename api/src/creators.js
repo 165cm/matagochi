@@ -23,6 +23,7 @@ const CHANNEL_RE = /^UC[\w-]{22}$/;
 const consentsOf = (raw) => Object.fromEntries(CONSENTS.map((k) => [k, raw?.[k] === true]));
 const both = (a, b) => Object.fromEntries(CONSENTS.map((k) => [k, !!a?.[k] && !!b?.[k]]));
 const clean = (s, n) => String(s || "").slice(0, n);
+const stopKeys = (doc) => [...Object.keys(doc.channels || {}), ...Object.keys(doc.pending || {}), ...Object.keys(doc.videos || {})].sort().join(",");
 function readDoc(entry) {
   const doc = entry?.envelope || {};
   return { channels: { ...(doc.channels || {}) }, pending: { ...(doc.pending || {}) }, restored: { ...(doc.restored || {}) }, videos: { ...(doc.videos || {}) } };
@@ -39,7 +40,12 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now, onCha
       const doc = reader(entry);
       const out = change(doc);
       if (out === undefined) return doc;
-      if (await store.put(key, doc, { ifGeneration: entry?.generation ?? 0 })) { cache = null; if (key === KEY) { try { onChange(); } catch {} } return out; }
+      if (await store.put(key, doc, { ifGeneration: entry?.generation ?? 0 })) {
+        cache = null;
+        // 掲載から外す集まり（channels・pending・videos）が実際に変わった時だけ知らせる（同じ申し込みの再送などでは捨てない）。
+        if (key === KEY && stopKeys(readDoc(entry)) !== stopKeys(doc)) { try { onChange(); } catch {} }
+        return out;
+      }
     }
     throw new ApiError(409, "creators_busy", "混み合っています。少し待ってからお試しください。");
   }
