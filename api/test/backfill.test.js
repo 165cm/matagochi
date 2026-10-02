@@ -45,3 +45,52 @@ test('backfill: names are added to collected dishes in batches of 20 (counted in
   assert.deepEqual(await (await put('k0000000001', '')).json(), { dishName: '', dishNameFrom: 'admin' });
   assert.equal((await (await fetch(base + '/api/admin/recipes/k0000000001', { headers: auth })).json()).dish, null, 'cleared → decided from the title (王将風の中華うま煮 → none)');
 });
+
+test('review fix (#128): an admin name survives a full re-read; a failed save is not counted as done (no double charge); only string dish names are accepted', async () => {
+  const { createRecipeCatalog } = await import('../src/recipeCatalog.js');
+  const { createTrendBook } = await import('../src/trends.js');
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const v = 'm0000000001', url = `https://www.youtube.com/watch?v=${v}`;
+  let aiName = '八宝菜';
+  const analyze = async () => ({ title: '中華うま煮', dishName: aiName, ingredients: [{ name: '白菜', amount: '1/4個' }, { name: '豚', amount: '100g' }], steps: ['切る', '炒める'], videoId: v, videoUrl: url, analyzedFrom: 'video' });
+  const catalog = createRecipeCatalog(store, analyze, { now: () => now, model: 'm' });
+  await catalog.import(url);
+  await catalog.setDishName(url, '回鍋肉', { from: 'admin' });
+  aiName = 'ハンバーグ';
+  const again = await catalog.import(url, { forceVideo: true });
+  assert.deepEqual([again.dishName, again.dishNameFrom], ['回鍋肉', 'admin'], 'a re-read keeps the admin name');
+  await catalog.setDishName(url, '', { from: 'admin' });
+  const cleared = await catalog.import(url, { forceVideo: true });
+  assert.deepEqual([cleared.dishName, cleared.dishNameFrom], [undefined, 'admin'], 'an admin "use the title" also survives');
+
+  // 保存に失敗したら「済み」にしない（残りに入れ、done にしない）。次に押した時に同じ料理をもう一度読むのは、保存できなかった時だけ
+  const store2 = createMemorySyncStore();
+  const ids = ['n0000000001', 'n0000000002'];
+  for (const id of ids) await store2.put(`youtube-${id}`, { status: 'ready', result: { title: `料理${id}`, ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'] } }, { ifGeneration: 0 });
+  await store2.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: ids.map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
+  const realCatalog = createRecipeCatalog(store2, async () => ({}), { now: () => now });
+  let failSave = true;
+  const flaky = { ...realCatalog, peek: (u) => realCatalog.peek(u), setDishName: async (...a) => { if (failSave && a[0].includes(ids[0])) throw new Error('conflict'); return realCatalog.setDishName(...a); }, markDishNameTried: (u) => realCatalog.markDishNameTried(u) };
+  const book = createTrendBook(store2, { catalog: flaky, now: () => now, nameDishes: async () => ({ [ids[0]]: '八宝菜' }) });
+  const r1 = await book.backfillDishNames();
+  assert.deepEqual([r1.named, r1.failed, r1.left, r1.reason], [0, 1, 1, 'save_failed']);
+  assert.equal((await book.backfillDishNames({ dryRun: true })).total, 1, 'only the unsaved one is left (the other got the tried mark)');
+  failSave = false;
+  const r2 = await book.backfillDishNames();
+  assert.deepEqual([r2.named, r2.left, r2.reason], [1, 0, 'done']);
+  assert.equal((await store2.get('trends/cost')).envelope.months['2026-10'].ai, 2);
+});
+
+test('review fix (#128): the admin edit takes only strings ("" clears)', async (t) => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await store.put('youtube-p0000000001', { status: 'ready', result: { title: '王将風 八宝菜', ingredients: [{ name: '豚' }], steps: ['切る'], snippetFetchedAt: new Date(now).toISOString(), catalog: { analyzedAt: new Date(now).toISOString(), extractorVersion: 99 } } }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], now: () => now });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const put = (body) => fetch(`http://127.0.0.1:${server.address().port}/api/admin/recipes/p0000000001/dish-name`, { method: 'PUT', headers: { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' }, body });
+  for (const body of ['{}', '{"dishName":null}', '{"dishName":3}', '{"dishName":{}}']) assert.equal((await put(body)).status, 400, body);
+  assert.equal((await put('{"dishName":""}')).status, 200);
+});

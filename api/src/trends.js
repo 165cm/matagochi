@@ -656,7 +656,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // 数えるだけ（管理の画面に、まだ付いていない品数と目安の回数を出す）。
         if (dryRun) return { total: targets.length, calls: Math.ceil(targets.length / 20), yenPerAi };
         const collector = { lite: true };
-        let named = 0, calls = 0, reason = "";
+        let named = 0, calls = 0, processed = 0, failed = 0, reason = "";
+        // 保存は1回だけやり直す。それでも保存できない料理は「済み」に数えない（残りに入れ、done にしない）。
+        const retry = async (fn) => { for (let a = 0; a < 2; a++) { const r = await fn().catch(() => null); if (r) return r; } return null; };
         for (let i = 0; i < targets.length && calls < maxCalls; i += 20) {
           if (now() - started > budgetMs) { reason = "time"; break; }
           const capCalls = monthCapCalls();
@@ -667,15 +669,19 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           let names = {};
           try { names = await usage.run(collector, () => nameDishes(batch)); } catch { reason = "ai_failed"; break; }
           for (const b of batch) {
-            // 名前が返らなかった料理も「試した」印をつける（同じ料理に何度も費用を使わない）。
-            const done = await catalog.setDishName(canonicalYouTubeUrl(b.videoId), names[b.videoId] || "", { from: "ai" }).catch(() => null);
-            if (done?.dishName && !done.skipped) named += 1;
-            if (!names[b.videoId]) await catalog.markDishNameTried?.(canonicalYouTubeUrl(b.videoId)).catch(() => null);
+            const url = canonicalYouTubeUrl(b.videoId);
+            // 名前が返った料理は名前を保存、返らなかった料理は「試した」印（同じ料理に何度も費用を使わない）。
+            const ok = names[b.videoId]
+              ? await retry(() => catalog.setDishName(url, names[b.videoId], { from: "ai" }))
+              : await retry(async () => ((await catalog.markDishNameTried?.(url)) ? { tried: true } : null));
+            if (!ok) { failed += 1; continue; }
+            processed += 1;
+            if (ok.dishName && !ok.skipped) named += 1;
           }
         }
         cache = null;
-        const left = Math.max(0, targets.length - calls * 20);
-        return { named, calls, left, total: targets.length, reason: reason || (left ? "more" : "done"), yenMeasured: Math.round(usageYen(collector) * 100) / 100 };
+        const left = Math.max(0, targets.length - processed);
+        return { named, calls, left, failed, total: targets.length, reason: reason || (failed ? "save_failed" : left ? "more" : "done"), yenMeasured: Math.round(usageYen(collector) * 100) / 100 };
       } finally { if (!dryRun) await unlock(); }
     },
     // promote：親の料理名の格上げもする（公開の GET /api/trends）。管理の読み出しでは false（辞書を書きかえない）。

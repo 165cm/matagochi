@@ -100,6 +100,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       await gate();
       const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo });
       const result = { ...normalizeImportResult(raw), analyzedFrom: ["video", "video-clip"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description" };
+      // 運営が直した料理名は、読み直しても引き継ぐ（AI の新しい料理名で上書きしない。空＝題名で決める、も含めて）。
+      const before = current?.envelope.status === "ready" ? current.envelope.result : null;
+      if (before?.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
       // 動画から作り方を読めなかったら、チケットは戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
       // 取り込みは説明文だけで読む。作り方がなくても材料があれば保存し、動画はボタンで読む。
@@ -164,7 +167,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
       const current = await store.get(key);
-      if (current?.envelope.status !== "ready" || current.envelope.result?.dishName || current.envelope.result?.dishNameFrom) return false;
+      // 付ける必要がない（読み取り結果がない・もう名前や印がある）時は "skip"。保存できなかった時だけ false。
+      if (current?.envelope.status !== "ready" || current.envelope.result?.dishName || current.envelope.result?.dishNameFrom) return "skip";
       const result = { ...current.envelope.result, dishNameFrom: "ai-backfill" };
       return !!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }));
     },

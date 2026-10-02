@@ -384,8 +384,9 @@ export function createApp(env = process.env, deps = {}) {
     const videoId = String(req.params.videoId || "");
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
     const raw = req.body?.dishName;
-    if (raw !== "" && typeof raw === "string" && !cleanDishName(raw)) return res.status(400).json({ error: { code: "invalid_dish_name", message: "料理名は改行なしの20字までにしてください。" } });
-    send(res, catalog.setDishName(canonicalYouTubeUrl(videoId), typeof raw === "string" ? raw : "", { from: "admin" }).then((r) => { trendBook.clearCache(); popularBook.clearCache(); return r; }));
+    // 文字列だけを受けつける（空にするのは明示的な "" の時だけ。{}・null・数値・欠落は断る）。
+    if (typeof raw !== "string" || (raw !== "" && !cleanDishName(raw))) return res.status(400).json({ error: { code: "invalid_dish_name", message: "料理名は改行なしの20字までの文字で送ってください（空にする時は \"\"）。" } });
+    send(res, catalog.setDishName(canonicalYouTubeUrl(videoId), raw, { from: "admin" }).then((r) => { trendBook.clearCache(); popularBook.clearCache(); return r; }));
   });
   // 管理：読み取り済みのレシピを見る（材料・手順・手順の時刻）と、手順の時刻を直す。読み出すだけで AI は呼ばない。
   app.get("/api/admin/recipes/:videoId", (req, res) => {
