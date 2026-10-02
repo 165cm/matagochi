@@ -200,4 +200,7 @@ test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish
   assert.equal(p('ハンバーグに飽きない定番アレンジ'), 'ハンバーグ');
   assert.equal(p('ハンバーグに飽きたら｜豆腐ステーキ'), null);
   assert.equal(p('ハンバーグに飽きた人へ！本格ロールキャベツ'), 'ロールキャベツ');
+  // review fix (#126 r5)：「飽きたくない」も比べる言い方ではない
+  assert.equal(p('ハンバーグに飽きたくない人の定番アレンジ'), 'ハンバーグ');
+  assert.equal(p('ハンバーグにあきたくない人へ'), 'ハンバーグ');
 });
