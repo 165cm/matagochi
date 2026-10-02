@@ -156,7 +156,8 @@
       <div class="row">
         <button type="button" id="seed-run" disabled>100円分集める</button>
         <select id="axis" aria-label="検索語を使い切った後に広げる方向" title="検索語を使い切った後に広げる方向">
-          <option value="both">広げ方：話題と定番を交互に</option>
+          <option value="both">広げ方：おまかせ（時短を多めに）</option>
+          <option value="quick">広げ方：平日の時短（20分以内だけ）</option>
           <option value="trend">広げ方：最新で話題（公開60日以内）</option>
           <option value="classic">広げ方：定番（公開1年より前）</option>
         </select>
@@ -164,7 +165,7 @@
         <button type="button" class="quiet small" id="stop" hidden>止める</button>
         <details class="info" style="margin-left:auto"><summary>ⓘ しくみ</summary><div>
           品ぞろえが足りない分野の検索語で YouTube を探し、説明欄にレシピがある動画だけを AI で読みます（3本ずつ）。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安。AI 1回＝1円で数える）まで・月の上限の中。集めた料理は28日間「新着」に出ます。<br>
-          決めた検索語を使い切ったら「広げ方」へ：<b>話題</b>＝公開60日以内を再生の多い順（同じ語は14日あけて）／<b>定番</b>＝公開1年より前を再生の多い順（料理名ごと・もう2品あれば検索しない）。公開日で分けるので重なりません。検索は1日30回まで。
+          決めた検索語を使い切ったら「広げ方」へ：<b>話題</b>＝公開60日以内を再生の多い順（同じ語は14日あけて）／<b>定番</b>＝公開1年より前を再生の多い順（料理名ごと・もう2品あれば検索しない）。公開日で分けるので重なりません。<b>時短</b>＝「10分」「レンジだけ」などの語で再生の多い順（同じ語は30日あけて）・AI が読んだ調理時間が20分を超えた料理は入れません。おまかせは 時短→話題→時短→定番 の順。定番は1回の検索で3本まで（同じ料理のアレンジばかり増えないように）。検索は1日30回まで。
         </div></details>
       </div>
       <p class="run-status" id="run-status" role="status" aria-live="polite"></p>
@@ -227,16 +228,16 @@
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
   const APP = "https://165cm.github.io/matagochi/";
   const RUN_MS = 150_000; // サーバーが1回に動く時間の目安
-  const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語も、話題・定番の広げ方も使い切りました（話題は14日たつとまた使えます）", axis_exhausted: "選んだ方向を使い切りました（方向を変えると続けられます）", search_day_limit: "今日の検索の上限（30回）に届きました（明日また続けられます）", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
+  const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語も、時短・話題・定番の広げ方も使い切りました（話題は14日・時短は30日たつとまた使えます）", axis_exhausted: "選んだ方向を使い切りました（方向を変えると続けられます）", search_day_limit: "今日の検索の上限（30回）に届きました（明日また続けられます）", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
   const REASON_SHORT = { wait: "待ち時間", exhausted: "使い切り", axis_exhausted: "方向を使い切り", search_day_limit: "今日の検索の上限", stage_budget: "金額に到達", month_budget: "月の上限", time: "時間切れ", search_failed: "検索に失敗", cost_not_saved: "記録の保存に失敗", ai_budget: "AI の上限", not_configured: "設定不足" };
   // 外した理由。pre：AI の前に外した（0円）／post：AI で読んだが料理にならなかった
   const SKIP = {
-    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
-    no_steps_in_description: ["post", "作り方がない"], incomplete_recipe: ["post", "材料・手順を読めない"], gemini_invalid_json: ["post", "AI の答えの形が崩れた"], too_short: ["post", "材料・手順が少ない"], not_dinner: ["post", "晩ごはんでない"], analysis_uncertain: ["post", "AI の応答を確認できない"],
+    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], classic_enough: ["pre", "定番の4本目以降"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
+    no_steps_in_description: ["post", "作り方がない"], incomplete_recipe: ["post", "材料・手順を読めない"], gemini_invalid_json: ["post", "AI の答えの形が崩れた"], too_short: ["post", "材料・手順が少ない"], not_dinner: ["post", "晩ごはんでない"], analysis_uncertain: ["post", "AI の応答を確認できない"], too_long: ["post", "時短の検索で20分を超えた"],
     video_not_found: ["post", "動画が見つからない"], non_public_video: ["post", "公開されていない"], empty_description: ["post", "説明欄が空"], sync_storage_failed: ["post", "保存先が一時的に混んでいた"], catalog_conflict: ["post", "保存が重なった"],
   };
-  const OUTCOME = [["made", "料理になった", "--s3"], ["nosteps", "作り方がない", "--s2"], ["unread", "材料・手順を読めない", "--s4"], ["json", "AI の答えの形が崩れた", "--s5"], ["other", "そのほか", "--s1"]];
-  const outcomeOf = (k) => (k === "no_steps_in_description" ? "nosteps" : ["incomplete_recipe", "too_short"].includes(k) ? "unread" : k === "gemini_invalid_json" ? "json" : "other");
+  const OUTCOME = [["made", "料理になった", "--s3"], ["nosteps", "作り方がない", "--s2"], ["unread", "材料・手順を読めない", "--s4"], ["json", "AI の答えの形が崩れた", "--s5"], ["long", "時短で20分を超えた", "--n1"], ["other", "そのほか", "--s1"]];
+  const outcomeOf = (k) => (k === "no_steps_in_description" ? "nosteps" : k === "too_long" ? "long" : ["incomplete_recipe", "too_short"].includes(k) ? "unread" : k === "gemini_invalid_json" ? "json" : "other");
   const status = document.getElementById("status");
   let token = "", last = { seed: null, catalog: null }, busy = false, stopAuto = false;
   // 合言葉を消したら session を進める。それより前に始めた読み込み・収集の答えは、画面に出さない。
@@ -310,7 +311,7 @@
   function summarize(s) {
     const added = s.added || [];
     const viaAi = added.filter((a) => !a.free).length;
-    const out = { made: viaAi, nosteps: 0, unread: 0, json: 0, other: 0 };
+    const out = { made: viaAi, nosteps: 0, unread: 0, json: 0, long: 0, other: 0 };
     const pre = [];
     for (const [k, v] of Object.entries(s.skipped || {})) {
       const kind = SKIP[k]?.[0] || "post";
@@ -360,27 +361,32 @@
     const preParts = [["AI で読んだ", sum.aiRead, "--s1"], ...(sum.free ? [["0円で料理に（読んだことあり）", sum.free, "--s3"]] : []), ...sum.pre.map(([l, n], i) => [l, n, NEUTRAL[i]])];
     const r1 = el("div"); const l1 = el("div", undefined, "line"); l1.append(el("span", "候補のゆくえ"), el("span", `${sum.candidates}本・うち0円で外した ${sum.preTotal}`, "num")); r1.append(l1, ...stack(preParts, "候補のゆくえ"));
     const r2 = el("div"); const l2 = el("div", undefined, "line"); l2.append(el("span", "AI で読んだ結果"), el("span", `${sum.aiRead}本`, "num")); r2.append(l2, ...stack(OUTCOME.map(([key, label, color]) => [label, sum.out[key], color]), "AI で読んだ結果"));
-    flow.append(r1, r2);
+    // 調理時間の内訳（AI が読んだ時間。平日の夜に作れる20分以内がどれだけ増えたか）
+    const mins = (s.added || []).map((a) => Number(a.minutes) || 0);
+    const quickN = mins.filter((m) => m > 0 && m <= 20).length;
+    const r3 = el("div"); const l3 = el("div", undefined, "line"); l3.append(el("span", "調理時間"), el("span", `20分以内 ${quickN}品（${pct(quickN, mins.length)}）`, "num"));
+    r3.append(l3, ...stack([["10分以内", mins.filter((m) => m > 0 && m <= 10).length, "--s3"], ["15〜20分", mins.filter((m) => m > 10 && m <= 20).length, "--s1"], ["30分", mins.filter((m) => m > 20 && m <= 30).length, "--s4"], ["45分以上", mins.filter((m) => m > 30).length, "--s2"], ["不明", mins.filter((m) => !m).length, "--n2"]], "調理時間"));
+    flow.append(r1, r2, r3);
     box.append(flow);
   }
   // ③ どこから増えたか：方向ごとの効率（広げ方の記録の累計）と、この段階の分野ごと
   function renderSources() {
     const box = document.getElementById("sources"); box.textContent = "";
     const w = last.seed?.waves, s = (last.seed?.stages || []).at(-1);
-    document.getElementById("waves-left").textContent = w ? `残り：話題 ${w.trendReady}/${w.trendTotal}語・定番 ${w.classicLeft}/${w.classicTotal}品` : "";
+    document.getElementById("waves-left").textContent = w ? `残り：時短 ${w.quickReady ?? "—"}/${w.quickTotal ?? "—"}語・話題 ${w.trendReady}/${w.trendTotal}語・定番 ${w.classicLeft}/${w.classicTotal}品` : "";
     const log = w?.log || [];
     if (log.length) {
       // 当たり＝ AI で読んだうち料理になった割合。分子も分母も AI で読んだ分だけ（0円の料理は入れない。ai と aiAdded の両方が記録されている検索だけで数える＝古い記録は「不明」として外す）。
-      const agg = { trend: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 } };
+      const agg = { quick: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, trend: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 } };
       for (const e of log) {
         const a = agg[e.axis]; if (!a) continue; if (e.skipped) { a.skip += 1; continue; }
         a.s += 1; a.ai += e.ai || 0; a.add += e.added || 0;
         if (Number.isFinite(e.ai) && Number.isFinite(e.aiAdded)) { a.hitAi += e.ai; a.hit += e.aiAdded; }
       }
-      const rows = [["話題", agg.trend], ["定番", agg.classic]].map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—"]);
+      const rows = [["時短", agg.quick], ["話題", agg.trend], ["定番", agg.classic]].filter(([l, a]) => l !== "時短" || a.s).map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—"]);
       box.append(scroll(table(["広げ方", "検索", "AI", "増えた", "1検索で", "当たり"], rows, [1, 2, 3, 4, 5], null, { bars: [4] })));
       const skipped = agg.classic.skip;
-      box.append(el("p", `話題＝公開60日以内・定番＝公開1年より前。当たり＝AI で読んだうち料理になった割合。${skipped ? `定番の ${skipped}品は、もう新着に2品あるので検索せず（0円）。` : ""}`, "meta"));
+      box.append(el("p", `時短＝20分以内だけ入れる・話題＝公開60日以内・定番＝公開1年より前。当たり＝AI で読んだうち料理になった割合。${skipped ? `定番の ${skipped}品は、もう新着に2品あるので検索せず（0円）。` : ""}`, "meta"));
     }
     const by = Object.entries(s?.byQuery || {}).sort((a, b) => b[1] - a[1]);
     const h = el("h3", `この段階の分野ごと（${by.reduce((a, b) => a + b[1], 0)}品）`); h.style.marginTop = "10px";
@@ -411,7 +417,7 @@
   function renderQueries() {
     const box = document.getElementById("queries"); box.textContent = "";
     const d = last.seed || {}, log = d.waves?.log || [], qs = d.queries || [];
-    const AX = { trend: "話題", classic: "定番" };
+    const AX = { quick: "時短", trend: "話題", classic: "定番" };
     box.append(el("h3", `広げ方の検索（新しい順・${log.length}件）`));
     box.append(log.length ? scroll(table(["方向", "検索語・料理", "日", "候補", "AI", "増えた"], log.map((e) => [AX[e.axis] || e.axis, e.q, String(e.at).slice(5, 10), e.skipped === "enough" ? "検索せず" : e.picked, e.skipped ? "—" : e.ai || 0, e.skipped ? "—" : e.added]), [3, 4, 5], null, { wide: true })) : el("p", "まだ広げていません。", "empty"));
     const h = el("h3", `決めた検索語（残り ${d.queriesLeft ?? "—"}・読む前の候補 ${d.candidatesLeft ?? "—"}）`); h.style.marginTop = "12px"; box.append(h);
@@ -590,7 +596,7 @@
   }
   document.getElementById("seed-run").addEventListener("click", collect);
   // 広げる方向は、この端末に覚えておく。
-  try { const a = localStorage.getItem("ripigochi-admin-axis"); if (["both", "trend", "classic"].includes(a)) document.getElementById("axis").value = a; } catch {}
+  try { const a = localStorage.getItem("ripigochi-admin-axis"); if (["both", "quick", "trend", "classic"].includes(a)) document.getElementById("axis").value = a; } catch {}
   document.getElementById("axis").addEventListener("change", (e) => { try { localStorage.setItem("ripigochi-admin-axis", e.target.value); } catch {} });
   document.getElementById("stop").addEventListener("click", () => { stopAuto = true; runStatus.textContent = "この回が終わったら止めます…"; });
   // ── タブ ──

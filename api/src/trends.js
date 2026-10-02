@@ -95,7 +95,7 @@ export const WAVE_TREND_DAYS = 60;
 export const WAVE_TREND_REUSE_DAYS = 14;
 export const WAVE_CLASSIC_AGE_DAYS = 365;
 export const WAVE_CLASSIC_ENOUGH = 2;
-export const WAVE_AXES = ["both", "trend", "classic"];
+export const WAVE_AXES = ["both", "trend", "classic", "quick"];
 // 広げ方の検索は1日に WAVE_SEARCH_PER_DAY 回まで（1回100単位。YouTube の1日の枠1万単位のうち、毎日の新着集めの分を残す）。
 export const WAVE_SEARCH_PER_DAY = 30;
 export const WAVE_TREND_WORDS = [
@@ -103,6 +103,20 @@ export const WAVE_TREND_WORDS = [
   "ひき肉 レシピ 材料", "野菜 おかず レシピ 材料", "魚 おかず レシピ 材料", "豆腐 レシピ 材料", "レンジ おかず 材料",
   "フライパンひとつ 晩ごはん 材料", "節約 夕飯 レシピ 材料", "丼 レシピ 材料", "麺 夕飯 レシピ 材料", "作り置き おかず 材料",
 ];
+// 時短（2026-10-02 のユーザーの判断：「平日の夜に作る時短レシピが少ない。重点的に補強したい」）。
+//   公開日は問わず、再生の多い順。同じ検索語は WAVE_QUICK_REUSE_DAYS 日あけて使い直す。
+//   AI が読んだ調理時間（planning.minutes）が QUICK_MAX_MINUTES 分を超えたら、新着に入れない（「時間が長い」として数える）。
+//   「おまかせ」では、時短 → 話題 → 時短 → 定番 の順（時短を半分）。
+export const WAVE_QUICK_REUSE_DAYS = 30;
+export const QUICK_MAX_MINUTES = 20;
+export const WAVE_QUICK_WORDS = [
+  "10分 晩ごはん レシピ 材料", "15分 夕飯 おかず 材料", "時短 夕飯 レシピ 材料", "平日 晩ごはん 時短 材料",
+  "レンジだけ おかず 材料", "フライパンひとつ 10分 材料", "包丁いらず おかず 材料", "5分 おかず 材料",
+  "豚こま 10分 レシピ 材料", "鶏むね 時短 レシピ 材料", "ひき肉 15分 おかず 材料", "鮭 時短 レシピ 材料",
+  "厚揚げ 10分 おかず 材料", "卵 時短 晩ごはん 材料", "時短 丼 レシピ 材料", "10分 麺 夕飯 材料",
+];
+// 定番は1回の検索で WAVE_CLASSIC_PICK 本まで（同じ料理のアレンジばかり増えない・第3段階で鮭のムニエルが8品増えた）。
+export const WAVE_CLASSIC_PICK = 3;
 // 定番の料理名と分野（品ぞろえの棚卸し docs/CATALOG_COVERAGE.md の分野。1回の段階でいろいろな分野が入るように混ぜて並べる）。
 export const WAVE_CLASSIC_DISHES = [
   ["肉じゃが", "肉"], ["さばの味噌煮", "魚"], ["八宝菜", "野菜が主役"], ["揚げ出し豆腐", "卵・豆腐"],
@@ -118,7 +132,7 @@ export const WAVE_CLASSIC_DISHES = [
 ];
 // 料理名を比べる時の形（全角半角・カタカナとひらがなの違いをそろえる）。
 const dishKey = (s) => String(s || "").normalize("NFKC").replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/\s+/g, "");
-const emptyWaves = () => ({ turn: 0, trend: 0, trendAt: {}, classic: 0, log: [], n: 0 });
+const emptyWaves = () => ({ turn: 0, trend: 0, trendAt: {}, classic: 0, quick: 0, quickAt: {}, log: [], n: 0 });
 // 次に使う広げ方の検索（使えるものがなければ null）。doc.waves を進める。haveDish(料理名) は、もう新着にある品数。
 export async function nextWave(doc, axis, nowMs, haveDish = async () => 0) {
   const w = (doc.waves ||= emptyWaves());
@@ -139,7 +153,19 @@ export async function nextWave(doc, axis, nowMs, haveDish = async () => 0) {
     }
     return null;
   };
-  const order = axis === "trend" ? [trend] : axis === "classic" ? [classic] : (w.turn++ % 2 ? [classic, trend] : [trend, classic]);
+  const quick = () => {
+    w.quickAt ||= {}; w.quick ||= 0;
+    for (let k = 0; k < WAVE_QUICK_WORDS.length; k++) {
+      const i = (w.quick + k) % WAVE_QUICK_WORDS.length, q = WAVE_QUICK_WORDS[i];
+      if (nowMs - (Date.parse(w.quickAt[q] || 0) || 0) < WAVE_QUICK_REUSE_DAYS * DAY) continue;
+      w.quick = i + 1; w.quickAt[q] = new Date(nowMs).toISOString();
+      return { axis: "quick", q, label: "時短", opts: { videoDuration: "medium" } };
+    }
+    return null;
+  };
+  // おまかせ：時短 → 話題 → 時短 → 定番（使えない方向は、次の方向で埋める）。
+  const order = axis === "trend" ? [trend] : axis === "classic" ? [classic] : axis === "quick" ? [quick]
+    : [[quick, trend, classic], [trend, quick, classic], [quick, classic, trend], [classic, quick, trend]][((w.turn = (w.turn || 0) + 1) - 1) % 4];
   for (const f of order) {
     const next = await f();
     if (next) { const entry = { n: ++w.n, axis: next.axis, q: next.q, label: next.label, at: new Date(nowMs).toISOString(), picked: 0, added: 0, ai: 0, aiAdded: 0 }; /* ai・aiAdded は0から数える（記録がない古い検索と区別する） */ w.log.push(entry); w.log = w.log.slice(-200); return { ...next, n: entry.n }; }
@@ -154,6 +180,7 @@ export function waveStatus(doc, nowMs) {
   const next = WAVE_TREND_WORDS.map((q) => Date.parse(w.trendAt?.[q] || 0) || 0).filter((t) => nowMs - t < WAVE_TREND_REUSE_DAYS * DAY).sort((a, b) => a - b)[0];
   return { trendReady: ready, trendTotal: WAVE_TREND_WORDS.length, trendNextAt: !ready && next ? new Date(next + WAVE_TREND_REUSE_DAYS * DAY).toISOString() : null,
     classicLeft: Math.max(0, WAVE_CLASSIC_DISHES.length - (w.classic || 0)), classicTotal: WAVE_CLASSIC_DISHES.length,
+    quickReady: WAVE_QUICK_WORDS.filter((q) => nowMs - (Date.parse(w.quickAt?.[q] || 0) || 0) >= WAVE_QUICK_REUSE_DAYS * DAY).length, quickTotal: WAVE_QUICK_WORDS.length, quickMaxMinutes: QUICK_MAX_MINUTES,
     searchedToday: w.day?.on === new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10) ? w.day.n : 0, searchPerDay: WAVE_SEARCH_PER_DAY, log: (w.log || []).slice(-60).reverse() };
 }
 // 対象の国と言語。いまは日本の動画だけ（タイトルに日本語がない動画は外す）。海外展開の時はここに国を足す。
@@ -537,6 +564,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             for (const c of found) {
               if (seen.has(c.videoId) || picked.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { skip("filtered"); continue; }
               if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) { skip("same_channel"); continue; }
+              if (wave?.axis === "classic" && picked.length >= WAVE_CLASSIC_PICK) { skip("classic_enough"); continue; }
               picked.push({ videoId: c.videoId, channelId: c.channelId || "", label, ...(wave ? { wave: wave.n, axis: wave.axis } : {}) });
             }
             // AI の前に、説明欄に作り方が書いてあるかを YouTube の情報で確かめる（50本で1単位。AI の費用はかからない）。
@@ -592,6 +620,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             done(c);
             if ((r?.channelId && excluded.has(r.channelId)) || excluded.has(c.videoId)) { skip("opted_out"); continue; }
             if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short"); continue; }
+            // 時短の検索で、調理時間が長い（または分からない）料理は入れない。
+            if (c.axis === "quick" && !(Number(r.planning?.minutes) > 0 && Number(r.planning.minutes) <= QUICK_MAX_MINUTES)) { skip("too_long"); continue; }
             week.items.push({ videoId: c.videoId, day: today });
             // 題名は YouTube の情報なので、記録には残さない（見せる時に保存済みの結果から読む＝30日ルールの中）。
             stage.added.push({ videoId: c.videoId, label: c.label, minutes: r.planning?.minutes || null, free });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { createTrendBook, weekOf, SEED_QUERIES, WAVE_TREND_WORDS, WAVE_CLASSIC_DISHES, WAVE_TREND_DAYS, WAVE_CLASSIC_AGE_DAYS, WAVE_TREND_REUSE_DAYS, WAVE_SEARCH_PER_DAY } from '../src/trends.js';
+import { createTrendBook, weekOf, SEED_QUERIES, WAVE_TREND_WORDS, WAVE_CLASSIC_DISHES, WAVE_TREND_DAYS, WAVE_CLASSIC_AGE_DAYS, WAVE_TREND_REUSE_DAYS, WAVE_SEARCH_PER_DAY, WAVE_QUICK_WORDS } from '../src/trends.js';
 import { recordUsage } from '../src/aiUsage.js';
 process.env.NODE_ENV = 'test';
 const { createApp } = await import('../src/server.js');
@@ -39,10 +39,13 @@ test('waves: after the fixed words, trend (recent) and classic (old) searches al
   let n = 0;
   const search = async (q, o) => { searched.push([q, o]); n += 1; return [{ videoId: id(n * 10 + 1), channelId: `c${n}`, title: `料理${n}` }, { videoId: id(n * 10 + 2), channelId: `d${n}`, title: `料理${n}b` }]; };
   const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search });
-  const r = await book.seed({ yen: 8 });
+  const r = await book.seed({ yen: 16 });
   assert.equal(r.reason, 'stage_budget');
-  assert.equal(searched.length, 4);
-  const [t1, c1, t2, c2] = searched;
+  assert.equal(searched.length, 8);
+  // おまかせ：時短 → 話題 → 時短 → 定番 の順（2026-10-02 時短を半分に）
+  const [q1, t1, q2, c1, q3, t2, q4, c2] = searched;
+  assert.deepEqual([q1, q2, q3, q4].map((x) => x[0]), WAVE_QUICK_WORDS.slice(0, 4));
+  assert.ok([q1, q2].every(([, o]) => !o.publishedAfter && !o.publishedBefore), 'quick searches do not filter by date');
   assert.equal(t1[0], WAVE_TREND_WORDS[0]);
   assert.equal(t1[1].publishedAfter, new Date(now - WAVE_TREND_DAYS * DAY).toISOString());
   assert.equal(t1[1].publishedBefore, undefined);
@@ -52,15 +55,16 @@ test('waves: after the fixed words, trend (recent) and classic (old) searches al
   assert.ok(Date.parse(t1[1].publishedAfter) > Date.parse(c1[1].publishedBefore), 'the two directions never share a video');
   assert.equal(t2[0], WAVE_TREND_WORDS[1]);
   assert.equal(c2[0], `${WAVE_CLASSIC_DISHES[2][0]} レシピ 材料 作り方`);
-  assert.deepEqual(r.stage.byAxis, { trend: 4, classic: 4 });
+  assert.deepEqual(r.stage.byAxis, { quick: 8, trend: 4, classic: 4 });
   assert.equal(r.stage.byQuery['話題の新作'], 4);
   assert.equal(r.stage.byQuery[`定番・${WAVE_CLASSIC_DISHES[1][1]}`] >= 2, true);
   const log = r.waves.log;
   assert.equal(log.find((e) => e.skipped === 'enough').q, dish0);
   assert.ok(log.filter((e) => !e.skipped).every((e) => e.picked === 2 && e.added === 2 && e.ai === 2), 'each search records how many it picked, read with the AI and added');
-  assert.equal(r.waves.searchedToday, 4);
+  assert.equal(r.waves.searchedToday, 8);
   assert.equal(r.waves.searchPerDay, WAVE_SEARCH_PER_DAY);
   assert.equal(r.waves.trendReady, WAVE_TREND_WORDS.length - 2);
+  assert.equal(r.waves.quickReady, WAVE_QUICK_WORDS.length - 4);
   assert.equal(r.waves.classicLeft, WAVE_CLASSIC_DISHES.length - 3);
   assert.equal(JSON.stringify((await store.get('trends/seed')).envelope).includes('料理'), false, 'no YouTube titles are stored');
 });
@@ -86,11 +90,12 @@ test('waves: a trend word waits 14 days before reuse; one direction running out 
   // 両方：定番を使い切り、話題は14日あけ中 → 終わり
   // 1日の検索の上限があるので、日をまたいで続ける
   let end;
-  for (let i = 0; i < 3; i++) { end = await book.seed({ yen: 50 }); if (end.reason !== 'search_day_limit') break; now += DAY / 2 + 1; }
+  for (let i = 0; i < 4; i++) { end = await book.seed({ yen: 50 }); if (end.reason !== 'search_day_limit') break; now += DAY; }
   assert.equal(end.reason, 'exhausted');
   assert.equal(end.stage.done, true);
-  assert.equal(searched.length, WAVE_CLASSIC_DISHES.length);
+  assert.equal(searched.length, WAVE_CLASSIC_DISHES.length + WAVE_QUICK_WORDS.length, 'both = all three directions run out');
   assert.equal(end.waves.classicLeft, 0);
+  assert.equal(end.waves.quickReady, 0);
 });
 
 test('waves: a failed search is retried later with the same word; searches per day are capped', async () => {
@@ -146,7 +151,7 @@ test('review fix (#119): a failed search (or a failed description check after it
     assert.equal(r.reason, i < WAVE_SEARCH_PER_DAY ? 'search_failed' : 'search_day_limit');
   }
   assert.equal(searched.length, WAVE_SEARCH_PER_DAY, 'never more than 30 searches a day');
-  assert.ok(searched.every((q) => q === WAVE_TREND_WORDS[0]), 'the same word is retried each time');
+  assert.ok(searched.every((q) => q === WAVE_QUICK_WORDS[0]), 'the same word is retried each time');
   assert.equal((await store.get('trends/seed')).envelope.waves.day.n, WAVE_SEARCH_PER_DAY);
 });
 
@@ -174,4 +179,73 @@ test('review fix (#120 r2): a new search that read with the AI but added nothing
   const e = r.waves.log.find((x) => !x.skipped);
   assert.deepEqual([e.ai, e.added, e.aiAdded], [1, 0, 0]);
   assert.ok(Object.hasOwn(e, 'aiAdded'));
+});
+
+// 2026-10-02：平日の夜の時短レシピを補強する（時短の方向・調理時間の上限・定番は1回3本まで）。
+test('quick: the quick direction adds only dishes the AI timed at 20 minutes or less (long or unknown ones are counted as too_long)', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const catalog = fakeCatalog();
+  const minutes = { [id(1)]: 10, [id(2)]: 20, [id(3)]: 30, [id(4)]: null, [id(5)]: 45 };
+  const base = catalog.import;
+  catalog.import = async (url, o) => { const r = await base(url, o); const v = url.match(/v=([\w-]{11})/)[1]; return { ...r, planning: { minutes: minutes[v] } }; };
+  const searched = [];
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
+    search: async (q, o) => { searched.push([q, o]); return searched.length > 1 ? [] : Object.keys(minutes).map((v, i) => ({ videoId: v, channelId: `c${i}`, title: `料理${i}` })); } });
+  const r = await book.seed({ yen: 5, axis: 'quick' });
+  assert.equal(searched[0][0], WAVE_QUICK_WORDS[0]);
+  assert.deepEqual(r.stage.added.map((a) => a.minutes).sort(), [10, 20]);
+  assert.equal(r.stage.skipped.too_long, 3);
+  assert.deepEqual(r.stage.byAxis, { quick: 2 });
+  assert.equal(r.stage.byQuery['時短'], 2);
+  const e = r.waves.log.find((x) => x.axis === 'quick');
+  assert.deepEqual([e.ai, e.added, e.aiAdded], [5, 2, 2]);
+  assert.equal(r.waves.quickReady, WAVE_QUICK_WORDS.length - searched.length);
+});
+
+test('quick: other directions keep long dishes (the time limit is only for the quick direction)', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const catalog = fakeCatalog();
+  const base = catalog.import;
+  catalog.import = async (url, o) => ({ ...(await base(url, o)), planning: { minutes: 60 } });
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async () => [{ videoId: id(1), channelId: 'c1', title: '料理1' }] });
+  const r = await book.seed({ yen: 1, axis: 'trend' });
+  assert.deepEqual(r.stage.added.map((a) => a.minutes), [60]);
+});
+
+test('classic: one classic dish search picks at most 3 videos (no 8 variants of one dish)', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const catalog = fakeCatalog();
+  let n = 0;
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000,
+    search: async () => { n += 1; return Array.from({ length: 8 }, (_, i) => ({ videoId: id(n * 100 + i), channelId: `c${n}-${i}`, title: `料理${i}` })); } });
+  const r = await book.seed({ yen: 6, axis: 'classic' });
+  const searches = r.waves.log.filter((e) => !e.skipped);
+  assert.equal(searches.length, 2);
+  assert.ok(searches.every((e) => e.picked === 3 && e.added === 3));
+  assert.equal(r.stage.skipped.classic_enough, 10);
+});
+
+test('quick: the admin endpoint accepts the quick direction and shows how many quick words are left', async (t) => {
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const searched = [];
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async (q, o) => { searched.push([q, o]); return []; } });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' };
+  const before = await (await fetch(base + '/api/admin/trends/seed', { headers: auth })).json();
+  assert.deepEqual([before.waves.quickReady, before.waves.quickTotal, before.waves.quickMaxMinutes], [WAVE_QUICK_WORDS.length, WAVE_QUICK_WORDS.length, 20]);
+  const r = await (await fetch(base + '/api/admin/trends/seed', { method: 'POST', headers: auth, body: JSON.stringify({ yen: 10, axis: 'quick' }) })).json();
+  assert.equal(r.axis, 'quick');
+  assert.equal(r.reason, 'axis_exhausted');
+  assert.deepEqual(searched.map(([q]) => q), WAVE_QUICK_WORDS);
+  assert.equal(r.waves.quickReady, 0);
 });
