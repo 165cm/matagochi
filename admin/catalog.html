@@ -206,6 +206,7 @@
 
   <div id="panel-dishes" role="tabpanel" aria-labelledby="tab-dishes" hidden style="display:grid;gap:10px">
     <section><div class="head"><h2>親の料理名</h2><details class="info"><summary>ⓘ しくみ</summary><div>集めた料理を、題名の料理名（親）ごとにまとめます。アレンジ（塩こんぶ肉じゃが）も同じ親です。献立は自動では同じ親を週1回まで、レシピの一覧は親ごとに1品にまとめます。辞書は、定番の料理名から始まり、辞書にない料理名が<b id="dish-rule">3本・投稿者2人</b>以上そろうと自動で格上げされます。まちがったまとめ方は「外す」、表記ゆれは「まとめる」で直せます。</div></details></div>
+      <div class="row" id="backfill" style="margin-top:8px"></div>
       <div id="dish-parents" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div></section>
     <div class="grid2">
       <section><h2>もう少しで格上げ</h2><div id="dish-candidates" style="margin-top:8px"><p class="empty">—</p></div></section>
@@ -456,6 +457,26 @@
     const h = el("h3", "外した料理名"); h.style.marginTop = "8px"; o.append(h);
     o.append((d.removed || []).length ? withButtons(table(["料理名"], d.removed.map((r) => [r.name])), d.removed, (r) => actionButton("戻す", { op: "restore", key: r.key })) : el("p", "ありません。", "empty"));
   }
+  // 集めた料理に、あとから AI の料理名を付ける（APP_MAP §48-3）。まだの品数と目安を出し、押すと20品ずつ最大3回。
+  async function loadBackfill() {
+    const box = document.getElementById("backfill"); const my = session;
+    let d; try { d = await api("/api/admin/backfill/dish-names"); } catch { return; }
+    if (my !== session) return; box.textContent = "";
+    if (!d.total) { box.append(el("p", "✓ 集めた料理には、すべて AI の料理名が付いています（または試し済み）。", "meta")); return; }
+    box.append(el("p", `AI の料理名がまだない料理：${d.total}品（AI ${d.calls}回・目安 ${yen(d.calls * (d.yenPerAi || 1))}）`, "meta"));
+    const b = el("button", "AI で料理名を付ける", "small"); b.type = "button";
+    const note = el("span", "", "meta");
+    b.addEventListener("click", async () => {
+      b.disabled = true; note.textContent = "付けています…";
+      try {
+        const r = await api("/api/admin/backfill/dish-names", {});
+        note.textContent = r.busy ? "ほかの収集が動いています。少し待ってからどうぞ。" : `${r.named}品に付けました（AI ${r.calls}回・実測 ${yen(r.yenMeasured)}）${r.left ? `・残り ${r.left}品（もう一度押すと続き）` : ""}${r.reason === "month_budget" ? "・月の上限に届きました" : ""}`;
+        await Promise.all([loadDishes(), loadRecipes()]);
+        const keep = note.textContent; await loadBackfill(); document.getElementById("backfill").append(el("span", keep, "meta"));
+      } catch (error) { note.textContent = error.message; b.disabled = false; }
+    });
+    box.append(b, note);
+  }
   async function loadDishes() { const my = session; const d = await api("/api/admin/dishes"); if (my !== session) return; last.dishes = d; renderDishes(); }
   document.getElementById("dish-alias").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -510,6 +531,7 @@
       if (my !== session) return;
       last = { seed, catalog, dishes: last.dishes, recipes: last.recipes };
       loadDishes().catch(() => {});
+      loadBackfill().catch(() => {});
       loadRecipes().catch(() => {});
       renderAll();
       // 読み込めたら、合言葉の欄は畳む（上の「合言葉を消す」で戻せる）。
@@ -605,6 +627,20 @@
     if (r.embeddable) body.append(playerBox); else body.append(el("p", "この動画は埋め込みで再生できません。時刻は YouTube で確かめてください。", "meta"));
     const ing = el("details"); ing.append(el("summary", `材料（${(r.ingredients || []).length}）`));
     const ul = el("ul"); (r.ingredients || []).forEach((i) => ul.append(el("li", `${i.name}　${i.amount || ""}`))); ing.append(ul); body.append(ing);
+    // 料理名（親を決める元）。AI が付けた名前を手で直せる（空にすると題名で決める。あとから AI で上書きしない）。
+    const FROM = { "": "まだなし", ai: "AI", "ai-backfill": "AI（あとから）", admin: "運営が直した" };
+    const dn = el("div", undefined, "row"); dn.style.marginTop = "4px";
+    const dnInput = el("input"); dnInput.value = r.dishName || ""; dnInput.placeholder = "一般的な料理名（例：八宝菜）"; dnInput.setAttribute("aria-label", "料理名"); dnInput.maxLength = 20; dnInput.style.flex = "1 1 160px";
+    const dnSave = el("button", "料理名を保存", "quiet small"); dnSave.type = "button";
+    const dnNote = el("span", `今：${FROM[r.dishNameFrom || (r.dishName ? "ai" : "")] || r.dishNameFrom}`, "meta");
+    dnSave.addEventListener("click", async () => {
+      dnSave.disabled = true; dnNote.textContent = "保存しています…";
+      try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/dish-name`, { dishName: dnInput.value.trim() }, "PUT"); dnNote.textContent = x.dishName ? `✓ 保存しました（親の料理名に使います）` : "✓ 空にしました（題名で親を決めます）"; loadDishes().catch(() => {}); loadRecipes().catch(() => {}); }
+      catch (error) { dnNote.textContent = error.message; }
+      finally { dnSave.disabled = false; }
+    });
+    dn.append(dnInput, dnSave, dnNote);
+    body.append(el("h3", "料理名（親を決める元）"), dn);
     body.append(el("h3", "手順と時刻"), el("p", `時刻は「分:秒」（例 2:15）。▶ でその時刻から再生、⏱ で再生中の時刻を入れます。${r.stepTimesFrom === "admin" ? "（運営が直した時刻です）" : ""}`, "meta"));
     const ol = el("ol", undefined, "steps");
     const inputs = [];
@@ -656,7 +692,7 @@
     runStatus.textContent = ""; progress(false);
     document.querySelector("#added-box > summary").textContent = "増えた料理";
     const dlg = document.getElementById("recipe"); if (dlg.open) dlg.close();
-    for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left", "dish-parents", "dish-candidates", "dish-other", "rl-list", "rl-count"]) document.getElementById(id).textContent = "";
+    for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left", "dish-parents", "dish-candidates", "dish-other", "rl-list", "rl-count", "backfill"]) document.getElementById(id).textContent = "";
     document.getElementById("seed-run").disabled = true;
     document.getElementById("login-box").hidden = false; document.getElementById("reload").hidden = true;
     status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;

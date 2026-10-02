@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cleanDishName } from "./dishes.js";
 import { ApiError } from "./errors.js";
 import { createGcsSyncStore, createMemorySyncStore } from "./syncStore.js";
 import { extractYouTubeVideoId, canonicalYouTubeUrl } from "./youtube.js";
@@ -99,6 +100,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       await gate();
       const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo });
       const result = { ...normalizeImportResult(raw), analyzedFrom: ["video", "video-clip"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description" };
+      // 運営が直した料理名は、読み直しても引き継ぐ（AI の新しい料理名で上書きしない。空＝題名で決める、も含めて）。
+      const before = current?.envelope.status === "ready" ? current.envelope.result : null;
+      if (before?.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
       // 動画から作り方を読めなかったら、チケットは戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
       // 取り込みは説明文だけで読む。作り方がなくても材料があれば保存し、動画はボタンで読む。
@@ -143,6 +147,32 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       return { ...localizeRecipe(result), cacheHit: true };
     },
     // 管理：保存済みの読み取り結果の、手順の時刻（stepTimes）を運営が直す（新着・みんなの定番の一覧に出る時刻）。AI は呼ばない。
+    // 料理名（dishName）を付ける・直す（APP_MAP §48）。from："ai"（あとから AI で付ける。運営が直した料理は上書きしない）／"admin"（運営が直す。空なら題名で決める印）。
+    async setDishName(rawUrl, dishName, { from = "admin" } = {}) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      const result = structuredClone(current.envelope.result);
+      if (from === "ai" && result.dishNameFrom === "admin") return { dishName: result.dishName || "", dishNameFrom: "admin", skipped: true };
+      const name = cleanDishName(dishName);
+      if (from === "ai" && !name) return { dishName: result.dishName || "", skipped: true };
+      if (name) result.dishName = name; else delete result.dishName;
+      result.dishNameFrom = from === "ai" ? "ai-backfill" : "admin";
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
+      return { dishName: result.dishName || "", dishNameFrom: result.dishNameFrom };
+    },
+    // あとから AI で料理名を付けようとしたが名前が返らなかった印（同じ料理に何度も費用を使わない）。
+    async markDishNameTried(rawUrl) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      // もう名前や印がある時だけ "skip"。読み直しの最中（pending）など、いま保存できない時は false（済みに数えない）。
+      if (current?.envelope.status !== "ready") return false;
+      if (current.envelope.result?.dishName || current.envelope.result?.dishNameFrom) return "skip";
+      const result = { ...current.envelope.result, dishNameFrom: "ai-backfill" };
+      return !!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }));
+    },
     async setStepTimes(rawUrl, stepTimes) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;

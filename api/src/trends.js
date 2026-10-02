@@ -181,7 +181,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const catches = { at: 0 };
@@ -638,6 +638,52 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // 表示用：取得から28日以内のものすべてを、日ごとに決まるランダムな順で。保存済みの結果を読み出すだけ（AIを呼ばない）。
     // 親の料理名を直した時など、表示のキャッシュを捨てる。
     clearCache() { cache = null; },
+    // 集めた料理（新着の週に入っている料理）のうち、AI の料理名（dishName）がないものに、あとから付ける（APP_MAP §48-3）。
+    // 説明欄は読み直さず、題名・材料・手順の頭だけを20品ずつ AI に渡す（1回 = AI 1回。月の上限に数え、呼ぶ前に予約する）。運営が直した料理は上書きしない。
+    async backfillDishNames({ maxCalls = 3, dryRun = false } = {}) {
+      required();
+      if (!dryRun && typeof nameDishes !== "function") throw new ApiError(503, "not_configured", "料理名を付ける設定がありません。");
+      if (!dryRun && !(await lock())) return { busy: true };
+      const started = now();
+      try {
+        const month = dayOf(now()).slice(0, 7);
+        const ids = [...new Set(((await readIndex())?.envelope.weeks || []).flatMap((w) => w.items.map((i) => i.videoId)))];
+        const targets = [];
+        for (const id of ids) {
+          const r = await peek(id).catch(() => null);
+          if (r && !r.dishName && r.dishNameFrom !== "admin" && r.dishNameFrom !== "ai-backfill") targets.push({ videoId: id, title: r.title || "", ingredients: r.ingredients || [], steps: r.steps || [] });
+        }
+        // 数えるだけ（管理の画面に、まだ付いていない品数と目安の回数を出す）。
+        if (dryRun) return { total: targets.length, calls: Math.ceil(targets.length / 20), yenPerAi };
+        const collector = { lite: true };
+        let named = 0, calls = 0, processed = 0, failed = 0, reason = "";
+        // 保存は1回だけやり直す。それでも保存できない料理は「済み」に数えない（残りに入れ、done にしない）。
+        const retry = async (fn) => { for (let a = 0; a < 2; a++) { const r = await fn().catch(() => null); if (r) return r; } return null; };
+        for (let i = 0; i < targets.length && calls < maxCalls; i += 20) {
+          if (now() - started > budgetMs) { reason = "time"; break; }
+          const capCalls = monthCapCalls();
+          const reserved = await writeMonthCost(month, (used) => (used + 1 <= capCalls ? used + 1 : null));
+          if (reserved === null) { reason = "month_budget"; break; }
+          calls += 1;
+          const batch = targets.slice(i, i + 20);
+          let names = {};
+          try { names = await usage.run(collector, () => nameDishes(batch)); } catch { reason = "ai_failed"; break; }
+          for (const b of batch) {
+            const url = canonicalYouTubeUrl(b.videoId);
+            // 名前が返った料理は名前を保存、返らなかった料理は「試した」印（同じ料理に何度も費用を使わない）。
+            const ok = names[b.videoId]
+              ? await retry(() => catalog.setDishName(url, names[b.videoId], { from: "ai" }))
+              : await retry(async () => ((await catalog.markDishNameTried?.(url)) ? { tried: true } : null));
+            if (!ok) { failed += 1; continue; }
+            processed += 1;
+            if (ok.dishName && !ok.skipped) named += 1;
+          }
+        }
+        cache = null;
+        const left = Math.max(0, targets.length - processed);
+        return { named, calls, left, failed, total: targets.length, reason: reason || (failed ? "save_failed" : left ? "more" : "done"), yenMeasured: Math.round(usageYen(collector) * 100) / 100 };
+      } finally { if (!dryRun) await unlock(); }
+    },
     // promote：親の料理名の格上げもする（公開の GET /api/trends）。管理の読み出しでは false（辞書を書きかえない）。
     async list({ promote = true } = {}) {
       required();
