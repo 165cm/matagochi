@@ -204,3 +204,60 @@ test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish
   assert.equal(p('ハンバーグに飽きたくない人の定番アレンジ'), 'ハンバーグ');
   assert.equal(p('ハンバーグにあきたくない人へ'), 'ハンバーグ');
 });
+
+test('AI dish name (2026-10-02): the AI writes a general dish name; the parent is decided from it first, then from the title; promotion uses it too', async () => {
+  const { buildPrompt, buildVideoPrompt } = await import('../src/analyzer.js');
+  const { normalizeImportResult } = await import('../src/importRecipe.js');
+  assert.match(buildPrompt({ title: 't', description: 'd' }), /dishName/);
+  assert.match(buildVideoPrompt({ title: 't', description: 'd' }, null), /dishName/);
+  assert.equal(normalizeImportResult({ title: 'x', dishName: '  八宝菜 ' }).dishName, '八宝菜');
+  assert.equal(normalizeImportResult({ title: 'x' }).dishName, undefined);
+  // AI の料理名が先
+  assert.equal(parentOf('キャベツ巻き 和風だし', {}, 'ロールキャベツ').name, 'ロールキャベツ', 'the title alone would give nothing');
+  assert.equal(parentOf('ハンバーグ好きにも！和風キャベツ巻き', {}, 'ロールキャベツ').name, 'ロールキャベツ');
+  // AI の料理名が辞書にない時は題名で
+  assert.equal(parentOf('王将風 八宝菜', {}, '中華うま煮').name, '八宝菜');
+  // 格上げは AI の料理名で数える（題名がばらばらでも）
+  const store = createMemorySyncStore();
+  const book = createDishBook(store, { now: () => Date.parse('2026-10-05T00:00:00Z') });
+  const items = [{ videoId: 'g1', title: 'ふわっふわ！絶品豆腐焼き', channelId: 'a', dishName: '豆腐のふわふわ焼き' }, { videoId: 'g2', title: '子どもが喜ぶお豆腐おやき', channelId: 'b', dishName: '豆腐のふわふわ焼き' }, { videoId: 'g3', title: '節約！豆腐で一品', channelId: 'b', dishName: '豆腐のふわふわ焼き' }];
+  const got = await book.classify(items, { promote: true });
+  assert.deepEqual(Object.values(got).map((p) => p.name), ['豆腐のふわふわ焼き', '豆腐のふわふわ焼き', '豆腐のふわふわ焼き']);
+});
+
+test('review fix (#127): the video dish name is kept; broken, too long or conflicting AI names fall back to the title and never get promoted', async () => {
+  const { importYouTubeRecipe, normalizeImportResult, cleanDishName } = await import('../src/importRecipe.js');
+  // 説明欄が空の動画を動画から読む → 動画の料理名が残る
+  const snippet = { title: 'キャベツ巻き', description: '', channelTitle: 'ch', channelId: 'UC' + 'k'.repeat(22), durationSeconds: 300 };
+  const r = await importYouTubeRecipe('https://www.youtube.com/watch?v=abcdefghijk', {
+    fetchYouTubeSnippet: async () => snippet,
+    analyzeRecipeDescription: async () => ({ title: '', ingredients: [], steps: [], stepsInDescription: false }),
+    analyzeRecipeVideo: async () => ({ title: 'ロールキャベツ', dishName: 'ロールキャベツ', ingredients: [{ name: 'キャベツ', amount: '1/2個' }, { name: 'ひき肉', amount: '200g' }], steps: ['包む', '煮る'], stepsComplete: true }),
+  }, { forceVideo: true, maxSeconds: 600 }).catch((e) => ({ error: e }));
+  assert.equal(r.error, undefined, String(r.error));
+  assert.equal(r.dishName, 'ロールキャベツ');
+  // 壊れた値・長すぎる値は捨てる
+  assert.equal(cleanDishName({ bad: true }), '');
+  assert.equal(cleanDishName('   '), '');
+  assert.equal(cleanDishName('あ'.repeat(21)), '');
+  // review fix (#127 r2)：改行入りは捨てる（正規化の前に確かめる）・17〜20字の料理名は親の判定にも使う
+  assert.equal(cleanDishName('八宝菜\nハンバーグ'), '');
+  assert.equal(parentOf('秋のごちそう', {}, '八宝菜\nハンバーグ'), null);
+  const long = '鶏むね肉ときのこのトマトクリーム煮';
+  assert.equal(normalizeImportResult({ title: 'x', dishName: long }).dishName, long);
+  assert.equal(normalizeImportResult({ title: 'x', dishName: { bad: true } }).dishName, undefined);
+  assert.equal(parentOf('王将風 八宝菜', {}, '[object Object]').name, '八宝菜');
+  // 題名にはっきり別の料理名がある時は題名
+  assert.equal(parentOf('王将風 八宝菜', {}, 'ハンバーグ').name, '八宝菜');
+  // 壊れた料理名は格上げされない
+  const store = createMemorySyncStore();
+  const book = createDishBook(store, { now: () => Date.parse('2026-10-05T00:00:00Z') });
+  const items = ['h1', 'h2', 'h3'].map((videoId, i) => ({ videoId, title: `謎の一品${i}`, channelId: i ? 'b' : 'a', dishName: '[object Object]' }));
+  await book.classify(items, { promote: true });
+  assert.equal(Object.values((await book.book()).promoted || {}).some((p) => /object/i.test(p.name)), false);
+  // 17字の料理名も、3本・投稿者2人で格上げされ、親になる
+  const items2 = ['l1', 'l2', 'l3'].map((videoId, i) => ({ videoId, title: `秋のごちそう${i}`, channelId: i ? 'b' : 'a', dishName: long }));
+  const got = await book.classify(items2, { promote: true });
+  assert.equal(got.l1?.name, long);
+  assert.equal(parentOf('秋のごちそう', await book.book(), long).name, long);
+});

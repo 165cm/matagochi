@@ -1,4 +1,5 @@
 import { localizeAmount, localizeStep } from "./units.js";
+import { cleanDishName } from "./dishes.js";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from "./youtube.js";
 import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
@@ -38,6 +39,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       analysis = {
         ...analysis,
         title: analysis.title || video.title,
+        // 説明欄のない動画は、動画から読んだ料理名を使う。
+        dishName: cleanDishName(analysis.dishName) || cleanDishName(video.dishName) || undefined,
         sourceServings: Number.isInteger(analysis.sourceServings) ? analysis.sourceServings : video.sourceServings,
         ingredients: normalizeIngredients(analysis.ingredients).length ? analysis.ingredients : videoIngredients,
         steps: videoSteps.length ? videoSteps : analysis.steps,
@@ -87,6 +90,9 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   };
 }
 
+// AI が書いた料理名の確かめは、親の判定と同じもの（dishes.js cleanDishName）。
+export { cleanDishName };
+
 export function normalizeImportResult(result) {
   return {
     title: cleanText(result.title),
@@ -107,7 +113,9 @@ export function normalizeImportResult(result) {
     planning: normalizePlanning(result.planning),
     // 埋め込み再生ができない動画だけ印をつける（ない時は再生できる扱い）。
     ...(result.embeddable === false ? { embeddable: false } : {}),
-    ...(cleanText(result.catch) ? { catch: cleanText(result.catch).slice(0, 40) } : {})
+    ...(cleanText(result.catch) ? { catch: cleanText(result.catch).slice(0, 40) } : {}),
+    // 一般的な料理名（AI が題名と説明文から書く。親の料理名を決めるのに使う。APP_MAP §48）
+    ...(cleanDishName(result.dishName) ? { dishName: cleanDishName(result.dishName) } : {})
   };
 }
 
