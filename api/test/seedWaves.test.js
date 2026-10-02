@@ -274,3 +274,22 @@ test('quick mix: the admin status shows the 20-minute line, the 20% share and th
   const r = await (await fetch(base + '/api/admin/trends/seed', { method: 'POST', headers: auth, body: JSON.stringify({ yen: 10, axis: 'quick' }) })).json();
   assert.equal(r.axis, 'both');
 });
+
+test('review fix (#129): a saved (free) dish left out by the 20% rule is counted as long_quota_free, shown with the free drops, not as an AI result', async () => {
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  await usedUp(store);
+  const catalog = fakeCatalog();
+  catalog.ready.set(id(1), { ...recipe(id(1)), planning: { minutes: 60 } }); // もう読んだ60分の料理（0円）
+  const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async () => [{ videoId: id(1), channelId: 'c1', title: '料理1' }] });
+  const r = await book.seed({ yen: 1, axis: 'trend' });
+  assert.equal(r.stage.ai, 0);
+  assert.equal(r.stage.added.length, 0);
+  assert.equal(r.stage.skipped.long_quota_free, 1);
+  assert.equal(r.stage.skipped.long_quota, undefined);
+  // 管理の画面：0円で外した側（pre）に入る
+  const html = (await import('node:fs')).readFileSync(new URL('../../admin/catalog.html', import.meta.url), 'utf8');
+  const skipMap = html.slice(html.indexOf('const SKIP = {'), html.indexOf('};', html.indexOf('const SKIP = {')));
+  assert.match(skipMap, /long_quota_free: \["pre",/);
+  assert.match(skipMap, /long_quota: \["post",/);
+});

@@ -608,7 +608,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             if ((r?.channelId && excluded.has(r.channelId)) || excluded.has(c.videoId)) { skip("opted_out"); continue; }
             if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short"); continue; }
             // 広げ方の料理は、時短8割・30分以上2割に：30分以上（時間が分からない料理も）は、割合を超えるなら入れない。
-            if (c.wave && !isQuickDish(r.planning?.minutes) && !longRoom(stage.added)) { skip("long_quota"); continue; }
+            if (c.wave && !isQuickDish(r.planning?.minutes) && !longRoom(stage.added)) { skip(free ? "long_quota_free" : "long_quota"); continue; } /* 0円で読んだ料理は、AI で読んだ結果に数えない（review fix #129） */
             week.items.push({ videoId: c.videoId, day: today });
             // 題名は YouTube の情報なので、記録には残さない（見せる時に保存済みの結果から読む＝30日ルールの中）。
             stage.added.push({ videoId: c.videoId, label: c.label, minutes: r.planning?.minutes || null, free });

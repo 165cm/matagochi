@@ -231,7 +231,7 @@
   const REASON_SHORT = { wait: "待ち時間", exhausted: "使い切り", axis_exhausted: "方向を使い切り", search_day_limit: "今日の検索の上限", stage_budget: "金額に到達", month_budget: "月の上限", time: "時間切れ", search_failed: "検索に失敗", cost_not_saved: "記録の保存に失敗", ai_budget: "AI の上限", not_configured: "設定不足" };
   // 外した理由。pre：AI の前に外した（0円）／post：AI で読んだが料理にならなかった
   const SKIP = {
-    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], classic_enough: ["pre", "定番の4本目以降"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
+    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], classic_enough: ["pre", "定番の4本目以降"], long_quota_free: ["pre", "読んだことあり・30分以上が2割を超える"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
     no_steps_in_description: ["post", "作り方がない"], incomplete_recipe: ["post", "材料・手順を読めない"], gemini_invalid_json: ["post", "AI の答えの形が崩れた"], too_short: ["post", "材料・手順が少ない"], not_dinner: ["post", "晩ごはんでない"], analysis_uncertain: ["post", "AI の応答を確認できない"], long_quota: ["post", "30分以上が2割を超える"],
     video_not_found: ["post", "動画が見つからない"], non_public_video: ["post", "公開されていない"], empty_description: ["post", "説明欄が空"], sync_storage_failed: ["post", "保存先が一時的に混んでいた"], catalog_conflict: ["post", "保存が重なった"],
   };
