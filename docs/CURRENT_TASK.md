@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | AI が料理名（dishName）も書く・親はその料理名を先に使う（APP_MAP §48） | `api/src/analyzer.js`・`api/src/importRecipe.js`・`api/src/dishes.js`・`api/src/trends.js`・`api/src/popular.js`・`api/src/server.js`・`api/test/dishes.test.js`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

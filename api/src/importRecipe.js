@@ -107,7 +107,9 @@ export function normalizeImportResult(result) {
     planning: normalizePlanning(result.planning),
     // 埋め込み再生ができない動画だけ印をつける（ない時は再生できる扱い）。
     ...(result.embeddable === false ? { embeddable: false } : {}),
-    ...(cleanText(result.catch) ? { catch: cleanText(result.catch).slice(0, 40) } : {})
+    ...(cleanText(result.catch) ? { catch: cleanText(result.catch).slice(0, 40) } : {}),
+    // 一般的な料理名（AI が題名と説明文から書く。親の料理名を決めるのに使う。APP_MAP §48）
+    ...(cleanText(result.dishName) ? { dishName: [...cleanText(result.dishName)].slice(0, 20).join("") } : {})
   };
 }
 

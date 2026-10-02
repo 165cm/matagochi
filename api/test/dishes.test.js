@@ -204,3 +204,23 @@ test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish
   assert.equal(p('ハンバーグに飽きたくない人の定番アレンジ'), 'ハンバーグ');
   assert.equal(p('ハンバーグにあきたくない人へ'), 'ハンバーグ');
 });
+
+test('AI dish name (2026-10-02): the AI writes a general dish name; the parent is decided from it first, then from the title; promotion uses it too', async () => {
+  const { buildPrompt, buildVideoPrompt } = await import('../src/analyzer.js');
+  const { normalizeImportResult } = await import('../src/importRecipe.js');
+  assert.match(buildPrompt({ title: 't', description: 'd' }), /dishName/);
+  assert.match(buildVideoPrompt({ title: 't', description: 'd' }, null), /dishName/);
+  assert.equal(normalizeImportResult({ title: 'x', dishName: '  八宝菜 ' }).dishName, '八宝菜');
+  assert.equal(normalizeImportResult({ title: 'x' }).dishName, undefined);
+  // AI の料理名が先
+  assert.equal(parentOf('キャベツ巻き 和風だし', {}, 'ロールキャベツ').name, 'ロールキャベツ', 'the title alone would give nothing');
+  assert.equal(parentOf('ハンバーグ好きにも！和風キャベツ巻き', {}, 'ロールキャベツ').name, 'ロールキャベツ');
+  // AI の料理名が辞書にない時は題名で
+  assert.equal(parentOf('王将風 八宝菜', {}, '中華うま煮').name, '八宝菜');
+  // 格上げは AI の料理名で数える（題名がばらばらでも）
+  const store = createMemorySyncStore();
+  const book = createDishBook(store, { now: () => Date.parse('2026-10-05T00:00:00Z') });
+  const items = [{ videoId: 'g1', title: 'ふわっふわ！絶品豆腐焼き', channelId: 'a', dishName: '豆腐のふわふわ焼き' }, { videoId: 'g2', title: '子どもが喜ぶお豆腐おやき', channelId: 'b', dishName: '豆腐のふわふわ焼き' }, { videoId: 'g3', title: '節約！豆腐で一品', channelId: 'b', dishName: '豆腐のふわふわ焼き' }];
+  const got = await book.classify(items, { promote: true });
+  assert.deepEqual(Object.values(got).map((p) => p.name), ['豆腐のふわふわ焼き', '豆腐のふわふわ焼き', '豆腐のふわふわ焼き']);
+});

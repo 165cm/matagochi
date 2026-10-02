@@ -342,7 +342,7 @@ export function createApp(env = process.env, deps = {}) {
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, (async () => {
       const byId = new Map();
-      for (const t of (await trendBook.list({ promote: false })).items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "" });
+      for (const t of (await trendBook.list({ promote: false })).items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", dishName: t.dishName || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "" });
       // 集計は全件を新着に結びつける。新着でない料理を読み出す（peek）のは、多い順に500件まで。
       // 掲載停止（動画・投稿者）は、新着と同じく一覧に出さない。
       const excluded = await creatorDesk.optedOut().catch(() => new Set());
@@ -354,7 +354,7 @@ export function createApp(env = process.env, deps = {}) {
           extra += 1;
           const r = await catalog.peek(`https://www.youtube.com/watch?v=${s.videoId}`).catch(() => null);
           if (!r || (r.channelId && excluded.has(r.channelId))) continue;
-          x = { videoId: s.videoId, title: r.title || "", channelTitle: r.channelTitle || "", channelId: r.channelId || "", minutes: r.planning?.minutes || null, trend: false, newUntil: "" };
+          x = { videoId: s.videoId, title: r.title || "", dishName: r.dishName || "", channelTitle: r.channelTitle || "", channelId: r.channelId || "", minutes: r.planning?.minutes || null, trend: false, newUntil: "" };
           byId.set(s.videoId, x);
         }
         Object.assign(x, { shown: s.shown, planned: s.planned, cooked: s.cooked, rate: s.rate, kept: s.kept });
@@ -375,7 +375,7 @@ export function createApp(env = process.env, deps = {}) {
     send(res, catalog.peek(canonicalYouTubeUrl(videoId)).then(async (r) => {
       if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
       // 親の料理名（APP_MAP §48）も添える。
-      const dish = (await dishBook.classify([{ videoId, title: r.title || "" }]).catch(() => ({})))[videoId] || null;
+      const dish = (await dishBook.classify([{ videoId, title: r.title || "", dishName: r.dishName || "" }]).catch(() => ({})))[videoId] || null;
       return { videoId, title: r.title || "", dish, channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", planning: r.planning || null };
     }));
   });

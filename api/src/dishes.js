@@ -51,7 +51,9 @@ function phrasesOf(title) {
 
 // 辞書（最初の辞書＋格上げ − 外した）と別名から、題名の親を決める。親がなければ null。
 // かっこの外の句を前から見て、辞書の料理名がある最初の句で決める（「八宝菜｜中華丼の具にも」は八宝菜）。句の中では、いちばん後ろに出てくる料理名（同じ位置なら長いほう）。
-export function parentOf(title, book = {}) {
+// dishName（AI がレシピを読む時に書いた一般的な料理名）があれば、まずそれで決める。決まらない時だけ題名で決める。
+export function parentOf(title, book = {}, dishName = "") {
+  if (dishName) { const byAi = parentOf(dishName, book); if (byAi) return byAi; }
   const phrases = phrasesOf(title);
   if (!phrases.length) return null;
   const removed = new Set(book.removed || []);
@@ -98,8 +100,9 @@ export function createDishBook(store, { now = Date.now } = {}) {
       if (promote) {
         const count = new Map();
         for (const i of items) {
-          if (parentOf(i.title, book)) continue;
-          const name = dishNameOf(i.title), k = dishKey(name);
+          if (parentOf(i.title, book, i.dishName)) continue;
+          // 格上げの候補の名前は、AI が書いた料理名があればそれ（表記がそろう）。なければ題名から取り出す。
+          const name = i.dishName ? [...String(i.dishName).normalize("NFKC").trim()].slice(0, 16).join("") : dishNameOf(i.title), k = dishKey(name);
           if ([...k].length < 2) continue;
           const c = count.get(k) || { name, videos: new Set(), channels: new Set() };
           c.videos.add(i.videoId); if (i.channelId) c.channels.add(i.channelId); count.set(k, c);
@@ -112,7 +115,7 @@ export function createDishBook(store, { now = Date.now } = {}) {
         }
       }
       const out = {};
-      for (const i of items) { const p = parentOf(i.title, book); if (p) out[i.videoId] = p; }
+      for (const i of items) { const p = parentOf(i.title, book, i.dishName); if (p) out[i.videoId] = p; }
       return out;
     },
     // 管理の画面：親の一覧（どこから・子の数・投稿者の数）と、もう少しで格上げになる候補。
@@ -120,9 +123,9 @@ export function createDishBook(store, { now = Date.now } = {}) {
       const book = await this.book();
       const parents = new Map(), near = new Map();
       for (const i of items) {
-        const p = parentOf(i.title, book);
+        const p = parentOf(i.title, book, i.dishName);
         if (p) { const x = parents.get(p.key) || { key: p.key, name: p.name, videos: 0, channels: new Set(), examples: [] }; x.videos += 1; if (i.channelId) x.channels.add(i.channelId); if (x.examples.length < 3) x.examples.push(i.title); parents.set(p.key, x); continue; }
-        const name = dishNameOf(i.title), k = dishKey(name);
+        const name = i.dishName ? [...String(i.dishName).normalize("NFKC").trim()].slice(0, 16).join("") : dishNameOf(i.title), k = dishKey(name);
         if ([...k].length < 2) continue;
         const x = near.get(k) || { key: k, name, videos: 0, channels: new Set(), examples: [] }; x.videos += 1; if (i.channelId) x.channels.add(i.channelId); if (x.examples.length < 3) x.examples.push(i.title); near.set(k, x);
       }
