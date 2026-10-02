@@ -224,3 +224,30 @@ test('AI dish name (2026-10-02): the AI writes a general dish name; the parent i
   const got = await book.classify(items, { promote: true });
   assert.deepEqual(Object.values(got).map((p) => p.name), ['豆腐のふわふわ焼き', '豆腐のふわふわ焼き', '豆腐のふわふわ焼き']);
 });
+
+test('review fix (#127): the video dish name is kept; broken, too long or conflicting AI names fall back to the title and never get promoted', async () => {
+  const { importYouTubeRecipe, normalizeImportResult, cleanDishName } = await import('../src/importRecipe.js');
+  // 説明欄が空の動画を動画から読む → 動画の料理名が残る
+  const snippet = { title: 'キャベツ巻き', description: '', channelTitle: 'ch', channelId: 'UC' + 'k'.repeat(22), durationSeconds: 300 };
+  const r = await importYouTubeRecipe('https://www.youtube.com/watch?v=abcdefghijk', {
+    fetchYouTubeSnippet: async () => snippet,
+    analyzeRecipeDescription: async () => ({ title: '', ingredients: [], steps: [], stepsInDescription: false }),
+    analyzeRecipeVideo: async () => ({ title: 'ロールキャベツ', dishName: 'ロールキャベツ', ingredients: [{ name: 'キャベツ', amount: '1/2個' }, { name: 'ひき肉', amount: '200g' }], steps: ['包む', '煮る'], stepsComplete: true }),
+  }, { forceVideo: true, maxSeconds: 600 }).catch((e) => ({ error: e }));
+  assert.equal(r.error, undefined, String(r.error));
+  assert.equal(r.dishName, 'ロールキャベツ');
+  // 壊れた値・長すぎる値は捨てる
+  assert.equal(cleanDishName({ bad: true }), '');
+  assert.equal(cleanDishName('   '), '');
+  assert.equal(cleanDishName('あ'.repeat(21)), '');
+  assert.equal(normalizeImportResult({ title: 'x', dishName: { bad: true } }).dishName, undefined);
+  assert.equal(parentOf('王将風 八宝菜', {}, '[object Object]').name, '八宝菜');
+  // 題名にはっきり別の料理名がある時は題名
+  assert.equal(parentOf('王将風 八宝菜', {}, 'ハンバーグ').name, '八宝菜');
+  // 壊れた料理名は格上げされない
+  const store = createMemorySyncStore();
+  const book = createDishBook(store, { now: () => Date.parse('2026-10-05T00:00:00Z') });
+  const items = ['h1', 'h2', 'h3'].map((videoId, i) => ({ videoId, title: `謎の一品${i}`, channelId: i ? 'b' : 'a', dishName: '[object Object]' }));
+  await book.classify(items, { promote: true });
+  assert.equal(Object.values((await book.book()).promoted || {}).some((p) => /object/i.test(p.name)), false);
+});

@@ -38,6 +38,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       analysis = {
         ...analysis,
         title: analysis.title || video.title,
+        // 説明欄のない動画は、動画から読んだ料理名を使う。
+        dishName: cleanDishName(analysis.dishName) || cleanDishName(video.dishName) || undefined,
         sourceServings: Number.isInteger(analysis.sourceServings) ? analysis.sourceServings : video.sourceServings,
         ingredients: normalizeIngredients(analysis.ingredients).length ? analysis.ingredients : videoIngredients,
         steps: videoSteps.length ? videoSteps : analysis.steps,
@@ -87,6 +89,14 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   };
 }
 
+// AI が書いた料理名：文字列で、空白だけでなく、20字以内・改行や記号の山でない時だけ使う（壊れた値は捨てて題名で決める）。
+export function cleanDishName(value) {
+  if (typeof value !== "string") return "";
+  const s = value.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (!s || [...s].length > 20 || /[\n{}<>\[\]]|object/i.test(s)) return "";
+  return s;
+}
+
 export function normalizeImportResult(result) {
   return {
     title: cleanText(result.title),
@@ -109,7 +119,7 @@ export function normalizeImportResult(result) {
     ...(result.embeddable === false ? { embeddable: false } : {}),
     ...(cleanText(result.catch) ? { catch: cleanText(result.catch).slice(0, 40) } : {}),
     // 一般的な料理名（AI が題名と説明文から書く。親の料理名を決めるのに使う。APP_MAP §48）
-    ...(cleanText(result.dishName) ? { dishName: [...cleanText(result.dishName)].slice(0, 20).join("") } : {})
+    ...(cleanDishName(result.dishName) ? { dishName: cleanDishName(result.dishName) } : {})
   };
 }
 

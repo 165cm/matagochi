@@ -37,6 +37,8 @@ export function dishNameOf(title) {
   return [...best].slice(0, 16).join("");
 }
 
+// AI が書いた料理名を、格上げの候補に使ってよい形か（文字列・空白だけでない・16字以内・記号の山でない）。
+const cleanAiName = (v) => { if (typeof v !== "string") return ""; const s = v.normalize("NFKC").replace(/\s+/g, " ").trim(); return s && [...s].length <= 16 && !/[\n{}<>\[\]]|object/i.test(s) ? s : ""; };
 // 題名を「句」に分ける。かっこの中（【簡単】など）は、あとで見る句にする。区切り：｜ ／ 。 ： ！ ？ 〜 や前後に空白のあるハイフン。
 // 正規化（dishKey）で句点・ハイフンが消える前に、元の題名で分ける。
 const BRACKETED = /[【\[「『(<〔][^】\]」』)>〔〕]*[】\]」』)>〕]/g;
@@ -52,8 +54,12 @@ function phrasesOf(title) {
 // 辞書（最初の辞書＋格上げ − 外した）と別名から、題名の親を決める。親がなければ null。
 // かっこの外の句を前から見て、辞書の料理名がある最初の句で決める（「八宝菜｜中華丼の具にも」は八宝菜）。句の中では、いちばん後ろに出てくる料理名（同じ位置なら長いほう）。
 // dishName（AI がレシピを読む時に書いた一般的な料理名）があれば、まずそれで決める。決まらない時だけ題名で決める。
+// ただし、題名にはっきり別の料理名があって AI の料理名と食い違う時は、題名を使う（AI の取り違えで共有の辞書を汚さない）。
 export function parentOf(title, book = {}, dishName = "") {
-  if (dishName) { const byAi = parentOf(dishName, book); if (byAi) return byAi; }
+  if (dishName) {
+    const byAi = cleanAiName(dishName) ? parentOf(cleanAiName(dishName), book) : null;
+    if (byAi) { const byTitle = parentOf(title, book); return byTitle && byTitle.key !== byAi.key ? byTitle : byAi; }
+  }
   const phrases = phrasesOf(title);
   if (!phrases.length) return null;
   const removed = new Set(book.removed || []);
@@ -102,7 +108,8 @@ export function createDishBook(store, { now = Date.now } = {}) {
         for (const i of items) {
           if (parentOf(i.title, book, i.dishName)) continue;
           // 格上げの候補の名前は、AI が書いた料理名があればそれ（表記がそろう）。なければ題名から取り出す。
-          const name = i.dishName ? [...String(i.dishName).normalize("NFKC").trim()].slice(0, 16).join("") : dishNameOf(i.title), k = dishKey(name);
+          const ai = cleanAiName(i.dishName);
+          const name = ai || dishNameOf(i.title), k = dishKey(name);
           if ([...k].length < 2) continue;
           const c = count.get(k) || { name, videos: new Set(), channels: new Set() };
           c.videos.add(i.videoId); if (i.channelId) c.channels.add(i.channelId); count.set(k, c);
@@ -125,7 +132,7 @@ export function createDishBook(store, { now = Date.now } = {}) {
       for (const i of items) {
         const p = parentOf(i.title, book, i.dishName);
         if (p) { const x = parents.get(p.key) || { key: p.key, name: p.name, videos: 0, channels: new Set(), examples: [] }; x.videos += 1; if (i.channelId) x.channels.add(i.channelId); if (x.examples.length < 3) x.examples.push(i.title); parents.set(p.key, x); continue; }
-        const name = i.dishName ? [...String(i.dishName).normalize("NFKC").trim()].slice(0, 16).join("") : dishNameOf(i.title), k = dishKey(name);
+        const name = cleanAiName(i.dishName) || dishNameOf(i.title), k = dishKey(name);
         if ([...k].length < 2) continue;
         const x = near.get(k) || { key: k, name, videos: 0, channels: new Set(), examples: [] }; x.videos += 1; if (i.channelId) x.channels.add(i.channelId); if (x.examples.length < 3) x.examples.push(i.title); near.set(k, x);
       }
