@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 成績表で検索を良くする（検索語・投稿者の成績・題名の見込み・定番の3本は説明欄の確認の後）（APP_MAP §46-5） | api/src/trends.js・admin/catalog.html・api/test/seedLearn.test.js・api/test/seedWaves.test.js・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

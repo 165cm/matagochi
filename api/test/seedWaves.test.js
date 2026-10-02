@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { createTrendBook, weekOf, SEED_QUERIES, WAVE_TREND_WORDS, WAVE_CLASSIC_DISHES, WAVE_TREND_DAYS, WAVE_CLASSIC_AGE_DAYS, WAVE_TREND_REUSE_DAYS, WAVE_SEARCH_PER_DAY, QUICK_LONG_SHARE, needQuick, longRoom } from '../src/trends.js';
+import { createTrendBook, weekOf, SEED_QUERIES, WAVE_TREND_WORDS, WAVE_CLASSIC_DISHES, WAVE_TREND_DAYS, WAVE_CLASSIC_AGE_DAYS, WAVE_TREND_REUSE_DAYS, WAVE_SEARCH_PER_DAY, QUICK_LONG_SHARE, needQuick, longRoom, titleHint, wordScore, channelRate, CHANNEL_MIN_READS } from '../src/trends.js';
 import { recordUsage } from '../src/aiUsage.js';
 process.env.NODE_ENV = 'test';
 const { createApp } = await import('../src/server.js');
@@ -76,14 +76,14 @@ test('waves: a trend word waits 7 days before reuse; one direction running out d
   const r = await book.seed({ yen: 50, axis: 'trend' });
   assert.equal(r.reason, 'axis_exhausted');
   assert.equal(r.stage.done, false, 'the other direction can continue the same stage');
-  assert.deepEqual(searched, WAVE_TREND_WORDS.map((w) => `時短 ${w}`), 'nothing added yet → quick words');
+  assert.deepEqual(searched, WAVE_TREND_WORDS.map((w) => (titleHint(w) === 'fast' ? w : `時短 ${w}`)), 'nothing added yet → quick words');
   assert.equal(r.waves.trendReady, 0);
   assert.ok(r.waves.trendNextAt);
   searched.length = 0;
   now += WAVE_TREND_REUSE_DAYS * DAY;
   await book.seed({ yen: 50, axis: 'trend' });
   assert.equal(WAVE_TREND_REUSE_DAYS, 7);
-  assert.deepEqual(searched, WAVE_TREND_WORDS.map((w) => `時短 ${w}`), 'after 7 days the words are used again (new videos by then)');
+  assert.deepEqual(searched, WAVE_TREND_WORDS.map((w) => (titleHint(w) === 'fast' ? w : `時短 ${w}`)), 'after 7 days the words are used again (new videos by then)');
   searched.length = 0;
   // 両方：定番を使い切り、話題は14日あけ中 → 終わり
   // 1日の検索の上限があるので、日をまたいで続ける
@@ -229,7 +229,10 @@ test('quick mix: classic searches add the quick word to the dish name when long 
   const searched = [];
   const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async (q) => { searched.push(q); return []; } });
   await book.seed({ yen: 50, axis: 'classic' });
-  assert.equal(searched[0], `${WAVE_CLASSIC_DISHES[0][0]} 時短 レシピ 材料`);
+  // 時短が足りない時は、ふつう30分以上かかる定番（肉じゃが＝"L"）を後回し（2026-10-03）
+  assert.equal(WAVE_CLASSIC_DISHES[0][2], 'L');
+  assert.equal(searched[0], `${WAVE_CLASSIC_DISHES.find((d) => d[2] !== 'L')[0]} 時短 レシピ 材料`);
+  assert.ok(searched.slice(0, WAVE_CLASSIC_DISHES.filter((d) => d[2] !== 'L').length).every((q) => !WAVE_CLASSIC_DISHES.some((d) => d[2] === 'L' && q.startsWith(d[0] + ' '))), 'long classics come last while quick is needed');
 });
 
 test('quick mix: the hand-picked search words (before the waves) are not limited by the 20% rule', async () => {
