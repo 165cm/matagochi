@@ -585,6 +585,8 @@ flowchart LR
 - 承認画面の「修正依頼」：一覧から外す／一覧に戻す／対応済み／見送り（`GET /api/admin/creators/corrections`・`POST /api/admin/creators/corrections/:id/decide` `{ decision: "hide" | "show" | "done" | "declined", note? }`）。対応済み・見送りにしても、外した動画は「戻す」まで外したまま。**レシピの中身を直す操作は、今までどおり共通レシピの修正（`/api/recipes/corrections` → `/api/admin/corrections/:id/review`）**
 - まだないもの：承認画面からレシピの中身を直接直す画面
 
+- **停止・再開はすぐ反映**（2026-10-02）：掲載から外す集まり（停止・確認待ちの一時対応・動画単位）が実際に変わったら（同じ申し込みの再送などでは捨てない）、新着（`/api/trends`）とみんなの定番（`/api/popular`）のサーバーの表示キャッシュ（10分）をすぐ捨てる（`createCreatorDesk` の `onChange`）。ブラウザが持つのは1分まで（`Cache-Control: max-age=60`）。アプリは1時間ごとに取り直すので、もう受け取った端末では次の取り直しで消える
+
 ## 39. 新着レシピ：集める処理と見せる枠を分ける（api/src/trends.js・popular.js・recipeCatalog.js）
 
 `docs/PERSONALIZE_PLAN.md` §7.3・§12-2・§12-3・§12-7。
