@@ -52,7 +52,8 @@ export function parentOf(title, book = {}) {
     if (at < 0) continue;
     const end = at + k.length;
     // 料理名のあとに「丼」が続く時は、その料理の親にしない（「ハンバーグそぼろ丼」はハンバーグではなく丼もの）。丼の名前そのもの（親子丼など）は別。
-    if (!k.endsWith("丼") && /丼/.test(t.slice(end))) continue;
+    // 同じ句の中だけを見る（「｜丼にもおすすめ」「（丼にもおすすめ）」のような補足は見ない）。
+    if (!k.endsWith("丼") && /丼/.test(t.slice(end).split(/[|/()\[\]【】「」『』<>〔〕]/)[0])) continue;
     if (!best || end > best.end || (end === best.end && k.length > best.len)) best = { end, len: k.length, name };
   }
   return best ? { key: dishKey(best.name), name: best.name } : null;

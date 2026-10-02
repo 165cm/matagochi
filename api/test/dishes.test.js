@@ -179,4 +179,8 @@ test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish
   assert.equal(p('麻婆豆腐丼'), null);
   assert.equal(p('秋の和風ハンバーグ'), 'ハンバーグ');
   assert.equal(p('親子丼'), '親子丼');
+  // review fix (#126)：補足の中の「丼」は見ない
+  assert.equal(p('基本のハンバーグ｜丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('麻婆豆腐（丼にもおすすめ）'), '麻婆豆腐');
+  assert.equal(p('親子丼の素で作る親子丼ぶり'), '親子丼');
 });

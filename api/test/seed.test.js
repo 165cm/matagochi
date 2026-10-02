@@ -278,6 +278,8 @@ test('small fix (2026-10-02): a numbered list of ingredients with amounts is not
   assert.equal(looksLikeRecipe(steps), true);
   const longSteps = '材料\n豚こま 200g\nキャベツ 1/4個\nしょうゆ 大さじ1\n① 全部をボウルでよくなじませておきます\n② フライパンで火が通るまで\n';
   assert.equal(looksLikeRecipe(longSteps), true);
+  // review fix (#126)：短い手順でも、分量がなければ手順（動きの言葉が辞書になくても）
+  assert.equal(looksLikeRecipe('材料\n卵 2個\nご飯 200g\nケチャップ 大さじ2\n作り方\n1. 卵を割る\n2. ご飯とケチャップを合わせる\n3. 半熟になったら器に移す'), true);
   assert.equal(usageYen({ input: 1_000_000, output: 0 }, {}), 48, '0.30 USD × 160');
   const store = createMemorySyncStore();
   await store.put('trends/seed', { stages: [{ n: 1, yen: 100, startedAt: '2026-10-01T00:00:00Z', ai: 1, input: 1_000_000, output: 0, yenMeasured: 45, added: [], skipped: {}, byQuery: {}, done: true }], q: 0, candidates: [], tried: [] }, { ifGeneration: 0 });
