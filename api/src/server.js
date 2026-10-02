@@ -50,7 +50,8 @@ export function createApp(env = process.env, deps = {}) {
     matchChapters: deps.matchStepsToChapters || ((steps, chapters) => matchStepsToChapters(steps, chapters, env)),
     snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.VIDEO_MAX_SECONDS || 600), now: deps.now || Date.now });
   const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
-  const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now });
+  // 掲載停止・再開が変わったら、新着・みんなの定番の表示キャッシュをすぐ捨てる（停止した料理を10分残さない）。
+  const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now, onChange: () => { trendBook?.clearCache?.(); popularBook?.clearCache?.(); } });
   const dishBook = createDishBook(recipeStore, { now: deps.now || Date.now });
   const trendBook = createTrendBook(recipeStore, { dishBook, catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), videoDetails: deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
@@ -132,7 +133,8 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/auth/me", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => auth.me(uid))); });
   app.put("/api/auth/me", (req, res) => send(res, signedIn(req).then((uid) => auth.link(uid, req.body))));
   // 新着レシピ：集める（GitHubの定期実行が毎日ノックする。1日・1週の上限を超えては動かない）と、見せる（読み出すだけ）。みんなの定番も読み出すだけ。
-  app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, trendBook.list()); });
+  // ブラウザが持つのは1分まで（掲載停止をすぐ反映するため。サーバーの側は10分持つが、停止・再開で捨てる）。
+  app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=60"); send(res, trendBook.list()); });
   // 新着集めのあとに、1日1回の後片付け（YouTube API の情報を決めた期間を超えて持たない。§41）。
   app.post("/api/trends/refresh", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.step().then(async (result) => ({ ...result, housekeeping: await housekeeping.run().catch((error) => ({ error: error?.code || "failed" })) }))); });
   app.post("/api/skill/photo", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, skillJudge.judge(req.body || {}, householdOf(req))); });
@@ -176,7 +178,7 @@ export function createApp(env = process.env, deps = {}) {
     if (!act) return res.status(404).json({ error: { code: "not_found", message: "見つかりません。" } });
     send(res, ownedBy(req).then((owned) => act(req.params.channelId, owned, req.body || {})));
   });
-  app.get("/api/popular", (req, res) => { res.setHeader("Cache-Control", "public, max-age=600"); send(res, popularBook.top(String(req.query?.segment || "any-0"))); });
+  app.get("/api/popular", (req, res) => { res.setHeader("Cache-Control", "public, max-age=60"); send(res, popularBook.top(String(req.query?.segment || "any-0"))); });
   app.post("/api/popular/event", (req, res) => send(res, popularBook.record(req.body || {}, req.ip)));
   app.get("/api/tickets", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");

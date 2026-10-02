@@ -58,6 +58,8 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
       return { counted: false };
     },
     // 管理用：この月と前の月の、動画ごとの候補に出した回数・献立に入れた回数・作った回数と採用率、残しているか。
+    // 掲載停止が変わった時など、表示のキャッシュを捨てる。
+    clearCache() { cache = new Map(); },
     async stats() {
       required();
       const months = thisAndLastMonth(now());

@@ -27,7 +27,8 @@ function readDoc(entry) {
   const doc = entry?.envelope || {};
   return { channels: { ...(doc.channels || {}) }, pending: { ...(doc.pending || {}) }, restored: { ...(doc.restored || {}) }, videos: { ...(doc.videos || {}) } };
 }
-export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}) {
+// onChange：掲載停止の一覧が変わった時（停止・一時対応・再開・動画単位）に呼ぶ。新着・みんなの定番の表示キャッシュをすぐ捨てるのに使う。
+export function createCreatorDesk(store, { resolveChannel, now = Date.now, onChange = () => {} } = {}) {
   const required = () => { if (!store) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const iso = () => new Date(now()).toISOString();
@@ -38,7 +39,7 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now } = {}
       const doc = reader(entry);
       const out = change(doc);
       if (out === undefined) return doc;
-      if (await store.put(key, doc, { ifGeneration: entry?.generation ?? 0 })) { cache = null; return out; }
+      if (await store.put(key, doc, { ifGeneration: entry?.generation ?? 0 })) { cache = null; if (key === KEY) { try { onChange(); } catch {} } return out; }
     }
     throw new ApiError(409, "creators_busy", "混み合っています。少し待ってからお試しください。");
   }
