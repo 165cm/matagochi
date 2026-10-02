@@ -53,15 +53,22 @@ test('review fix (#128): an admin name survives a full re-read; a failed save is
   const store = createMemorySyncStore();
   const v = 'm0000000001', url = `https://www.youtube.com/watch?v=${v}`;
   let aiName = '八宝菜';
-  const analyze = async () => ({ title: '中華うま煮', dishName: aiName, ingredients: [{ name: '白菜', amount: '1/4個' }, { name: '豚', amount: '100g' }], steps: ['切る', '炒める'], videoId: v, videoUrl: url, analyzedFrom: 'video' });
+  let analyzed = 0; const from = 'description';
+  const analyze = async () => { analyzed += 1; return { title: '中華うま煮', dishName: aiName, ingredients: [{ name: '白菜', amount: '1/4個' }, { name: '豚', amount: '100g' }], steps: ['切る', '炒める'], videoId: v, videoUrl: url, analyzedFrom: from }; };
   const catalog = createRecipeCatalog(store, analyze, { now: () => now, model: 'm' });
   await catalog.import(url);
+  // 古い読み方の保存データにして、読み直させる（動画から読む時と同じ保存の経路）
+  const makeStale = async () => { const saved = await store.get(`youtube-${v}`); await store.put(`youtube-${v}`, { ...saved.envelope, result: { ...saved.envelope.result, catalog: { ...saved.envelope.result.catalog, extractorVersion: 1 } } }, { ifGeneration: saved.generation }); };
   await catalog.setDishName(url, '回鍋肉', { from: 'admin' });
   aiName = 'ハンバーグ';
-  const again = await catalog.import(url, { forceVideo: true });
+  await makeStale();
+  const again = await catalog.import(url);
+  assert.equal(analyzed, 2, 'the recipe was really read again (review fix #128 r2)');
   assert.deepEqual([again.dishName, again.dishNameFrom], ['回鍋肉', 'admin'], 'a re-read keeps the admin name');
   await catalog.setDishName(url, '', { from: 'admin' });
-  const cleared = await catalog.import(url, { forceVideo: true });
+  await makeStale();
+  const cleared = await catalog.import(url);
+  assert.equal(analyzed, 3);
   assert.deepEqual([cleared.dishName, cleared.dishNameFrom], [undefined, 'admin'], 'an admin "use the title" also survives');
 
   // 保存に失敗したら「済み」にしない（残りに入れ、done にしない）。次に押した時に同じ料理をもう一度読むのは、保存できなかった時だけ
@@ -93,4 +100,22 @@ test('review fix (#128): the admin edit takes only strings ("" clears)', async (
   const put = (body) => fetch(`http://127.0.0.1:${server.address().port}/api/admin/recipes/p0000000001/dish-name`, { method: 'PUT', headers: { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' }, body });
   for (const body of ['{}', '{"dishName":null}', '{"dishName":3}', '{"dishName":{}}']) assert.equal((await put(body)).status, 400, body);
   assert.equal((await put('{"dishName":""}')).status, 200);
+});
+
+test('review fix (#128 r2): a recipe being re-read (pending) is not counted as done when the tried mark cannot be saved', async () => {
+  const { createRecipeCatalog } = await import('../src/recipeCatalog.js');
+  const { createTrendBook } = await import('../src/trends.js');
+  const now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const id = 'q0000000001';
+  await store.put(`youtube-${id}`, { status: 'ready', result: { title: '謎の一品', ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'] } }, { ifGeneration: 0 });
+  await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: [{ videoId: id }], skipped: {} }] }, { ifGeneration: 0 });
+  const real = createRecipeCatalog(store, async () => ({}), { now: () => now });
+  assert.equal(await real.markDishNameTried(`https://www.youtube.com/watch?v=${id}`), true);
+  await store.put(`youtube-${id}`, { status: 'ready', result: { title: '謎の一品', ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'] } }, { ifGeneration: (await store.get(`youtube-${id}`)).generation });
+  // AI が名前を返さず、印を付ける直前に利用者が読み直しを始めた（pending）
+  const wrapped = { ...real, peek: (u) => real.peek(u), setDishName: (...a) => real.setDishName(...a), markDishNameTried: async (u) => { const cur = await store.get(`youtube-${id}`); if (cur.envelope.status === 'ready') await store.put(`youtube-${id}`, { status: 'pending', startedAt: new Date(now).toISOString() }, { ifGeneration: cur.generation }); return real.markDishNameTried(u); } };
+  const book = createTrendBook(store, { catalog: wrapped, now: () => now, nameDishes: async () => ({}) });
+  const r = await book.backfillDishNames();
+  assert.deepEqual([r.failed, r.left, r.reason], [1, 1, 'save_failed'], 'not reported as done');
 });

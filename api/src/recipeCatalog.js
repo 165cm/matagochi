@@ -167,8 +167,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
       const current = await store.get(key);
-      // 付ける必要がない（読み取り結果がない・もう名前や印がある）時は "skip"。保存できなかった時だけ false。
-      if (current?.envelope.status !== "ready" || current.envelope.result?.dishName || current.envelope.result?.dishNameFrom) return "skip";
+      // もう名前や印がある時だけ "skip"。読み直しの最中（pending）など、いま保存できない時は false（済みに数えない）。
+      if (current?.envelope.status !== "ready") return false;
+      if (current.envelope.result?.dishName || current.envelope.result?.dishNameFrom) return "skip";
       const result = { ...current.envelope.result, dishNameFrom: "ai-backfill" };
       return !!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }));
     },
