@@ -40,6 +40,8 @@ export function dishNameOf(title) {
 // 題名を「句」に分ける。かっこの中（【簡単】など）は、あとで見る句にする。区切り：｜ ／ 。 ： ！ ？ 〜 や前後に空白のあるハイフン。
 // 正規化（dishKey）で句点・ハイフンが消える前に、元の題名で分ける。
 const BRACKETED = /[【\[「『(<〔][^】\]」』)>〔〕]*[】\]」』)>〕]/g;
+// 料理名のすぐあとに続くと「比べる・前置き」になる言葉（dishKey でそろえたあとの形）。
+const COMPARE = /^(?:より|を超え|超え|越え|をこえ|の次|に負けない|顔負け|に飽き|にあき|じゃな|ではな|の代わり|がわり|代わり|並み|級の|レベル|もいいけど|派も|好きにも)/;
 const PHRASE_SEP = /[|/。:!?〜~]+|\s+[-–—]+\s*|[-–—]+\s+/;
 function phrasesOf(title) {
   const raw = String(title || "").normalize("NFKC");
@@ -65,6 +67,8 @@ export function parentOf(title, book = {}) {
       const end = at + k.length;
       // 同じ句で料理名のあとに「丼」が続く時は、その料理の親にしない（「ハンバーグそぼろ丼」はハンバーグではなく丼もの）。丼の名前そのもの（親子丼など）は別。
       if (!k.endsWith("丼") && /丼/.test(t.slice(end))) continue;
+      // 比べるための料理名（「ハンバーグより簡単」「八宝菜を超えた」「親子丼の次に」）は親にしない。本題は別にある。
+      if (COMPARE.test(t.slice(end))) continue;
       if (!best || end > best.end || (end === best.end && k.length > best.len)) best = { end, len: k.length, name };
     }
     if (best) return { key: dishKey(best.name), name: best.name };

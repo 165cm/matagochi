@@ -189,4 +189,11 @@ test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish
   assert.equal(p('基本のハンバーグ - 丼にもおすすめ'), 'ハンバーグ');
   assert.equal(p('八宝菜｜中華丼の具にも'), '八宝菜');
   assert.equal(p('【ハンバーグの次に】豆腐ハンバーグ'), '豆腐ハンバーグ', 'the bracketed hook is looked at last');
+  // review fix (#126 r3)：比べるための料理名（〜より・〜を超えた・〜の次に）は親にしない
+  assert.equal(p('ハンバーグより簡単！本格ロールキャベツ'), 'ロールキャベツ');
+  assert.equal(p('親子丼より手軽｜本格他人丼'), '他人丼');
+  assert.equal(p('八宝菜を超えた？本格回鍋肉'), '回鍋肉');
+  assert.equal(p('ハンバーグより簡単な本格ロールキャベツ'), 'ロールキャベツ', 'within one phrase too');
+  assert.equal(p('プロが教える｜本格麻婆豆腐'), '麻婆豆腐');
+  assert.equal(p('ハンバーグの作り方'), 'ハンバーグ', 'ordinary words after the dish are fine');
 });
