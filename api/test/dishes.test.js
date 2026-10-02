@@ -171,3 +171,36 @@ test('review fix (#124 r3): a channel stopped after the new-dish list was cached
   const { recipes } = await (await fetch(base + '/api/admin/recipes', { headers: { Authorization: 'Bearer admin-test-token' } })).json();
   assert.deepEqual(recipes, []);
 });
+
+test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish', () => {
+  const p = (t) => parentOf(t)?.name || null;
+  assert.equal(p('ハンバーグそぼろ丼'), 'そぼろ丼');
+  assert.equal(p('鶏の照り焼き丼'), null, 'not 鶏の照り焼き');
+  assert.equal(p('麻婆豆腐丼'), null);
+  assert.equal(p('秋の和風ハンバーグ'), 'ハンバーグ');
+  assert.equal(p('親子丼'), '親子丼');
+  // review fix (#126)：補足の中の「丼」は見ない
+  assert.equal(p('基本のハンバーグ｜丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('麻婆豆腐（丼にもおすすめ）'), '麻婆豆腐');
+  assert.equal(p('親子丼の素で作る親子丼ぶり'), '親子丼');
+  // review fix (#126 r2)：句点・コロン・ハイフンの補足も見ない／補足の中の別の料理名に引っぱられない
+  assert.equal(p('基本のハンバーグ。丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('基本のハンバーグ：丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('基本のハンバーグ - 丼にもおすすめ'), 'ハンバーグ');
+  assert.equal(p('八宝菜｜中華丼の具にも'), '八宝菜');
+  assert.equal(p('【ハンバーグの次に】豆腐ハンバーグ'), '豆腐ハンバーグ', 'the bracketed hook is looked at last');
+  // review fix (#126 r3)：比べるための料理名（〜より・〜を超えた・〜の次に）は親にしない
+  assert.equal(p('ハンバーグより簡単！本格ロールキャベツ'), 'ロールキャベツ');
+  assert.equal(p('親子丼より手軽｜本格他人丼'), '他人丼');
+  assert.equal(p('八宝菜を超えた？本格回鍋肉'), '回鍋肉');
+  assert.equal(p('ハンバーグより簡単な本格ロールキャベツ'), 'ロールキャベツ', 'within one phrase too');
+  assert.equal(p('プロが教える｜本格麻婆豆腐'), '麻婆豆腐');
+  assert.equal(p('ハンバーグの作り方'), 'ハンバーグ', 'ordinary words after the dish are fine');
+  // review fix (#126 r4)：「飽きない」は比べる言い方ではない／「飽きたら」は比べる言い方
+  assert.equal(p('ハンバーグに飽きない定番アレンジ'), 'ハンバーグ');
+  assert.equal(p('ハンバーグに飽きたら｜豆腐ステーキ'), null);
+  assert.equal(p('ハンバーグに飽きた人へ！本格ロールキャベツ'), 'ロールキャベツ');
+  // review fix (#126 r5)：「飽きたくない」も比べる言い方ではない
+  assert.equal(p('ハンバーグに飽きたくない人の定番アレンジ'), 'ハンバーグ');
+  assert.equal(p('ハンバーグにあきたくない人へ'), 'ハンバーグ');
+});

@@ -18,10 +18,10 @@ export function recordUsage(model, response) {
   c.output = (c.output || 0) + (Number(m.candidatesTokenCount) || 0) + (Number(m.thoughtsTokenCount) || 0);
   c.model = String(model || c.model || "");
 }
-// 料金の目安（円）。単価は環境変数で直せる（既定：gemini-2.5-flash の公開料金 入力 $0.30・出力 $2.50 ／100万トークン、1ドル150円）。
+// 料金の目安（円）。単価は環境変数で直せる（既定：gemini-2.5-flash の公開料金 入力 $0.30・出力 $2.50 ／100万トークン、1ドル160円。2026-10-02 のユーザーの判断：請求の換算に合わせる）。
 export function usageYen(c, env = process.env) {
   const inPrice = Number(env.GEMINI_PRICE_IN_USD_PER_M) > 0 ? Number(env.GEMINI_PRICE_IN_USD_PER_M) : 0.3;
   const outPrice = Number(env.GEMINI_PRICE_OUT_USD_PER_M) > 0 ? Number(env.GEMINI_PRICE_OUT_USD_PER_M) : 2.5;
-  const rate = Number(env.USD_JPY) > 0 ? Number(env.USD_JPY) : 150;
+  const rate = Number(env.USD_JPY) > 0 ? Number(env.USD_JPY) : 160;
   return (((c?.input || 0) * inPrice + (c?.output || 0) * outPrice) / 1_000_000) * rate;
 }

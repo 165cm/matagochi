@@ -12,7 +12,7 @@ export const DISH_SEEDS = [
   // 「照り焼き」「煮付け」「鍋」のような作り方だけの名前は入れない（ぶりと鶏が同じ親になってしまうため）。
   "肉じゃが", "さばの味噌煮", "八宝菜", "揚げ出し豆腐", "生姜焼き", "ぶり大根", "野菜炒め", "麻婆豆腐", "唐揚げ", "鮭のムニエル", "ロールキャベツ", "厚揚げの煮物",
   "ハンバーグ", "鮭のちゃんちゃん焼き", "筑前煮", "かに玉", "照り焼きチキン", "鶏の照り焼き", "ぶりの照り焼き", "かれいの煮付け", "なすの煮びたし", "ゴーヤチャンプルー", "回鍋肉", "あじフライ", "豚汁", "肉豆腐",
-  "チキン南蛮", "さばの竜田揚げ", "ミルフィーユ鍋", "親子丼", "青椒肉絲", "たらのホイル焼き", "きんぴらごぼう", "オムライス", "豚の角煮", "いわしの蒲焼き", "ポトフ", "牛丼",
+  "チキン南蛮", "さばの竜田揚げ", "ミルフィーユ鍋", "親子丼", "青椒肉絲", "たらのホイル焼き", "きんぴらごぼう", "オムライス", "豚の角煮", "いわしの蒲焼き", "ポトフ", "牛丼", "そぼろ丼", "他人丼",
   "餃子", "酢豚", "カレー", "クリームシチュー", "ビーフシチュー", "とんかつ", "麻婆なす", "エビチリ", "油淋鶏", "よだれ鶏", "棒棒鶏", "鶏ハム", "サラダチキン",
   "豚キムチ", "肉野菜炒め", "焼きそば", "焼きうどん", "あんかけ焼きそば", "チャーハン", "天津飯", "中華丼", "カツ丼", "豚丼", "天丼", "海鮮丼",
   "グラタン", "ドリア", "ナポリタン", "カルボナーラ", "ペペロンチーノ", "ミートソース", "明太子パスタ", "ボロネーゼ", "ラザニア", "ピカタ",
@@ -37,23 +37,43 @@ export function dishNameOf(title) {
   return [...best].slice(0, 16).join("");
 }
 
+// 題名を「句」に分ける。かっこの中（【簡単】など）は、あとで見る句にする。区切り：｜ ／ 。 ： ！ ？ 〜 や前後に空白のあるハイフン。
+// 正規化（dishKey）で句点・ハイフンが消える前に、元の題名で分ける。
+const BRACKETED = /[【\[「『(<〔][^】\]」』)>〔〕]*[】\]」』)>〕]/g;
+// 料理名のすぐあとに続くと「比べる・前置き」になる言葉（dishKey でそろえたあとの形）。
+const COMPARE = /^(?:より|を超え|超え|越え|をこえ|の次|に負けない|顔負け|に飽きた(?!くな)|にあきた(?!くな)|じゃな|ではな|の代わり|がわり|代わり|並み|級の|レベル|もいいけど|派も|好きにも)/;
+const PHRASE_SEP = /[|/。:!?〜~]+|\s+[-–—]+\s*|[-–—]+\s+/;
+function phrasesOf(title) {
+  const raw = String(title || "").normalize("NFKC");
+  const inside = (raw.match(BRACKETED) || []).map((b) => b.slice(1, -1));
+  return [...raw.replace(BRACKETED, "|").split(PHRASE_SEP), ...inside].map((x) => dishKey(x)).filter(Boolean);
+}
+
 // 辞書（最初の辞書＋格上げ − 外した）と別名から、題名の親を決める。親がなければ null。
+// かっこの外の句を前から見て、辞書の料理名がある最初の句で決める（「八宝菜｜中華丼の具にも」は八宝菜）。句の中では、いちばん後ろに出てくる料理名（同じ位置なら長いほう）。
 export function parentOf(title, book = {}) {
-  const t = dishKey(title);
-  if (!t) return null;
+  const phrases = phrasesOf(title);
+  if (!phrases.length) return null;
   const removed = new Set(book.removed || []);
   const names = new Map();
   for (const name of [...DISH_SEEDS, ...Object.values(book.promoted || {}).map((p) => p.name)]) { const k = dishKey(name); if (k && !removed.has(k)) names.set(k, name); }
   const aliases = { ...SEED_ALIASES, ...(book.aliases || {}) };
   for (const [from, to] of Object.entries(aliases)) { const k = dishKey(from), tk = dishKey(to); if (k && !removed.has(tk)) names.set(k, names.get(tk) || to); }
-  let best = null;
-  for (const [k, name] of names) {
-    const at = t.lastIndexOf(k);
-    if (at < 0) continue;
-    const end = at + k.length;
-    if (!best || end > best.end || (end === best.end && k.length > best.len)) best = { end, len: k.length, name };
+  for (const t of phrases) {
+    let best = null;
+    for (const [k, name] of names) {
+      const at = t.lastIndexOf(k);
+      if (at < 0) continue;
+      const end = at + k.length;
+      // 同じ句で料理名のあとに「丼」が続く時は、その料理の親にしない（「ハンバーグそぼろ丼」はハンバーグではなく丼もの）。丼の名前そのもの（親子丼など）は別。
+      if (!k.endsWith("丼") && /丼/.test(t.slice(end))) continue;
+      // 比べるための料理名（「ハンバーグより簡単」「八宝菜を超えた」「親子丼の次に」）は親にしない。本題は別にある。
+      if (COMPARE.test(t.slice(end))) continue;
+      if (!best || end > best.end || (end === best.end && k.length > best.len)) best = { end, len: k.length, name };
+    }
+    if (best) return { key: dishKey(best.name), name: best.name };
   }
-  return best ? { key: dishKey(best.name), name: best.name } : null;
+  return null;
 }
 
 export function createDishBook(store, { now = Date.now } = {}) {

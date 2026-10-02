@@ -25,14 +25,17 @@ const AMOUNT = /大さじ|小さじ|適量|少々|ひとつまみ|\d+(?:\.\d+)?\
 // 作り方の行：番号のあとに区切りがある（「1. 」「2、」「(3)」。「100g」「1個」「1.5」のような分量は数えない）・①〜⑳・STEP1／手順1。
 const STEP_LINE = /^\s*(?:[①-⑳]|(?:step|ステップ|手順)\s*\d{1,2}|[(（]\d{1,2}[)）]|\d{1,2}\s*[.．、:：)）](?!\d))\s*\S/i;
 // 「作り方」の見出しのあとの、調理の動きがある行（番号なしで書く人のため）。
-const COOK_VERB = /切|刻|炒め|焼|煮|入れ|混ぜ|加え|茹で|ゆで|蒸|揚げ|のせ|かけ|和え|漬け|レンジ|加熱/;
+const COOK_VERB = /切|刻|炒め|焼|煮|入れ|混ぜ|加え|茹で|ゆで|蒸|揚げ|のせ|乗せ|かけ|和え|漬け|レンジ|加熱|盛|絞|包|巻|こね|捏|丸め|並べ|まぶ|ほぐ|溶|沸|炊|返|揉|もみ|浸|戻|冷ま|温め|むく|剥|洗|ちぎ|潰|つぶ|おろ|仕上|火/;
+// 番号つきの行でも、分量だけの行（「1. 豚こま 200g」）は手順と数えない（材料の一覧に番号をつける人がいるため）。
+// 分量のない番号つきの行は、短くても手順（「1. 卵を割る」）。分量がある行は、調理の動きがある時だけ手順。
+const isStepLine = (l) => { const n = l.normalize("NFKC"); if (!(STEP_LINE.test(n) || /^\s*[①-⑳]\s*\S/.test(l))) return false; const body = n.replace(/^\s*(?:[①-⑳]|(?:step|ステップ|手順)\s*\d{1,2}|[(（]\d{1,2}[)）]|\d{1,2}\s*[.．、:：)）])\s*/i, ""); return !(body.match(AMOUNT) || []).length || COOK_VERB.test(body); };
 export function looksLikeRecipe(text) {
   const raw = String(text || "");
   const t = raw.normalize("NFKC");
   if ((t.match(AMOUNT) || []).length < 3) return false;
   // ①〜⑳ は NFKC で数字に変わるので、元の文字のまま行を見る。
   const lines = raw.split(/\r?\n/);
-  if (lines.filter((l) => STEP_LINE.test(l.normalize("NFKC")) || /^\s*[①-⑳]\s*\S/.test(l)).length >= 2) return true;
+  if (lines.filter(isStepLine).length >= 2) return true;
   const head = lines.findIndex((l) => /作り方|手順/.test(l));
   if (head < 0) return false;
   // 見出しのあとに、調理の動きの行が2つ以上（「作り方は動画をご覧ください」だけでは通さない）。
@@ -231,7 +234,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
   async function withTitles(stage) {
     const added = [];
     for (const a of stage.added || []) added.push({ ...a, title: (await peek(a.videoId).catch(() => null))?.title || "" });
-    return { ...stage, added };
+    // 実測の費用は、保存したトークン数から今の単価・換算で出し直す（換算を変えても、過去の段階と比べられるように）。
+    const yenMeasured = stage.input || stage.output ? Math.round(usageYen(stage) * 100) / 100 : stage.yenMeasured;
+    return { ...stage, added, ...(yenMeasured !== undefined ? { yenMeasured } : {}) };
   }
   const monthCapCalls = () => Math.max(0, Math.floor(yenPerMonth / Math.max(0.01, yenPerAi)));
   async function aiUsedToday() { return (await store.get(`usage/${new Date(now()).toISOString().slice(0, 10)}`))?.envelope.used || 0; }
