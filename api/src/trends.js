@@ -181,7 +181,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const catches = { at: 0 };
@@ -638,6 +638,46 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // 表示用：取得から28日以内のものすべてを、日ごとに決まるランダムな順で。保存済みの結果を読み出すだけ（AIを呼ばない）。
     // 親の料理名を直した時など、表示のキャッシュを捨てる。
     clearCache() { cache = null; },
+    // 集めた料理（新着の週に入っている料理）のうち、AI の料理名（dishName）がないものに、あとから付ける（APP_MAP §48-3）。
+    // 説明欄は読み直さず、題名・材料・手順の頭だけを20品ずつ AI に渡す（1回 = AI 1回。月の上限に数え、呼ぶ前に予約する）。運営が直した料理は上書きしない。
+    async backfillDishNames({ maxCalls = 3, dryRun = false } = {}) {
+      required();
+      if (!dryRun && typeof nameDishes !== "function") throw new ApiError(503, "not_configured", "料理名を付ける設定がありません。");
+      if (!dryRun && !(await lock())) return { busy: true };
+      const started = now();
+      try {
+        const month = dayOf(now()).slice(0, 7);
+        const ids = [...new Set(((await readIndex())?.envelope.weeks || []).flatMap((w) => w.items.map((i) => i.videoId)))];
+        const targets = [];
+        for (const id of ids) {
+          const r = await peek(id).catch(() => null);
+          if (r && !r.dishName && r.dishNameFrom !== "admin" && r.dishNameFrom !== "ai-backfill") targets.push({ videoId: id, title: r.title || "", ingredients: r.ingredients || [], steps: r.steps || [] });
+        }
+        // 数えるだけ（管理の画面に、まだ付いていない品数と目安の回数を出す）。
+        if (dryRun) return { total: targets.length, calls: Math.ceil(targets.length / 20), yenPerAi };
+        const collector = { lite: true };
+        let named = 0, calls = 0, reason = "";
+        for (let i = 0; i < targets.length && calls < maxCalls; i += 20) {
+          if (now() - started > budgetMs) { reason = "time"; break; }
+          const capCalls = monthCapCalls();
+          const reserved = await writeMonthCost(month, (used) => (used + 1 <= capCalls ? used + 1 : null));
+          if (reserved === null) { reason = "month_budget"; break; }
+          calls += 1;
+          const batch = targets.slice(i, i + 20);
+          let names = {};
+          try { names = await usage.run(collector, () => nameDishes(batch)); } catch { reason = "ai_failed"; break; }
+          for (const b of batch) {
+            // 名前が返らなかった料理も「試した」印をつける（同じ料理に何度も費用を使わない）。
+            const done = await catalog.setDishName(canonicalYouTubeUrl(b.videoId), names[b.videoId] || "", { from: "ai" }).catch(() => null);
+            if (done?.dishName && !done.skipped) named += 1;
+            if (!names[b.videoId]) await catalog.markDishNameTried?.(canonicalYouTubeUrl(b.videoId)).catch(() => null);
+          }
+        }
+        cache = null;
+        const left = Math.max(0, targets.length - calls * 20);
+        return { named, calls, left, total: targets.length, reason: reason || (left ? "more" : "done"), yenMeasured: Math.round(usageYen(collector) * 100) / 100 };
+      } finally { if (!dryRun) await unlock(); }
+    },
     // promote：親の料理名の格上げもする（公開の GET /api/trends）。管理の読み出しでは false（辞書を書きかえない）。
     async list({ promote = true } = {}) {
       required();

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cleanDishName } from "./dishes.js";
 import { ApiError } from "./errors.js";
 import { createGcsSyncStore, createMemorySyncStore } from "./syncStore.js";
 import { extractYouTubeVideoId, canonicalYouTubeUrl } from "./youtube.js";
@@ -143,6 +144,30 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       return { ...localizeRecipe(result), cacheHit: true };
     },
     // 管理：保存済みの読み取り結果の、手順の時刻（stepTimes）を運営が直す（新着・みんなの定番の一覧に出る時刻）。AI は呼ばない。
+    // 料理名（dishName）を付ける・直す（APP_MAP §48）。from："ai"（あとから AI で付ける。運営が直した料理は上書きしない）／"admin"（運営が直す。空なら題名で決める印）。
+    async setDishName(rawUrl, dishName, { from = "admin" } = {}) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      const result = structuredClone(current.envelope.result);
+      if (from === "ai" && result.dishNameFrom === "admin") return { dishName: result.dishName || "", dishNameFrom: "admin", skipped: true };
+      const name = cleanDishName(dishName);
+      if (from === "ai" && !name) return { dishName: result.dishName || "", skipped: true };
+      if (name) result.dishName = name; else delete result.dishName;
+      result.dishNameFrom = from === "ai" ? "ai-backfill" : "admin";
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
+      return { dishName: result.dishName || "", dishNameFrom: result.dishNameFrom };
+    },
+    // あとから AI で料理名を付けようとしたが名前が返らなかった印（同じ料理に何度も費用を使わない）。
+    async markDishNameTried(rawUrl) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.dishName || current.envelope.result?.dishNameFrom) return false;
+      const result = { ...current.envelope.result, dishNameFrom: "ai-backfill" };
+      return !!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }));
+    },
     async setStepTimes(rawUrl, stepTimes) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;

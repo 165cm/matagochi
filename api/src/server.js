@@ -5,12 +5,12 @@ import { createTicketBook, START_TICKETS } from "./tickets.js";
 import { createAuth } from "./auth.js";
 import { createTrendBook, SEED_QUERIES, TREND_YEN_PER_AI, waveStatus } from "./trends.js";
 import { createPopularBook } from "./popular.js";
-import { createDishBook } from "./dishes.js";
+import { createDishBook, cleanDishName } from "./dishes.js";
 import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu } from "./analyzer.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createPushDesk } from "./push.js";
@@ -53,7 +53,7 @@ export function createApp(env = process.env, deps = {}) {
   // 掲載停止・再開が変わったら、新着・みんなの定番の表示キャッシュをすぐ捨てる（停止した料理を10分残さない）。
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now, onChange: () => { trendBook?.clearCache?.(); popularBook?.clearCache?.(); } });
   const dishBook = createDishBook(recipeStore, { now: deps.now || Date.now });
-  const trendBook = createTrendBook(recipeStore, { dishBook, catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
+  const trendBook = createTrendBook(recipeStore, { dishBook, nameDishes: deps.nameDishes || ((items) => nameDishes(items, env)), catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
     searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), videoDetails: deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
     ...(Number(env.TREND_PER_DAY) > 0 ? { perDay: Number(env.TREND_PER_DAY) } : {}), ...(Number(env.TREND_WEEK_MAX) > 0 ? { weekMax: Number(env.TREND_WEEK_MAX) } : {}),
     ...(Number(env.TREND_AI_PER_DAY) > 0 ? { aiPerDay: Number(env.TREND_AI_PER_DAY) } : {}), ...(Number(env.TREND_AI_PER_WEEK) > 0 ? { aiPerWeek: Number(env.TREND_AI_PER_WEEK) } : {}),
@@ -366,6 +366,27 @@ export function createApp(env = process.env, deps = {}) {
       return { recipes };
     })());
   });
+  // 管理：集めた料理に、あとから AI の料理名を付ける（APP_MAP §48-3）。GET は数えるだけ・POST は20品ずつ最大3回（月の上限に数える）。
+  app.get("/api/admin/backfill/dish-names", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, trendBook.backfillDishNames({ dryRun: true }));
+  });
+  app.post("/api/admin/backfill/dish-names", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, trendBook.backfillDishNames());
+  });
+  // 管理：料理名を手で直す（空にすると題名で決める）。あとから AI で付ける時も上書きしない。
+  app.put("/api/admin/recipes/:videoId/dish-name", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    const raw = req.body?.dishName;
+    if (raw !== "" && typeof raw === "string" && !cleanDishName(raw)) return res.status(400).json({ error: { code: "invalid_dish_name", message: "料理名は改行なしの20字までにしてください。" } });
+    send(res, catalog.setDishName(canonicalYouTubeUrl(videoId), typeof raw === "string" ? raw : "", { from: "admin" }).then((r) => { trendBook.clearCache(); popularBook.clearCache(); return r; }));
+  });
   // 管理：読み取り済みのレシピを見る（材料・手順・手順の時刻）と、手順の時刻を直す。読み出すだけで AI は呼ばない。
   app.get("/api/admin/recipes/:videoId", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -376,7 +397,7 @@ export function createApp(env = process.env, deps = {}) {
       if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
       // 親の料理名（APP_MAP §48）も添える。
       const dish = (await dishBook.classify([{ videoId, title: r.title || "", dishName: r.dishName || "" }]).catch(() => ({})))[videoId] || null;
-      return { videoId, title: r.title || "", dish, channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", planning: r.planning || null };
+      return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", planning: r.planning || null };
     }));
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {
