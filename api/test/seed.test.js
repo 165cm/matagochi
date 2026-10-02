@@ -99,7 +99,7 @@ test('aiUsage: tokens are collected only inside usage.run, and priced from env',
   await usage.run(c, async () => { await Promise.resolve(); recordUsage('m', { usageMetadata: { promptTokenCount: 1_000_000, candidatesTokenCount: 0 } }); });
   assert.deepEqual(outside, {});
   assert.equal(c.input, 1_000_000);
-  assert.equal(usageYen(c, {}), 45, '0.30 USD × 150');
+  assert.equal(usageYen(c, {}), 48, '0.30 USD × 160 (2026-10-02)');
   assert.equal(usageYen(c, { GEMINI_PRICE_IN_USD_PER_M: '0.1', USD_JPY: '100' }), 10);
 });
 
@@ -269,4 +269,18 @@ test('review fix (#118): a candidate in the 1-minute cooldown (or being read els
   cooling.clear();
   const third = await make().seed({ yen: 5 });
   assert.deepEqual(third.stage.added.map((a) => a.videoId).sort(), [id(2), id(3)]);
+});
+
+test('small fix (2026-10-02): a numbered list of ingredients with amounts is not counted as steps; numbered steps with cooking still are; 1 USD = 160 yen and past stages are re-priced from their tokens', async () => {
+  const ingredientsOnly = '材料\n1. 豚こま 200g\n2. キャベツ 1/4個\n3. しょうゆ 大さじ1\n4. 砂糖 小さじ1';
+  assert.equal(looksLikeRecipe(ingredientsOnly), false, 'numbered ingredients are not steps');
+  const steps = '材料\n豚こま 200g\nキャベツ 1/4個\nしょうゆ 大さじ1\n1. キャベツをざく切りにする\n2. 豚こまを炒めて味をつける';
+  assert.equal(looksLikeRecipe(steps), true);
+  const longSteps = '材料\n豚こま 200g\nキャベツ 1/4個\nしょうゆ 大さじ1\n① 全部をボウルでよくなじませておきます\n② フライパンで火が通るまで\n';
+  assert.equal(looksLikeRecipe(longSteps), true);
+  assert.equal(usageYen({ input: 1_000_000, output: 0 }, {}), 48, '0.30 USD × 160');
+  const store = createMemorySyncStore();
+  await store.put('trends/seed', { stages: [{ n: 1, yen: 100, startedAt: '2026-10-01T00:00:00Z', ai: 1, input: 1_000_000, output: 0, yenMeasured: 45, added: [], skipped: {}, byQuery: {}, done: true }], q: 0, candidates: [], tried: [] }, { ifGeneration: 0 });
+  const book = createTrendBook(store, { catalog: fakeCatalog(), now: () => Date.parse('2026-10-05T00:00:00Z'), search: async () => [] });
+  assert.equal((await book.seedStatus()).stages[0].yenMeasured, 48, 'a stage saved at 150 is shown at today\'s 160');
 });

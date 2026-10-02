@@ -171,3 +171,12 @@ test('review fix (#124 r3): a channel stopped after the new-dish list was cached
   const { recipes } = await (await fetch(base + '/api/admin/recipes', { headers: { Authorization: 'Bearer admin-test-token' } })).json();
   assert.deepEqual(recipes, []);
 });
+
+test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish', () => {
+  const p = (t) => parentOf(t)?.name || null;
+  assert.equal(p('ハンバーグそぼろ丼'), 'そぼろ丼');
+  assert.equal(p('鶏の照り焼き丼'), null, 'not 鶏の照り焼き');
+  assert.equal(p('麻婆豆腐丼'), null);
+  assert.equal(p('秋の和風ハンバーグ'), 'ハンバーグ');
+  assert.equal(p('親子丼'), '親子丼');
+});

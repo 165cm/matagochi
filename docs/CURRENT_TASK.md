@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | `claude/optimistic-albattani-jg5211` | 小さな改善：1ドル＝160円（過去の段階も出し直す）・「〜丼」の取り違え・説明欄の事前チェック（分量だけの番号行を手順と数えない） | `api/src/aiUsage.js`・`api/src/trends.js`・`api/src/dishes.js`・`api/test/*`・`docs/*` |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
