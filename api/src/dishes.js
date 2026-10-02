@@ -37,8 +37,13 @@ export function dishNameOf(title) {
   return [...best].slice(0, 16).join("");
 }
 
-// AI が書いた料理名を、格上げの候補に使ってよい形か（文字列・空白だけでない・16字以内・記号の山でない）。
-const cleanAiName = (v) => { if (typeof v !== "string") return ""; const s = v.normalize("NFKC").replace(/\s+/g, " ").trim(); return s && [...s].length <= 16 && !/[\n{}<>\[\]]|object/i.test(s) ? s : ""; };
+// AI が書いた料理名を使ってよい形か（保存・親の判定・格上げで共通）：文字列・改行を含まない（正規化の前に確かめる）・空白だけでない・20字以内・記号の山でない。
+export function cleanDishName(v) {
+  if (typeof v !== "string" || /[\r\n]/.test(v)) return "";
+  const s = v.normalize("NFKC").replace(/\s+/g, " ").trim();
+  return s && [...s].length <= 20 && !/[{}<>\[\]]|object/i.test(s) ? s : "";
+}
+const cleanAiName = cleanDishName;
 // 題名を「句」に分ける。かっこの中（【簡単】など）は、あとで見る句にする。区切り：｜ ／ 。 ： ！ ？ 〜 や前後に空白のあるハイフン。
 // 正規化（dishKey）で句点・ハイフンが消える前に、元の題名で分ける。
 const BRACKETED = /[【\[「『(<〔][^】\]」』)>〔〕]*[】\]」』)>〕]/g;

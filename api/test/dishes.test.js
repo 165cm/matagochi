@@ -240,6 +240,11 @@ test('review fix (#127): the video dish name is kept; broken, too long or confli
   assert.equal(cleanDishName({ bad: true }), '');
   assert.equal(cleanDishName('   '), '');
   assert.equal(cleanDishName('あ'.repeat(21)), '');
+  // review fix (#127 r2)：改行入りは捨てる（正規化の前に確かめる）・17〜20字の料理名は親の判定にも使う
+  assert.equal(cleanDishName('八宝菜\nハンバーグ'), '');
+  assert.equal(parentOf('秋のごちそう', {}, '八宝菜\nハンバーグ'), null);
+  const long = '鶏むね肉ときのこのトマトクリーム煮';
+  assert.equal(normalizeImportResult({ title: 'x', dishName: long }).dishName, long);
   assert.equal(normalizeImportResult({ title: 'x', dishName: { bad: true } }).dishName, undefined);
   assert.equal(parentOf('王将風 八宝菜', {}, '[object Object]').name, '八宝菜');
   // 題名にはっきり別の料理名がある時は題名
@@ -250,4 +255,9 @@ test('review fix (#127): the video dish name is kept; broken, too long or confli
   const items = ['h1', 'h2', 'h3'].map((videoId, i) => ({ videoId, title: `謎の一品${i}`, channelId: i ? 'b' : 'a', dishName: '[object Object]' }));
   await book.classify(items, { promote: true });
   assert.equal(Object.values((await book.book()).promoted || {}).some((p) => /object/i.test(p.name)), false);
+  // 17字の料理名も、3本・投稿者2人で格上げされ、親になる
+  const items2 = ['l1', 'l2', 'l3'].map((videoId, i) => ({ videoId, title: `秋のごちそう${i}`, channelId: i ? 'b' : 'a', dishName: long }));
+  const got = await book.classify(items2, { promote: true });
+  assert.equal(got.l1?.name, long);
+  assert.equal(parentOf('秋のごちそう', await book.book(), long).name, long);
 });

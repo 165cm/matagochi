@@ -1,4 +1,5 @@
 import { localizeAmount, localizeStep } from "./units.js";
+import { cleanDishName } from "./dishes.js";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from "./youtube.js";
 import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
@@ -89,13 +90,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   };
 }
 
-// AI が書いた料理名：文字列で、空白だけでなく、20字以内・改行や記号の山でない時だけ使う（壊れた値は捨てて題名で決める）。
-export function cleanDishName(value) {
-  if (typeof value !== "string") return "";
-  const s = value.normalize("NFKC").replace(/\s+/g, " ").trim();
-  if (!s || [...s].length > 20 || /[\n{}<>\[\]]|object/i.test(s)) return "";
-  return s;
-}
+// AI が書いた料理名の確かめは、親の判定と同じもの（dishes.js cleanDishName）。
+export { cleanDishName };
 
 export function normalizeImportResult(result) {
   return {
