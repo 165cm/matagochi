@@ -152,3 +152,22 @@ test('review fix (#124 r2): stopped channels and stopped videos do not come back
   const { recipes } = await (await fetch(`http://127.0.0.1:${server.address().port}/api/admin/recipes`, { headers: { Authorization: 'Bearer admin-test-token' } })).json();
   assert.deepEqual(recipes.map((r) => r.videoId), ['d0000000003']);
 });
+
+test('review fix (#124 r3): a channel stopped after the new-dish list was cached is still left out of the admin list', async (t) => {
+  let now = Date.parse('2026-10-05T01:00:00Z');
+  const store = createMemorySyncStore();
+  const chStop = 'UC' + 'q'.repeat(22);
+  const recipe = { title: '王将風 八宝菜', videoUrl: 'https://www.youtube.com/watch?v=e0000000001', channelId: chStop, channelTitle: 'ch', ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'], tags: [], snippetFetchedAt: new Date(now).toISOString(), catalog: { analyzedAt: new Date(now).toISOString(), extractorVersion: 99 } };
+  await store.put('youtube-e0000000001', { status: 'ready', result: recipe }, { ifGeneration: 0 });
+  await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: [{ videoId: 'e0000000001' }], skipped: {} }] }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], now: () => now });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  assert.equal((await (await fetch(base + '/api/trends')).json()).items.length, 1, 'the public list is cached while it is still shown');
+  await store.put('creators/optout', { channels: { [chStop]: { title: '止めた投稿者', at: '2026-10-05T00:00:00Z' } }, videos: {} }, { ifGeneration: 0 });
+  now += 6 * 60_000; // 停止の一覧（5分）は読み直す時刻・新着の一覧（10分）はまだキャッシュの時刻
+  const { recipes } = await (await fetch(base + '/api/admin/recipes', { headers: { Authorization: 'Bearer admin-test-token' } })).json();
+  assert.deepEqual(recipes, []);
+});

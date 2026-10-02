@@ -357,7 +357,8 @@ export function createApp(env = process.env, deps = {}) {
         }
         Object.assign(x, { shown: s.shown, planned: s.planned, cooked: s.cooked, rate: s.rate, kept: s.kept });
       }
-      const recipes = [...byId.values()];
+      // 最後に、結びつけたすべての料理を掲載停止で確かめる（新着の一覧が停止前のキャッシュでも、停止した料理を出さない）。
+      const recipes = [...byId.values()].filter((x) => !excluded.has(x.videoId) && !(x.channelId && excluded.has(x.channelId)));
       const dishes = await dishBook.classify(recipes).catch(() => ({}));
       for (const x of recipes) x.dish = dishes[x.videoId] || null;
       return { recipes };
