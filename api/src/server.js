@@ -287,7 +287,7 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/admin/dishes", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.list().then((d) => dishBook.overview(d.items || [])));
+    send(res, trendBook.list({ promote: false }).then((d) => dishBook.overview(d.items || [])));
   });
   app.post("/api/admin/dishes", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -334,15 +334,47 @@ export function createApp(env = process.env, deps = {}) {
       waves: waveStatus(d, (deps.now || Date.now)()),
       yenPerAi: Number(env.TREND_YEN_PER_AI) > 0 ? Number(env.TREND_YEN_PER_AI) : TREND_YEN_PER_AI })));
   });
+  // 管理：レシピの一覧（新着＋献立の候補に出た・残した料理）を、親の料理名・採用率つきで（APP_MAP §48-2）。読み出すだけ（AI・YouTube API は呼ばない）。
+  app.get("/api/admin/recipes", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, (async () => {
+      const byId = new Map();
+      for (const t of (await trendBook.list({ promote: false })).items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "" });
+      // 集計は全件を新着に結びつける。新着でない料理を読み出す（peek）のは、多い順に500件まで。
+      // 掲載停止（動画・投稿者）は、新着と同じく一覧に出さない。
+      const excluded = await creatorDesk.optedOut().catch(() => new Set());
+      let extra = 0;
+      for (const s of await popularBook.stats()) {
+        let x = byId.get(s.videoId);
+        if (!x) {
+          if (excluded.has(s.videoId) || extra >= 500) continue;
+          extra += 1;
+          const r = await catalog.peek(`https://www.youtube.com/watch?v=${s.videoId}`).catch(() => null);
+          if (!r || (r.channelId && excluded.has(r.channelId))) continue;
+          x = { videoId: s.videoId, title: r.title || "", channelTitle: r.channelTitle || "", channelId: r.channelId || "", minutes: r.planning?.minutes || null, trend: false, newUntil: "" };
+          byId.set(s.videoId, x);
+        }
+        Object.assign(x, { shown: s.shown, planned: s.planned, cooked: s.cooked, rate: s.rate, kept: s.kept });
+      }
+      // 最後に、結びつけたすべての料理を掲載停止で確かめる（新着の一覧が停止前のキャッシュでも、停止した料理を出さない）。
+      const recipes = [...byId.values()].filter((x) => !excluded.has(x.videoId) && !(x.channelId && excluded.has(x.channelId)));
+      const dishes = await dishBook.classify(recipes).catch(() => ({}));
+      for (const x of recipes) x.dish = dishes[x.videoId] || null;
+      return { recipes };
+    })());
+  });
   // 管理：読み取り済みのレシピを見る（材料・手順・手順の時刻）と、手順の時刻を直す。読み出すだけで AI は呼ばない。
   app.get("/api/admin/recipes/:videoId", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     const videoId = String(req.params.videoId || "");
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
-    send(res, catalog.peek(canonicalYouTubeUrl(videoId)).then((r) => {
+    send(res, catalog.peek(canonicalYouTubeUrl(videoId)).then(async (r) => {
       if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
-      return { videoId, title: r.title || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", planning: r.planning || null };
+      // 親の料理名（APP_MAP §48）も添える。
+      const dish = (await dishBook.classify([{ videoId, title: r.title || "" }]).catch(() => ({})))[videoId] || null;
+      return { videoId, title: r.title || "", dish, channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", planning: r.planning || null };
     }));
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {
