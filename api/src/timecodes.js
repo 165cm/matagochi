@@ -8,6 +8,8 @@ import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
 // AIの1日の上限（全体）の中で動き、1家庭1日20本まで。チケットは使わない。
 export const TIMECODES_PER_DAY = 20;
 const TRUSTED = new Set(["fix", "chapters"]);
+// 管理の探し直しの鍵の長さ（AI の時間切れより十分長い。これより古い鍵は止まったもの）。
+const REANALYZE_LOCK_MS = 5 * 60_000;
 // 手順の並びはそのまま（空の手順も位置を保つ）。返す時刻は手順と同じ数・同じ順。
 const normalize = (steps) => (Array.isArray(steps) ? steps.map((s) => String(s || "").trim()).slice(0, 30) : []);
 const found = (times) => Array.isArray(times) && times.some((t) => Number.isFinite(t));
@@ -98,13 +100,23 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
       const videoId = extractYouTubeVideoId(url);
       const list = normalize(steps);
       if (list.filter(Boolean).length < 2) throw new ApiError(400, "steps_required", "手順が2つ以上いります。");
-      await reserveBudget();
-      const seconds = (await snippet(videoId).catch(() => null))?.durationSeconds;
-      const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
-      const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, beforeRetry: reserveBudget });
-      const stepTimes = cleanTimes(raw?.stepTimes, list);
-      if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
-      return { stepTimes, source: "video", seenSeconds: clipSeconds || seconds || null };
+      // 同じ動画・同じ手順を同時に2回 AI に見せない（別のタブ・再送・複数の台でも、世代つきの書き込みで1つだけ。review fix #138）。
+      const lockKey = `timecodes-reanalyze/${keyOf(videoId, list).slice("timecodes/".length)}`;
+      const held = await store.get(lockKey);
+      if (held && now() - Date.parse(held.envelope.at || 0) <= REANALYZE_LOCK_MS) throw new ApiError(409, "reanalyze_pending", "この動画は探し直している途中です。");
+      const lock = await store.put(lockKey, { at: new Date(now()).toISOString() }, { ifGeneration: held?.generation ?? 0 });
+      if (!lock) throw new ApiError(409, "reanalyze_pending", "この動画は探し直している途中です。");
+      try {
+        await reserveBudget();
+        const seconds = (await snippet(videoId).catch(() => null))?.durationSeconds;
+        const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
+        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, beforeRetry: reserveBudget });
+        const stepTimes = cleanTimes(raw?.stepTimes, list);
+        if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
+        return { stepTimes, source: "video", seenSeconds: clipSeconds || seconds || null };
+      } finally {
+        await store.remove(lockKey, { ifGeneration: lock.generation }).catch(() => {});
+      }
     },
     // 管理の点検用：保存済みの時刻を読むだけ（AI も YouTube も呼ばない）。なければ null。
     async stored({ url, steps }) {

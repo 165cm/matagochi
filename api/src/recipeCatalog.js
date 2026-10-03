@@ -79,7 +79,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     // 「動画から読み直す」：すでに動画から読んだ結果があれば、同じ結果になるので再解析しない（費用をかけない）。
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
     if (current?.envelope.status === "ready" && current.envelope.result?.unavailable) throw unavailableError(current.envelope.result);
-    if (reread && current?.envelope.status === "ready" && current.envelope.result?.analyzedFrom !== "description") throw new ApiError(409, "reread_not_description", "動画から読んだレシピは、説明欄から読み直せません。");
+    if (reread && current?.envelope.status !== "ready") throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+    if (reread && current.envelope.result?.analyzedFrom !== "description") throw new ApiError(409, "reread_not_description", "動画から読んだレシピは、説明欄から読み直せません。");
     if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo) && !reread) {
       const result = await refreshed(key, current);
       if (result.unavailable) throw unavailableError(result);
@@ -95,7 +96,10 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     if (current?.envelope.status === "pending" && !stale) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
     // 説明文で失敗した直後でも、動画から読むのは待たせない（チケットを使う操作なので連打にはならない）。
     if (!forceVideo && current?.envelope.retryAt > now()) { await refund(); throw new ApiError(429, "analysis_cooldown", "分析に失敗したため、1分ほど待ってから再試行してください。"); }
-    const claim = await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
+    // 読み直しは、保存済みのレシピを「分析中」で置き換えない（途中で失敗・停止しても、前のレシピを読める）。
+    // 別の鍵で同時の読み直しを止め（世代つきの書き込みで1つだけ）、最後に保存済みの版が変わっていない時だけ書く（review fix #138）。
+    const lock = reread ? await claimRereadLock(id) : null;
+    const claim = reread ? { generation: current.generation } : await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
     if (!claim) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
     try {
       // 説明欄の読み取り・動画の読み取り・チャプターとの対応付けの、それぞれの直前に gate を通す。
@@ -127,14 +131,28 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       return { ...structuredClone(result), cacheHit: false, videoSkipped: !!raw?.videoSkipped, ticketUsed: spent };
     } catch (error) {
       await refund();
-      if (error.code === "analysis_uncertain") throw error;
-      // 読み直しに失敗しても、保存済みの結果は消さない。
-      // 読み直して手順が減る・読めない時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
-      const tried = reread && ["reread_worse", "incomplete_recipe"].includes(error.code);
-      if (current?.envelope.status === "ready") await store.put(key, tried ? { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } } : current.envelope, { ifGeneration: claim.generation }).catch(() => {});
-      else await store.put(key, { status: "failed", retryAt: now() + 60_000 }, { ifGeneration: claim.generation }).catch(() => {});
+      // 読み直して手順が減る・読めない・レシピでないと言われた時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
+      // 読み直しでは保存済みのレシピを置き換えていないので、ほかの失敗では何も書かない。
+      if (reread) {
+        if (["reread_worse", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) await store.put(key, { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } }, { ifGeneration: claim.generation }).catch(() => {});
+        throw error;
+      }
+      // 読み直しに失敗しても、保存済みの結果は消さない（レシピでないと言われた時も。review fix #138）。
+      if (current?.envelope.status === "ready") await store.put(key, current.envelope, { ifGeneration: claim.generation }).catch(() => {});
+      else if (error.code !== "analysis_uncertain") await store.put(key, { status: "failed", retryAt: now() + 60_000 }, { ifGeneration: claim.generation }).catch(() => {});
       throw error;
+    } finally {
+      if (lock) await store.remove(lock.key, { ifGeneration: lock.generation }).catch(() => {});
     }
+  }
+  // 読み直しの鍵：10分より古い鍵は止まった読み直しのものなので取り直してよい。
+  async function claimRereadLock(id) {
+    const lockKey = `reread-lock/${id}`;
+    const held = await store.get(lockKey);
+    if (held && now() - Date.parse(held.envelope.at || 0) <= STALE_PENDING_MS) throw new ApiError(409, "analysis_pending", "このレシピは読み直している途中です。");
+    const put = await store.put(lockKey, { at: new Date(now()).toISOString() }, { ifGeneration: held?.generation ?? 0 });
+    if (!put) throw new ApiError(409, "analysis_pending", "このレシピは読み直している途中です。");
+    return { key: lockKey, generation: put.generation };
   }
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },

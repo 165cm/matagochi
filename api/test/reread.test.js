@@ -113,3 +113,58 @@ test('admin: re-read the 10-step description recipes in batches; video re-analyz
   const one = await (await fetch(`${base}/api/admin/recipes/${ids[5]}`, { headers: { Authorization: admin.Authorization } })).json();
   assert.deepEqual(one.stepTimes, [], 'not saved until the admin presses save');
 });
+
+test('review fix (#138): a re-read never hides the saved recipe — not while it runs, not when the AI says "not a recipe", not after a crash', async () => {
+  const store = createMemorySyncStore();
+  let answer = recipe(10), release, gateOpen = Promise.resolve();
+  const cat = createRecipeCatalog(store, async () => { await gateOpen; if (answer instanceof Error) throw answer; return answer; });
+  const url = 'https://www.youtube.com/watch?v=abcdefghijk';
+  await cat.import(url);
+  // 読み直しの途中でも、前のレシピが読める
+  gateOpen = new Promise((r) => { release = r; });
+  answer = recipe(12);
+  const running = cat.import(url, { reread: true });
+  await new Promise((r) => setImmediate(r));
+  assert.equal((await cat.peek(url))?.steps.length, 10, 'readable while re-reading');
+  release(); assert.equal((await running).steps.length, 12);
+  // 「レシピではない」と言われても消えない（印だけ付く）
+  gateOpen = Promise.resolve();
+  answer = Object.assign(new Error('uncertain'), { code: 'analysis_uncertain' });
+  await assert.rejects(cat.import(url, { reread: true }), { code: 'analysis_uncertain' });
+  const kept = await cat.peek(url);
+  assert.equal(kept?.steps.length, 12); assert.ok(kept.rereadAt);
+  assert.equal((await store.get('youtube-abcdefghijk')).envelope.status, 'ready');
+  // 途中で止まった読み直しの鍵が残っていても、レシピはそのまま。新しい鍵は待つ（古い鍵は取り直せる）
+  await store.put('reread-lock/abcdefghijk', { at: new Date().toISOString() }, { ifGeneration: 0 });
+  answer = recipe(14);
+  await assert.rejects(cat.import(url, { reread: true }), { code: 'analysis_pending' });
+  assert.equal((await cat.peek(url))?.steps.length, 12);
+  const lock = await store.get('reread-lock/abcdefghijk');
+  await store.put('reread-lock/abcdefghijk', { at: new Date(Date.now() - 11 * 60_000).toISOString() }, { ifGeneration: lock.generation });
+  assert.equal((await cat.import(url, { reread: true })).steps.length, 14);
+  assert.equal(await store.get('reread-lock/abcdefghijk'), null, 'the lock is released');
+});
+
+test('review fix (#138): the same video is not re-analyzed twice at once (other tab, resend, another instance)', async () => {
+  let calls = 0, release;
+  const store = createMemorySyncStore();
+  const opts = { reserveBudget: async () => {}, snippet: async () => ({ durationSeconds: 300 }), analyze: async () => { calls++; await new Promise((r) => { release = r; }); return { stepTimes: [3, 90] }; } };
+  const a = createTimecodeBook(store, opts), b = createTimecodeBook(store, opts);
+  const ask = { url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['切る', '焼く'] };
+  const first = a.reanalyze(ask);
+  await new Promise((r) => setImmediate(r));
+  const [second, third] = await Promise.allSettled([a.reanalyze(ask), b.reanalyze(ask)]);
+  assert.equal(second.reason?.code, 'reanalyze_pending'); assert.equal(third.reason?.code, 'reanalyze_pending');
+  release(); assert.deepEqual((await first).stepTimes, [3, 90]);
+  assert.equal(calls, 1);
+  // 終わったら次は探し直せる（失敗でも鍵は外れる）
+  const again = a.reanalyze(ask); await new Promise((r) => setImmediate(r)); release(); await again;
+  assert.equal(calls, 2);
+});
+
+test('review fix (#138): a time after the part the AI watched is flagged ("unseen"), apart from "beyond the video"', () => {
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 1900], { source: 'video', seenSeconds: 1800, durationSeconds: 3600 })), ['unseen']);
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 1900], { source: 'video', seenSeconds: 1800 })), ['unseen'], 'video length unknown');
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 1900], { source: 'video', seenSeconds: 1800, durationSeconds: 1800 })), ['beyond']);
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 1900], { source: 'chapters', seenSeconds: 1800, durationSeconds: 3600 })), []);
+});

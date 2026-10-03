@@ -11,6 +11,7 @@ export const ISSUE_LABEL = {
   coarse: "説明欄の章が大まか（いくつかの手順が同じ章の時刻）",
   beyond: "動画の長さを超えている",
   clip: "AI が見ていない後半の手順に時刻がない（以前は最初の10分だけを見ていた）",
+  unseen: "AI が見た範囲より後の時刻（根拠がない）",
   sparse: "時刻のない手順が半分より多い",
   cluster: "時刻が短い間に固まっている",
   steps10: "手順がちょうど10個（以前の上限で切れているかも）",
@@ -37,6 +38,8 @@ export function checkStepTimes(steps = [], times = [], { durationSeconds = null,
     if (prev !== null && x + CHECK_ORDER_SLACK <= prev) add("order", i);
     else if (prev !== null && x === prev && list[i] !== list[i - 1]) { if (chapters) sameCount += 1; else add("same", i); }
     if (Number.isFinite(durationSeconds) && durationSeconds > 0 && x >= durationSeconds) add("beyond", i);
+    // AI が見た長さ（seenSeconds）より後の時刻は、AI が見ていない場面の時刻（動画の長さを超える時は beyond だけ。review fix #138）。
+    else if (source === "video" && seenSeconds > 0 && x >= seenSeconds) add("unseen", i);
     prev = x;
   });
   if (found.length * 2 < list.filter(Boolean).length) add("sparse");
