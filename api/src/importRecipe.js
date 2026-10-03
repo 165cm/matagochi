@@ -161,9 +161,11 @@ function normalizePlanning(value) {
   return planning.minutes || planning.equipment.length ? planning : null;
 }
 
+// 手順は30個まで（AI の答えの形の上限と同じ）。以前は10個で切っていて、長いレシピの後ろが消えていた（2026-10-03）。
+export const MAX_STEPS = 30;
 function normalizeSteps(value) {
   if (!Array.isArray(value)) return [];
-  return value.map(cleanText).filter(Boolean).map((step) => localizeStep(step)).slice(0, 10);
+  return value.map(cleanText).filter(Boolean).map((step) => localizeStep(step)).slice(0, MAX_STEPS);
 }
 
 function normalizeStepTimes(value, count) {

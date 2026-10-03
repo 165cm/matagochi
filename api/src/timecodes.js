@@ -9,7 +9,7 @@ import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
 export const TIMECODES_PER_DAY = 20;
 const TRUSTED = new Set(["fix", "chapters"]);
 // 手順の並びはそのまま（空の手順も位置を保つ）。返す時刻は手順と同じ数・同じ順。
-const normalize = (steps) => (Array.isArray(steps) ? steps.map((s) => String(s || "").trim()).slice(0, 15) : []);
+const normalize = (steps) => (Array.isArray(steps) ? steps.map((s) => String(s || "").trim()).slice(0, 30) : []);
 const found = (times) => Array.isArray(times) && times.some((t) => Number.isFinite(t));
 const cleanTimes = (raw, list) => {
   const times = Array.isArray(raw) ? raw.slice(0, list.length) : [];
@@ -90,6 +90,14 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         await done();
         return { stepTimes, source: "video", cacheHit: false };
       }
+    },
+    // 管理の点検用：保存済みの時刻を読むだけ（AI も YouTube も呼ばない）。なければ null。
+    async stored({ url, steps }) {
+      required();
+      const list = normalize(steps);
+      if (list.filter(Boolean).length < 2) return null;
+      const entry = (await store.get(keyOf(extractYouTubeVideoId(url), list)))?.envelope;
+      return entry ? { stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared } : null;
     },
     // だれかが直した時刻を保存して、同じ動画・同じ手順を見る全員で使う（最後に直したものが使われる）。
     async fix({ url, steps, stepTimes }, household = "", { admin = false } = {}) {

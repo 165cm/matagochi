@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 手順は30個まで・手順の時刻の0円の点検（管理の画面に要確認の一覧・レシピの画面に理由） | api/src/timecodeCheck.js・api/src/importRecipe.js・api/src/timecodes.js・api/src/youtube.js・api/src/server.js・admin/catalog.html・api/test/timecodeCheck.test.js・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
