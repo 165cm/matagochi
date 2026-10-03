@@ -121,3 +121,29 @@ test('review fix (#136): times read from the video (also only the first 10 minut
   const r = await cat.import('https://www.youtube.com/watch?v=abcdefghijk').catch((e) => e);
   assert.equal(r.stepTimesFrom, 'chapters', r.message);
 });
+
+test('review fix (#136 r2): a time a user fixed (shared) wins over the older time in the recipe, as on the cooking screen; AI video times come after the recipe', async (t) => {
+  const store = createMemorySyncStore();
+  const NOW = Date.now();
+  const st3 = steps(3);
+  const mk = (v, extra) => store.put(`youtube-${v}`, { status: 'ready', result: { title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelTitle: 'ch', channelId: `UC${v}`, ingredients: [{ name: '豚肉' }, { name: 'キャベツ' }, { name: '塩' }], steps: st3, planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }, ...extra } }, { ifGeneration: 0 });
+  await mk('userfixaaaa', { stepTimes: [10, 60, 90] });
+  await mk('aivideobbbb', { stepTimes: [10, 60, 90] });
+  await store.put('trends/index', { weeks: [{ week: weekOf(NOW), startedAt: new Date(NOW).toISOString(), candidates: [], tried: [], items: ['userfixaaaa', 'aivideobbbb'].map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
+  const book = createTimecodeBook(store, { analyze: async (url, list) => ({ stepTimes: list.map((_, i) => 500 - i * 100) }), reserveBudget: async () => {} });
+  await book.fix({ url: 'https://www.youtube.com/watch?v=userfixaaaa', steps: st3, stepTimes: [20, 90, 140] }, 'h1');
+  // AI（動画）の保存済みの時刻は、レシピの時刻より後
+  await store.put((await (async () => { const { createHash } = await import('node:crypto'); return `timecodes/aivideobbbb-${createHash('sha256').update(st3.join('\n')).digest('hex').slice(0, 16)}`; })()), { stepTimes: [500, 400, 300], source: 'video', chaptersChecked: true }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [] });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const admin = { Authorization: 'Bearer admin-test-token' };
+  const a = await (await fetch(`${base}/api/admin/recipes/userfixaaaa`, { headers: admin })).json();
+  assert.deepEqual([a.stepTimes, a.stepTimesSource], [[20, 90, 140], 'fix']);
+  const b = await (await fetch(`${base}/api/admin/recipes/aivideobbbb`, { headers: admin })).json();
+  assert.deepEqual([b.stepTimes, b.stepTimesSource], [[10, 60, 90], 'recipe']);
+  const d = await (await fetch(`${base}/api/admin/timecodes/check`, { headers: admin })).json();
+  assert.equal(d.warn, 0, 'the old AI times (reversed) are not used');
+});

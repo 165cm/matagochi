@@ -432,10 +432,12 @@ export function createApp(env = process.env, deps = {}) {
   }
   // レシピに付いた時刻の出どころ：運営が直した → fix／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
   const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : "recipe");
+  // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・説明欄の章（timecodes/* の fix・cleared・chapters）
+  // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
   async function timesOf(url, r) {
-    const own = (r.stepTimes || []).some((t) => Number.isFinite(t));
-    if (own) return { times: r.stepTimes, source: ownSource(r) };
     const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
+    if (st && (st.cleared || ["fix", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
+    if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
     return { times: st?.stepTimes || [], source: st?.source || "" };
   }
   app.get("/api/admin/timecodes/check", (req, res) => {
