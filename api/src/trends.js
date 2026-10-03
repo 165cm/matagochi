@@ -216,14 +216,17 @@ export function stockOf(items = []) {
 }
 const QUICK_PER_PARENT = REFILL_CHILDREN - REFILL_LONG_PER_PARENT;
 const need = (st = {}) => ({ quick: Math.max(0, QUICK_PER_PARENT - (st.quick || 0)), long: Math.max(0, REFILL_LONG_PER_PARENT - (st.long || 0)) });
-// 子を入れてよいか（親1つで6品まで・30分以上は1品まで）。
-export const parentRoom = (st = {}, quick) => (st.total || 0) < REFILL_CHILDREN_MAX && (quick || (st.long || 0) < REFILL_LONG_PER_PARENT);
+// 子を入れてよいか（親1つで6品まで・30分以上は1品まで・20分以内は5品まで＝30分以上の1品の席を残す）。
+export const parentRoom = (st = {}, quick) => (st.total || 0) < REFILL_CHILDREN_MAX && (quick ? (st.quick || 0) < REFILL_CHILDREN_MAX - REFILL_LONG_PER_PARENT : (st.long || 0) < REFILL_LONG_PER_PARENT);
+// 親の子がそろったか（数ではなく内訳で：20分以内4品以上・30分以上1品以上。review fix #135）。
+export const parentFilled = (st = {}) => { const n = need(st); return n.quick === 0 && n.long === 0; };
 // 次に補充する親料理の検索（なければ null）。doc.waves.parents に、親ごとの言葉の位置と日を残す。
 export function nextParentWave(doc, parents, stock, nowMs) {
   const w = (doc.waves ||= { turn: 0, trend: 0, trendAt: {}, classic: 0, classicUsed: {}, words: {}, log: [], n: 0 });
   w.parents ||= {}; w.words ||= {}; w.log ||= [];
   const today = new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10);
-  const order = parents.map((p, i) => ({ p, i, n: need(stock[p.key]) })).filter((x) => x.n.quick + x.n.long > 0 && (stock[x.p.key]?.total || 0) < REFILL_CHILDREN)
+  // 内訳が足りず、まだ6品に届いていない親（20分以内5・30分以上0なら、30分以上を探して6品目に）。
+  const order = parents.map((p, i) => ({ p, i, n: need(stock[p.key]) })).filter((x) => x.n.quick + x.n.long > 0 && (stock[x.p.key]?.total || 0) < REFILL_CHILDREN_MAX)
     .sort((a, b) => (b.n.quick + b.n.long) - (a.n.quick + a.n.long) || a.i - b.i);
   for (const { p, n } of order) {
     const st = (w.parents[p.key] ||= { quick: 0, long: 0, at: {}, day: "" });
@@ -1000,24 +1003,42 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const parents = refillParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})));
       const rows = parents.map((p) => ({ ...p, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
       const today = (await store.get("trends/refill"))?.envelope;
-      return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => r.total >= REFILL_CHILDREN).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX,
+      return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => parentFilled(r)).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX,
         today: today?.day === dayOf(now()) ? today : { day: dayOf(now()), ai: 0, added: 0 }, perDay: { ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY } };
     },
     // 自動の補充（毎日の新着集めの後に呼ぶ）：子が足りない親料理を、1日に料理15品・AI 25回まで埋める。
     // 5品そろった親が80品になったら何もしない。費用は月の上限（trends/cost）と一括収集の段階の中。
-    async refill({ timeMs = 120_000 } = {}) {
+    // 1日の枠（AI 25回・料理15品）は、seed を呼ぶ前に世代つきで予約する（予約できなければ呼ばない）。
+    // 使わなかった分は後で返す。返せなかった時は多めに数えたまま＝上限は越えない（review fix #135）。
+    // done：今日はもう補充しなくてよい（枠を使い切った・そろった・時間切れや待ち以外の理由で止まった）。
+    async refill({ timeMs = budgetMs } = {}) {
       const day = dayOf(now());
       const cur = await store.get("trends/refill");
       const today = cur?.envelope?.day === day ? cur.envelope : { day, ai: 0, added: 0 };
       const aiLeft = REFILL_AI_PER_DAY - today.ai, addLeft = REFILL_DISH_PER_DAY - today.added;
-      if (aiLeft <= 0 || addLeft <= 0) return { skipped: "today_done", ...today };
+      if (aiLeft <= 0 || addLeft <= 0) return { skipped: "today_done", done: true, ...today };
       const st = await this.parentStock();
-      if (st.filled >= st.parents.length) return { skipped: "stocked", ...today };
-      const r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs });
-      if (r?.busy) return { skipped: "busy", ...today };
-      const next = { day, ai: today.ai + (r.ran?.ai || 0), added: today.added + (r.ran?.added || 0), reason: r.reason, at: new Date(now()).toISOString() };
-      await store.put("trends/refill", next, { ifGeneration: cur?.generation ?? 0 }).catch(() => {});
-      return next;
+      if (st.filled >= st.parents.length) return { skipped: "stocked", done: true, ...today };
+      const reservedDoc = { day, ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY, at: new Date(now()).toISOString() };
+      let ok = false;
+      try { ok = !!(await store.put("trends/refill", reservedDoc, { ifGeneration: cur?.generation ?? 0 })); } catch { ok = false; }
+      if (!ok) return { skipped: "busy", done: false, ...today };
+      let r;
+      try { r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs }); }
+      catch (error) { r = { error }; }
+      const usedAi = r?.busy || r?.error ? 0 : Math.min(aiLeft, r.ran?.ai || 0), usedAdd = r?.busy || r?.error ? 0 : Math.min(addLeft, r.ran?.added || 0);
+      // 予約のうち使わなかった分を返す（その間にほかの呼び出しが書いていても、差だけを返す）。
+      let back = null;
+      for (let attempt = 0; attempt < 3 && !back; attempt++) {
+        const now2 = await store.get("trends/refill").catch(() => null);
+        const e = now2?.envelope?.day === day ? now2.envelope : null;
+        if (!e) break;
+        const next = { ...e, ai: Math.max(0, e.ai - (aiLeft - usedAi)), added: Math.max(0, e.added - (addLeft - usedAdd)), reason: r?.reason || (r?.busy ? "busy" : r?.error ? "error" : ""), at: new Date(now()).toISOString() };
+        try { if (await store.put("trends/refill", next, { ifGeneration: now2.generation })) back = next; } catch { break; }
+      }
+      if (r?.error) throw r.error;
+      const out = back || { ...reservedDoc, reason: r?.reason };
+      return { ...out, done: !!r?.busy ? false : !["time", "wait"].includes(r?.reason), ran: { ai: usedAi, added: usedAdd } };
     },
     // 管理用：投稿者の一覧（成績表の上位30人。新着に入っている品数と割合・掲載停止・3%到達・深掘りの日・深掘りできるか）。
     async channelBoard() {
@@ -1109,7 +1130,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       required();
       const day = new Date(now() + 9 * 3_600_000).toISOString().slice(0, 10);
       // 日ごとの順なので、日本時間の日付が変わったらキャッシュも使わない。
-      if (cache && cache.until > now() && cache.day === day) return cache.value;
+      // 表示用のキャッシュは、格上げする読み出し（公開の GET）だけで使う。補充の在庫の確認（promote: false）は毎回読み直す（ほかのインスタンスが足した子を見落とさない。review fix #135）。
+      if (promote && cache && cache.until > now() && cache.day === day) return cache.value;
       const keep = promote; // 格上げしない読み出しの結果は、キャッシュに入れない（公開の GET で格上げされるように）
       const entry = await readIndex();
       const excluded = await optedOut();

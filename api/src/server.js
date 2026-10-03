@@ -144,9 +144,10 @@ export function createApp(env = process.env, deps = {}) {
   // ブラウザが持つのは1分まで（掲載停止をすぐ反映するため。サーバーの側は10分持つが、停止・再開で捨てる）。
   app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=60"); send(res, trendBook.list()); });
   // 新着集めのあとに、1日1回の後片付け（YouTube API の情報を決めた期間を超えて持たない。§41）。
-  // 毎日の新着集めがその日の分を終えたら（done）、親料理ごとの自動の補充も続けて行う（2026-10-03・時間は100秒まで）。
-  app.post("/api/trends/refresh", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.step().then(async (result) => ({ ...result, housekeeping: await housekeeping.run().catch((error) => ({ error: error?.code || "failed" })),
-    ...(result?.done && !result?.paused ? { refill: await trendBook.refill({ timeMs: 100_000 }).catch((error) => ({ error: error?.code || "failed" })) } : {}) }))); });
+  app.post("/api/trends/refresh", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.step().then(async (result) => ({ ...result, housekeeping: await housekeeping.run().catch((error) => ({ error: error?.code || "failed" })) }))); });
+  // 親料理ごとの自動の補充（2026-10-03）：毎日の新着集め（refresh）とは別の要求にする（1回の要求の時間を短く保つ。review fix #135）。
+  // 定期実行（.github/workflows/trends.yml）が refresh の後に done になるまで呼ぶ。1日の枠（料理15品・AI 25回）・月の上限の中。
+  app.post("/api/trends/refill", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.refill()); });
   app.post("/api/skill/photo", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, skillJudge.judge(req.body || {}, householdOf(req))); });
   // 通知：鍵・登録（この先のお知らせも一緒に）・解除・テスト・定期実行（GitHub Actions が15分ごとに呼ぶ）
   app.get("/api/push/key", (req, res) => { res.setHeader("Cache-Control", "public, max-age=3600"); send(res, pushDesk.publicKey()); });

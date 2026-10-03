@@ -122,3 +122,96 @@ test('refill: runs automatically up to 15 dishes and 25 AI calls a day, and does
   assert.equal((await b2.refill()).skipped, 'stocked');
   assert.equal(searched, 0);
 });
+
+test('review fix (#135): the daily share is reserved before collecting; a second call at the same time does not collect; unused share is given back', async () => {
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  await withList(store, catalog, times(60, ['ほかの料理', 10]));
+  await start(store);
+  let searches = 0;
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
+    search: async (q) => { searches += 1; if (searches > 2) return []; const name = q.split(' ')[0]; return [1, 2].map(() => { const v = vid(); catalog.make.set(v, recipe(v, `かんたん${name}`, 10)); return { videoId: v, channelId: `c-${v}`, title: `かんたん${name}` }; }); } });
+  const [a, b] = await Promise.all([book.refill(), book.refill()]);
+  const ran = (a.ran?.added || 0) + (b.ran?.added || 0);
+  assert.ok([a.skipped, b.skipped].includes('busy'), 'only one collects');
+  const saved = (await store.get('trends/refill')).envelope;
+  assert.equal(saved.added, ran, 'unused share given back');
+  assert.ok(saved.ai <= REFILL_AI_PER_DAY && saved.added <= REFILL_DISH_PER_DAY);
+});
+
+test('review fix (#135): if giving back the unused share fails, the day stays counted in full (never over the limit)', async () => {
+  const base = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  await withList(base, catalog, times(60, ['ほかの料理', 10]));
+  await start(base);
+  let refillPuts = 0;
+  const store = { ...base, get: base.get.bind(base), list: base.list?.bind(base), remove: base.remove?.bind(base),
+    put: async (k, v, o) => { if (k === 'trends/refill' && ++refillPuts > 1) throw new Error('down'); return base.put(k, v, o); } };
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async () => [] });
+  const r = await book.refill();
+  assert.equal(r.ran.added, 0);
+  const saved = (await base.get('trends/refill')).envelope;
+  assert.deepEqual([saved.ai, saved.added], [REFILL_AI_PER_DAY, REFILL_DISH_PER_DAY]);
+  assert.equal((await book.refill()).skipped, 'today_done');
+});
+
+test('review fix (#135): a parent with 5 quick children and no long one is not done; a long child is searched and becomes the 6th', async () => {
+  const parents = [{ key: 'x', name: 'X' }];
+  const st = { x: { quick: 5, long: 0, total: 5 } };
+  const w = nextParentWave({}, parents, st, NOW);
+  assert.deepEqual([w.q, w.quick], [`X ${PARENT_FLAVORS.long[0]} レシピ 材料`, false]);
+  assert.equal(parentRoom(st.x, true), false, 'no 6th quick child (the seat is for a long one)');
+  assert.equal(parentRoom(st.x, false), true);
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  // 八宝菜：20分以内5・30分以上0
+  await withList(store, catalog, [...times(5, ['八宝菜', 10]), ...times(40, ['ほかの料理', 10])]);
+  await start(store, { stages: [{ n: 1, yen: 100, startedAt: new Date(NOW).toISOString(), ai: 0, input: 0, output: 0, added: times(8, { videoId: 'q', minutes: 10 }), skipped: {}, byQuery: {}, done: false }] });
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async () => [] });
+  const stock = await book.parentStock();
+  assert.equal(stock.parents.find((p) => p.name === '八宝菜').total, 5);
+  const filledBefore = stock.filled;
+  const v = vid(); catalog.make.set(v, recipe(v, '本格八宝菜', 45));
+  const b2 = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
+    search: async (q) => (q.startsWith('八宝菜 本格') ? [{ videoId: v, channelId: 'cv', title: '本格八宝菜' }] : []) });
+  // 八宝菜まで検索が回るように、ほかの親は1日1回の印を付けておく
+  const seedDoc = (await store.get('trends/seed'));
+  const parentsAll = refillParents({});
+  const today = new Date(NOW + 9 * 3_600_000).toISOString().slice(0, 10);
+  seedDoc.envelope.waves = { turn: 0, trend: 0, trendAt: {}, classic: 0, log: [], n: 0, parents: Object.fromEntries(parentsAll.filter((p) => p.name !== '八宝菜').map((p) => [p.key, { quick: 0, long: 0, at: {}, day: today }])) };
+  await store.put('trends/seed', seedDoc.envelope, { ifGeneration: seedDoc.generation });
+  const r = await b2.seed({ yen: 5, axis: 'parent' });
+  assert.ok(r.stage.added.some((a) => a.videoId === v), 'the long child is added as the 6th');
+  const after = await b2.parentStock();
+  assert.equal(after.parents.find((p) => p.name === '八宝菜').total, 6);
+  assert.equal(after.filled, filledBefore + 1);
+});
+
+test('review fix (#135): the stock check reads the list fresh, not the 10-minute display cache', async () => {
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  await withList(store, catalog, [...times(3, ['八宝菜', 10]), ...times(30, ['ほかの料理', 10])]);
+  const book = createTrendBook(store, { catalog, now: () => NOW, search: async () => [] });
+  await book.list(); // 表示用のキャッシュを作る
+  const ix = await store.get('trends/index');
+  for (let i = 0; i < 3; i++) { const v = vid(); catalog.ready.set(v, recipe(v, '八宝菜', 10)); ix.envelope.weeks[0].items.push({ videoId: v }); }
+  await store.put('trends/index', ix.envelope, { ifGeneration: ix.generation }); // ほかのインスタンスが子を足した
+  const st = await book.parentStock();
+  assert.equal(st.parents.find((p) => p.name === '八宝菜').total, 6);
+});
+
+test('review fix (#135): the daily refresh no longer runs the refill; the refill has its own request', async (t) => {
+  const { once } = await import('node:events');
+  process.env.NODE_ENV = 'test';
+  const { createApp } = await import('../src/server.js');
+  const store = createMemorySyncStore();
+  const app = createApp({}, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [] });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const refresh = await (await fetch(base + '/api/trends/refresh', { method: 'POST' })).json();
+  assert.equal(refresh.refill, undefined);
+  const res = await fetch(base + '/api/trends/refill', { method: 'POST' });
+  assert.notEqual(res.status, 404);
+});
