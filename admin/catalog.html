@@ -568,13 +568,15 @@
     const board = last.seed?.channelBoard;
     const rows = board?.rows || [];
     const man = (n) => (n == null ? "非公開" : n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}万` : String(n));
-    const state = (c) => (c.opted ? "掲載停止" : c.low ? "外す（作り方なし）" : c.full ? "3%到達" : c.digOk ? "深掘りできる" : c.dugAt ? `深掘り ${String(c.dugAt).slice(5, 10)}` : "");
+    const state = (c) => (c.opted ? "掲載停止" : c.low ? "説明欄に作り方なし" : c.full ? "3%到達" : c.digOk ? "深掘りできる" : c.dugAt ? `深掘り ${String(c.dugAt).slice(5, 10)}` : "");
     if (rows.length) {
       const t = table(["投稿者", "登録者", "動画", "開設", "新着に", "読んだ", "料理", "20分以内", "料理になる見込み", "状態"],
         rows.map((c) => [c.youtube?.title || c.name || c.id, c.youtube ? man(c.youtube.subscribers) : "—", c.youtube?.videos ?? "—", c.youtube?.since || "—", c.inList ? `${c.inList}品（${c.share}%）` : "—", c.ai, c.ok, c.ok ? `${c.fast}（${c.fastShare}%）` : "—", c.ai ? `${c.rate}%` : "—", state(c)]),
         [1, 2, 4, 5, 6, 7, 8], (i) => { const id = rows[i].id; if (/^UC[\w-]{22}$/.test(id)) window.open(`https://www.youtube.com/channel/${id}`, "_blank", "noopener"); }, { wide: true });
       [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { if (rows[i].opted || rows[i].low) tr.classList.add("dim"); if (rows[i].full) tr.classList.add("over"); });
-      box.append(el("p", `新着全体 ${board.total}品・1人 ${board.maxPer}品（3%）まで。登録者・動画数は YouTube の情報（7日ごとに取り直し・30日で消す）。押すと YouTube のチャンネルを開きます。`, "meta"), scroll(t));
+      // 数字・年月の列は折り返さない（「2023-」「05」と2行にならないように）。
+      for (const tr of t.querySelectorAll("tr")) [...tr.children].forEach((td, j) => { if (j >= 1) td.style.whiteSpace = "nowrap"; });
+      box.append(el("p", `新着全体 ${board.total}品・1人 ${board.maxPer}品（3%）まで。登録者・動画数は YouTube の情報（7日ごとに取り直し・30日で消す）。押すと YouTube のチャンネルを開きます。「説明欄に作り方なし」は一括収集（説明欄だけを読む）で外す投稿者です。毎日の新着集めは動画からも読むので、新着に入っていることがあります。`, "meta"), scroll(t));
     } else {
       const top = ch?.top || [];
       box.append(top.length ? scroll(table(["チャンネルID", "読んだ", "料理", "20分以内", "料理になる見込み", ""], top.map((c) => [c.id, c.ai, c.ok, c.fast, `${c.rate}%`, c.skip ? "外す" : ""]), [1, 2, 3, 4], null, { wide: true })) : el("p", "まだ記録がありません。", "empty"));
