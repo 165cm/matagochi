@@ -430,9 +430,11 @@ export function createApp(env = process.env, deps = {}) {
     }
     return out;
   }
+  // レシピに付いた時刻の出どころ：運営が直した → fix／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
+  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : "recipe");
   async function timesOf(url, r) {
     const own = (r.stepTimes || []).some((t) => Number.isFinite(t));
-    if (own) return { times: r.stepTimes, source: r.stepTimesFrom === "admin" ? "fix" : "recipe" };
+    if (own) return { times: r.stepTimes, source: ownSource(r) };
     const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
     return { times: st?.stepTimes || [], source: st?.source || "" };
   }
@@ -445,7 +447,9 @@ export function createApp(env = process.env, deps = {}) {
       const rows = [], count = { ok: 0, warn: 0, none: 0 };
       for (const x of items) {
         const url = canonicalYouTubeUrl(x.videoId);
-        const { times, source } = await timesOf(url, x);
+        // 一覧の料理には出どころ（analyzedFrom・stepTimesFrom）がないので、保存済みの読み取り結果を読む（AI は呼ばない）。
+        const full = (await catalog.peek(url).catch(() => null)) || x;
+        const { times, source } = await timesOf(url, { ...x, stepTimes: full.stepTimes ?? x.stepTimes, stepTimesFrom: full.stepTimesFrom, analyzedFrom: full.analyzedFrom });
         const c = checkStepTimes(x.steps, times, { durationSeconds: lengths[x.videoId] ?? null, source });
         count[c.status] += 1;
         if (c.status === "warn") rows.push({ videoId: x.videoId, title: x.title || "", channelTitle: x.channelTitle || "", steps: c.steps, found: c.found, source, issues: c.issues });
