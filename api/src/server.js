@@ -14,6 +14,7 @@ import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, anal
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
+import { createChannelStats } from "./channelStats.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
 import { createFeedbackDesk } from "./feedback.js";
@@ -25,7 +26,7 @@ import { getSyncPhoto, getSyncRoom, putSyncPhoto, putSyncRoom } from "./sync.js"
 import { gzipSync } from "node:zlib";
 import { createPhotoStore, createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
-import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes, searchYouTubeChannels, fetchChannelUploads, fetchChannelIcons, resolveYouTubeChannel, fetchYouTubeStatuses } from "./youtube.js";
+import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes, searchYouTubeChannels, fetchChannelUploads, fetchChannelIcons, fetchChannelStats, resolveYouTubeChannel, fetchYouTubeStatuses } from "./youtube.js";
 import { createHousekeeping } from "./housekeeping.js";
 
 export function createApp(env = process.env, deps = {}) {
@@ -56,6 +57,8 @@ export function createApp(env = process.env, deps = {}) {
   const dishBook = createDishBook(recipeStore, { now: deps.now || Date.now });
   // YouTube の検索（search.list）は、プロジェクト全体で1日の回数を数えてから呼ぶ（太平洋時間で切り替わる。review fix #131）。
   const searchQuota = createSearchQuota(recipeStore, { now: deps.now || Date.now });
+  // 管理の画面の投稿者の一覧に出す YouTube のチャンネル情報（30日まで・7日で取り直す）。
+  const channelStats = createChannelStats(recipeStore, { fetchStats: deps.channelStats || (env.YOUTUBE_API_KEY ? (ids) => fetchChannelStats(ids, env) : async () => ({})), now: deps.now || Date.now });
   const rawSearch = deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env));
   const guardedSearch = searchQuota.wrap(rawSearch, "trend");
   const trendBook = createTrendBook(recipeStore, { dishBook, nameDishes: deps.nameDishes || ((items) => nameDishes(items, env)), catalog, optedOut: () => creatorDesk.optedOut(), search: guardedSearch,
@@ -335,7 +338,7 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/admin/trends/seed", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.seedStatus().then(async (d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length, youtubeSearch: await searchQuota.status(), portfolio: await trendBook.portfolio().catch(() => null),
+    send(res, trendBook.seedStatus().then(async (d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length, youtubeSearch: await searchQuota.status(), portfolio: await trendBook.portfolio().catch(() => null), channelBoard: await trendBook.channelBoard().then(async (b) => { const info = await channelStats.get(b.rows.map((r) => r.id)).catch(() => ({})); return { ...b, rows: b.rows.map((r) => ({ ...r, ...(info[r.id] ? { youtube: info[r.id] } : {}) })) }; }).catch(() => null),
       // 検索語の一覧と進み具合（済み／いまの候補を読んでいる／これから）。段階の上限の回数を出すための目安の単価。
       queries: SEED_QUERIES.map(([q, label], i) => ({ q, label, status: i < (d.q || 0) - ((d.candidates || []).some((c) => !c.wave) ? 1 : 0) ? "done" : i < (d.q || 0) ? "current" : "todo" })),
       waves: { ...waveStatus(d, (deps.now || Date.now)()), digReady: await trendBook.digReady().catch(() => 0) },

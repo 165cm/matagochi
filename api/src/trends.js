@@ -894,6 +894,22 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const list = Object.entries(p.by).map(([id, n]) => ({ id, name: p.names[id] || "", n, share: p.total ? Math.round((n / p.total) * 1000) / 10 : 0 })).sort((a, b) => b.n - a.n);
       return { total: p.total, channels: list.length, sharePct: PORTFOLIO_CHANNEL_SHARE * 100, maxPer: portfolioMax(p.total), over: list.filter((c) => c.n / Math.max(1, p.total) > PORTFOLIO_CHANNEL_SHARE).length, top: list.slice(0, 15) };
     },
+    // 管理用：投稿者の一覧（成績表の上位30人。新着に入っている品数と割合・掲載停止・3%到達・深掘りの日・深掘りできるか）。
+    async channelBoard() {
+      const doc = (await store.get("trends/seed"))?.envelope || {};
+      const ix = await readIndex(), excluded = await optedOut();
+      const p = await countPortfolio((ix?.envelope.weeks || []).filter(fresh), { generation: ix?.generation ?? 0, excluded });
+      const dug = doc.waves?.dug || {};
+      const ids = new Set([...Object.keys(doc.channels || {}), ...Object.keys(p.by)]);
+      const rows = [...ids].map((id) => {
+        const st = doc.channels?.[id] || {};
+        const opted = excluded.has(id), full = !portfolioRoom(p, id), wait = now() - (Date.parse(dug[id] || 0) || 0) < DIG_REUSE_DAYS * DAY;
+        return { id, ai: st.ai || 0, ok: st.ok || 0, fast: st.fast || 0, rate: Math.round(channelRate(st) * 100), fastShare: st.ok ? Math.round(((st.fast || 0) / st.ok) * 100) : null,
+          inList: p.by[id] || 0, share: p.total ? Math.round(((p.by[id] || 0) / p.total) * 1000) / 10 : 0, name: p.names[id] || "",
+          low: (st.ai || 0) >= CHANNEL_MIN_READS && channelRate(st) < CHANNEL_MIN_RATE, opted, full, dugAt: dug[id] || null, digOk: digEligible(st) && !opted && !full && !wait };
+      }).sort((a, b) => b.ai - a.ai || b.inList - a.inList || b.ok - a.ok).slice(0, 30);
+      return { total: p.total, maxPer: portfolioMax(p.total), rows };
+    },
     // 管理用：いま深掘りできる投稿者の人数（掲載停止・3%も含めて digPick と同じ条件）。
     async digReady() {
       const doc = (await store.get("trends/seed"))?.envelope || {};
