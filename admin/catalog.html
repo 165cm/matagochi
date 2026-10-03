@@ -164,7 +164,8 @@
         <button type="button" class="quiet small" id="stop" hidden>止める</button>
         <details class="info" style="margin-left:auto"><summary>ⓘ しくみ</summary><div>
           品ぞろえが足りない分野の検索語で YouTube を探し、説明欄にレシピがある動画だけを AI で読みます（3本ずつ）。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安。AI 1回＝1円で数える）まで・月の上限の中。集めた料理は28日間「新着」に出ます。<br>
-          決めた検索語を使い切ったら「広げ方」へ：<b>話題</b>＝公開60日以内を再生の多い順（同じ語は7日あけて）／<b>定番</b>＝公開1年より前を再生の多い順（料理名ごと・もう2品あれば検索しない）。公開日で分けるので重なりません。<b>時短8割・30分以上2割</b>：段階の30分以上（時間不明も）が2割に届いたら、次の検索に「時短」を足します（話題・定番どちらも）。2割を超える30分以上の料理は入れません。定番は1回の検索で3本まで（同じ料理のアレンジばかり増えないように）。検索は1日30回まで。
+          決めた検索語を使い切ったら「広げ方」へ：<b>話題</b>＝公開60日以内を再生の多い順（同じ語は7日あけて）／<b>定番</b>＝公開1年より前を再生の多い順（料理名ごと・もう2品あれば検索しない）。公開日で分けるので重なりません。<b>時短8割・30分以上2割</b>：段階の30分以上（時間不明も）が2割に届いたら、次の検索に「時短」を足します（話題・定番どちらも）。2割を超える30分以上の料理は入れません。定番は1回の検索で、説明欄の確認を通った3本まで（同じ料理のアレンジばかり増えないように）。<br>
+          <b>成績表</b>：検索語は「1回の検索で増えた20分以内の料理」の平均（まだ使っていない語は2品の見込みから＝一度は試す）が高い語から使います。投稿者は AI で読んだうち料理になった割合（1勝1敗から数える）が、3本以上読んで3割未満なら AI の前に外します（0円）。30分以上の枠がない時は、題名が長そう（煮込み・じっくり・角煮など）・時短の少ない投稿者の動画を後回しにし、題名が速そう（10分・レンジ・時短など）な動画から読みます。定番の料理名は、時短が足りない時は煮込みなどの長い料理を後回しにします。検索は1日30回まで。
         </div></details>
       </div>
       <p class="run-status" id="run-status" role="status" aria-live="polite"></p>
@@ -183,6 +184,7 @@
     </div>
     <!-- ④ 細かい記録（畳む） -->
     <section><details class="fold" id="added-box"><summary>増えた料理</summary><div id="added"></div></details></section>
+    <section><details class="fold" id="learn-box"><summary>成績表（検索語・投稿者）</summary><div id="learn"><p class="empty">—</p></div></details></section>
     <section><details class="fold"><summary>検索の記録</summary><div id="queries"><p class="empty">—</p></div></details></section>
   </div>
 
@@ -231,7 +233,7 @@
   const REASON_SHORT = { wait: "待ち時間", exhausted: "使い切り", axis_exhausted: "方向を使い切り", search_day_limit: "今日の検索の上限", stage_budget: "金額に到達", month_budget: "月の上限", time: "時間切れ", search_failed: "検索に失敗", cost_not_saved: "記録の保存に失敗", ai_budget: "AI の上限", not_configured: "設定不足" };
   // 外した理由。pre：AI の前に外した（0円）／post：AI で読んだが料理にならなかった
   const SKIP = {
-    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], classic_enough: ["pre", "定番の4本目以降"], long_quota_free: ["pre", "読んだことあり・30分以上が2割を超える"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
+    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], classic_enough: ["pre", "定番の4本目以降"], long_quota_free: ["pre", "読んだことあり・30分以上が2割を超える"], channel_low: ["pre", "作り方を書かない投稿者"], title_long: ["pre", "題名から長そう（後回し）"], channel_slow: ["pre", "時短の少ない投稿者（後回し）"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
     no_steps_in_description: ["post", "作り方がない"], incomplete_recipe: ["post", "材料・手順を読めない"], gemini_invalid_json: ["post", "AI の答えの形が崩れた"], too_short: ["post", "材料・手順が少ない"], not_dinner: ["post", "晩ごはんでない"], analysis_uncertain: ["post", "AI の応答を確認できない"], long_quota: ["post", "30分以上が2割を超える"],
     video_not_found: ["post", "動画が見つからない"], non_public_video: ["post", "公開されていない"], empty_description: ["post", "説明欄が空"], sync_storage_failed: ["post", "保存先が一時的に混んでいた"], catalog_conflict: ["post", "保存が重なった"],
   };
@@ -419,7 +421,7 @@
     const AX = { trend: "話題", classic: "定番" };
     box.append(el("h3", `広げ方の検索（新しい順・${log.length}件）`));
     box.append(log.length ? scroll(table(["方向", "検索語・料理", "日", "候補", "AI", "増えた"], log.map((e) => [(AX[e.axis] || e.axis) + (e.quick ? "⚡" : ""), e.q, String(e.at).slice(5, 10), e.skipped === "enough" ? "検索せず" : e.picked, e.skipped ? "—" : e.ai || 0, e.skipped ? "—" : e.added]), [3, 4, 5], null, { wide: true })) : el("p", "まだ広げていません。", "empty"));
-    const h = el("h3", `決めた検索語（残り ${d.queriesLeft ?? "—"}・読む前の候補 ${d.candidatesLeft ?? "—"}）`); h.style.marginTop = "12px"; box.append(h);
+    const h = el("h3", `決めた検索語（残り ${d.queriesLeft ?? "—"}・読む前の候補 ${d.candidatesLeft ?? "—"}・後回し ${d.laterLeft ?? 0}）`); h.style.marginTop = "12px"; box.append(h);
     const LABEL = { done: "済み", current: "読んでいる", todo: "これから" };
     const t = table(["検索語", "分野", "状態"], qs.map((q) => [q.q, q.label, LABEL[q.status]]));
     [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = tr.lastChild; td.textContent = ""; td.append(el("span", LABEL[qs[i].status], `chip ${qs[i].status}`)); });
@@ -526,7 +528,18 @@
   document.getElementById("rl-q").addEventListener("input", (e) => { rlState.q = e.target.value; renderRecipeList(); });
   document.getElementById("rl-src").addEventListener("change", (e) => { rlState.src = e.target.value; renderRecipeList(); });
   document.getElementById("rl-group").addEventListener("change", (e) => { rlState.group = e.target.checked; renderRecipeList(); });
-  function renderAll() { renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderQueries(); renderCatalog(); }
+  // ④ 成績表：検索語（点の高い順）と投稿者（読んだ本数の多い順）
+  function renderLearn() {
+    const box = document.getElementById("learn"); box.textContent = "";
+    const w = last.seed?.waves || {}, words = w.words || [], ch = w.channels;
+    const AX = { trend: "話題", classic: "定番" };
+    box.append(el("h3", `検索語（${words.length}語・点＝1回の検索で増えた20分以内の料理の見込み。まだ使っていない語は ${w.wordPrior ?? 2}）`));
+    box.append(words.length ? scroll(table(["方向", "検索語・料理", "検索", "増えた", "20分以内", "点"], words.map((x) => [AX[x.axis] || x.axis, x.word, x.s, x.added, x.fast, { text: x.score.toFixed(2), value: x.score }]), [2, 3, 4, 5], null, { wide: true, bars: [5] })) : el("p", "まだ記録がありません（次に集めると記録されます）。", "empty"));
+    const h = el("h3", ch ? `投稿者（${ch.learned}人・外している ${ch.skipped}人＝${ch.minReads}本以上読んで料理になる見込み ${Math.round(ch.minRate * 100)}%未満）` : "投稿者"); h.style.marginTop = "12px"; box.append(h);
+    const top = ch?.top || [];
+    box.append(top.length ? scroll(table(["チャンネルID", "読んだ", "料理", "20分以内", "料理になる見込み", ""], top.map((c) => [c.id, c.ai, c.ok, c.fast, `${c.rate}%`, c.skip ? "外す" : ""]), [1, 2, 3, 4], null, { wide: true })) : el("p", "まだ記録がありません。", "empty"));
+  }
+  function renderAll() { renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderLearn(); renderQueries(); renderCatalog(); }
   async function load() {
     if (!token) return;
     const my = session;
