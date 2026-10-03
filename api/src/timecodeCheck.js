@@ -44,6 +44,11 @@ export function checkStepTimes(steps = [], times = [], { durationSeconds = null,
   if (source === "video" && lastIdx < list.length - 1 && Math.max(...found) < CHECK_CLIP_SECONDS && (!(durationSeconds > 0) || durationSeconds > CHECK_CLIP_SECONDS)) add("clip");
   // どこか4つの時刻が30秒の中に固まっていたら（並べて、続く4つごとの幅を見る。一部だけの固まりも。review fix #136）。
   const sorted = [...found].sort((a, b) => a - b);
-  if (!chapters) for (let i = 0; i + 3 < sorted.length; i++) if (sorted[i + 3] - sorted[i] < CHECK_CLUSTER_SECONDS) { add("cluster"); break; }
-  return { status: issues.length ? "warn" : "ok", issues, found: found.length, steps: list.length, ...(sameCount ? { coarse: sameCount } : {}) };
+  // 固まりは章でも数える（章なら要確認にせず「大まか」に入れる。review fix #137）。
+  let packed = false;
+  for (let i = 0; i + 3 < sorted.length; i++) if (sorted[i + 3] - sorted[i] < CHECK_CLUSTER_SECONDS) { packed = true; break; }
+  if (packed && !chapters) add("cluster");
+  // coarse：章の時刻で「同じ時刻」の数（固まりだけの時は1以上にする）。
+  const coarse = chapters && (sameCount || packed) ? Math.max(sameCount, 1) : 0;
+  return { status: issues.length ? "warn" : "ok", issues, found: found.length, steps: list.length, ...(coarse ? { coarse } : {}) };
 }

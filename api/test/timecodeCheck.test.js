@@ -156,3 +156,10 @@ test('2026-10-04: chapter times may point several steps to the same chapter — 
   assert.deepEqual(codes(checkStepTimes(steps(5), [10, 10, 10, 90, 400], { source: 'chapters', durationSeconds: 300 })), ['beyond'], 'beyond the video still counts');
   assert.deepEqual(codes(checkStepTimes(steps(4), [100, 50, 150, 200], { source: 'chapters' })), ['order'], 'order still counts');
 });
+
+test('review fix (#137): chapter times packed in 30 seconds without the same time also count as "coarse"', () => {
+  const r = checkStepTimes(['手順1', '手順2', '手順3', '手順4'], [10, 15, 20, 25], { source: 'chapters' });
+  assert.equal(r.status, 'ok');
+  assert.equal(r.coarse, 1);
+  assert.equal(checkStepTimes(steps(4), [10, 60, 120, 200], { source: 'chapters' }).coarse, undefined);
+});
