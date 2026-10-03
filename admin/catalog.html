@@ -57,6 +57,7 @@
   tr.dim td { color: var(--n1); }
   .warnbox { border: 1.5px solid var(--s2); border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .warnbox ul { margin: 4px 0 0; padding-left: 1.2em; }
   input.is-new { border-color: var(--s3); background: #eefaf3; }
+  ol.guide-cmp { padding-left: 1.4em; margin: 6px 0; } ol.guide-cmp li { margin: 6px 0; } ol.guide-cmp li .meta { font-size: 12px; }
   ol.steps li.warn { outline: 2px solid var(--s2); outline-offset: 2px; border-radius: 6px; }
   .run-status { font-weight: 700; margin: 0; font-size: 14px; } .run-status:empty { display: none; }
   .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 6px 16px; }
@@ -216,7 +217,7 @@
       <div id="rl-list" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div>
     </section>
     <section style="margin-top:12px">
-      <div class="head"><h2>手順の時刻の点検（0円）</h2><div class="row"><button type="button" class="quiet small" id="tc-reread">手順10個を読み直す（約1円/品）</button><button type="button" class="quiet small" id="tc-run">点検する</button></div></div>
+      <div class="head"><h2>手順の時刻の点検（0円）</h2><div class="row"><button type="button" class="quiet small" id="gd-pilot">✍ 書き直しを10品で試す（約1円/品）</button><button type="button" class="quiet small" id="tc-reread">手順10個を読み直す（約1円/品）</button><button type="button" class="quiet small" id="tc-run">点検する</button></div></div>
       <p class="meta">新着の全部の「▶ 時刻」を、順番・動画の長さ・AI が見ていない後半・固まり・抜けで点検します（AI・検索は使いません）。手順がちょうど10個のレシピ（以前の上限で切れているかも）も出します。行を押すとレシピを開いて直せます。</p>
       <div id="tc-check"></div>
     </section>
@@ -616,6 +617,30 @@
     } catch (error) { box.firstChild.textContent = error.message; }
     finally { btn.disabled = false; }
   });
+  // 手順の書き直しのお試し：まだ書き直していない新着を、手順が上限より多い料理から5品ずつ・合わせて10品まで（APP_MAP §49）。
+  document.getElementById("gd-pilot").addEventListener("click", async () => {
+    const btn = document.getElementById("gd-pilot"), box = document.getElementById("tc-check");
+    if (!confirm("手順を覚えやすく書き直すのを、10品で試します（1品約1円・書き直した手順はすぐアプリに出ます。あとで外せます）。よろしいですか？")) return;
+    btn.disabled = true;
+    const my = session, log = el("ul");
+    box.replaceChildren(el("p", "書き直しています…", "meta"), log);
+    let ok = 0, yen = 0;
+    try {
+      for (let round = 0; round < 4 && ok < 10; round++) {
+        const d = await api("/api/admin/guide/pilot", { max: Math.min(5, 10 - ok) });
+        if (my !== session) return;
+        for (const x of d.done) {
+          if (!x.error) { ok += 1; yen += x.yen || 0; }
+          const li = el("li", x.error ? `${x.videoId}：${x.message || x.error}` : `${x.videoId}：手順 ${x.before} → ${x.after}（上限 ${x.limit}）`);
+          li.style.cursor = "pointer"; li.addEventListener("click", () => openRecipe(x.videoId)); log.append(li);
+        }
+        box.firstChild.textContent = `書き直しています…（できた ${ok}品・約${Math.round(yen)}円・候補の残り ${d.left}品）`;
+        if (!d.left || !d.done.some((x) => !x.error)) break;
+      }
+      box.firstChild.textContent = `書き直しました：${ok}品（約${Math.round(yen)}円）。行を押すとレシピを開いて見比べられます。アプリの作る画面でも確かめてください。`;
+    } catch (error) { box.firstChild.textContent = error.message; }
+    finally { btn.disabled = false; }
+  });
   async function loadRecipes() { const my = session; const d = await api("/api/admin/recipes"); if (my !== session) return; last.recipes = d.recipes || []; renderRecipeList(); }
   // 親の料理名タブから、その親の子をレシピ一覧で開く（連動）。
   function showParent(key, name) { rlState.q = ""; rlState.src = "all"; rlState.group = true; rlState.open = key; document.getElementById("rl-q").value = ""; document.getElementById("rl-src").value = "all"; document.getElementById("rl-group").checked = true; showTab("recipes"); renderRecipeList(); const t = document.querySelector(`#rl-list details[data-key="${CSS.escape(key)}"]`); t?.scrollIntoView({ block: "start" }); }
@@ -768,6 +793,31 @@
     });
     dn.append(dnInput, dnSave, dnNote);
     body.append(el("h3", "料理名（親を決める元）"), dn);
+    // 覚えやすく書き直した手順（AI。APP_MAP §49）：表に出す手順。元の手順のどれをまとめたか（元：手順◯）と並べて見比べる。
+    const gd = el("div");
+    const gdNote = el("span", "", "meta");
+    const gdRun = el("button", r.guide ? "✍ 書き直し直す（約1円）" : "✍ 手順を書き直す（約1円）", "quiet small"); gdRun.type = "button";
+    gdRun.addEventListener("click", async () => {
+      gdRun.disabled = true; gdNote.textContent = "書き直しています…（10〜30秒）";
+      try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/guide`, {}); gdNote.textContent = `手順 ${x.before} → ${x.after}（上限 ${x.limit}・約${x.yen}円）。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
+      catch (error) { gdNote.textContent = error.message; gdRun.disabled = false; }
+    });
+    const gdRow = el("div", undefined, "row"); gdRow.style.margin = "6px 0"; gdRow.append(gdRun);
+    if (r.guide) {
+      const gdDel = el("button", "書き直しを外す", "quiet small"); gdDel.type = "button";
+      gdDel.addEventListener("click", async () => {
+        if (!confirm("書き直した手順を外して、元の手順を表に出します。よろしいですか？")) return;
+        gdDel.disabled = true;
+        try { await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/guide/remove`, {}); openRecipe(videoId); }
+        catch (error) { gdNote.textContent = error.message; gdDel.disabled = false; }
+      });
+      gdRow.append(gdDel);
+      const ol = el("ol", undefined, "guide-cmp");
+      r.guide.forEach((g) => { const li = el("li"); li.append(el("div", g.text)); li.append(el("div", `元：${g.from.map((j) => `手順${j + 1}「${String(r.steps?.[j] || "").slice(0, 40)}${String(r.steps?.[j] || "").length > 40 ? "…" : ""}」`).join(" ")}`, "meta")); ol.append(li); });
+      gd.append(el("p", `アプリでは、この手順を表に出し、元の手順は各手順の下の「動画では」に小さく出します（手順 ${(r.steps || []).length} → ${r.guide.length}・上限 ${r.guideLimit}）。`, "meta"), ol);
+    } else gd.append(el("p", `まだ書き直していません（この料理の上限は ${r.guideLimit ?? "?"} 個。20分以内 7・30分 10・45分以上 15）。`, "meta"));
+    gdRow.append(gdNote); gd.append(gdRow);
+    body.append(el("h3", "覚えやすい手順（AI の書き直し）"), gd);
     body.append(el("h3", "手順と時刻"), el("p", `時刻は「分:秒」（例 2:15）。▶ でその時刻から再生、⏱ で再生中の時刻を入れます。${r.stepTimesFrom === "admin" ? "（運営が直した時刻です）" : ""}`, "meta"));
     // 0円の点検の結果（要確認の理由と、引っかかった手順に印）。
     const ck = r.check || { issues: [] };

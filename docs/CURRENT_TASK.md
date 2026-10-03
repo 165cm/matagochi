@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 覚えやすい手順（AI の書き直し）を10品で試す：上限 7／10／15・0円の確かめ・アプリで表に出して元の手順は「動画では」・管理の画面で見比べ（APP_MAP §49）| api/src/rewrite.js・analyzer.js・recipeCatalog.js・units.js・trends.js・popular.js・server.js・admin/catalog.html・discover.js・daily-ui.js・app.js・styles.css |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

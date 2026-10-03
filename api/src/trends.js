@@ -3,6 +3,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./dishes.js";
+import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 
 // 新着レシピ：YouTubeから選んで読み取り、28日で消す（YouTube APIのデータは30日を超えて持たない）。
@@ -1146,7 +1147,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             const c = r.catch || saved[videoId];
             items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
               title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              ...(c ? { catch: c } : {}), ...(r.dishName ? { dishName: r.dishName } : {}), sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
+              ...(c ? { catch: c } : {}), ...(r.dishName ? { dishName: r.dishName } : {}), sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], ...(listedGuide(r) ? { guide: listedGuide(r) } : {}), tags: r.tags || [], planning: r.planning || null });
           } catch {}
         }
       }

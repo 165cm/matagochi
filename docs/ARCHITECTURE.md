@@ -66,6 +66,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | 意見・集計 | `POST /api/feedback`・`POST /api/usage`（管理：`/api/admin/*` は `RECIPE_ADMIN_TOKEN`） |
 | その他 | `/api/skill/photo`・`/api/search/variants`・`/api/weekly/menu`（`WEEKLY_MENU=on` の時だけ）・`/api/recipes/*`・`/health` |
 
+- 手順の書き直し（覚えやすい手順）の上限と0円の確かめは `api/src/rewrite.js`（APP_MAP §49）
 - AIへの指示は `api/src/analyzer.js`。取り込みの組み立ては `importRecipe.js`（AIが人数を取りこぼした時は `servings.js` のルールで読む）
 - 環境変数：`GEMINI_API_KEY` `GEMINI_MODEL` `GEMINI_VIDEO_MODEL` `YOUTUBE_API_KEY` `RECIPE_BUCKET` `SYNC_BUCKET` `ALLOWED_ORIGINS` `RECIPE_ADMIN_TOKEN` `DEV_UNLOCK_CODE` `GOOGLE_CLIENT_ID` `RESEND_API_KEY` `MAIL_FROM` `PUSH_SUBJECT` `START_TICKETS` `AI_DAILY_LIMIT` `AI_MONTHLY_LIMIT` `VIDEO_ANALYSIS_ENABLED` `VIDEO_MAX_SECONDS` `TIMECODE_FPS` `TIMECODE_MAX_SECONDS`（手順の時刻を動画から探す時のコマ数〔既定0.2＝5秒に1コマ〕と見る長さ〔既定1800秒〕。APP_MAP §46-2）`WEEKLY_MENU` `TREND_PER_DAY` `TREND_WEEK_MAX`（新着の採用数：1日2・1週14が既定）`TREND_AI_PER_DAY` `TREND_AI_PER_WEEK`（新着集めが AI を呼ぶ回数：1日6・1週30が既定。APP_MAP §39）`TREND_YEN_PER_MONTH` `TREND_YEN_PER_AI` `GEMINI_PRICE_IN_USD_PER_M` `GEMINI_PRICE_OUT_USD_PER_M` `USD_JPY`（実測のトークン数から費用を出す単価。APP_MAP §46）（新着集めの月の費用の上限〔既定1,000円〕と、AI 1回の目安〔既定5円〕。APP_MAP §39・§45）ほか
 

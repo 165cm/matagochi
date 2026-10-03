@@ -1,4 +1,5 @@
 import { ApiError } from "./errors.js";
+import { listedGuide } from "./rewrite.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 
 // みんなの定番：献立に入れた・作ったYouTubeレシピを、名前を伏せて数える。
@@ -101,7 +102,7 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
           // 表示の GET では読み出すだけ（まだ読んでいない動画を、ここで新しくAIに読ませない）。
           const r = await catalog.peek(canonicalYouTubeUrl(videoId));
           if (!r || !r.ingredients?.length || !r.steps?.length || (r.channelId && excluded.has(r.channelId)) || excluded.has(videoId)) continue;
-          items.push({ videoId, score: t.same * 3 + t.all, ...(t.kept ? { kept: true } : {}), title: r.title, ...(r.dishName ? { dishName: r.dishName } : {}), channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], tags: r.tags || [], planning: r.planning || null });
+          items.push({ videoId, score: t.same * 3 + t.all, ...(t.kept ? { kept: true } : {}), title: r.title, ...(r.dishName ? { dishName: r.dishName } : {}), channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], ...(listedGuide(r) ? { guide: listedGuide(r) } : {}), tags: r.tags || [], planning: r.planning || null });
         } catch {}
       }
       // 親の料理名（APP_MAP §48。格上げは新着の側で行う）。

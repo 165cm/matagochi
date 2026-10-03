@@ -200,6 +200,19 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       const result = { ...current.envelope.result, dishNameFrom: "ai-backfill" };
       return !!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }));
     },
+    // 管理：書き直した手順（guide。APP_MAP §49）を付ける・外す（null）。元の手順・時刻には触らない。
+    // 読み直し（取り込み・reread）では結果を作り直すので、書き直しは消える（元の手順が変わるので）。
+    async setGuide(rawUrl, guide) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      const result = structuredClone(current.envelope.result);
+      if (guide) result.guide = { steps: guide.steps.map((g) => ({ text: g.text, from: g.from })), limit: guide.limit, of: (result.steps || []).length, at: new Date(now()).toISOString(), ...(guide.model ? { model: guide.model } : {}) };
+      else delete result.guide;
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
+      return { guide: result.guide || null };
+    },
     async setStepTimes(rawUrl, stepTimes) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
