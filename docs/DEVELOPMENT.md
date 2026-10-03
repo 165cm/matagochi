@@ -30,8 +30,8 @@ git worktree add ../matagochi-codex  -b codex/<タスク名>  origin/main
 ## テスト
 
 ```
-node --test test/*.cjs                 # アプリ（vanilla JS）。今は 249件
-cd api && node --test                  # API（Node）。今は 277件
+node --test test/*.cjs                 # アプリ（vanilla JS）。今は 250件
+cd api && node --test                  # API（Node）。今は 281件
 ```
 
 - CI（`.github/workflows/test.yml`）は PR ごとに上の2つと `node --check`、`git diff --check` を回す

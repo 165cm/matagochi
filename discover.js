@@ -46,7 +46,7 @@ async function loadDiscover({ force = false } = {}) {
 function discoverRecipe(item, kind) {
   const ingredients = normalizeImportedIngredients(item.ingredients || []);
   const steps = (item.steps || []).map((s) => String(s || "").trim()).filter(Boolean);
-  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), ...(recipeGuide({ steps, guide: item.guide }) ? { guide: item.guide } : {}), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", ...(/^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(item.channelThumb || "") ? { channelThumb: item.channelThumb } : {}), ...(typeof item.catch === "string" && item.catch ? { catch: item.catch.slice(0, 40) } : {}), sourceServings: item.sourceServings ?? null, ...(item.embeddable === false ? { embeddable: false } : {}), mealType: "dinner", tags: item.tags || [], ...(typeof item.dish?.name === "string" && item.dish.name ? { dish: item.dish.name.slice(0, 20) } : {}), curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
+  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), ...(recipeGuide({ steps, guide: item.guide, guideOf: item.guideOf }) ? { guide: item.guide, guideOf: item.guideOf } : {}), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", ...(/^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(item.channelThumb || "") ? { channelThumb: item.channelThumb } : {}), ...(typeof item.catch === "string" && item.catch ? { catch: item.catch.slice(0, 40) } : {}), sourceServings: item.sourceServings ?? null, ...(item.embeddable === false ? { embeddable: false } : {}), mealType: "dinner", tags: item.tags || [], ...(typeof item.dish?.name === "string" && item.dish.name ? { dish: item.dish.name.slice(0, 20) } : {}), curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
   recipe.planning = aiPlanning(item.planning, { ingredients, steps }) || Lifestyle.suggestPlanning({ ingredients, steps });
   return recipe;
 }
@@ -148,9 +148,17 @@ function finishFunnelPicks() {
 
 /* ---- 投稿者へのリスペクト：公式プレーヤーで見ながら作る・出典を主役に・チャンネル登録へ ---- */
 // 覚えやすく書き直した手順（AI。APP_MAP §49）：[{ text, from:[元の手順の番号（0から）] }]。元の手順と合う時だけ使う（合わなければ元の手順を出す）。
+// 元の手順の「指紋」（サーバーの api/src/rewrite.js stepsKey と同じ計算：FNV-1a 32bit の16進）。中身が変われば書き直しは使わない。
+function stepsKey(steps) {
+  const s = (Array.isArray(steps) ? steps : []).map((x) => String(x || "").trim()).join("\n");
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
 function recipeGuide(recipe) {
   const g = recipe?.guide, n = (recipe?.steps || []).length;
   if (!Array.isArray(g) || !g.length || g.length > 30 || n < 2) return null;
+  if (recipe.guideOf !== stepsKey(recipe.steps)) return null;
   const ok = g.every((x) => typeof x?.text === "string" && x.text.trim() && Array.isArray(x.from) && x.from.length && x.from.every((j) => Number.isInteger(j) && j >= 0 && j < n));
   return ok ? g : null;
 }

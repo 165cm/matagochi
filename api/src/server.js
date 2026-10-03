@@ -17,7 +17,7 @@ import { createSearchQuota } from "./searchQuota.js";
 import { createChannelStats } from "./channelStats.js";
 import { checkStepTimes, ISSUE_LABEL } from "./timecodeCheck.js";
 import { usage, usageYen } from "./aiUsage.js";
-import { rewriteGuide, guideLimit, listedGuide, GUIDE_ISSUE_LABEL } from "./rewrite.js";
+import { rewriteGuide, guideLimit, listedGuide, stepsKey, GUIDE_ISSUE_LABEL } from "./rewrite.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
 import { createFeedbackDesk } from "./feedback.js";
@@ -517,17 +517,40 @@ export function createApp(env = process.env, deps = {}) {
   // 管理：手順の書き直し（覚えやすい手順。APP_MAP §49）。AI 1回（確かめで落ちたらもう1回まで）・1品約1円。
   // まず10品で試す（2026-10-04 のユーザーの判断）。書き直しは表に出し、元の手順は「動画では」として残す。
   const writeGuide = deps.rewriteRecipeSteps || ((x) => rewriteRecipeSteps(x, env));
+  // 同じ料理の書き直しは同時に1つだけ（別のタブ・再送・お試しの重なり・複数の台でも。予算を通す前に世代つきの書き込みで鍵を取る。review fix #139）。
+  // 鍵の長さ：AI 2回分（各90秒）より十分長く。これより古い鍵は止まった書き直しのもの。
+  const GUIDE_LOCK_MS = 5 * 60_000;
   const guideOne = async (videoId) => {
     const url = canonicalYouTubeUrl(videoId);
-    const r = await catalog.peek(url);
-    if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
-    if ((r.steps || []).filter(Boolean).length < 2) throw new ApiError(400, "steps_required", "手順が2つ以上いります。");
-    await catalog.reserveAnalysisBudget();
-    const collector = {};
-    const guide = await usage.run(collector, () => rewriteGuide(r, { write: writeGuide, beforeRetry: () => catalog.reserveAnalysisBudget() }));
-    const saved = await catalog.setGuide(url, { ...guide, model: collector.model || "" });
-    trendBook.clearCache(); popularBook.clearCache();
-    return { videoId, before: (r.steps || []).length, after: guide.steps.length, limit: guide.limit, tries: guide.tries, yen: Math.round(usageYen(collector, env) * 100) / 100, guide: saved.guide };
+    const lockKey = `guide-lock/${videoId}`;
+    const held = await recipeStore.get(lockKey);
+    const nowMs = (deps.now || Date.now)();
+    if (held && nowMs - Date.parse(held.envelope.at || 0) <= GUIDE_LOCK_MS) throw new ApiError(409, "guide_pending", "この料理は書き直している途中です。");
+    const lock = await recipeStore.put(lockKey, { at: new Date(nowMs).toISOString() }, { ifGeneration: held?.generation ?? 0 });
+    if (!lock) throw new ApiError(409, "guide_pending", "この料理は書き直している途中です。");
+    try {
+      const r = await catalog.peek(url);
+      if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      if ((r.steps || []).filter(Boolean).length < 2) throw new ApiError(400, "steps_required", "手順が2つ以上いります。");
+      await catalog.reserveAnalysisBudget();
+      const collector = {};
+      const guide = await usage.run(collector, () => rewriteGuide(r, { write: writeGuide, beforeRetry: () => catalog.reserveAnalysisBudget() }));
+      // 書き直しを頼んだ時の元の手順の指紋を添える（保存の時に変わっていたら断る）。
+      const saved = await catalog.setGuide(url, { ...guide, of: stepsKey(r.steps), model: collector.model || "" });
+      trendBook.clearCache(); popularBook.clearCache();
+      return { videoId, before: (r.steps || []).length, after: guide.steps.length, limit: guide.limit, tries: guide.tries, yen: Math.round(usageYen(collector, env) * 100) / 100, guide: saved.guide };
+    } finally {
+      await recipeStore.remove(lockKey, { ifGeneration: lock.generation }).catch(() => {});
+    }
+  };
+  // 書き直しが確かめで落ちた料理の印（二度と試さない）。ほかの書き込みと重なったら読み直して3回まで。
+  const markGuideTried = async (videoId) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const entry = await recipeStore.get("guide/tried");
+      const ids = [...new Set([...(entry?.envelope?.ids || []), videoId])].slice(-500);
+      if (await recipeStore.put("guide/tried", { ids }, { ifGeneration: entry?.generation ?? 0 }).catch(() => null)) return true;
+    }
+    return false;
   };
   app.post("/api/admin/recipes/:videoId/guide", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -561,11 +584,7 @@ export function createApp(env = process.env, deps = {}) {
         catch (error) {
           done.push({ videoId: x.videoId, error: error?.code || "failed", message: error?.message || "" });
           // 予算・通信の失敗は印を付けない（あとでもう一度）。書き直しが確かめで落ちた時だけ印。
-          if (error?.code === "guide_invalid") {
-            const entry = await recipeStore.get("guide/tried");
-            const ids = [...new Set([...(entry?.envelope?.ids || []), x.videoId])].slice(-500);
-            await recipeStore.put("guide/tried", { ids }, { ifGeneration: entry?.generation ?? 0 }).catch(() => {});
-          }
+          if (error?.code === "guide_invalid") await markGuideTried(x.videoId);
         }
       }
       return { done, left: Math.max(0, targets.length - max) };

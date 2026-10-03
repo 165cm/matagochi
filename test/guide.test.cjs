@@ -19,7 +19,7 @@ function app() {
 }
 const item = { videoId: "abcdefghijk", title: "豚キャベツ", videoUrl: "https://www.youtube.com/watch?v=abcdefghijk", ingredients: [{ name: "豚こま", amount: "200g" }, { name: "キャベツ", amount: "1/4個" }],
   steps: ["キャベツを切る", "豚こまに塩", "豚こまを2分焼く", "キャベツを入れて1分炒める"], stepTimes: [5, 20, 40, 90],
-  guide: [{ text: "下ごしらえ：キャベツを切り、豚こまに塩。", from: [0, 1] }, { text: "焼く：豚こまを2分、キャベツを足して1分炒める。", from: [2, 3] }] };
+  guide: [{ text: "下ごしらえ：キャベツを切り、豚こまに塩。", from: [0, 1] }, { text: "焼く：豚こまを2分、キャベツを足して1分炒める。", from: [2, 3] }], guideOf: "72b45ce8" };  // サーバーの stepsKey と同じ値
 
 test("the rewritten steps are the main list; the original steps sit under each one as 「動画では：手順1・2」; ▶ is the first original step's time", () => {
   const run = app();
@@ -50,4 +50,13 @@ test("without a rewrite (or with one that does not match the steps) the original
   assert.deepEqual(JSON.parse(run("JSON.stringify(cm.timesOf())")), [5, 20, 40, 90]);
   // 保存済みのレシピでも、手順の数が変わった書き直しは使わない
   assert.equal(run(`recipeGuide({ steps: ["a"], guide: ${JSON.stringify(item.guide)} })`), null);
+});
+
+test("review fix (#139): the app's step fingerprint matches the server's; a rewrite for different steps of the same count is not used", () => {
+  const run = app();
+  assert.equal(run(`stepsKey(${JSON.stringify(item.steps)})`), item.guideOf, "same as api/src/rewrite.js stepsKey");
+  const other = { ...item, steps: ["魚を洗う", "魚に塩", "魚を2分焼く", "ねぎを入れて1分煮る"] };
+  run(`globalThis.c = discoverRecipe(${JSON.stringify(other)}, "trend")`);
+  assert.equal(run("c.guide"), undefined);
+  assert.equal(run(`recipeGuide(${JSON.stringify({ ...item, guideOf: undefined })})`), null, "no fingerprint, no rewrite");
 });

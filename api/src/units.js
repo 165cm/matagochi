@@ -111,7 +111,8 @@ export function localizeAmount(amount, to = "ja-JP") {
 // 手順の中の温度（350°F など）を換算して添える。
 export function localizeStep(step, to = "ja-JP") {
   if (to !== "ja-JP") return step;
-  return String(step).replace(/(\d{3})\s*°\s*F\b/gi, (all, f) => `${fahrenheitToCelsius(Number(f))}℃（${all}）`);
+  // もう「175℃（350°F）」の形なら換算しない（何度通しても同じ。review fix #139）。
+  return String(step).replace(/(?<!℃（)(\d{3})\s*°\s*F\b/gi, (all, f) => `${fahrenheitToCelsius(Number(f))}℃（${all}）`);
 }
 
 // 保存済みの読み取り結果にも、換算を通す（この対応表を入れる前に読み取った分のため）。

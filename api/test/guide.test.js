@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { guideLimit, numbersIn, checkGuide, rewriteGuide, listedGuide } from '../src/rewrite.js';
+import { guideLimit, numbersIn, checkGuide, rewriteGuide, listedGuide, stepsKey } from '../src/rewrite.js';
+import { localizeStep } from '../src/units.js';
 import { createRecipeCatalog } from '../src/recipeCatalog.js';
 import { weekOf } from '../src/trends.js';
 process.env.NODE_ENV = 'test';
@@ -17,7 +18,7 @@ test('step limits by cooking time: up to 20 min → 7, 30 min → 10, 45 min or 
 });
 
 test('numbers that must not change: time, temperature, watts, amounts (full-width too)', () => {
-  assert.deepEqual(numbersIn('600Wのレンジで２分３０秒、180℃のオーブンで15分。大さじ１と1/2'), ['600W', '2分', '30秒', '180℃', '15分', '大さじ1']);
+  assert.deepEqual(numbersIn('600Wのレンジで２分３０秒、180℃のオーブンで15分。大さじ１と1/2'), ['600W', '2分', '30秒', '180℃', '15分', '大さじ1と1/2']);
   assert.deepEqual(numbersIn('塩少々'), []);
 });
 
@@ -56,7 +57,7 @@ test('catalog: the rewrite is kept beside the original steps; reading the recipe
   const cat = createRecipeCatalog(store, async () => ({ title: '豚キャベツ', ingredients: [{ name: '豚こま' }], steps: ORIG }));
   const url = 'https://www.youtube.com/watch?v=abcdefghijk';
   await cat.import(url);
-  await cat.setGuide(url, { steps: [{ text: '全部まとめて作る：3cm幅・2分・1分・大さじ1。', from: [0, 1, 2, 3, 4, 5] }], limit: 7 });
+  await cat.setGuide(url, { steps: [{ text: '全部まとめて作る：3cm幅・2分・1分・大さじ1。', from: [0, 1, 2, 3, 4, 5] }], limit: 7, of: stepsKey(ORIG) });
   const r = await cat.peek(url);
   assert.deepEqual(r.steps, ORIG, 'original steps stay');
   assert.equal(listedGuide(r).length, 1);
@@ -65,7 +66,7 @@ test('catalog: the rewrite is kept beside the original steps; reading the recipe
   assert.ok((await cat.peek(url)).guide, 'fixing times keeps the rewrite');
   await cat.import(url, { reread: true });
   assert.equal((await cat.peek(url)).guide, undefined, 'a re-read drops it');
-  await cat.setGuide(url, { steps: [{ text: 'x', from: [0, 1, 2, 3, 4, 5] }], limit: 7 });
+  await cat.setGuide(url, { steps: [{ text: 'x', from: [0, 1, 2, 3, 4, 5] }], limit: 7, of: stepsKey(ORIG) });
   await cat.setGuide(url, null);
   assert.equal((await cat.peek(url)).guide, undefined);
 });
@@ -118,4 +119,81 @@ test('admin: rewrite one recipe, pilot picks recipes over the limit first, marks
   // 1品だけ書き直す
   const re = await (await post(`/api/admin/recipes/${ids[1]}/guide`)).json();
   assert.equal(re.after, 6); assert.equal(re.limit, 7);
+});
+
+test('review fix (#139): changed, dropped or added numbers fail the check (counts, ranges, mixed fractions, full-width units)', () => {
+  const one = (orig, text) => codes(checkGuide([orig], [{ text, from: [0] }], { limit: 7 }));
+  assert.deepEqual(one('卵を2個入れて5分焼く', '卵を入れて5分焼き、200℃にする'), ['number_added', 'number_lost']);
+  assert.deepEqual(one('卵を2個入れる', '卵を入れる'), ['number_lost']);
+  assert.deepEqual(one('しょうゆ大さじ1と1/2を入れる', 'しょうゆ大さじ1を入れる'), ['number_added', 'number_lost']);
+  assert.deepEqual(one('10〜15分煮る', '15分煮る'), ['number_added', 'number_lost']);
+  assert.deepEqual(one('600Ｗで2分温める', 'レンジで2分温める'), ['number_lost']);
+  assert.deepEqual(one('にんじん1本を4等分に切る', 'にんじんを切る'), ['number_lost']);
+  assert.deepEqual(one('10～15分煮る（600ｗなら２分）', '煮る：10〜15分（600Wなら2分）'), [], 'same numbers written differently are fine');
+  // 2つの手順の「2分」を1つにまとめると、数が減る
+  assert.deepEqual(codes(checkGuide(['肉を2分焼く', '裏返して2分焼く'], [{ text: '両面を2分ずつ焼く', from: [0, 1] }], { limit: 7 })), ['number_lost']);
+  assert.equal(stepsKey(['キャベツを切る', '豚こまに塩', '豚こまを2分焼く', 'キャベツを入れて1分炒める']), '72b45ce8', 'the app (discover.js stepsKey) uses the same value');
+});
+
+test('review fix (#139): a rewrite made for older steps is not saved or shown, even when the step count is the same', async () => {
+  const store = createMemorySyncStore();
+  let steps = ['肉を切る', '肉を焼く'];
+  const cat = createRecipeCatalog(store, async () => ({ title: '料理', ingredients: [{ name: '肉' }], steps }));
+  const url = 'https://www.youtube.com/watch?v=abcdefghijk';
+  await cat.import(url);
+  const of = stepsKey((await cat.peek(url)).steps);
+  steps = ['魚を洗う', '魚を煮る'];
+  await cat.import(url, { reread: true });
+  await assert.rejects(cat.setGuide(url, { steps: [{ text: '肉を切って焼く', from: [0, 1] }], limit: 7, of }), { code: 'catalog_conflict' });
+  assert.equal((await cat.peek(url)).guide, undefined);
+  assert.equal(listedGuide({ steps: ['魚を洗う', '魚を煮る'], guide: { steps: [{ text: 'x', from: [0, 1] }], of } }), null);
+});
+
+test('review fix (#139): °F is converted once — reading again never nests "175℃（175℃（350°F））"', async () => {
+  const once1 = localizeStep('350°Fで20分焼く');
+  assert.equal(once1, '175℃（350°F）で20分焼く');
+  assert.equal(localizeStep(once1), once1);
+  const store = createMemorySyncStore();
+  const cat = createRecipeCatalog(store, async () => ({ title: '料理', ingredients: [{ name: '肉' }], steps: ['350°Fのオーブンで20分焼く', '冷ます'] }));
+  const url = 'https://www.youtube.com/watch?v=abcdefghijk';
+  await cat.import(url);
+  const r = await cat.peek(url);
+  assert.equal(r.steps[0], '175℃（350°F）のオーブンで20分焼く');
+  await cat.setGuide(url, { steps: [{ text: '焼く：175℃（350°F）のオーブンで20分焼いて冷ます。', from: [0, 1] }], limit: 7, of: stepsKey(r.steps) });
+  const again = await cat.peek(url);
+  assert.equal(again.steps[0], r.steps[0]);
+  assert.equal(again.guide.steps[0].text, '焼く：175℃（350°F）のオーブンで20分焼いて冷ます。');
+  assert.ok(listedGuide(again));
+});
+
+test('review fix (#139): the same recipe is not rewritten twice at once; a failed-check mark survives a write conflict', async (t) => {
+  const store = createMemorySyncStore();
+  const NOW = Date.now();
+  await store.put('youtube-abcdefghijk', { status: 'ready', result: { title: '料理', videoUrl: 'https://www.youtube.com/watch?v=abcdefghijk', channelTitle: 'ch', channelId: 'UCabcdefghijk', ingredients: [{ name: '豚肉' }, { name: 'キャベツ' }, { name: '塩' }], steps: ['肉を切る', '肉を2分焼く', '盛る'], planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 } } }, { ifGeneration: 0 });
+  await store.put('youtube-zzzzzzzzzzz', { status: 'ready', result: { title: '失敗料理', videoUrl: 'https://www.youtube.com/watch?v=zzzzzzzzzzz', channelTitle: 'ch', channelId: 'UCzzzzzzzzzzz', ingredients: [{ name: '豚肉' }, { name: 'キャベツ' }, { name: '塩' }], steps: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'], planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 } } }, { ifGeneration: 0 });
+  await store.put('trends/index', { weeks: [{ week: weekOf(NOW), startedAt: new Date(NOW).toISOString(), candidates: [], tried: [], items: [{ videoId: 'zzzzzzzzzzz' }], skipped: {} }] }, { ifGeneration: 0 });
+  let calls = 0, release;
+  const write = async ({ title }) => { calls++; if (title === '失敗料理') return { steps: [{ text: 'x', from: [1] }] }; await new Promise((r) => { release = r; }); return { steps: [{ text: '肉を切って2分焼き、盛る。', from: [1, 2, 3] }] }; };
+  // guide/tried の最初の書き込みだけ、ほかの書き込みと重なった扱いにする
+  const put = store.put.bind(store);
+  let clash = true;
+  store.put = async (key, ...rest) => { if (key === 'guide/tried' && clash) { clash = false; await put(key, { ids: ['someone'] }, { ifGeneration: 0 }); return null; } return put(key, ...rest); };
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], rewriteRecipeSteps: write,
+    videoDetails: async (list) => Object.fromEntries(list.map((id) => [id, { status: 'public', durationSeconds: 600 }])) });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (p) => fetch(`${base}${p}`, { method: 'POST', headers: { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' }, body: '{}' });
+  const first = post('/api/admin/recipes/abcdefghijk/guide');
+  while (!release) await new Promise((r) => setTimeout(r, 5));
+  const second = await post('/api/admin/recipes/abcdefghijk/guide');
+  assert.equal(second.status, 409); assert.equal((await second.json()).error.code, 'guide_pending');
+  release();
+  assert.equal((await first).status, 200); assert.equal(calls, 1);
+  assert.equal(await store.get('guide-lock/abcdefghijk'), null, 'the lock is released');
+  // 失敗の印：重なっても読み直して残す
+  const p = await (await post('/api/admin/guide/pilot')).json();
+  assert.equal(p.done[0].error, 'guide_invalid');
+  assert.deepEqual((await store.get('guide/tried')).envelope.ids.sort(), ['someone', 'zzzzzzzzzzz']);
 });

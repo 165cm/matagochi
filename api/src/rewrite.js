@@ -11,12 +11,18 @@ export function guideLimit(minutes) {
 }
 export const GUIDE_TEXT_MAX = 90;
 
-const toHalf = (s) => String(s || "").replace(/[０-９．／]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-const NUMBER = /(?:大さじ|小さじ)\s*\d+(?:\.\d+)?(?:\/\d+)?|\d+(?:\.\d+)?(?:\/\d+)?\s*(?:分|秒|時間|℃|°C|度|W|w|kg|g|ml|mL|cc|L|cm|mm)/g;
-// 手順の中の「数字＋単位」（時間・温度・ワット数・分量）。書き直しても変えてはいけないもの。
+// 手順の中の「数字＋単位」（時間・温度・ワット数・分量・個数）。書き直しても変えてはいけないもの（review fix #139）。
+// 全角は NFKC で半角に（600Ｗ・２分）。帯分数（大さじ1と1/2）・範囲（10〜15分）は1つの数として扱う。
+const N = String.raw`\d+(?:\.\d+)?(?:/\d+)?(?:と\d+(?:\.\d+)?(?:/\d+)?)?`;
+const RANGE = String.raw`${N}(?:\s*[〜~\-–]\s*${N})?`;
+const UNITS = "時間|分|秒|℃|°C|度|W|w|kg|mg|g|ml|mL|cc|L|cm|mm|個|本|枚|片|袋|缶|カップ|合|切れ|かけ|束|パック|株|玉|房|粒|杯|人分|人前|等分|回|倍|%";
+const NUMBER = new RegExp(String.raw`(?:大さじ|小さじ|カップ)\s*${RANGE}|${RANGE}\s*(?:${UNITS})`, "g");
+const canon = (x) => x.replace(/\s+/g, "").replace(/[〜~\-–]/g, "~").replace("°C", "℃").replace("mL", "ml").replace(/w$/, "W");
+// 重なりも数える（同じ「2分」が2回あれば2つ）。
 export function numbersIn(text) {
-  return [...new Set((toHalf(text).match(NUMBER) || []).map((x) => x.replace(/\s+/g, "").replace("°C", "℃").replace("mL", "ml").replace(/w$/, "W")))];
+  return (String(text || "").normalize("NFKC").match(NUMBER) || []).map(canon);
 }
+const countOf = (list) => list.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
 
 // 0円の確かめ：数・長さ・from の範囲と順番・元の手順の抜け・数字の取りこぼし。issues が空なら使える。
 export function checkGuide(steps, guide, { limit = 10 } = {}) {
@@ -45,8 +51,14 @@ export function checkGuide(steps, guide, { limit = 10 } = {}) {
     if (!by) { add("missing", null, `元の手順${j + 1}`); return; }
     const have = new Set(by.flatMap((i) => numbersIn(items[i]?.text)));
     const lost = numbersIn(s).filter((n) => !have.has(n));
-    if (lost.length) add("number_lost", by[0], `元の手順${j + 1}：${lost.join("・")}`);
+    if (lost.length) add("number_lost", by[0], `元の手順${j + 1}：${[...new Set(lost)].join("・")}`);
   });
+  // 全体でも数を比べる：元にない数字（変えた・足した）は使わない。元の数字の数が減るのも使わない（review fix #139）。
+  const before = countOf(list.flatMap(numbersIn)), after = countOf(items.flatMap((g) => numbersIn(g?.text)));
+  const added = [...after].filter(([n, c]) => c > (before.get(n) || 0)).map(([n]) => n);
+  const fewer = [...before].filter(([n, c]) => c > (after.get(n) || 0) && after.has(n)).map(([n]) => n);
+  if (added.length) add("number_added", null, added.join("・"));
+  if (fewer.length) add("number_lost", null, `数が減った：${fewer.join("・")}`);
   return { ok: !issues.length, issues };
 }
 
@@ -59,6 +71,7 @@ export const GUIDE_ISSUE_LABEL = {
   order: "元の手順の順番が前後している",
   missing: "入っていない元の手順がある",
   number_lost: "元の手順の数字（時間・温度・分量）が消えた",
+  number_added: "元の手順にない数字（時間・温度・分量）がある",
 };
 
 // AI の答えを形にそろえる（from は 1 から → 0 から）。
@@ -86,5 +99,12 @@ export async function rewriteGuide(recipe, { write, beforeRetry } = {}) {
   throw error;
 }
 
-// 一覧（新着・みんなの定番）に出す書き直し：元の手順の数が書き直した時と同じ時だけ（違えば元の手順が変わっている）。
-export const listedGuide = (r) => (Array.isArray(r?.guide?.steps) && r.guide.steps.length && r.guide.of === (r.steps || []).length ? r.guide.steps : null);
+// 元の手順の「指紋」：中身が1字でも変われば変わる（アプリの discover.js stepsKey と同じ計算：FNV-1a 32bit の16進。review fix #139）。
+export function stepsKey(steps) {
+  const s = (Array.isArray(steps) ? steps : []).map((x) => String(x || "").trim()).join("\n");
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+// 一覧（新着・みんなの定番）に出す書き直し：書き直した時の元の手順と、いまの元の手順の中身が同じ時だけ。
+export const listedGuide = (r) => (Array.isArray(r?.guide?.steps) && r.guide.steps.length && r.guide.of === stepsKey(r.steps) ? r.guide.steps : null);
