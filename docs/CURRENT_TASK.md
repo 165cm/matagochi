@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 親料理ごとの自動の補充（親80 × 子5・8:2・毎日自動。APP_MAP §46-7） | api/src/trends.js・api/src/server.js・admin/catalog.html・api/test/refill.test.js・.github/workflows/trends.yml・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

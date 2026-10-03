@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
-import { createDishBook } from "./dishes.js";
+import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./dishes.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 
 // 新着レシピ：YouTubeから選んで読み取り、28日で消す（YouTube APIのデータは30日を超えて持たない）。
@@ -97,7 +97,7 @@ export const WAVE_TREND_DAYS = 60;
 export const WAVE_TREND_REUSE_DAYS = 7; // 2026-10-02 のユーザーの判断で14日 → 7日
 export const WAVE_CLASSIC_AGE_DAYS = 365;
 export const WAVE_CLASSIC_ENOUGH = 2;
-export const WAVE_AXES = ["both", "trend", "classic", "channel"];
+export const WAVE_AXES = ["both", "trend", "classic", "channel", "parent"];
 // 広げ方の検索は1日に WAVE_SEARCH_PER_DAY 回まで（1回100単位。YouTube の1日の枠1万単位のうち、毎日の新着集め（9回まで）・ほかの作り方の分を残す）。
 // 2026-10-03 のユーザーの判断で30回 → 60回（AI の費用は段階の金額と月の上限で止まるので増えない）。日本時間の0時に戻る。
 export const WAVE_SEARCH_PER_DAY = 60;
@@ -174,6 +174,78 @@ export const WAVE_CLASSIC_DISHES = [
   ["鶏むね肉のピカタ", "肉"], ["えびチリ", "魚"], ["中華丼", "野菜が主役"], ["豆腐チャンプルー", "卵・豆腐"],
   ["焼きうどん", "肉"], ["鮭のバター醤油焼き", "魚"], ["小松菜と豚肉の炒め物", "野菜が主役"], ["厚揚げの甘辛炒め", "卵・豆腐"],
 ];
+// 親料理ごとの補充（2026-10-03 のユーザーの判断）：
+//   見える量は約400品＝親料理80 × 子5品。子は20分以内4品・30分以上1品（8:2）、親1つで6品まで。
+//   毎日の新着集め（POST /api/trends/refresh）の後に自動で補充する（手動のボタンなし）。1日に料理 REFILL_DISH_PER_DAY 品・AI REFILL_AI_PER_DAY 回まで（月の上限の中）。
+//   親料理は辞書（DISH_SEEDS と格上げした料理名）から、時短にしやすい料理を先に80品。
+//   子が足りない親から、「◯◯ 時短 レシピ 材料」など言葉を変えて検索する（同じ言葉は28日あける・1つの親は1日1回まで）。
+export const REFILL_PARENTS_MAX = 80;
+export const REFILL_CHILDREN = 5;
+export const REFILL_CHILDREN_MAX = 6;
+export const REFILL_LONG_PER_PARENT = 1;
+export const REFILL_TARGET = REFILL_PARENTS_MAX * REFILL_CHILDREN;
+export const REFILL_AI_PER_DAY = 25;
+export const REFILL_DISH_PER_DAY = 15;
+export const PARENT_REUSE_DAYS = 28;
+export const PARENT_FLAVORS = { quick: ["時短", "簡単", "10分", "レンジ", "フライパンひとつ", "人気"], long: ["本格", "人気"] };
+// ふつう30分以上かかる親料理（時短にしやすい料理を先に選ぶため、後ろへ回す）。
+export const LONG_PARENTS = new Set(["肉じゃが", "さばの味噌煮", "ぶり大根", "唐揚げ", "ロールキャベツ", "厚揚げの煮物", "ハンバーグ", "筑前煮", "かれいの煮付け", "豚汁", "豚の角煮", "ポトフ", "餃子", "酢豚", "カレー", "クリームシチュー",
+  "ビーフシチュー", "とんかつ", "メンチカツ", "コロッケ", "春巻き", "シュウマイ", "水餃子", "グラタン", "ドリア", "ラザニア", "ミートソース", "ボロネーゼ", "南蛮漬け", "すき焼き", "おでん", "寄せ鍋", "キムチ鍋", "もつ鍋", "ローストビーフ", "鶏ハム", "炊き込みご飯", "パエリア", "茶碗蒸し", "天丼", "カツ丼", "チキン南蛮"]);
+// 補充する親料理（book：dishes/book の中身。外した料理名は入れない・同じ料理名は1つ）。
+export function refillParents(book = {}) {
+  const removed = new Set(book.removed || []), seen = new Set(), quick = [], long = [];
+  for (const name of [...DISH_SEEDS, ...Object.values(book.promoted || {}).map((p) => p?.name).filter(Boolean)]) {
+    const key = parentKeyOf(name);
+    if (!key || removed.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    (LONG_PARENTS.has(name) ? long : quick).push({ key, name });
+  }
+  return [...quick, ...long].slice(0, REFILL_PARENTS_MAX);
+}
+// 新着（見えている一覧）の親料理ごとの子の数（20分以内・30分以上）。
+export function stockOf(items = []) {
+  const by = {};
+  for (const i of items) {
+    const k = i.dish?.key;
+    if (!k) continue;
+    const st = (by[k] ||= { quick: 0, long: 0, total: 0 });
+    if (isQuickDish(i.planning?.minutes)) st.quick += 1; else st.long += 1;
+    st.total += 1;
+  }
+  return by;
+}
+const QUICK_PER_PARENT = REFILL_CHILDREN - REFILL_LONG_PER_PARENT;
+const need = (st = {}) => ({ quick: Math.max(0, QUICK_PER_PARENT - (st.quick || 0)), long: Math.max(0, REFILL_LONG_PER_PARENT - (st.long || 0)) });
+// 子を入れてよいか（親1つで6品まで・30分以上は1品まで）。
+export const parentRoom = (st = {}, quick) => (st.total || 0) < REFILL_CHILDREN_MAX && (quick || (st.long || 0) < REFILL_LONG_PER_PARENT);
+// 次に補充する親料理の検索（なければ null）。doc.waves.parents に、親ごとの言葉の位置と日を残す。
+export function nextParentWave(doc, parents, stock, nowMs) {
+  const w = (doc.waves ||= { turn: 0, trend: 0, trendAt: {}, classic: 0, classicUsed: {}, words: {}, log: [], n: 0 });
+  w.parents ||= {}; w.words ||= {}; w.log ||= [];
+  const today = new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10);
+  const order = parents.map((p, i) => ({ p, i, n: need(stock[p.key]) })).filter((x) => x.n.quick + x.n.long > 0 && (stock[x.p.key]?.total || 0) < REFILL_CHILDREN)
+    .sort((a, b) => (b.n.quick + b.n.long) - (a.n.quick + a.n.long) || a.i - b.i);
+  for (const { p, n } of order) {
+    const st = (w.parents[p.key] ||= { quick: 0, long: 0, at: {}, day: "" });
+    if (st.day === today) continue; // 1つの親は1日1回まで
+    for (const kind of n.quick ? ["quick", "long"] : ["long"]) {
+      if (kind === "long" && !n.long) continue;
+      const flavors = PARENT_FLAVORS[kind];
+      if (st[kind] >= flavors.length) {
+        if (nowMs - (Date.parse(st.at[kind] || 0) || 0) < PARENT_REUSE_DAYS * DAY) continue;
+        st[kind] = 0; // 28日たったら最初の言葉から（新しい動画が出ている）
+      }
+      const flavor = flavors[st[kind]++];
+      st.at[kind] = new Date(nowMs).toISOString(); st.day = today;
+      const q = `${p.name} ${flavor} レシピ 材料`;
+      const ws = (w.words[p.name] ||= { s: 0, fast: 0, added: 0 }); ws.s += 1; ws.at = new Date(nowMs).toISOString();
+      const entry = { n: ++w.n, axis: "parent", q, word: p.name, ...(kind === "quick" ? { quick: true } : {}), label: `親・${p.name}`, at: new Date(nowMs).toISOString(), picked: 0, added: 0, ai: 0, aiAdded: 0 };
+      w.log.push(entry); w.log = w.log.slice(-200);
+      return { axis: "parent", q, word: p.name, parentKey: p.key, quick: kind === "quick", label: entry.label, n: entry.n, opts: { videoDuration: "medium" } };
+    }
+  }
+  return null;
+}
 // 料理名を比べる時の形（全角半角・カタカナとひらがなの違いをそろえる）。
 const dishKey = (s) => String(s || "").normalize("NFKC").replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/\s+/g, "");
 const emptyWaves = () => ({ turn: 0, trend: 0, trendAt: {}, classic: 0, classicUsed: {}, words: {}, log: [], n: 0 });
@@ -573,7 +645,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // むだを省く：もう読んだ動画は保存済みの結果を使う（0円）／新着に入っている・試した動画は重ねない／掲載停止は外す／
     // 晩ごはんでない題名は読まない／同じ投稿者は1回の検索で2本まで／動画そのものは読まない（費用が大きい）。
     // 集めた料理は、その段階の日から28日の新着（seed の週）。実際のトークン数から料金の目安も出す（usageYen）。
-    async seed({ yen = 100, axis = "both" } = {}) {
+    // maxAi・maxAdd・timeMs：自動の補充（refill）で、1回の実行の AI の回数・増やす品数・時間を小さくする。
+    async seed({ yen = 100, axis = "both", maxAi = Infinity, maxAdd = Infinity, timeMs = budgetMs } = {}) {
       if (!WAVE_AXES.includes(axis)) axis = "both";
       required();
       if (!(await lock())) return { busy: true };
@@ -605,7 +678,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           doc.stages.push(stage);
         }
         const skip = (why) => { stage.skipped[why] = (stage.skipped[why] || 0) + 1; };
-        const allowed = Math.max(0, Math.floor(stage.yen / Math.max(0.01, yenPerAi)) - stage.ai);
+        const allowed = Math.max(0, Math.min(Number(maxAi) >= 0 ? Number(maxAi) : Infinity, Math.floor(stage.yen / Math.max(0.01, yenPerAi)) - stage.ai));
         const monthCap = monthCapCalls();
         let reserved = 0, spent = 0, monthUsed = 0;
         const after = await writeMonthCost(month, (used) => { monthUsed = used; reserved = Math.max(0, Math.min(allowed, monthCap - used)); return reserved ? used + reserved : null; });
@@ -684,7 +757,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           doc.capped = doc.capped.filter((c) => { if (!c.channelId || portfolioRoom(p, c.channelId)) { back.push(c); return false; } return true; });
           doc.candidates.unshift(...back);
         }
-        while (now() - started < budgetMs) {
+        // 親料理ごとの子の数（見えている新着から。1回の実行で1回だけ読む）と、料理名の辞書。
+        let stock = null, dbook = null, runAdded = 0;
+        const getStock = async () => (stock ||= stockOf((await this.list({ promote: false }).catch(() => ({ items: [] }))).items || []));
+        const getDbook = async () => (dbook ||= await (dishBook || createDishBook(store, { now })).book().catch(() => ({})));
+        while (now() - started < timeMs) {
+          if (runAdded >= maxAdd) { reason = "refill_day"; break; }
           if (!doc.candidates.length) {
             // AI の枠を使い切ったら、新しく検索しない（YouTube の枠のむだを省く）。
             if (claimed >= reserved) { reason = why(); break; }
@@ -716,7 +794,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               if (axis === "channel") { reason = "axis_exhausted"; break; }
               if (day >= WAVE_SEARCH_PER_DAY) { reason = "search_day_limit"; break; }
               const waveDoc = structuredClone(doc.waves);
-              wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added), longOk: longRoom(stage.added) });
+              // 親料理ごとの補充：子が足りない親から（2026-10-03）。
+              if (axis === "parent") wave = nextParentWave(doc, refillParents(await getDbook()), await getStock(), now());
+              else wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added), longOk: longRoom(stage.added) });
               // 選んだ方向だけ使い切った時は、段階を終わりにしない（もう一方の方向で続けられる）。
               if (!wave) { reason = axis === "both" ? "exhausted" : "axis_exhausted"; break; }
               ({ q, label, opts } = wave);
@@ -747,7 +827,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               // 説明欄を確かめられない時だけ、ここで定番を3本までにする（確かめられる時は、確かめて通った3本まで）。
               if (!videoDetails && wave?.axis === "classic" && picked.length >= WAVE_CLASSIC_KEEP) { skip("classic_enough"); continue; }
               const hint = titleHint(c.title);
-              picked.push({ videoId: c.videoId, channelId: c.channelId || "", label, ...(wave ? { wave: wave.n, axis: wave.axis, word: wave.word } : {}), ...(hint ? { hint } : {}) });
+              // 題名から分かる親料理（料理名の形だけを残す。題名そのものは残さない）。
+              const pk = wave ? parentOf(c.title, await getDbook())?.key : "";
+              picked.push({ videoId: c.videoId, channelId: c.channelId || "", label, ...(wave ? { wave: wave.n, axis: wave.axis, word: wave.word } : {}), ...(hint ? { hint } : {}), ...(pk ? { pk } : {}) });
             }
             // 読む順：題名が速そう → 印なし → 長そう、同じなら作り方を書く投稿者から（0円）。
             const rank = (c) => (c.hint === "fast" ? 0 : c.hint === "slow" ? 2 : 1) - channelRate(doc.channels?.[c.channelId]) / 2;
@@ -791,6 +873,11 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               // 同じ投稿者の動画を同時に読むと、入れられる数を超えて AI で読むことがある → 読んでいる分を入れたものとして数え、超えるなら次の組へ回す。
               const same = batch.filter((x) => x.channelId === c.channelId).length;
               if (same && !portfolioRoom({ total: p.total + same, by: { [c.channelId]: (p.by[c.channelId] || 0) + same } }, c.channelId)) { doc.candidates.unshift(c); break; }
+            }
+            // 親料理の子が6品そろっている時は読まない（読んでいる最中の同じ親も数える。試した扱いにしない）。
+            if (c.wave && c.pk) {
+              const st = (await getStock())[c.pk], same = batch.filter((x) => x.pk === c.pk).length;
+              if ((st?.total || 0) + same >= REFILL_CHILDREN_MAX) { if (same) { doc.candidates.unshift(c); break; } skip("parent_full"); continue; }
             }
             // 定番：その検索で料理が3品増えたら、残りは読まない（読んでいる最中の分も数える）。
             if (c.axis === "classic") {
@@ -846,6 +933,16 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short"); continue; }
             // 広げ方の料理は、時短8割・30分以上2割に：30分以上（時間が分からない料理も）は、割合を超えるなら入れない。
             if (c.wave && !isQuickDish(r.planning?.minutes) && !longRoom(stage.added)) { skip(free ? "long_quota_free" : "long_quota"); continue; } /* 0円で読んだ料理は、AI で読んだ結果に数えない（review fix #129） */
+            // 親料理：子は6品まで・30分以上は1品まで（読んで分かった料理名で数える）。
+            let pkey = "";
+            if (c.wave) {
+              const pr = parentOf(r.title, await getDbook(), r.dishName);
+              if (pr) {
+                const st = (await getStock())[pr.key] || {};
+                if (!parentRoom(st, isQuickDish(r.planning?.minutes))) { skip((st.total || 0) >= REFILL_CHILDREN_MAX ? "parent_full" : "parent_long"); continue; }
+                pkey = pr.key;
+              }
+            }
             // 投稿者の比率：読んで分かった投稿者が、新着全体の3%を超えるなら入れない。
             const chId = r?.channelId || c.channelId;
             if (!portfolioRoom(await getPort(), chId)) {
@@ -856,6 +953,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               continue;
             }
             portAdd(port, chId);
+            if (pkey) { const st = ((await getStock())[pkey] ||= { quick: 0, long: 0, total: 0 }); if (isQuickDish(r.planning?.minutes)) st.quick += 1; else st.long += 1; st.total += 1; }
+            runAdded += 1;
             week.items.push({ videoId: c.videoId, day: today });
             // 題名は YouTube の情報なので、記録には残さない（見せる時に保存済みの結果から読む＝30日ルールの中）。
             stage.added.push({ videoId: c.videoId, label: c.label, minutes: r.planning?.minutes || null, free });
@@ -884,7 +983,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         cache = null;
         // 記録を保存できなければ、成功として返さない（段階の回数は予約した多めのまま。試した動画はもう読んだ結果があるので、次は0円）。
         if (!(await saveSeed())) throw new ApiError(503, "seed_not_saved", claimed ? "集めた結果の記録を保存できませんでした。少し待ってから、もう一度押してください（費用は多めに数えたままです）。" : "記録を保存できませんでした（AI は使っていません）。少し待ってから、もう一度押してください。");
-        return { stage: await withTitles(stage), reason, axis, queriesLeft: SEED_QUERIES.length - doc.q, waves: { ...waveStatus(doc, now()), digReady: countDigReady(doc, await getPort().catch(() => null), excluded) }, candidatesLeft: doc.candidates.length, laterLeft: doc.later.length, month: { ai: monthUsed + claimed, cap: monthCap, yen: Math.round((monthUsed + claimed) * yenPerAi), yenCap: yenPerMonth } };
+        return { stage: await withTitles(stage), reason, axis, queriesLeft: SEED_QUERIES.length - doc.q, waves: { ...waveStatus(doc, now()), digReady: countDigReady(doc, await getPort().catch(() => null), excluded) }, candidatesLeft: doc.candidates.length, laterLeft: doc.later.length, ran: { ai: claimed, added: runAdded }, month: { ai: monthUsed + claimed, cap: monthCap, yen: Math.round((monthUsed + claimed) * yenPerAi), yenCap: yenPerMonth } };
       } finally { await unlock(); }
     },
     // 管理用：新着全体の投稿者ごとの比率（多い順。投稿者名は保存済みの読み取り結果から、その場で出す）。
@@ -893,6 +992,32 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const p = await countPortfolio((ix?.envelope.weeks || []).filter(fresh), { generation: ix?.generation ?? 0, excluded: await optedOut() });
       const list = Object.entries(p.by).map(([id, n]) => ({ id, name: p.names[id] || "", n, share: p.total ? Math.round((n / p.total) * 1000) / 10 : 0 })).sort((a, b) => b.n - a.n);
       return { total: p.total, channels: list.length, sharePct: PORTFOLIO_CHANNEL_SHARE * 100, maxPer: portfolioMax(p.total), over: list.filter((c) => c.n / Math.max(1, p.total) > PORTFOLIO_CHANNEL_SHARE).length, top: list.slice(0, 15) };
+    },
+    // 親料理ごとの在庫（管理の画面）：見えている新着の品数・親80品それぞれの子の数（20分以内・30分以上）・5品そろった親の数・今日の自動補充。
+    async parentStock() {
+      const items = (await this.list({ promote: false }).catch(() => ({ items: [] }))).items || [];
+      const stock = stockOf(items);
+      const parents = refillParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})));
+      const rows = parents.map((p) => ({ ...p, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
+      const today = (await store.get("trends/refill"))?.envelope;
+      return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => r.total >= REFILL_CHILDREN).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX,
+        today: today?.day === dayOf(now()) ? today : { day: dayOf(now()), ai: 0, added: 0 }, perDay: { ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY } };
+    },
+    // 自動の補充（毎日の新着集めの後に呼ぶ）：子が足りない親料理を、1日に料理15品・AI 25回まで埋める。
+    // 5品そろった親が80品になったら何もしない。費用は月の上限（trends/cost）と一括収集の段階の中。
+    async refill({ timeMs = 120_000 } = {}) {
+      const day = dayOf(now());
+      const cur = await store.get("trends/refill");
+      const today = cur?.envelope?.day === day ? cur.envelope : { day, ai: 0, added: 0 };
+      const aiLeft = REFILL_AI_PER_DAY - today.ai, addLeft = REFILL_DISH_PER_DAY - today.added;
+      if (aiLeft <= 0 || addLeft <= 0) return { skipped: "today_done", ...today };
+      const st = await this.parentStock();
+      if (st.filled >= st.parents.length) return { skipped: "stocked", ...today };
+      const r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs });
+      if (r?.busy) return { skipped: "busy", ...today };
+      const next = { day, ai: today.ai + (r.ran?.ai || 0), added: today.added + (r.ran?.added || 0), reason: r.reason, at: new Date(now()).toISOString() };
+      await store.put("trends/refill", next, { ifGeneration: cur?.generation ?? 0 }).catch(() => {});
+      return next;
     },
     // 管理用：投稿者の一覧（成績表の上位30人。新着に入っている品数と割合・掲載停止・3%到達・深掘りの日・深掘りできるか）。
     async channelBoard() {

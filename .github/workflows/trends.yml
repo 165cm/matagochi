@@ -3,6 +3,7 @@ name: Weekly trend recipes
 # サーバーは呼ばれた時しか動かないので、毎日1回ノックする（日本時間 朝5:17）。
 # その日の分（既定 2品・TREND_PER_DAY）がそろうまで続けて呼ぶ。そろっている日は「何もしない」がすぐ返る。
 # サーバー側は何回呼ばれても、採用数（1日2品・1週14品）と、新着集めが AI を呼ぶ回数（1日6回・1週30回：TREND_AI_PER_DAY・TREND_AI_PER_WEEK）の上限を超えない。
+# その日の分がそろった回（done）では、続けて親料理ごとの自動の補充（refill：1日に料理15品・AI 25回まで・月の上限の中）も行う（docs/APP_MAP.md §46-7）。
 # 表示（GET /api/trends）は、ここで集めた結果を読み出すだけ。
 # 手動で試す時は Actions → Weekly trend recipes → Run workflow。
 on:
