@@ -252,3 +252,17 @@ test('review fix (#130 r2): quick results let the next put-off candidate be read
   assert.deepEqual(catalog.calls, [id(12), id(13)]);
   assert.equal(r.laterLeft, 0);
 });
+
+test('2026-10-03: with no room for a long dish (even if quick is not needed), the next classic is not a long one; with room, the list order is kept; 60 searches a day', async () => {
+  const { WAVE_SEARCH_PER_DAY } = await import('../src/trends.js');
+  assert.equal(WAVE_SEARCH_PER_DAY, 60);
+  for (const [quickDone, want] of [[2, '牛丼'], [4, 'ポトフ']]) {
+    const store = createMemorySyncStore();
+    await start(store, { waves: { turn: 0, trend: 0, trendAt: {}, classic: 34, log: [], n: 0 }, ...longAgo(quickDone) });
+    const searched = [];
+    const book = createTrendBook(store, { catalog: fakeCatalog(), now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async (q) => { searched.push(q); return []; } });
+    await book.seed({ yen: 5, axis: 'classic' });
+    assert.equal(WAVE_CLASSIC_DISHES[34][0], 'ポトフ');
+    assert.equal(searched[0], `${want} レシピ 材料 作り方`, `${quickDone} quick dishes in the stage`);
+  }
+});

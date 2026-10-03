@@ -2,6 +2,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook } from "./dishes.js";
+import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 
 // 新着レシピ：YouTubeから選んで読み取り、28日で消す（YouTube APIのデータは30日を超えて持たない）。
 // 集める処理と、見せる枠を分ける（docs/PERSONALIZE_PLAN.md §7.3・§12-7）：
@@ -96,8 +97,9 @@ export const WAVE_TREND_REUSE_DAYS = 7; // 2026-10-02 のユーザーの判断�
 export const WAVE_CLASSIC_AGE_DAYS = 365;
 export const WAVE_CLASSIC_ENOUGH = 2;
 export const WAVE_AXES = ["both", "trend", "classic"];
-// 広げ方の検索は1日に WAVE_SEARCH_PER_DAY 回まで（1回100単位。YouTube の1日の枠1万単位のうち、毎日の新着集めの分を残す）。
-export const WAVE_SEARCH_PER_DAY = 30;
+// 広げ方の検索は1日に WAVE_SEARCH_PER_DAY 回まで（1回100単位。YouTube の1日の枠1万単位のうち、毎日の新着集め（9回まで）・ほかの作り方の分を残す）。
+// 2026-10-03 のユーザーの判断で30回 → 60回（AI の費用は段階の金額と月の上限で止まるので増えない）。日本時間の0時に戻る。
+export const WAVE_SEARCH_PER_DAY = 60;
 export const WAVE_TREND_WORDS = [
   "晩ごはん レシピ 材料", "バズレシピ 夕飯 材料", "簡単 おかず レシピ 材料", "豚こま レシピ 材料", "鶏むね肉 レシピ 材料",
   "ひき肉 レシピ 材料", "野菜 おかず レシピ 材料", "魚 おかず レシピ 材料", "豆腐 レシピ 材料", "レンジ おかず 材料",
@@ -161,7 +163,7 @@ const emptyWaves = () => ({ turn: 0, trend: 0, trendAt: {}, classic: 0, classicU
 // 定番の料理名をもう使ったか（以前の形：前から w.classic 品を使った。今の形：使った料理名を classicUsed に）。
 const classicUsed = (w, i) => i < (w.classic || 0) || !!w.classicUsed?.[WAVE_CLASSIC_DISHES[i][0]];
 // 次に使う広げ方の検索（使えるものがなければ null）。doc.waves を進める。haveDish(料理名) は、もう新着にある品数。
-export async function nextWave(doc, axis, nowMs, haveDish = async () => 0, { quick = false } = {}) {
+export async function nextWave(doc, axis, nowMs, haveDish = async () => 0, { quick = false, longOk = true } = {}) {
   const w = (doc.waves ||= emptyWaves());
   w.words ||= {};
   const trend = () => {
@@ -183,10 +185,10 @@ export async function nextWave(doc, axis, nowMs, haveDish = async () => 0, { qui
   const classic = async () => {
     w.classicUsed ||= {};
     for (;;) {
-      // まだ使っていない料理名を並び順に。時短が足りない時は、ふつう30分以上かかる料理（"L"）を後回し。
+      // まだ使っていない料理名を並び順に。時短が足りない時・30分以上の料理を入れる余地がない時は、ふつう30分以上かかる料理（"L"）を後回し。
       const left = WAVE_CLASSIC_DISHES.map((_, i) => i).filter((i) => !classicUsed(w, i));
       if (!left.length) return null;
-      const i = (quick ? left.find((j) => WAVE_CLASSIC_DISHES[j][2] !== "L") : undefined) ?? left[0];
+      const i = (quick || !longOk ? left.find((j) => WAVE_CLASSIC_DISHES[j][2] !== "L") : undefined) ?? left[0];
       const [dish, group] = WAVE_CLASSIC_DISHES[i];
       w.classicUsed[dish] = new Date(nowMs).toISOString();
       if ((await haveDish(dish)) >= WAVE_CLASSIC_ENOUGH) { w.log.push({ n: ++w.n, axis: "classic", q: dish, label: `定番・${group}`, at: new Date(nowMs).toISOString(), skipped: "enough", picked: 0, added: 0 }); continue; }
@@ -217,7 +219,8 @@ export function waveStatus(doc, nowMs) {
     words: Object.entries(w.words || {}).map(([word, st]) => ({ word, axis: WAVE_TREND_WORDS.includes(word) ? "trend" : "classic", s: st.s || 0, fast: st.fast || 0, added: st.added || 0, score: Math.round(wordScore(st) * 100) / 100 })).sort((a, b) => b.score - a.score || b.s - a.s),
     wordPrior: WORD_PRIOR_FAST, channels: channelSummary(doc?.channels),
     quickMaxMinutes: QUICK_MAX_MINUTES, quickLongShare: QUICK_LONG_SHARE, trendReuseDays: WAVE_TREND_REUSE_DAYS,
-    searchedToday: w.day?.on === new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10) ? w.day.n : 0, searchPerDay: WAVE_SEARCH_PER_DAY, log: (w.log || []).slice(-60).reverse() };
+    // 1日は YouTube と同じ太平洋時間（0時に戻る。review fix #131）。
+    searchedToday: w.day?.on === pacificDay(nowMs) ? w.day.n : 0, searchPerDay: WAVE_SEARCH_PER_DAY, searchResetAt: new Date(nextPacificMidnight(nowMs)).toISOString(), log: (w.log || []).slice(-60).reverse() };
 }
 // 対象の国と言語。いまは日本の動画だけ（タイトルに日本語がない動画は外す）。海外展開の時はここに国を足す。
 export const TREND_MARKET = { regionCode: "JP", relevanceLanguage: "ja", titleLooksLocal: (title) => /[ぁ-んァ-ヶ一-龠]/.test(String(title || "")) };
@@ -607,21 +610,28 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             let q, label, opts = { videoDuration: "medium" }, wave = null;
             if (doc.q < SEED_QUERIES.length) [q, label] = SEED_QUERIES[doc.q];
             else {
-              const day = doc.waves?.day?.on === today ? doc.waves.day.n : 0;
+              const ytDay = pacificDay(now());
+              const day = doc.waves?.day?.on === ytDay ? doc.waves.day.n : 0;
               if (day >= WAVE_SEARCH_PER_DAY) { reason = "search_day_limit"; break; }
               doc.waves ||= emptyWaves();
               const waveDoc = structuredClone(doc.waves);
-              wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added) });
+              wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added), longOk: longRoom(stage.added) });
               // 選んだ方向だけ使い切った時は、段階を終わりにしない（もう一方の方向で続けられる）。
               if (!wave) { reason = axis === "both" ? "exhausted" : "axis_exhausted"; break; }
               ({ q, label, opts } = wave);
-              doc.waves.day = { on: today, n: day + 1 };
+              doc.waves.day = { on: ytDay, n: day + 1 };
               waveUndo = waveDoc;
             }
             let found;
             // 失敗した時は、同じ検索語をあとでやり直せるように位置を戻す（呼んだ検索の回数 day は戻さない＝1日の上限を守る）。
             const undoWave = () => { if (wave) doc.waves = { ...waveUndo, day: doc.waves.day }; };
-            try { found = await search(q, opts); } catch { undoWave(); reason = "search_failed"; break; }
+            // quotaKind：プロジェクト全体の YouTube の検索の枠（searchQuota.js）で、ほかの分を残して使う。
+            // 枠がなくて検索しなかった時は、検索語も今日の回数も戻す（YouTube を呼んでいない）。
+            try { found = await search(q, { ...opts, quotaKind: "seed" }); }
+            catch (error) {
+              if (error?.code === "youtube_search_quota") { if (wave) doc.waves = waveUndo; reason = "search_day_limit"; break; }
+              undoWave(); reason = "search_failed"; break;
+            }
             const perChannel = {};
             const picked = [];
             for (const c of found) {

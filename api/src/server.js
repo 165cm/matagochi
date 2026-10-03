@@ -13,6 +13,7 @@ import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu } from "./analyzer.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
+import { createSearchQuota } from "./searchQuota.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
 import { createFeedbackDesk } from "./feedback.js";
@@ -53,8 +54,12 @@ export function createApp(env = process.env, deps = {}) {
   // 掲載停止・再開が変わったら、新着・みんなの定番の表示キャッシュをすぐ捨てる（停止した料理を10分残さない）。
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now, onChange: () => { trendBook?.clearCache?.(); popularBook?.clearCache?.(); } });
   const dishBook = createDishBook(recipeStore, { now: deps.now || Date.now });
-  const trendBook = createTrendBook(recipeStore, { dishBook, nameDishes: deps.nameDishes || ((items) => nameDishes(items, env)), catalog, optedOut: () => creatorDesk.optedOut(), search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)),
-    searchChannels: deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), videoDetails: deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
+  // YouTube の検索（search.list）は、プロジェクト全体で1日の回数を数えてから呼ぶ（太平洋時間で切り替わる。review fix #131）。
+  const searchQuota = createSearchQuota(recipeStore, { now: deps.now || Date.now });
+  const rawSearch = deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env));
+  const guardedSearch = searchQuota.wrap(rawSearch, "trend");
+  const trendBook = createTrendBook(recipeStore, { dishBook, nameDishes: deps.nameDishes || ((items) => nameDishes(items, env)), catalog, optedOut: () => creatorDesk.optedOut(), search: guardedSearch,
+    searchChannels: searchQuota.wrap(deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), "channel"), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), videoDetails: deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
     ...(Number(env.TREND_PER_DAY) > 0 ? { perDay: Number(env.TREND_PER_DAY) } : {}), ...(Number(env.TREND_WEEK_MAX) > 0 ? { weekMax: Number(env.TREND_WEEK_MAX) } : {}),
     ...(Number(env.TREND_AI_PER_DAY) > 0 ? { aiPerDay: Number(env.TREND_AI_PER_DAY) } : {}), ...(Number(env.TREND_AI_PER_WEEK) > 0 ? { aiPerWeek: Number(env.TREND_AI_PER_WEEK) } : {}),
     // 月の費用の上限（円）と、AI を1回呼ぶ費用の目安（円）。β版の間は月1,000円（docs/PERSONALIZE_PLAN.md §2）。
@@ -62,7 +67,7 @@ export function createApp(env = process.env, deps = {}) {
   const housekeeping = createHousekeeping(recipeStore, { catalog, now: deps.now || Date.now });
   const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut(), isTrend: (videoId) => trendBook.has(videoId), dishBook });
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
-  const variantSearch = createVariantSearch(recipeStore, { search: deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env)), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
+  const variantSearch = createVariantSearch(recipeStore, { search: searchQuota.wrap(rawSearch, "variant"), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
   const feedbackDesk = createFeedbackDesk(recipeStore, { now: deps.now || Date.now });
   const usageBook = createUsageBook(recipeStore, { now: deps.now || Date.now });
@@ -325,12 +330,12 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     // axis：検索語を使い切った後に広げる方向（both＝話題と定番を交互／trend＝話題／classic＝定番）。
-    send(res, trendBook.seed({ yen: Number(req.body?.yen) || 100, axis: String(req.body?.axis || "both") }));
+    send(res, trendBook.seed({ yen: Number(req.body?.yen) || 100, axis: String(req.body?.axis || "both") }).then(async (r) => (r?.busy ? r : { ...r, youtubeSearch: await searchQuota.status() })));
   });
   app.get("/api/admin/trends/seed", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.seedStatus().then((d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length,
+    send(res, trendBook.seedStatus().then(async (d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length, youtubeSearch: await searchQuota.status(),
       // 検索語の一覧と進み具合（済み／いまの候補を読んでいる／これから）。段階の上限の回数を出すための目安の単価。
       queries: SEED_QUERIES.map(([q, label], i) => ({ q, label, status: i < (d.q || 0) - ((d.candidates || []).some((c) => !c.wave) ? 1 : 0) ? "done" : i < (d.q || 0) ? "current" : "todo" })),
       waves: waveStatus(d, (deps.now || Date.now)()),
