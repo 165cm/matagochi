@@ -257,3 +257,20 @@ test('review fix (#132): the daily collection puts off a channel at 3% before th
   cur = ix.weeks.find((w) => w.week === weekOf(now) && !w.seed);
   assert.ok(cur.items.some((i) => i.videoId === id(1)));
 });
+
+test('review fix (#132 r2): the cached count is not reused when the opt-out list changes with the same size (A resumed, B stopped elsewhere)', async () => {
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog(() => 'x');
+  await withList(store, catalog, 40, 2); // A が2品
+  catalog.ready.set(id(9039), recipe(id(9039), 'B')); // B が1品
+  let stopped = new Set(['A']);
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, optedOut: async () => stopped, search: async () => [] });
+  const before = await book.portfolio();
+  assert.equal(before.total, 38);
+  assert.ok(!before.top.some((c) => c.id === 'A'));
+  stopped = new Set(['B']); // 別のインスタンスで A を再開・B を停止（このインスタンスの clearCache は呼ばれない）
+  const after = await book.portfolio();
+  assert.equal(after.total, 39);
+  assert.equal(after.top.find((c) => c.id === 'A').n, 2);
+  assert.ok(!after.top.some((c) => c.id === 'B'));
+});

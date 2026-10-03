@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
@@ -274,7 +275,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
   // 同じ一覧（trends/index の世代）・同じ掲載停止の数の間は、10分まで結果を使い回す（全件の読み出しを毎回しない。review fix #132）。
   let portCache = null;
   async function countPortfolio(weeks, { generation = 0, excluded = new Set() } = {}) {
-    const key = `${generation}|${excluded.size}|${weeks.reduce((a, w) => a + w.items.length, 0)}`;
+    // 掲載停止は数だけでなく中身（並べた ID のハッシュ）で区別する（同じ数のまま入れ替わることがある。ほかのインスタンスの変更は onChange で届かない。review fix #132 r2）。
+    const exKey = createHash("sha256").update([...excluded].sort().join("\n")).digest("hex").slice(0, 16);
+    const key = `${generation}|${exKey}|${weeks.reduce((a, w) => a + w.items.length, 0)}`;
     if (portCache && portCache.key === key && now() - portCache.at < 10 * 60_000) return structuredClone(portCache.port);
     const items = weeks.flatMap((w) => w.items);
     const ids = [...new Set(items.map((i) => i.videoId))];
