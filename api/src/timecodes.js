@@ -2,14 +2,15 @@ import { createHash } from "node:crypto";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId } from "./youtube.js";
 import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
+import { VIDEO_TIMEOUT_MS, VIDEO_CLIENTS_MAX } from "./analyzer.js";
 
 // レシピの手順に「▶ 2:15」を付ける。動画と手順の組ごとに保存して全員で使い回す。
 // 確かさの順：① だれかが直した時刻（fix）→ ② 説明欄の投稿者のタイムスタンプ（chapters）→ ③ AIが動画から探した時刻（video）。
 // AIの1日の上限（全体）の中で動き、1家庭1日20本まで。チケットは使わない。
 export const TIMECODES_PER_DAY = 20;
 const TRUSTED = new Set(["fix", "chapters"]);
-// 管理の探し直しの鍵の長さ（AI の時間切れより十分長い。これより古い鍵は止まったもの）。
-const REANALYZE_LOCK_MS = 5 * 60_000;
+// 管理の探し直しの鍵の長さ：3つの接続先がそれぞれ時間切れまでかかっても切れない長さ＋余裕5分（これより古い鍵は止まったもの。review fix #138 r2）。
+export const REANALYZE_LOCK_MS = VIDEO_TIMEOUT_MS * VIDEO_CLIENTS_MAX + 5 * 60_000;
 // 手順の並びはそのまま（空の手順も位置を保つ）。返す時刻は手順と同じ数・同じ順。
 const normalize = (steps) => (Array.isArray(steps) ? steps.map((s) => String(s || "").trim()).slice(0, 30) : []);
 const found = (times) => Array.isArray(times) && times.some((t) => Number.isFinite(t));

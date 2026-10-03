@@ -7,6 +7,9 @@ import { recordUsage, liteMode } from "./aiUsage.js";
 // 動画（YouTubeのURL）をAIに読ませる。Vertex が動画を読めない時があるので、順に試す：
 // ① Gemini API（GEMINI_API_KEY がある時。YouTube動画に公式に対応）→ ② Vertex（いつもの地域）→ ③ Vertex（global）。
 // deps.clients は試験用。beforeRetry：2つ目以降の接続先を呼ぶ直前ごとに通す、AI の予算の確認（切り替えも AI の1回）。
+// 動画の読み取りの1接続先の時間切れと、試す接続先の最大の数（鍵の長さを決めるのに使う。timecodes.js）。
+export const VIDEO_TIMEOUT_MS = 150_000;
+export const VIDEO_CLIENTS_MAX = 3;
 export async function generateFromVideo(env, { videoUrl, videoMetadata = null, prompt, config }, { clients, beforeRetry } = {}) {
   const model = env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash";
   const location = env.GOOGLE_CLOUD_LOCATION || "us-central1";
@@ -26,7 +29,7 @@ export async function generateFromVideo(env, { videoUrl, videoMetadata = null, p
       const response = await client.ai().models.generateContent({ model, contents: [{ role: "user", parts: [
         { fileData: { fileUri: videoUrl, mimeType: "video/mp4" }, ...(videoMetadata ? { videoMetadata } : {}) },
         { text: prompt }
-      ] }], config: { httpOptions: { timeout: 150_000, retryOptions: { attempts: 1 } }, ...config } });
+      ] }], config: { httpOptions: { timeout: VIDEO_TIMEOUT_MS, retryOptions: { attempts: 1 } }, ...config } });
       recordUsage(model, response);
       return { response, via: client.name, failures };
     } catch (error) {

@@ -168,3 +168,30 @@ test('review fix (#138): a time after the part the AI watched is flagged ("unsee
   assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 1900], { source: 'video', seenSeconds: 1800, durationSeconds: 1800 })), ['beyond']);
   assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 1900], { source: 'chapters', seenSeconds: 1800, durationSeconds: 3600 })), []);
 });
+
+test('review fix (#138 r2): the re-analyze lock outlasts 3 endpoints each running to their 150-second timeout', async () => {
+  const { REANALYZE_LOCK_MS } = await import('../src/timecodes.js');
+  assert.ok(REANALYZE_LOCK_MS > 3 * 150_000);
+  let calls = 0, t = Date.now();
+  const waits = [];
+  const store = createMemorySyncStore();
+  const opts = { now: () => t, reserveBudget: async () => {}, snippet: async () => ({ durationSeconds: 300 }), analyze: async () => { calls++; await new Promise((r) => waits.push(r)); return { stepTimes: [3, 90] }; } };
+  const a = createTimecodeBook(store, opts), b = createTimecodeBook(store, opts);
+  const ask = { url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['切る', '焼く'] };
+  const first = a.reanalyze(ask);
+  await new Promise((r) => setImmediate(r));
+  t += 3 * 150_000 + 1; // 3つ目の接続先が時間切れになる直前でも
+  await assert.rejects(b.reanalyze(ask), { code: 'reanalyze_pending' });
+  assert.equal(calls, 1);
+  t += REANALYZE_LOCK_MS; // 止まった探し直しの鍵は、取り直せる
+  const late = b.reanalyze(ask); await new Promise((r) => setImmediate(r));
+  assert.equal(calls, 2);
+  waits.forEach((r) => r()); await late; await first.catch(() => {});
+});
+
+test('review fix (#138 r2): older saves without seenSeconds count as "watched the first 10 minutes" for "unseen" too', () => {
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 700], { source: 'video', durationSeconds: 1200 })), ['unseen']);
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 700], { source: 'video' })), ['unseen']);
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 700], { source: 'video', durationSeconds: 1200, seenSeconds: 1200 })), []);
+  assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 300], { source: 'video', durationSeconds: 400 })), []);
+});

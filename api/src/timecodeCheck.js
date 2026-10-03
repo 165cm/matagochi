@@ -32,20 +32,21 @@ export function checkStepTimes(steps = [], times = [], { durationSeconds = null,
   // 説明欄の章の時刻は、章が手順より大まかだと、いくつかの手順が同じ章の始まりを指す（間違いではない）。
   // 「同じ時刻」「固まり」は要確認にせず、「大まか」（情報）として数える（2026-10-04：点検の76品の多くがこれだった）。
   const chapters = source === "chapters";
+  // AI が見た長さ。見た長さのない以前の保存は、最初の10分だけを見た扱い（unseen・clip で同じ値。review fix #138 r2）。
+  const seen = seenSeconds > 0 ? seenSeconds : CHECK_CLIP_SECONDS;
   let prev = null, sameCount = 0;
   t.forEach((x, i) => {
     if (x === null) return;
     if (prev !== null && x + CHECK_ORDER_SLACK <= prev) add("order", i);
     else if (prev !== null && x === prev && list[i] !== list[i - 1]) { if (chapters) sameCount += 1; else add("same", i); }
     if (Number.isFinite(durationSeconds) && durationSeconds > 0 && x >= durationSeconds) add("beyond", i);
-    // AI が見た長さ（seenSeconds）より後の時刻は、AI が見ていない場面の時刻（動画の長さを超える時は beyond だけ。review fix #138）。
-    else if (source === "video" && seenSeconds > 0 && x >= seenSeconds) add("unseen", i);
+    // AI が見た長さより後の時刻は、AI が見ていない場面の時刻（動画の長さを超える時は beyond だけ。review fix #138）。
+    else if (source === "video" && x >= seen) add("unseen", i);
     prev = x;
   });
   if (found.length * 2 < list.filter(Boolean).length) add("sparse");
   // AI が最初の10分だけを見た時：10分を超える動画（長さが分からない時も）で、最後の時刻が10分の手前・その後の手順に時刻がない。
   const lastIdx = t.reduce((a, x, i) => (x !== null ? i : a), -1);
-  const seen = seenSeconds > 0 ? seenSeconds : CHECK_CLIP_SECONDS;
   if (source === "video" && lastIdx < list.length - 1 && Math.max(...found) < seen && (!(durationSeconds > 0) || durationSeconds > seen)) add("clip");
   // どこか4つの時刻が30秒の中に固まっていたら（並べて、続く4つごとの幅を見る。一部だけの固まりも。review fix #136）。
   const sorted = [...found].sort((a, b) => a - b);
