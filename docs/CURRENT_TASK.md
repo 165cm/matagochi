@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 時刻の点検：説明欄の章の「同じ時刻」「固まり」を要確認から外す（大まか＝参考） | api/src/timecodeCheck.js・api/src/server.js・admin/catalog.html・api/test/timecodeCheck.test.js・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

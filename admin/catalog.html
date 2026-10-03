@@ -583,6 +583,7 @@
       const k = el("div", undefined, "kpis");
       for (const [label, n] of [["点検した", d.checked], ["問題なし", d.ok], ["要確認", d.warn], ["▶ なし", d.none]]) { const t = el("div", undefined, "kpi"); t.append(el("small", label), el("b", `${n}品`)); k.append(t); }
       box.append(k);
+      if (d.coarse) box.append(el("p", `参考：説明欄の章が大まかで、いくつかの手順が同じ章の時刻を指すレシピ ${d.coarse}品（間違いではないので要確認には入れていません）。`, "meta"));
       if (!d.rows.length) { box.append(el("p", "要確認はありません。", "empty")); return; }
       const by = {}; for (const r of d.rows) for (const i of r.issues) by[i.code] = (by[i.code] || 0) + 1;
       box.append(el("p", Object.entries(by).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${d.labels[c] || c}：${n}品`).join("／"), "meta"));

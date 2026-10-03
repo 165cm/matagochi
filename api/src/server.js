@@ -431,7 +431,8 @@ export function createApp(env = process.env, deps = {}) {
     return out;
   }
   // レシピに付いた時刻の出どころ：運営が直した → fix／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
-  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : "recipe");
+  // 説明欄から読んだレシピの時刻は、説明欄の章からしか付かない（importRecipe.js）。出どころを残す前（#136 より前）に読んだものも章とみなす。
+  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
   // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・説明欄の章（timecodes/* の fix・cleared・chapters）
   // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
   async function timesOf(url, r) {
@@ -454,10 +455,11 @@ export function createApp(env = process.env, deps = {}) {
         const { times, source } = await timesOf(url, { ...x, stepTimes: full.stepTimes ?? x.stepTimes, stepTimesFrom: full.stepTimesFrom, analyzedFrom: full.analyzedFrom });
         const c = checkStepTimes(x.steps, times, { durationSeconds: lengths[x.videoId] ?? null, source });
         count[c.status] += 1;
+        if (c.coarse) count.coarse = (count.coarse || 0) + 1;
         if (c.status === "warn") rows.push({ videoId: x.videoId, title: x.title || "", channelTitle: x.channelTitle || "", steps: c.steps, found: c.found, source, issues: c.issues });
       }
       rows.sort((a, b) => b.issues.length - a.issues.length);
-      return { checked: items.length, ...count, labels: ISSUE_LABEL, rows };
+      return { checked: items.length, coarse: 0, ...count, labels: ISSUE_LABEL, rows };
     })());
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {

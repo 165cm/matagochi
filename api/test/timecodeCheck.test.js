@@ -147,3 +147,12 @@ test('review fix (#136 r2): a time a user fixed (shared) wins over the older tim
   const d = await (await fetch(`${base}/api/admin/timecodes/check`, { headers: admin })).json();
   assert.equal(d.warn, 0, 'the old AI times (reversed) are not used');
 });
+
+test('2026-10-04: chapter times may point several steps to the same chapter — counted as "coarse" (info), not as a problem; description-read recipes count as chapters', () => {
+  const r = checkStepTimes(steps(5), [10, 10, 10, 90, 90], { source: 'chapters', durationSeconds: 300 });
+  assert.equal(r.status, 'ok');
+  assert.equal(r.coarse, 3);
+  assert.deepEqual([...new Set(codes(checkStepTimes(steps(5), [10, 10, 10, 90, 90], { source: 'video' })))], ['same']);
+  assert.deepEqual(codes(checkStepTimes(steps(5), [10, 10, 10, 90, 400], { source: 'chapters', durationSeconds: 300 })), ['beyond'], 'beyond the video still counts');
+  assert.deepEqual(codes(checkStepTimes(steps(4), [100, 50, 150, 200], { source: 'chapters' })), ['order'], 'order still counts');
+});
