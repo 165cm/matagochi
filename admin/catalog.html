@@ -53,6 +53,7 @@
   /* 操作 */
   .ctl { display: grid; gap: 8px; }
   .chk { display: inline-flex; gap: 6px; align-items: center; font-weight: 700; font-size: 14px; }
+  tr.over td { color: var(--s2); font-weight: 700; }
   .run-status { font-weight: 700; margin: 0; font-size: 14px; } .run-status:empty { display: none; }
   .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 6px 16px; }
   .meter .line { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
@@ -159,12 +160,15 @@
           <option value="both">広げ方：話題と定番を交互に</option>
           <option value="trend">広げ方：最新で話題（公開60日以内）</option>
           <option value="classic">広げ方：定番（公開1年より前）</option>
+          <option value="channel">広げ方：当たり投稿者の深掘り</option>
         </select>
         <label class="chk"><input type="checkbox" id="auto"> 段階の終わりまで自動で</label>
         <button type="button" class="quiet small" id="stop" hidden>止める</button>
         <details class="info" style="margin-left:auto"><summary>ⓘ しくみ</summary><div>
           品ぞろえが足りない分野の検索語で YouTube を探し、説明欄にレシピがある動画だけを AI で読みます（3本ずつ）。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安。AI 1回＝1円で数える）まで・月の上限の中。集めた料理は28日間「新着」に出ます。<br>
-          決めた検索語を使い切ったら「広げ方」へ：<b>話題</b>＝公開60日以内を再生の多い順（同じ語は7日あけて）／<b>定番</b>＝公開1年より前を再生の多い順（料理名ごと・もう2品あれば検索しない）。公開日で分けるので重なりません。<b>時短8割・30分以上2割</b>：段階の30分以上（時間不明も）が2割に届いたら、次の検索に「時短」を足します（話題・定番どちらも）。2割を超える30分以上の料理は入れません。定番は1回の検索で、説明欄の確認を通った3本まで（同じ料理のアレンジばかり増えないように）。<br>
+          決めた検索語を使い切ったら「広げ方」へ：<b>話題</b>＝公開60日以内を再生の多い順（同じ語は7日あけて）／<b>定番</b>＝公開1年より前を再生の多い順（料理名ごと・もう2品あれば検索しない）。公開日で分けるので重なりません。<b>時短8割・30分以上2割</b>：段階の30分以上（時間不明も）が2割に届いたら、次の検索に「時短」を足します（話題・定番どちらも）。2割を超える30分以上の料理は入れません。定番は1回の検索で料理が3品増えるまで（説明欄の確認を通った8本まで残す。同じ料理のアレンジばかり増えないように）。<br>
+          <b>当たり投稿者の深掘り</b>：成績表で料理になりやすく時短の多い投稿者（料理2品以上・料理になる見込み5割以上）の新しい動画一覧を読みます（検索の枠を使わない。同じ投稿者は14日あけて）。交互の2回に1回と、検索の上限に届いた時。<br>
+          <b>投稿者の比率</b>：新着全体で、1人の投稿者の料理が3%を超えないように入れます（毎日の新着集めも同じ）。<br>
           <b>成績表</b>：検索語は「1回の検索で増えた20分以内の料理」の平均（まだ使っていない語は2品の見込みから＝一度は試す）が高い語から使います。投稿者は AI で読んだうち料理になった割合（1勝1敗から数える）が、3本以上読んで3割未満なら AI の前に外します（0円）。30分以上の枠がない時は、題名が長そう（煮込み・じっくり・角煮など）・時短の少ない投稿者の動画を後回しにし、題名が速そう（10分・レンジ・時短など）な動画から読みます。定番の料理名は、時短が足りない時は煮込みなどの長い料理を後回しにします。広げ方の検索は1日60回まで。YouTube の検索はプロジェクト全体で1日95回までで、一括収集は毎日の新着集め・ほかの作り方の分（30回）を残して使います。どちらも YouTube と同じ太平洋時間の0時（日本時間の16時・冬は17時）に戻ります。
         </div></details>
       </div>
@@ -234,8 +238,8 @@
   const REASON_SHORT = { wait: "待ち時間", exhausted: "使い切り", axis_exhausted: "方向を使い切り", search_day_limit: "今日の検索の上限", stage_budget: "金額に到達", month_budget: "月の上限", time: "時間切れ", search_failed: "検索に失敗", cost_not_saved: "記録の保存に失敗", ai_budget: "AI の上限", not_configured: "設定不足" };
   // 外した理由。pre：AI の前に外した（0円）／post：AI で読んだが料理にならなかった
   const SKIP = {
-    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], classic_enough: ["pre", "定番の4本目以降"], long_quota_free: ["pre", "読んだことあり・30分以上が2割を超える"], channel_low: ["pre", "作り方を書かない投稿者"], title_long: ["pre", "題名から長そう（後回し）"], channel_slow: ["pre", "時短の少ない投稿者（後回し）"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
-    no_steps_in_description: ["post", "作り方がない"], incomplete_recipe: ["post", "材料・手順を読めない"], gemini_invalid_json: ["post", "AI の答えの形が崩れた"], too_short: ["post", "材料・手順が少ない"], not_dinner: ["post", "晩ごはんでない"], analysis_uncertain: ["post", "AI の応答を確認できない"], long_quota: ["post", "30分以上が2割を超える"],
+    description_not_recipe: ["pre", "説明欄にレシピがない"], filtered: ["pre", "重複・晩ごはんでない・掲載停止"], same_channel: ["pre", "同じ投稿者の3本目以降"], classic_enough: ["pre", "定番の4品目以降（3品そろった）"], channel_cap: ["pre", "投稿者の上限（新着の3%）"], dig_enough: ["pre", "深掘りの11本目以降"], long_quota_free: ["pre", "読んだことあり・30分以上が2割を超える"], channel_low: ["pre", "作り方を書かない投稿者"], title_long: ["pre", "題名から長そう（後回し）"], channel_slow: ["pre", "時短の少ない投稿者（後回し）"], not_public: ["pre", "公開されていない"], duplicate: ["pre", "重複"], opted_out: ["pre", "掲載停止"],
+    no_steps_in_description: ["post", "作り方がない"], incomplete_recipe: ["post", "材料・手順を読めない"], gemini_invalid_json: ["post", "AI の答えの形が崩れた"], too_short: ["post", "材料・手順が少ない"], not_dinner: ["post", "晩ごはんでない"], analysis_uncertain: ["post", "AI の応答を確認できない"], long_quota: ["post", "30分以上が2割を超える"], channel_cap_read: ["post", "投稿者の上限（読んだ後に分かった）"],
     video_not_found: ["post", "動画が見つからない"], non_public_video: ["post", "公開されていない"], empty_description: ["post", "説明欄が空"], sync_storage_failed: ["post", "保存先が一時的に混んでいた"], catalog_conflict: ["post", "保存が重なった"],
   };
   const OUTCOME = [["made", "料理になった", "--s3"], ["nosteps", "作り方がない", "--s2"], ["unread", "材料・手順を読めない", "--s4"], ["json", "AI の答えの形が崩れた", "--s5"], ["long", "30分以上が2割を超える", "--n1"], ["other", "そのほか", "--s1"]];
@@ -331,7 +335,7 @@
     // 押しても増えないのでボタンを止める。後回しの候補がある時は、検索せずに読めることがあるので止めない（review fix #131）。
     const wv = d.waves, yt = d.youtubeSearch;
     const searchFull = !!wv && ((wv.searchedToday || 0) >= (wv.searchPerDay || 60) || (!!yt && yt.used >= yt.seedCap));
-    const dayFull = searchFull && !d.candidatesLeft && !d.queriesLeft && !d.laterLeft;
+    const dayFull = searchFull && !d.candidatesLeft && !d.queriesLeft && !d.laterLeft && !wv?.digReady;
     const resetAt = yt?.resetAt || wv?.searchResetAt;
     const when = resetAt ? new Date(resetAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
     const note = document.getElementById("limit-note");
@@ -366,7 +370,7 @@
       tile("AI を使った", `${s.ai || 0}回`),
       yenTile,
       tile("1品あたり", sum.perDish === null ? "—" : yen(sum.perDish), change === null ? "" : `前の段階比 ${change > 0 ? "+" : ""}${change}%`, change !== null && change < 0 ? "good" : ""),
-      tile("料理になった割合", pct(sum.added, sum.candidates), `候補 ${sum.candidates}本中`));
+      tile("料理になった割合", pct(sum.out.made, sum.aiRead), `AI で読んだ ${sum.aiRead}本中`));
     box.append(k);
     // 候補のゆくえ（2段）
     const flow = el("div", undefined, "flow");
@@ -386,20 +390,31 @@
   function renderSources() {
     const box = document.getElementById("sources"); box.textContent = "";
     const w = last.seed?.waves, s = (last.seed?.stages || []).at(-1);
-    document.getElementById("waves-left").textContent = w ? `残り：話題 ${w.trendReady}/${w.trendTotal}語・定番 ${w.classicLeft}/${w.classicTotal}品` : "";
+    document.getElementById("waves-left").textContent = w ? `残り：話題 ${w.trendReady}/${w.trendTotal}語・定番 ${w.classicLeft}/${w.classicTotal}品・深掘りできる投稿者 ${w.digReady ?? 0}人` : "";
     const log = w?.log || [];
     if (log.length) {
       // 当たり＝ AI で読んだうち料理になった割合。分子も分母も AI で読んだ分だけ（0円の料理は入れない。ai と aiAdded の両方が記録されている検索だけで数える＝古い記録は「不明」として外す）。
-      const agg = { trend: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 } };
+      const agg = { channel: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, trend: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 } };
       for (const e of log) {
         const a = agg[e.axis]; if (!a) continue; if (e.skipped) { a.skip += 1; continue; }
         a.s += 1; a.ai += e.ai || 0; a.add += e.added || 0;
         if (Number.isFinite(e.ai) && Number.isFinite(e.aiAdded)) { a.hitAi += e.ai; a.hit += e.aiAdded; }
       }
-      const rows = [["話題", agg.trend], ["定番", agg.classic]].map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—"]);
+      const rows = [["話題", agg.trend], ["定番", agg.classic], ["投稿者", agg.channel]].filter(([l, a]) => l !== "投稿者" || a.s).map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—"]);
       box.append(scroll(table(["広げ方", "検索", "AI", "増えた", "1検索で", "当たり"], rows, [1, 2, 3, 4, 5], null, { bars: [4] })));
       const skipped = agg.classic.skip;
       box.append(el("p", `話題＝公開60日以内・定番＝公開1年より前・⚡＝時短を足した検索。当たり＝AI で読んだうち料理になった割合。${skipped ? `定番の ${skipped}品は、もう新着に2品あるので検索せず（0円）。` : ""}`, "meta"));
+    }
+    // 投稿者の比率（新着全体）：上位15人。3%を超えている投稿者は赤字（以前に入った分。これからは入れない）。
+    const pf = last.seed?.portfolio;
+    if (pf) {
+      const hp = el("h3", `投稿者の比率（新着全体 ${pf.total}品・${pf.channels}人・1人 ${pf.sharePct}%＝${pf.maxPer}品まで${pf.over ? `・超えている ${pf.over}人` : ""}）`); hp.style.marginTop = "10px";
+      box.append(hp);
+      if (pf.top.length) {
+        const t = table(["投稿者", "品数", "割合"], pf.top.map((c) => [c.name || c.id, c.n, { text: `${c.share}%`, value: c.share }]), [1, 2], null, { bars: [2] });
+        [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { if (pf.top[i].share > pf.sharePct) tr.classList.add("over"); });
+        box.append(scroll(t));
+      } else box.append(el("p", "まだありません。", "empty"));
     }
     const by = Object.entries(s?.byQuery || {}).sort((a, b) => b[1] - a[1]);
     const h = el("h3", `この段階の分野ごと（${by.reduce((a, b) => a + b[1], 0)}品）`); h.style.marginTop = "10px";
@@ -410,7 +425,7 @@
     const box = document.getElementById("stages"); box.textContent = "";
     const stages = last.seed?.stages || [];
     if (!stages.length) { box.append(el("p", "—", "empty")); return; }
-    const rows = stages.map((s) => { const sum = summarize(s); return [`第${s.n}${s.done ? "" : "（続き）"}`, sum.added, s.ai || 0, yen(s.yenMeasured), sum.perDish === null ? "—" : { text: yen(sum.perDish), value: sum.perDish }, pct(sum.added, sum.candidates)]; });
+    const rows = stages.map((s) => { const sum = summarize(s); return [`第${s.n}${s.done ? "" : "（続き）"}`, sum.added, s.ai || 0, yen(s.yenMeasured), sum.perDish === null ? "—" : { text: yen(sum.perDish), value: sum.perDish }, pct(sum.out.made, sum.aiRead)]; });
     const total = stages.reduce((a, s) => ({ added: a.added + (s.added || []).length, ai: a.ai + (s.ai || 0), yen: a.yen + (s.yenMeasured || 0) }), { added: 0, ai: 0, yen: 0 });
     const t = table(["段階", "品数", "AI", "費用", "1品あたり", "なった割合"], rows, [1, 2, 3, 4, 5], null, { bars: [4] });
     const tr = el("tr", undefined, "total");
@@ -430,7 +445,7 @@
   function renderQueries() {
     const box = document.getElementById("queries"); box.textContent = "";
     const d = last.seed || {}, log = d.waves?.log || [], qs = d.queries || [];
-    const AX = { trend: "話題", classic: "定番" };
+    const AX = { trend: "話題", classic: "定番", channel: "投稿者" };
     box.append(el("h3", `広げ方の検索（新しい順・${log.length}件）`));
     box.append(log.length ? scroll(table(["方向", "検索語・料理", "日", "候補", "AI", "増えた"], log.map((e) => [(AX[e.axis] || e.axis) + (e.quick ? "⚡" : ""), e.q, String(e.at).slice(5, 10), e.skipped === "enough" ? "検索せず" : e.picked, e.skipped ? "—" : e.ai || 0, e.skipped ? "—" : e.added]), [3, 4, 5], null, { wide: true })) : el("p", "まだ広げていません。", "empty"));
     const h = el("h3", `決めた検索語（残り ${d.queriesLeft ?? "—"}・読む前の候補 ${d.candidatesLeft ?? "—"}・後回し ${d.laterLeft ?? 0}）`); h.style.marginTop = "12px"; box.append(h);
@@ -620,7 +635,7 @@
   }
   document.getElementById("seed-run").addEventListener("click", collect);
   // 広げる方向は、この端末に覚えておく。
-  try { const a = localStorage.getItem("ripigochi-admin-axis"); if (["both", "trend", "classic"].includes(a)) document.getElementById("axis").value = a; } catch {}
+  try { const a = localStorage.getItem("ripigochi-admin-axis"); if (["both", "trend", "classic", "channel"].includes(a)) document.getElementById("axis").value = a; } catch {}
   document.getElementById("axis").addEventListener("change", (e) => { try { localStorage.setItem("ripigochi-admin-axis", e.target.value); } catch {} });
   document.getElementById("stop").addEventListener("click", () => { stopAuto = true; runStatus.textContent = "この回が終わったら止めます…"; });
   // ── タブ ──

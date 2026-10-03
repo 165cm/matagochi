@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 当たり投稿者の深掘り・投稿者の比率3%（新着全体）・定番は料理3品まで・料理になった割合は AI で読んだうち（APP_MAP §46-6） | api/src/trends.js・api/src/server.js・admin/catalog.html・api/test・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

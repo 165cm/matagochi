@@ -10,7 +10,7 @@ const { createApp } = await import('../src/server.js');
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-10-05T01:00:00Z');
 const id = (n) => `lern${String(n).padStart(7, '0')}`;
-const recipe = (v, minutes = 10, steps = ['切る', '炒める']) => ({ title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: 'chX', ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps, tags: [], planning: { minutes } });
+const recipe = (v, minutes = 10, steps = ['切る', '炒める']) => ({ title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: `ch-${v}`, ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps, tags: [], planning: { minutes } });
 function fakeCatalog(make = (v) => recipe(v)) {
   const ready = new Map(), calls = [];
   return { ready, calls,
@@ -109,7 +109,7 @@ test('learn: with no room for a 30-minute dish, slow-looking titles and slow cha
   assert.ok(!doc.tried.includes(id(1)) && !doc.tried.includes(id(2)), 'they can come back when there is room');
 });
 
-test('learn: a classic search keeps 3 videos that pass the description check (not the first 3 found)', async () => {
+test('learn: a classic search keeps the videos that pass the description check (up to 8) and reads them until 3 dishes are added (2026-10-03)', async () => {
   const store = createMemorySyncStore();
   await start(store);
   const catalog = fakeCatalog();
@@ -118,10 +118,10 @@ test('learn: a classic search keeps 3 videos that pass the description check (no
     search: async () => Array.from({ length: 10 }, (_, i) => ({ videoId: id(i), channelId: `c${i}`, title: '料理' })) });
   const r = await book.seed({ yen: 3, axis: 'classic' });
   const e = r.waves.log.find((x) => !x.skipped);
-  assert.equal(e.picked, 3);
+  assert.equal(e.picked, 6, 'all 6 that pass the description check are kept');
   assert.equal(r.stage.skipped.description_not_recipe, 4);
-  assert.equal(r.stage.skipped.classic_enough, 3);
-  assert.deepEqual(r.stage.added.length, 3);
+  assert.equal(r.stage.added.length, 3);
+  assert.equal(r.stage.skipped.classic_enough, 3, 'after 3 dishes the rest are not read');
 });
 
 test('learn: old records (classic index) still work; the 16 new quick classics are next', async () => {
