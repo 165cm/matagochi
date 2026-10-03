@@ -8,6 +8,7 @@ export const STEPS_CUT_OLD = 10; // 以前は手順を10個で切っていた（
 export const ISSUE_LABEL = {
   order: "時刻が手順の順に並んでいない",
   same: "前の手順と同じ時刻",
+  coarse: "説明欄の章が大まか（いくつかの手順が同じ章の時刻）",
   beyond: "動画の長さを超えている",
   clip: "10分より後の手順に時刻がない（AI が最初の10分だけを見た）",
   sparse: "時刻のない手順が半分より多い",
@@ -26,11 +27,14 @@ export function checkStepTimes(steps = [], times = [], { durationSeconds = null,
   if (list.length === STEPS_CUT_OLD) add("steps10");
   const found = t.filter((x) => x !== null);
   if (!found.length) return { status: issues.length ? "warn" : "none", issues, found: 0, steps: list.length };
-  let prev = null;
+  // 説明欄の章の時刻は、章が手順より大まかだと、いくつかの手順が同じ章の始まりを指す（間違いではない）。
+  // 「同じ時刻」「固まり」は要確認にせず、「大まか」（情報）として数える（2026-10-04：点検の76品の多くがこれだった）。
+  const chapters = source === "chapters";
+  let prev = null, sameCount = 0;
   t.forEach((x, i) => {
     if (x === null) return;
     if (prev !== null && x + CHECK_ORDER_SLACK <= prev) add("order", i);
-    else if (prev !== null && x === prev && list[i] !== list[i - 1]) add("same", i);
+    else if (prev !== null && x === prev && list[i] !== list[i - 1]) { if (chapters) sameCount += 1; else add("same", i); }
     if (Number.isFinite(durationSeconds) && durationSeconds > 0 && x >= durationSeconds) add("beyond", i);
     prev = x;
   });
@@ -40,6 +44,11 @@ export function checkStepTimes(steps = [], times = [], { durationSeconds = null,
   if (source === "video" && lastIdx < list.length - 1 && Math.max(...found) < CHECK_CLIP_SECONDS && (!(durationSeconds > 0) || durationSeconds > CHECK_CLIP_SECONDS)) add("clip");
   // どこか4つの時刻が30秒の中に固まっていたら（並べて、続く4つごとの幅を見る。一部だけの固まりも。review fix #136）。
   const sorted = [...found].sort((a, b) => a - b);
-  for (let i = 0; i + 3 < sorted.length; i++) if (sorted[i + 3] - sorted[i] < CHECK_CLUSTER_SECONDS) { add("cluster"); break; }
-  return { status: issues.length ? "warn" : "ok", issues, found: found.length, steps: list.length };
+  // 固まりは章でも数える（章なら要確認にせず「大まか」に入れる。review fix #137）。
+  let packed = false;
+  for (let i = 0; i + 3 < sorted.length; i++) if (sorted[i + 3] - sorted[i] < CHECK_CLUSTER_SECONDS) { packed = true; break; }
+  if (packed && !chapters) add("cluster");
+  // coarse：章の時刻で「同じ時刻」の数（固まりだけの時は1以上にする）。
+  const coarse = chapters && (sameCount || packed) ? Math.max(sameCount, 1) : 0;
+  return { status: issues.length ? "warn" : "ok", issues, found: found.length, steps: list.length, ...(coarse ? { coarse } : {}) };
 }
