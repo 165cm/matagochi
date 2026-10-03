@@ -2,6 +2,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook } from "./dishes.js";
+import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 
 // 新着レシピ：YouTubeから選んで読み取り、28日で消す（YouTube APIのデータは30日を超えて持たない）。
 // 集める処理と、見せる枠を分ける（docs/PERSONALIZE_PLAN.md §7.3・§12-7）：
@@ -218,7 +219,8 @@ export function waveStatus(doc, nowMs) {
     words: Object.entries(w.words || {}).map(([word, st]) => ({ word, axis: WAVE_TREND_WORDS.includes(word) ? "trend" : "classic", s: st.s || 0, fast: st.fast || 0, added: st.added || 0, score: Math.round(wordScore(st) * 100) / 100 })).sort((a, b) => b.score - a.score || b.s - a.s),
     wordPrior: WORD_PRIOR_FAST, channels: channelSummary(doc?.channels),
     quickMaxMinutes: QUICK_MAX_MINUTES, quickLongShare: QUICK_LONG_SHARE, trendReuseDays: WAVE_TREND_REUSE_DAYS,
-    searchedToday: w.day?.on === new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10) ? w.day.n : 0, searchPerDay: WAVE_SEARCH_PER_DAY, log: (w.log || []).slice(-60).reverse() };
+    // 1日は YouTube と同じ太平洋時間（0時に戻る。review fix #131）。
+    searchedToday: w.day?.on === pacificDay(nowMs) ? w.day.n : 0, searchPerDay: WAVE_SEARCH_PER_DAY, searchResetAt: new Date(nextPacificMidnight(nowMs)).toISOString(), log: (w.log || []).slice(-60).reverse() };
 }
 // 対象の国と言語。いまは日本の動画だけ（タイトルに日本語がない動画は外す）。海外展開の時はここに国を足す。
 export const TREND_MARKET = { regionCode: "JP", relevanceLanguage: "ja", titleLooksLocal: (title) => /[ぁ-んァ-ヶ一-龠]/.test(String(title || "")) };
@@ -608,7 +610,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             let q, label, opts = { videoDuration: "medium" }, wave = null;
             if (doc.q < SEED_QUERIES.length) [q, label] = SEED_QUERIES[doc.q];
             else {
-              const day = doc.waves?.day?.on === today ? doc.waves.day.n : 0;
+              const ytDay = pacificDay(now());
+              const day = doc.waves?.day?.on === ytDay ? doc.waves.day.n : 0;
               if (day >= WAVE_SEARCH_PER_DAY) { reason = "search_day_limit"; break; }
               doc.waves ||= emptyWaves();
               const waveDoc = structuredClone(doc.waves);
@@ -616,13 +619,19 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               // 選んだ方向だけ使い切った時は、段階を終わりにしない（もう一方の方向で続けられる）。
               if (!wave) { reason = axis === "both" ? "exhausted" : "axis_exhausted"; break; }
               ({ q, label, opts } = wave);
-              doc.waves.day = { on: today, n: day + 1 };
+              doc.waves.day = { on: ytDay, n: day + 1 };
               waveUndo = waveDoc;
             }
             let found;
             // 失敗した時は、同じ検索語をあとでやり直せるように位置を戻す（呼んだ検索の回数 day は戻さない＝1日の上限を守る）。
             const undoWave = () => { if (wave) doc.waves = { ...waveUndo, day: doc.waves.day }; };
-            try { found = await search(q, opts); } catch { undoWave(); reason = "search_failed"; break; }
+            // quotaKind：プロジェクト全体の YouTube の検索の枠（searchQuota.js）で、ほかの分を残して使う。
+            // 枠がなくて検索しなかった時は、検索語も今日の回数も戻す（YouTube を呼んでいない）。
+            try { found = await search(q, { ...opts, quotaKind: "seed" }); }
+            catch (error) {
+              if (error?.code === "youtube_search_quota") { if (wave) doc.waves = waveUndo; reason = "search_day_limit"; break; }
+              undoWave(); reason = "search_failed"; break;
+            }
             const perChannel = {};
             const picked = [];
             for (const c of found) {

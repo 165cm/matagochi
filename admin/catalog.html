@@ -165,7 +165,7 @@
         <details class="info" style="margin-left:auto"><summary>ⓘ しくみ</summary><div>
           品ぞろえが足りない分野の検索語で YouTube を探し、説明欄にレシピがある動画だけを AI で読みます（3本ずつ）。もう読んだ動画は0円、試した動画は重ねません。1段階は100円（目安。AI 1回＝1円で数える）まで・月の上限の中。集めた料理は28日間「新着」に出ます。<br>
           決めた検索語を使い切ったら「広げ方」へ：<b>話題</b>＝公開60日以内を再生の多い順（同じ語は7日あけて）／<b>定番</b>＝公開1年より前を再生の多い順（料理名ごと・もう2品あれば検索しない）。公開日で分けるので重なりません。<b>時短8割・30分以上2割</b>：段階の30分以上（時間不明も）が2割に届いたら、次の検索に「時短」を足します（話題・定番どちらも）。2割を超える30分以上の料理は入れません。定番は1回の検索で、説明欄の確認を通った3本まで（同じ料理のアレンジばかり増えないように）。<br>
-          <b>成績表</b>：検索語は「1回の検索で増えた20分以内の料理」の平均（まだ使っていない語は2品の見込みから＝一度は試す）が高い語から使います。投稿者は AI で読んだうち料理になった割合（1勝1敗から数える）が、3本以上読んで3割未満なら AI の前に外します（0円）。30分以上の枠がない時は、題名が長そう（煮込み・じっくり・角煮など）・時短の少ない投稿者の動画を後回しにし、題名が速そう（10分・レンジ・時短など）な動画から読みます。定番の料理名は、時短が足りない時は煮込みなどの長い料理を後回しにします。広げ方の検索は1日60回まで（日本時間の0時に戻る）。
+          <b>成績表</b>：検索語は「1回の検索で増えた20分以内の料理」の平均（まだ使っていない語は2品の見込みから＝一度は試す）が高い語から使います。投稿者は AI で読んだうち料理になった割合（1勝1敗から数える）が、3本以上読んで3割未満なら AI の前に外します（0円）。30分以上の枠がない時は、題名が長そう（煮込み・じっくり・角煮など）・時短の少ない投稿者の動画を後回しにし、題名が速そう（10分・レンジ・時短など）な動画から読みます。定番の料理名は、時短が足りない時は煮込みなどの長い料理を後回しにします。広げ方の検索は1日60回まで。YouTube の検索はプロジェクト全体で1日95回までで、一括収集は毎日の新着集め・ほかの作り方の分（30回）を残して使います。どちらも YouTube と同じ太平洋時間の0時（日本時間の16時・冬は17時）に戻ります。
         </div></details>
       </div>
       <p class="run-status" id="run-status" role="status" aria-live="polite"></p>
@@ -230,7 +230,7 @@
   const API = "https://matagochi-api-292190013809.us-central1.run.app";
   const APP = "https://165cm.github.io/matagochi/";
   const RUN_MS = 150_000; // サーバーが1回に動く時間の目安
-  const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語も、話題・定番の広げ方も使い切りました（話題は7日たつとまた使えます）", axis_exhausted: "選んだ方向を使い切りました（方向を変えると続けられます）", search_day_limit: "今日の広げ方の検索の上限に届きました（日本時間の0時から続けられます）", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
+  const REASON = { wait: "少し待ってから（1分ほど）続きを押してください", exhausted: "検索語も、話題・定番の広げ方も使い切りました（話題は7日たつとまた使えます）", axis_exhausted: "選んだ方向を使い切りました（方向を変えると続けられます）", search_day_limit: "今日の検索の上限に届きました（YouTube の1日が切り替わる時刻から続けられます）", stage_budget: "この段階の金額に届きました", month_budget: "月の上限に届きました", time: "時間切れ（もう一度押すと続きから）", search_failed: "検索に失敗しました（もう一度押すと続きから）", cost_not_saved: "費用の記録を保存できませんでした（AI は使っていません。もう一度どうぞ）", ai_budget: "AI の全体の上限に届きました", not_configured: "設定が足りません" };
   const REASON_SHORT = { wait: "待ち時間", exhausted: "使い切り", axis_exhausted: "方向を使い切り", search_day_limit: "今日の検索の上限", stage_budget: "金額に到達", month_budget: "月の上限", time: "時間切れ", search_failed: "検索に失敗", cost_not_saved: "記録の保存に失敗", ai_budget: "AI の上限", not_configured: "設定不足" };
   // 外した理由。pre：AI の前に外した（0円）／post：AI で読んだが料理にならなかった
   const SKIP = {
@@ -327,17 +327,23 @@
   function renderControls() {
     const d = last.seed || {}, stages = d.stages || [], s = stages.at(-1);
     const btn = document.getElementById("seed-run");
-    // 今日の広げ方の検索を使い切り、読む前の候補・決めた検索語もない時は、押しても増えないのでボタンを止める（2026-10-03）。
-    const wv = d.waves, dayFull = !!wv && (wv.searchedToday || 0) >= (wv.searchPerDay || 60) && !d.candidatesLeft && !d.queriesLeft;
+    // 今日の検索（広げ方の60回・プロジェクト全体の一括収集の分）を使い切り、読む前の候補・決めた検索語・後回しの候補もない時は、
+    // 押しても増えないのでボタンを止める。後回しの候補がある時は、検索せずに読めることがあるので止めない（review fix #131）。
+    const wv = d.waves, yt = d.youtubeSearch;
+    const searchFull = !!wv && ((wv.searchedToday || 0) >= (wv.searchPerDay || 60) || (!!yt && yt.used >= yt.seedCap));
+    const dayFull = searchFull && !d.candidatesLeft && !d.queriesLeft && !d.laterLeft;
+    const resetAt = yt?.resetAt || wv?.searchResetAt;
+    const when = resetAt ? new Date(resetAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
     const note = document.getElementById("limit-note");
     note.hidden = !dayFull;
-    note.textContent = dayFull ? `今日の広げ方の検索（${wv.searchPerDay}回）を使い切りました。日本時間の0時から続けられます（0時を過ぎたら「再読み込み」を押してください）。` : "";
+    note.textContent = dayFull ? `今日の検索を使い切りました。${when ? `${when}（YouTube の1日の切り替わり）` : "YouTube の1日が切り替わる時刻"}から続けられます（その時刻を過ぎたら「再読み込み」を押してください）。` : "";
     btn.disabled = busy || !last.seed || dayFull;
     btn.textContent = s && !s.done ? `第${s.n}段階の続きを集める` : `第${stages.length + 1}段階：100円分集める`;
     const box = document.getElementById("stage-progress"); box.textContent = "";
     if (s) { const limit = Math.floor((s.yen || 100) / (d.yenPerAi || 1)); box.append(meter(s.ai || 0, limit, `第${s.n}段階の AI`, `${s.ai || 0} / ${limit}回`)); }
     const w = d.waves;
-    if (w) box.append(meter(w.searchedToday || 0, w.searchPerDay || 30, "今日の広げ方の検索", `${w.searchedToday || 0} / ${w.searchPerDay || 30}回`));
+    if (w) box.append(meter(w.searchedToday || 0, w.searchPerDay || 60, "今日の広げ方の検索", `${w.searchedToday || 0} / ${w.searchPerDay || 60}回`));
+    if (yt) box.append(meter(yt.used, yt.perDay, "YouTube の検索（全体・今日）", `${yt.used} / ${yt.perDay}回`));
     const m = (last.catalog?.cost || [])[0];
     if (m) box.append(meter(m.yen, m.cap, `${m.month} の新着集め（目安）`, `${yen(m.yen)} / ${yen(m.cap)}`));
   }
