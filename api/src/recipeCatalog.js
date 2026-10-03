@@ -64,7 +64,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   // 見られなくなった動画（削除・非公開）の結果は、一覧にも取り込みにも出さない（AI も呼ばない）。
   const unavailableError = (result) => { const [code, status, message] = UNAVAILABLE[result.unavailable.reason] || UNAVAILABLE.not_found; return new ApiError(status, code, message); };
   // aiGate：呼び出し元ごとの AI 回数の上限（新着集めが使う）。{ allow(): 残りがあるか, used(): 1回使った } を、AI を呼ぶ直前ごとに通す。
-  async function run(id, { forceVideo = false, household = "", unlimited = false, aiGate = null } = {}) {
+  // reread：説明欄から読み直す（運営。以前の上限で手順が10個で切れたレシピを直す。2026-10-04）。説明欄から読んだレシピだけ。
+  async function run(id, { forceVideo = false, household = "", unlimited = false, aiGate = null, reread = false } = {}) {
     const gate = async () => {
       if (aiGate && !aiGate.allow()) throw new ApiError(429, "trend_ai_budget", "新着集めの AI の回数の上限に達しました。");
       await reserveBudget();
@@ -78,7 +79,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     // 「動画から読み直す」：すでに動画から読んだ結果があれば、同じ結果になるので再解析しない（費用をかけない）。
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
     if (current?.envelope.status === "ready" && current.envelope.result?.unavailable) throw unavailableError(current.envelope.result);
-    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) {
+    if (reread && current?.envelope.status === "ready" && current.envelope.result?.analyzedFrom !== "description") throw new ApiError(409, "reread_not_description", "動画から読んだレシピは、説明欄から読み直せません。");
+    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo) && !reread) {
       const result = await refreshed(key, current);
       if (result.unavailable) throw unavailableError(result);
       return { ...localizeRecipe(structuredClone(result)), cacheHit: true };
@@ -105,6 +107,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 運営が直した料理名は、読み直しても引き継ぐ（AI の新しい料理名で上書きしない。空＝題名で決める、も含めて）。
       const before = current?.envelope.status === "ready" ? current.envelope.result : null;
       if (before?.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
+      // 読み直しで手順が減る（説明欄が変わった・読めなかった）時は、前の結果を残す。
+      if (reread && before && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
+      if (reread) result.rereadAt = new Date(now()).toISOString();
       // 動画から作り方を読めなかったら、チケットは戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
       // 取り込みは説明文だけで読む。作り方がなくても材料があれば保存し、動画はボタンで読む。
@@ -124,17 +129,19 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       await refund();
       if (error.code === "analysis_uncertain") throw error;
       // 読み直しに失敗しても、保存済みの結果は消さない。
-      if (current?.envelope.status === "ready") await store.put(key, current.envelope, { ifGeneration: claim.generation }).catch(() => {});
+      // 読み直して手順が減る・読めない時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
+      const tried = reread && ["reread_worse", "incomplete_recipe"].includes(error.code);
+      if (current?.envelope.status === "ready") await store.put(key, tried ? { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } } : current.envelope, { ifGeneration: claim.generation }).catch(() => {});
       else await store.put(key, { status: "failed", retryAt: now() + 60_000 }, { ifGeneration: claim.generation }).catch(() => {});
       throw error;
     }
   }
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
-    async import(rawUrl, { forceVideo = false, household = "", unlimited = false, aiGate = null } = {}) {
+    async import(rawUrl, { forceVideo = false, household = "", unlimited = false, aiGate = null, reread = false } = {}) {
       const id = extractYouTubeVideoId(rawUrl);
-      const key = forceVideo ? `${id}:video:${household}` : id;
-      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited, aiGate }).finally(() => inFlight.delete(key)));
+      const key = forceVideo ? `${id}:video:${household}` : reread ? `${id}:reread` : id;
+      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited, aiGate, reread }).finally(() => inFlight.delete(key)));
       return structuredClone(await inFlight.get(key));
     },
     // 表示用の読み出し（一覧の GET から使う）：保存済みの読み取り結果を返すだけ。AIも YouTube API も呼ばない。

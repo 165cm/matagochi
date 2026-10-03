@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 動画から手順の時刻を探す改善（5秒に1コマ・最後まで・見た長さ）・手順10個のレシピの読み直し・管理の画面のボタン | api/src/analyzer.js・timecodes.js・timecodeCheck.js・recipeCatalog.js・server.js・admin/catalog.html |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

@@ -86,10 +86,25 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, beforeRetry: reserveBudget });
         const stepTimes = cleanTimes(raw?.stepTimes, list);
         if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
-        await save(key, { stepTimes, source: "video", chaptersChecked: true }, cached);
+        // seenSeconds：AI が見た長さ（点検で「見ていない後半に時刻がない」を見分ける）。
+        await save(key, { stepTimes, source: "video", chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
         await done();
         return { stepTimes, source: "video", cacheHit: false };
       }
+    },
+    // 管理：動画から探し直す（保存はしない＝運営が見比べて「時刻を保存」する。1家庭の回数の上限は使わない・AI の予算は通す）。
+    async reanalyze({ url, steps }) {
+      required();
+      const videoId = extractYouTubeVideoId(url);
+      const list = normalize(steps);
+      if (list.filter(Boolean).length < 2) throw new ApiError(400, "steps_required", "手順が2つ以上いります。");
+      await reserveBudget();
+      const seconds = (await snippet(videoId).catch(() => null))?.durationSeconds;
+      const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
+      const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, beforeRetry: reserveBudget });
+      const stepTimes = cleanTimes(raw?.stepTimes, list);
+      if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
+      return { stepTimes, source: "video", seenSeconds: clipSeconds || seconds || null };
     },
     // 管理の点検用：保存済みの時刻を読むだけ（AI も YouTube も呼ばない）。なければ null。
     async stored({ url, steps }) {
@@ -97,7 +112,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
       const list = normalize(steps);
       if (list.filter(Boolean).length < 2) return null;
       const entry = (await store.get(keyOf(extractYouTubeVideoId(url), list)))?.envelope;
-      return entry ? { stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared } : null;
+      return entry ? { stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
     },
     // だれかが直した時刻を保存して、同じ動画・同じ手順を見る全員で使う（最後に直したものが使われる）。
     async fix({ url, steps, stepTimes }, household = "", { admin = false } = {}) {

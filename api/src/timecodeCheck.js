@@ -10,7 +10,7 @@ export const ISSUE_LABEL = {
   same: "前の手順と同じ時刻",
   coarse: "説明欄の章が大まか（いくつかの手順が同じ章の時刻）",
   beyond: "動画の長さを超えている",
-  clip: "10分より後の手順に時刻がない（AI が最初の10分だけを見た）",
+  clip: "AI が見ていない後半の手順に時刻がない（以前は最初の10分だけを見ていた）",
   sparse: "時刻のない手順が半分より多い",
   cluster: "時刻が短い間に固まっている",
   steps10: "手順がちょうど10個（以前の上限で切れているかも）",
@@ -19,7 +19,8 @@ export const ISSUE_LABEL = {
 const num = (t) => (t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) ? null : Number(t));
 
 // steps と times（手順と同じ並び）から、要確認の理由を返す。status：ok（▶ があって問題なし）／warn（要確認）／none（▶ がない）。
-export function checkStepTimes(steps = [], times = [], { durationSeconds = null, source = "" } = {}) {
+// seenSeconds：AI が動画のどこまでを見たか（保存した時刻にある時。なければ以前の10分）。
+export function checkStepTimes(steps = [], times = [], { durationSeconds = null, source = "", seenSeconds = null } = {}) {
   const list = (Array.isArray(steps) ? steps : []).map((s) => String(s || ""));
   const t = list.map((_, i) => num(Array.isArray(times) ? times[i] : null));
   const issues = [];
@@ -41,7 +42,8 @@ export function checkStepTimes(steps = [], times = [], { durationSeconds = null,
   if (found.length * 2 < list.filter(Boolean).length) add("sparse");
   // AI が最初の10分だけを見た時：10分を超える動画（長さが分からない時も）で、最後の時刻が10分の手前・その後の手順に時刻がない。
   const lastIdx = t.reduce((a, x, i) => (x !== null ? i : a), -1);
-  if (source === "video" && lastIdx < list.length - 1 && Math.max(...found) < CHECK_CLIP_SECONDS && (!(durationSeconds > 0) || durationSeconds > CHECK_CLIP_SECONDS)) add("clip");
+  const seen = seenSeconds > 0 ? seenSeconds : CHECK_CLIP_SECONDS;
+  if (source === "video" && lastIdx < list.length - 1 && Math.max(...found) < seen && (!(durationSeconds > 0) || durationSeconds > seen)) add("clip");
   // どこか4つの時刻が30秒の中に固まっていたら（並べて、続く4つごとの幅を見る。一部だけの固まりも。review fix #136）。
   const sorted = [...found].sort((a, b) => a - b);
   // 固まりは章でも数える（章なら要確認にせず「大まか」に入れる。review fix #137）。
