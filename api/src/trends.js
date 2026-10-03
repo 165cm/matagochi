@@ -515,6 +515,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const saveSeed = async () => {
           doc.tried = doc.tried.slice(-5000);
           doc.candidates = doc.candidates.slice(0, 200);
+          doc.later = (doc.later || []).slice(-200);
           // 投稿者の成績は3,000人まで（読んだ本数の多い順に残す）。
           if (doc.channels && Object.keys(doc.channels).length > 3000) doc.channels = Object.fromEntries(Object.entries(doc.channels).sort((a, b) => (b[1].ai || 0) - (a[1].ai || 0)).slice(0, 3000));
           for (let attempt = 0; attempt < 2; attempt++) {
@@ -562,6 +563,17 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // lite：説明欄の読み取りで AI に「考える」部分を使わせない（費用を下げる。analyzer.js）。
         const collector = { lite: true };
         const done = (c, why) => { doc.tried.push(c.videoId); seen.add(c.videoId); if (why) skip(why); };
+        // 後回しの候補：この実行で一度だけ候補に戻す（30分以上の枠が空いた時・候補を使い切った時。検索より先に。0円）。
+        doc.later = (doc.later || []).filter((c) => !seen.has(c.videoId));
+        const retried = new Set();
+        const takeLater = () => {
+          const back = doc.later.filter((c) => !retried.has(c.videoId));
+          if (!back.length) return false;
+          for (const c of back) retried.add(c.videoId);
+          doc.later = doc.later.filter((c) => !back.includes(c));
+          doc.candidates.push(...back);
+          return true;
+        };
         let reason = "", waveUndo = null;
         // 定番の料理名が、もう新着に何品あるか（保存済みの題名から。0円。1回の実行で1回だけ読む）。
         let dishTitles = null;
@@ -578,6 +590,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           if (!doc.candidates.length) {
             // AI の枠を使い切ったら、新しく検索しない（YouTube の枠のむだを省く）。
             if (claimed >= reserved) { reason = why(); break; }
+            // 後回しの候補があれば、検索より先に（30分以上の枠が空いていれば読める）。
+            if (longRoom(stage.added) && takeLater()) continue;
             // 決めた検索語を使い切ったら、広げ方（話題・定番）の検索へ。
             let q, label, opts = { videoDuration: "medium" }, wave = null;
             if (doc.q < SEED_QUERIES.length) [q, label] = SEED_QUERIES[doc.q];
@@ -600,7 +614,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             const perChannel = {};
             const picked = [];
             for (const c of found) {
-              if (seen.has(c.videoId) || picked.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { skip("filtered"); continue; }
+              if (seen.has(c.videoId) || picked.some((x) => x.videoId === c.videoId) || doc.later.some((x) => x.videoId === c.videoId) || doc.candidates.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { skip("filtered"); continue; }
               if ((perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) { skip("same_channel"); continue; }
               // 説明欄を確かめられない時だけ、ここで定番を3本までにする（確かめられる時は、確かめて通った3本まで）。
               if (!videoDetails && wave?.axis === "classic" && picked.length >= WAVE_CLASSIC_PICK) { skip("classic_enough"); continue; }
@@ -617,6 +631,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               for (const c of picked) if (!(await peek(c.videoId).catch(() => null))) need.push(c.videoId);
               let details = {};
               try { details = need.length ? await videoDetails(need) : {}; } catch { undoWave(); reason = "search_failed"; break; }
+              // もう読んだ料理（0円）を先に、次に読む順のとおり。
+              picked.sort((a, b) => (need.includes(a.videoId) - need.includes(b.videoId)) || rank(a) - rank(b));
               let kept = 0;
               for (const c of picked) {
                 const d = details[c.videoId];
@@ -639,13 +655,18 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             if (seen.has(c.videoId) || batch.some((x) => x.videoId === c.videoId)) { skip("duplicate"); continue; }
             // 持ち越した候補も、読む前に掲載停止（動画・チャンネル）を確かめ直す（あとから止められた動画に費用を使わない）。
             if (excluded.has(c.videoId) || (c.channelId && excluded.has(c.channelId))) { done(c, "opted_out"); continue; }
-            // 投稿者の成績：何本か読んで作り方を書かないと分かった投稿者は、AI の前に外す（0円）。
+            // 投稿者・題名からの見込みで外す／後回しにするのは、AI で読む必要がある候補だけ（もう読んだ料理は0円で、実際の調理時間で決める。review fix #130）。
             const ch = doc.channels?.[c.channelId];
-            if (c.wave && ch && (ch.ai || 0) >= CHANNEL_MIN_READS && channelRate(ch) < CHANNEL_MIN_RATE) { done(c, "channel_low"); continue; }
-            // 30分以上の枠がない時：題名が長そう・時短の少ない投稿者の動画は、読まずに後回し（試した扱いにしない＝別の時にまた候補になる）。
-            if (c.wave && !longRoom(stage.added)) {
-              if (c.hint === "slow") { skip("title_long"); seen.add(c.videoId); continue; }
-              if (ch && (ch.ok || 0) >= CHANNEL_MIN_READS && channelFast(ch) < CHANNEL_MIN_FAST) { skip("channel_slow"); seen.add(c.videoId); continue; }
+            const lowCh = c.wave && ch && (ch.ai || 0) >= CHANNEL_MIN_READS && channelRate(ch) < CHANNEL_MIN_RATE;
+            const wait = c.wave && !longRoom(stage.added) ? (c.hint === "slow" ? "title_long" : ch && (ch.ok || 0) >= CHANNEL_MIN_READS && channelFast(ch) < CHANNEL_MIN_FAST ? "channel_slow" : "") : "";
+            if ((lowCh || wait) && !(await peek(c.videoId).catch(() => null))) {
+              // 投稿者の成績：何本か読んで作り方を書かないと分かった投稿者は、AI の前に外す（0円・試した扱い）。
+              if (lowCh) { done(c, "channel_low"); continue; }
+              // 30分以上の枠がない時：題名が長そう・時短の少ない投稿者の動画は、読まずに後回し（試した扱いにしない）。
+              // 次に枠が空いた時・次の実行で読めるように、後回しの列（doc.later）に残す。1回の実行で戻すのは1度だけ（同じ実行で回り続けない）。
+              skip(wait);
+              if (!doc.later.some((x) => x.videoId === c.videoId)) doc.later.push(c);
+              continue;
             }
             batch.push(c);
           }
@@ -711,7 +732,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         cache = null;
         // 記録を保存できなければ、成功として返さない（段階の回数は予約した多めのまま。試した動画はもう読んだ結果があるので、次は0円）。
         if (!(await saveSeed())) throw new ApiError(503, "seed_not_saved", claimed ? "集めた結果の記録を保存できませんでした。少し待ってから、もう一度押してください（費用は多めに数えたままです）。" : "記録を保存できませんでした（AI は使っていません）。少し待ってから、もう一度押してください。");
-        return { stage: await withTitles(stage), reason, axis, queriesLeft: SEED_QUERIES.length - doc.q, waves: waveStatus(doc, now()), candidatesLeft: doc.candidates.length, month: { ai: monthUsed + claimed, cap: monthCap, yen: Math.round((monthUsed + claimed) * yenPerAi), yenCap: yenPerMonth } };
+        return { stage: await withTitles(stage), reason, axis, queriesLeft: SEED_QUERIES.length - doc.q, waves: waveStatus(doc, now()), candidatesLeft: doc.candidates.length, laterLeft: doc.later.length, month: { ai: monthUsed + claimed, cap: monthCap, yen: Math.round((monthUsed + claimed) * yenPerAi), yenCap: yenPerMonth } };
       } finally { await unlock(); }
     },
     async seedStatus() {

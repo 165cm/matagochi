@@ -190,7 +190,7 @@ test('improve ①: candidates whose description has no recipe (or are not public
   const r = await make().seed({ yen: 10 });
   assert.deepEqual(asked.sort(), [id(1), id(2), id(3)], 'the already-read video is not checked');
   assert.deepEqual(catalog.calls.map(([v]) => v), [id(1)], 'only the recipe-looking one is read by the AI');
-  assert.deepEqual(r.stage.added.map((a) => [a.videoId, a.free]), [[id(1), false], [id(4), true]]);
+  assert.deepEqual(r.stage.added.map((a) => [a.videoId, a.free]), [[id(4), true], [id(1), false]], 'already-read (free) ones come first (2026-10-03)');
   assert.equal(r.stage.skipped.description_not_recipe, 1);
   assert.equal(r.stage.skipped.not_public, 1);
 });

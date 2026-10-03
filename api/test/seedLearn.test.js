@@ -153,3 +153,56 @@ test('learn: the admin status lists word scores and the channel summary', async 
   assert.equal(d.waves.channels.top[0].id, 'x');
   assert.equal(WAVE_TREND_REUSE_DAYS * DAY > 0, true);
 });
+
+const longAgo = (n) => ({ stages: [{ n: 1, yen: 100, startedAt: '2026-10-04T00:00:00Z', ai: 0, input: 0, output: 0, added: Array.from({ length: n }, (_, i) => ({ videoId: `q${i}`, minutes: 10 })), skipped: {}, byQuery: {}, done: false }] });
+
+test('review fix (#130): a saved dish (no AI needed) is never dropped by guesses about its channel or title; it is added for free by its real time', async () => {
+  const store = createMemorySyncStore();
+  await start(store, { channels: { bad: { ai: 3, ok: 0, fast: 0 }, slowch: { ai: 4, ok: 4, fast: 0 } } });
+  const catalog = fakeCatalog();
+  catalog.ready.set(id(1), recipe(id(1), 10)); // 作り方を書かない投稿者だが、もう読んだ料理（10分）
+  catalog.ready.set(id(2), recipe(id(2), 15)); // 題名が長そう・時短の少ない投稿者だが、もう読んだ料理（15分）
+  const desc = '材料\n豚肉 200g\nしょうゆ 大さじ1\n砂糖 小さじ1\n1. 切る\n2. 炒める';
+  let n = 0;
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
+    videoDetails: async (ids) => Object.fromEntries(ids.map((v) => [v, { status: 'public', snippet: { description: desc } }])),
+    search: async () => (n++ ? [] : [{ videoId: id(3), channelId: 'c3', title: '料理' }, { videoId: id(4), channelId: 'c4', title: '料理' }, { videoId: id(1), channelId: 'bad', title: '料理' }, { videoId: id(2), channelId: 'slowch', title: 'じっくり煮込み' }]) });
+  const r = await book.seed({ yen: 2, axis: 'classic' });
+  assert.deepEqual(r.stage.added.filter((a) => a.free).map((a) => a.videoId).sort(), [id(1), id(2)], 'both saved dishes are added for free');
+  assert.equal(r.stage.added.length, 3, 'the 2 saved dishes count first among the 3, plus 1 read by the AI');
+  assert.equal(catalog.calls.length, 1);
+  assert.equal(r.stage.skipped.channel_low, undefined);
+  assert.equal(r.stage.skipped.title_long, undefined);
+});
+
+test('review fix (#130): a candidate put off (title_long / channel_slow) is kept for later, retried at most once per run, and read once there is room', async () => {
+  for (const [kind, video] of [['title_long', { videoId: id(7), channelId: 'c7', title: 'じっくり煮込み肉じゃが' }], ['channel_slow', { videoId: id(7), channelId: 'slowch', title: '肉じゃが' }]]) {
+    let now = NOW;
+    const store = createMemorySyncStore();
+    await start(store, { channels: { slowch: { ai: 4, ok: 4, fast: 0 } } });
+    const catalog = fakeCatalog((v) => recipe(v, 30));
+    let first = true;
+    const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async () => { if (first) { first = false; return [video]; } return []; } });
+    const r1 = await book.seed({ yen: 5, axis: 'classic' });
+    assert.equal(r1.stage.skipped[kind], 1, `${kind}: put off once in the run (no endless loop)`);
+    assert.equal(r1.laterLeft, 1);
+    let doc = (await store.get('trends/seed')).envelope;
+    assert.ok(!doc.tried.includes(id(7)) && doc.later.some((c) => c.videoId === id(7)), 'kept for later, not marked tried');
+    // 次の日：まだ枠がない → 後回しの列に残したまま（読まない・失わない）
+    now += DAY;
+    const r2 = await book.seed({ yen: 5, axis: 'classic' });
+    assert.equal(r2.reason, 'axis_exhausted');
+    assert.equal(r2.laterLeft, 1);
+    assert.equal(catalog.calls.length, 0);
+    // 時短が4品そろって、30分以上の枠が空く → 検索せずに後回しの候補を読む
+    doc = (await store.get('trends/seed')).envelope;
+    doc.stages = longAgo(4).stages;
+    const cur = await store.get('trends/seed');
+    await store.put('trends/seed', doc, { ifGeneration: cur.generation });
+    now += DAY;
+    const r3 = await book.seed({ yen: 5, axis: 'classic' });
+    assert.deepEqual(catalog.calls, [id(7)], `${kind}: read once there is room`);
+    assert.ok(r3.stage.added.some((a) => a.videoId === id(7)));
+    assert.equal(r3.laterLeft, 0);
+  }
+});

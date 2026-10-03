@@ -421,7 +421,7 @@
     const AX = { trend: "話題", classic: "定番" };
     box.append(el("h3", `広げ方の検索（新しい順・${log.length}件）`));
     box.append(log.length ? scroll(table(["方向", "検索語・料理", "日", "候補", "AI", "増えた"], log.map((e) => [(AX[e.axis] || e.axis) + (e.quick ? "⚡" : ""), e.q, String(e.at).slice(5, 10), e.skipped === "enough" ? "検索せず" : e.picked, e.skipped ? "—" : e.ai || 0, e.skipped ? "—" : e.added]), [3, 4, 5], null, { wide: true })) : el("p", "まだ広げていません。", "empty"));
-    const h = el("h3", `決めた検索語（残り ${d.queriesLeft ?? "—"}・読む前の候補 ${d.candidatesLeft ?? "—"}）`); h.style.marginTop = "12px"; box.append(h);
+    const h = el("h3", `決めた検索語（残り ${d.queriesLeft ?? "—"}・読む前の候補 ${d.candidatesLeft ?? "—"}・後回し ${d.laterLeft ?? 0}）`); h.style.marginTop = "12px"; box.append(h);
     const LABEL = { done: "済み", current: "読んでいる", todo: "これから" };
     const t = table(["検索語", "分野", "状態"], qs.map((q) => [q.q, q.label, LABEL[q.status]]));
     [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = tr.lastChild; td.textContent = ""; td.append(el("span", LABEL[qs[i].status], `chip ${qs[i].status}`)); });
