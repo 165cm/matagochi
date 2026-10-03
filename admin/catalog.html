@@ -55,6 +55,8 @@
   .chk { display: inline-flex; gap: 6px; align-items: center; font-weight: 700; font-size: 14px; }
   tr.over td { color: var(--s2); font-weight: 700; }
   tr.dim td { color: var(--n1); }
+  .warnbox { border: 1.5px solid var(--s2); border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .warnbox ul { margin: 4px 0 0; padding-left: 1.2em; }
+  ol.steps li.warn { outline: 2px solid var(--s2); outline-offset: 2px; border-radius: 6px; }
   .run-status { font-weight: 700; margin: 0; font-size: 14px; } .run-status:empty { display: none; }
   .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 6px 16px; }
   .meter .line { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
@@ -211,6 +213,11 @@
         <details class="info"><summary>ⓘ</summary><div>新着（集めた料理・28日）と、献立の候補に出た・残した料理です。親の料理名は「🍲 親の料理名」と同じ決め方で、外す・まとめると、ここにもすぐ反映されます。行を押すとレシピ（手順の時刻も直せます）。</div></details>
       </div>
       <div id="rl-list" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div>
+    </section>
+    <section style="margin-top:12px">
+      <div class="head"><h2>手順の時刻の点検（0円）</h2><button type="button" class="quiet small" id="tc-run">点検する</button></div>
+      <p class="meta">新着の全部の「▶ 時刻」を、順番・動画の長さ・10分の区切り・固まり・抜けで点検します（AI・検索は使いません）。手順がちょうど10個のレシピ（以前の上限で切れているかも）も出します。行を押すとレシピを開いて直せます。</p>
+      <div id="tc-check"></div>
     </section>
   </div>
 
@@ -564,6 +571,28 @@
       box.append(d);
     }
   }
+  // 手順の時刻の0円の点検（2026-10-03）。
+  async function runTimecodeCheck() {
+    const box = document.getElementById("tc-check"), btn = document.getElementById("tc-run");
+    btn.disabled = true; box.replaceChildren(el("p", "点検しています…", "meta"));
+    const my = session;
+    try {
+      const d = await api("/api/admin/timecodes/check");
+      if (my !== session) return;
+      box.textContent = "";
+      const k = el("div", undefined, "kpis");
+      for (const [label, n] of [["点検した", d.checked], ["問題なし", d.ok], ["要確認", d.warn], ["▶ なし", d.none]]) { const t = el("div", undefined, "kpi"); t.append(el("small", label), el("b", `${n}品`)); k.append(t); }
+      box.append(k);
+      if (!d.rows.length) { box.append(el("p", "要確認はありません。", "empty")); return; }
+      const by = {}; for (const r of d.rows) for (const i of r.issues) by[i.code] = (by[i.code] || 0) + 1;
+      box.append(el("p", Object.entries(by).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${d.labels[c] || c}：${n}品`).join("／"), "meta"));
+      const SRC = { recipe: "読み取り", fix: "運営が直した", chapters: "説明欄の章", video: "AI（動画）", "": "—" };
+      const rows = d.rows;
+      box.append(scroll(table(["料理", "投稿者", "手順", "▶ あり", "時刻の出どころ", "要確認の理由"], rows.map((r) => [r.title, r.channelTitle, r.steps, r.found, SRC[r.source] ?? r.source, [...new Set(r.issues.map((i) => d.labels[i.code] || i.code))].join("・")]), [2, 3], (i) => openRecipe(rows[i].videoId), { wide: true })));
+    } catch (error) { box.replaceChildren(el("p", error.message)); }
+    finally { btn.disabled = false; }
+  }
+  document.getElementById("tc-run").addEventListener("click", runTimecodeCheck);
   async function loadRecipes() { const my = session; const d = await api("/api/admin/recipes"); if (my !== session) return; last.recipes = d.recipes || []; renderRecipeList(); }
   // 親の料理名タブから、その親の子をレシピ一覧で開く（連動）。
   function showParent(key, name) { rlState.q = ""; rlState.src = "all"; rlState.group = true; rlState.open = key; document.getElementById("rl-q").value = ""; document.getElementById("rl-src").value = "all"; document.getElementById("rl-group").checked = true; showTab("recipes"); renderRecipeList(); const t = document.querySelector(`#rl-list details[data-key="${CSS.escape(key)}"]`); t?.scrollIntoView({ block: "start" }); }
@@ -717,10 +746,22 @@
     dn.append(dnInput, dnSave, dnNote);
     body.append(el("h3", "料理名（親を決める元）"), dn);
     body.append(el("h3", "手順と時刻"), el("p", `時刻は「分:秒」（例 2:15）。▶ でその時刻から再生、⏱ で再生中の時刻を入れます。${r.stepTimesFrom === "admin" ? "（運営が直した時刻です）" : ""}`, "meta"));
+    // 0円の点検の結果（要確認の理由と、引っかかった手順に印）。
+    const ck = r.check || { issues: [] };
+    if (ck.issues?.length) {
+      const warn = el("div", undefined, "warnbox");
+      warn.append(el("b", "⚠ 要確認"), el("ul"));
+      for (const x of ck.issues) warn.lastChild.append(el("li", `${ck.labels?.[x.code] || x.code}${Number.isInteger(x.step) ? `（手順${x.step + 1}）` : ""}`));
+      body.append(warn);
+    }
+    const SRCL = { recipe: "読み取りの時刻", fix: "運営が直した時刻", chapters: "説明欄の章からの時刻", video: "AI が動画から探した時刻" };
+    if (r.stepTimesSource) body.append(el("p", `いまの時刻：${SRCL[r.stepTimesSource] || r.stepTimesSource}${r.durationSeconds ? `・動画の長さ ${sec(r.durationSeconds)}` : ""}`, "meta"));
+    const badSteps = new Set((ck.issues || []).filter((x) => Number.isInteger(x.step)).map((x) => x.step));
     const ol = el("ol", undefined, "steps");
     const inputs = [];
     (r.steps || []).forEach((step, i) => {
       const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
+      if (badSteps.has(i)) li.classList.add("warn");
       const right = el("div"); right.append(el("div", step));
       const tools = el("div", undefined, "tools");
       const input = el("input"); input.value = sec(r.stepTimes?.[i] ?? null); input.placeholder = "なし"; input.setAttribute("aria-label", `手順${i + 1}の時刻`); inputs.push(input);
@@ -767,7 +808,7 @@
     runStatus.textContent = ""; progress(false);
     document.querySelector("#added-box > summary").textContent = "増えた料理";
     const dlg = document.getElementById("recipe"); if (dlg.open) dlg.close();
-    for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left", "dish-parents", "dish-candidates", "dish-other", "rl-list", "rl-count", "backfill"]) document.getElementById(id).textContent = "";
+    for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left", "dish-parents", "dish-candidates", "dish-other", "rl-list", "rl-count", "backfill", "tc-check"]) document.getElementById(id).textContent = "";
     document.getElementById("seed-run").disabled = true;
     document.getElementById("login-box").hidden = false; document.getElementById("reload").hidden = true;
     status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;

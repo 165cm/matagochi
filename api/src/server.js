@@ -15,6 +15,7 @@ import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
 import { createChannelStats } from "./channelStats.js";
+import { checkStepTimes, ISSUE_LABEL } from "./timecodeCheck.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
 import { createFeedbackDesk } from "./feedback.js";
@@ -409,8 +410,55 @@ export function createApp(env = process.env, deps = {}) {
       if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
       // 親の料理名（APP_MAP §48）も添える。
       const dish = (await dishBook.classify([{ videoId, title: r.title || "", dishName: r.dishName || "" }]).catch(() => ({})))[videoId] || null;
-      return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", planning: r.planning || null };
+      // 手順の時刻：作る画面と同じ時刻（レシピの時刻 → なければ保存済みの時刻）と、0円の点検の結果。
+      const url = canonicalYouTubeUrl(videoId);
+      const { times, source } = await timesOf(url, r);
+      const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
+      const check = checkStepTimes(r.steps || [], times, { durationSeconds, source });
+      return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null };
     }));
+  });
+  // 管理：手順の時刻の0円の点検（新着の全部。AI・検索は使わない。動画の長さは videos.list・50本で1単位）。
+  // 時刻は、レシピに付いた時刻（読み取り・運営が直した）→ なければ作る画面と同じ保存済みの時刻（timecodes/*）。
+  const videoLength = deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null);
+  async function durationsOf(ids) {
+    const out = {};
+    if (!videoLength) return out;
+    for (let i = 0; i < ids.length; i += 50) {
+      const got = await videoLength(ids.slice(i, i + 50)).catch(() => ({}));
+      for (const [id, v] of Object.entries(got || {})) if (Number.isFinite(v?.durationSeconds)) out[id] = v.durationSeconds;
+    }
+    return out;
+  }
+  // レシピに付いた時刻の出どころ：運営が直した → fix／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
+  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : "recipe");
+  // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・説明欄の章（timecodes/* の fix・cleared・chapters）
+  // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
+  async function timesOf(url, r) {
+    const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
+    if (st && (st.cleared || ["fix", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
+    if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
+    return { times: st?.stepTimes || [], source: st?.source || "" };
+  }
+  app.get("/api/admin/timecodes/check", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, (async () => {
+      const items = ((await trendBook.list({ promote: false })).items || []).filter((x) => (x.steps || []).length);
+      const lengths = await durationsOf(items.map((x) => x.videoId));
+      const rows = [], count = { ok: 0, warn: 0, none: 0 };
+      for (const x of items) {
+        const url = canonicalYouTubeUrl(x.videoId);
+        // 一覧の料理には出どころ（analyzedFrom・stepTimesFrom）がないので、保存済みの読み取り結果を読む（AI は呼ばない）。
+        const full = (await catalog.peek(url).catch(() => null)) || x;
+        const { times, source } = await timesOf(url, { ...x, stepTimes: full.stepTimes ?? x.stepTimes, stepTimesFrom: full.stepTimesFrom, analyzedFrom: full.analyzedFrom });
+        const c = checkStepTimes(x.steps, times, { durationSeconds: lengths[x.videoId] ?? null, source });
+        count[c.status] += 1;
+        if (c.status === "warn") rows.push({ videoId: x.videoId, title: x.title || "", channelTitle: x.channelTitle || "", steps: c.steps, found: c.found, source, issues: c.issues });
+      }
+      rows.sort((a, b) => b.issues.length - a.issues.length);
+      return { checked: items.length, ...count, labels: ISSUE_LABEL, rows };
+    })());
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {
     res.setHeader("Cache-Control", "no-store");

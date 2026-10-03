@@ -289,12 +289,13 @@ export async function fetchChannelIcons(channelIds, env = process.env, fetchImpl
 export async function fetchYouTubeStatuses(videoIds, env = process.env, fetchImpl = fetch) {
   const ids = [...new Set(videoIds.filter((id) => /^[\w-]{11}$/.test(id)))].slice(0, 50);
   if (!ids.length) return {};
-  const data = await youtubeGet("videos", { part: "snippet,status", id: ids.join(","), maxResults: "50" }, env, fetchImpl);
+  // contentDetails：動画の長さ（時刻の点検に使う。保存はしない）。part を増やしても1回1単位のまま。
+  const data = await youtubeGet("videos", { part: "snippet,status,contentDetails", id: ids.join(","), maxResults: "50" }, env, fetchImpl);
   const out = Object.fromEntries(ids.map((id) => [id, { status: "not_found" }]));
   for (const item of data.items || []) {
     if (!out[item.id]) continue;
     out[item.id] = item.status?.privacyStatus === "public" && item.snippet
-      ? { status: "public", snippet: { title: item.snippet.title || "", description: item.snippet.description || "", channelTitle: item.snippet.channelTitle || "", channelId: item.snippet.channelId || "" } }
+      ? { status: "public", snippet: { title: item.snippet.title || "", description: item.snippet.description || "", channelTitle: item.snippet.channelTitle || "", channelId: item.snippet.channelId || "" }, durationSeconds: parseIsoDuration(item.contentDetails?.duration) }
       : { status: "non_public" };
   }
   return out;
