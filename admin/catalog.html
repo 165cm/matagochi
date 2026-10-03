@@ -56,6 +56,7 @@
   tr.over td { color: var(--s2); font-weight: 700; }
   tr.dim td { color: var(--n1); }
   .warnbox { border: 1.5px solid var(--s2); border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .warnbox ul { margin: 4px 0 0; padding-left: 1.2em; }
+  input.is-new { border-color: var(--s3); background: #eefaf3; }
   ol.steps li.warn { outline: 2px solid var(--s2); outline-offset: 2px; border-radius: 6px; }
   .run-status { font-weight: 700; margin: 0; font-size: 14px; } .run-status:empty { display: none; }
   .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 6px 16px; }
@@ -215,8 +216,8 @@
       <div id="rl-list" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div>
     </section>
     <section style="margin-top:12px">
-      <div class="head"><h2>手順の時刻の点検（0円）</h2><button type="button" class="quiet small" id="tc-run">点検する</button></div>
-      <p class="meta">新着の全部の「▶ 時刻」を、順番・動画の長さ・10分の区切り・固まり・抜けで点検します（AI・検索は使いません）。手順がちょうど10個のレシピ（以前の上限で切れているかも）も出します。行を押すとレシピを開いて直せます。</p>
+      <div class="head"><h2>手順の時刻の点検（0円）</h2><div class="row"><button type="button" class="quiet small" id="tc-reread">手順10個を読み直す（約1円/品）</button><button type="button" class="quiet small" id="tc-run">点検する</button></div></div>
+      <p class="meta">新着の全部の「▶ 時刻」を、順番・動画の長さ・AI が見ていない後半・固まり・抜けで点検します（AI・検索は使いません）。手順がちょうど10個のレシピ（以前の上限で切れているかも）も出します。行を押すとレシピを開いて直せます。</p>
       <div id="tc-check"></div>
     </section>
   </div>
@@ -594,6 +595,27 @@
     finally { btn.disabled = false; }
   }
   document.getElementById("tc-run").addEventListener("click", runTimecodeCheck);
+  // 手順がちょうど10個のレシピ（説明欄から読んだ・まだ読み直していない）を、5品ずつ説明欄から読み直す（2026-10-04）。
+  document.getElementById("tc-reread").addEventListener("click", async () => {
+    const btn = document.getElementById("tc-reread"), box = document.getElementById("tc-check");
+    if (!confirm("手順がちょうど10個のレシピを、説明欄から読み直します（1品約1円・5品ずつ続けます）。よろしいですか？")) return;
+    btn.disabled = true;
+    const my = session, log = el("ul");
+    box.replaceChildren(el("p", "読み直しています…", "meta"), log);
+    let total = 0, longer = 0;
+    try {
+      for (let round = 0; round < 20; round++) {
+        const d = await api("/api/admin/reread/steps10", { max: 5 });
+        if (my !== session) return;
+        for (const x of d.done) { total += 1; if (x.after > x.before) longer += 1; log.append(el("li", x.error ? `${x.videoId}：${x.message || x.error}` : `${x.videoId}：手順 ${x.before} → ${x.after}`)); }
+        box.firstChild.textContent = `読み直しています…（${total}品・手順が増えた ${longer}品・残り ${d.left}品）`;
+        // 1品も読み直せなかった回で止める（AI の失敗が続く時に同じ品を何度も呼ばない）。
+        if (!d.left || !d.done.some((x) => !x.error)) break;
+      }
+      box.firstChild.textContent = `読み直しました：${total}品（手順が増えた ${longer}品）。もう一度「点検する」を押すと最新の結果になります。`;
+    } catch (error) { box.firstChild.textContent = error.message; }
+    finally { btn.disabled = false; }
+  });
   async function loadRecipes() { const my = session; const d = await api("/api/admin/recipes"); if (my !== session) return; last.recipes = d.recipes || []; renderRecipeList(); }
   // 親の料理名タブから、その親の子をレシピ一覧で開く（連動）。
   function showParent(key, name) { rlState.q = ""; rlState.src = "all"; rlState.group = true; rlState.open = key; document.getElementById("rl-q").value = ""; document.getElementById("rl-src").value = "all"; document.getElementById("rl-group").checked = true; showTab("recipes"); renderRecipeList(); const t = document.querySelector(`#rl-list details[data-key="${CSS.escape(key)}"]`); t?.scrollIntoView({ block: "start" }); }
@@ -758,6 +780,27 @@
     const SRCL = { recipe: "読み取りの時刻", fix: "運営が直した時刻", chapters: "説明欄の章からの時刻", video: "AI が動画から探した時刻" };
     if (r.stepTimesSource) body.append(el("p", `いまの時刻：${SRCL[r.stepTimesSource] || r.stepTimesSource}${r.durationSeconds ? `・動画の長さ ${sec(r.durationSeconds)}` : ""}`, "meta"));
     const badSteps = new Set((ck.issues || []).filter((x) => Number.isInteger(x.step)).map((x) => x.step));
+    // 説明欄から読み直す（約1円）／動画から時刻を探し直す（約3〜8円・保存はしない＝見比べて「時刻を保存」）。
+    const fixRow = el("div", undefined, "row"); fixRow.style.margin = "6px 0";
+    const fixNote = el("span", "", "meta");
+    const rr = el("button", "📄 説明欄から読み直す（約1円）", "quiet small"); rr.type = "button";
+    rr.addEventListener("click", async () => {
+      rr.disabled = true; fixNote.textContent = "読み直しています…";
+      try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread`, {}); fixNote.textContent = `手順 ${x.before} → ${x.after}。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
+      catch (error) { fixNote.textContent = error.message; rr.disabled = false; }
+    });
+    const ra = el("button", "🎬 動画から時刻を探し直す（約3〜8円）", "quiet small"); ra.type = "button";
+    ra.addEventListener("click", async () => {
+      if (!confirm("AI に動画を見せて、手順の時刻を探し直します（約3〜8円）。結果は入力欄に入るだけで、見比べて「時刻を保存」を押した時に保存されます。")) return;
+      ra.disabled = true; fixNote.textContent = "動画を見ています…（1〜2分）";
+      try {
+        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/reanalyze`, {});
+        (x.stepTimes || []).forEach((t, i) => { if (inputs[i]) { inputs[i].value = sec(t); inputs[i].classList.remove("is-bad"); inputs[i].classList.add("is-new"); } });
+        fixNote.textContent = `AI の時刻を入れました（${x.seenSeconds ? `動画の ${sec(x.seenSeconds)} まで見た` : "最後まで見た"}）。▶ で確かめてから「時刻を保存」を押してください。`;
+      } catch (error) { fixNote.textContent = error.message; }
+      finally { ra.disabled = false; }
+    });
+    fixRow.append(rr, ra, fixNote); body.append(fixRow);
     const ol = el("ol", undefined, "steps");
     const inputs = [];
     (r.steps || []).forEach((step, i) => {

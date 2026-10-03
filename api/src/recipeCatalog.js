@@ -64,7 +64,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   // 見られなくなった動画（削除・非公開）の結果は、一覧にも取り込みにも出さない（AI も呼ばない）。
   const unavailableError = (result) => { const [code, status, message] = UNAVAILABLE[result.unavailable.reason] || UNAVAILABLE.not_found; return new ApiError(status, code, message); };
   // aiGate：呼び出し元ごとの AI 回数の上限（新着集めが使う）。{ allow(): 残りがあるか, used(): 1回使った } を、AI を呼ぶ直前ごとに通す。
-  async function run(id, { forceVideo = false, household = "", unlimited = false, aiGate = null } = {}) {
+  // reread：説明欄から読み直す（運営。以前の上限で手順が10個で切れたレシピを直す。2026-10-04）。説明欄から読んだレシピだけ。
+  async function run(id, { forceVideo = false, household = "", unlimited = false, aiGate = null, reread = false } = {}) {
     const gate = async () => {
       if (aiGate && !aiGate.allow()) throw new ApiError(429, "trend_ai_budget", "新着集めの AI の回数の上限に達しました。");
       await reserveBudget();
@@ -78,7 +79,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     // 「動画から読み直す」：すでに動画から読んだ結果があれば、同じ結果になるので再解析しない（費用をかけない）。
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
     if (current?.envelope.status === "ready" && current.envelope.result?.unavailable) throw unavailableError(current.envelope.result);
-    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo)) {
+    if (reread && current?.envelope.status !== "ready") throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+    if (reread && current.envelope.result?.analyzedFrom !== "description") throw new ApiError(409, "reread_not_description", "動画から読んだレシピは、説明欄から読み直せません。");
+    if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo) && !reread) {
       const result = await refreshed(key, current);
       if (result.unavailable) throw unavailableError(result);
       return { ...localizeRecipe(structuredClone(result)), cacheHit: true };
@@ -93,7 +96,10 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     if (current?.envelope.status === "pending" && !stale) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
     // 説明文で失敗した直後でも、動画から読むのは待たせない（チケットを使う操作なので連打にはならない）。
     if (!forceVideo && current?.envelope.retryAt > now()) { await refund(); throw new ApiError(429, "analysis_cooldown", "分析に失敗したため、1分ほど待ってから再試行してください。"); }
-    const claim = await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
+    // 読み直しは、保存済みのレシピを「分析中」で置き換えない（途中で失敗・停止しても、前のレシピを読める）。
+    // 別の鍵で同時の読み直しを止め（世代つきの書き込みで1つだけ）、最後に保存済みの版が変わっていない時だけ書く（review fix #138）。
+    const lock = reread ? await claimRereadLock(id) : null;
+    const claim = reread ? { generation: current.generation } : await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
     if (!claim) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
     try {
       // 説明欄の読み取り・動画の読み取り・チャプターとの対応付けの、それぞれの直前に gate を通す。
@@ -105,6 +111,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 運営が直した料理名は、読み直しても引き継ぐ（AI の新しい料理名で上書きしない。空＝題名で決める、も含めて）。
       const before = current?.envelope.status === "ready" ? current.envelope.result : null;
       if (before?.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
+      // 読み直しで手順が減る（説明欄が変わった・読めなかった）時は、前の結果を残す。
+      if (reread && before && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
+      if (reread) result.rereadAt = new Date(now()).toISOString();
       // 動画から作り方を読めなかったら、チケットは戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
       // 取り込みは説明文だけで読む。作り方がなくても材料があれば保存し、動画はボタンで読む。
@@ -122,19 +131,35 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       return { ...structuredClone(result), cacheHit: false, videoSkipped: !!raw?.videoSkipped, ticketUsed: spent };
     } catch (error) {
       await refund();
-      if (error.code === "analysis_uncertain") throw error;
-      // 読み直しに失敗しても、保存済みの結果は消さない。
+      // 読み直して手順が減る・読めない・レシピでないと言われた時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
+      // 読み直しでは保存済みのレシピを置き換えていないので、ほかの失敗では何も書かない。
+      if (reread) {
+        if (["reread_worse", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) await store.put(key, { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } }, { ifGeneration: claim.generation }).catch(() => {});
+        throw error;
+      }
+      // 読み直しに失敗しても、保存済みの結果は消さない（レシピでないと言われた時も。review fix #138）。
       if (current?.envelope.status === "ready") await store.put(key, current.envelope, { ifGeneration: claim.generation }).catch(() => {});
-      else await store.put(key, { status: "failed", retryAt: now() + 60_000 }, { ifGeneration: claim.generation }).catch(() => {});
+      else if (error.code !== "analysis_uncertain") await store.put(key, { status: "failed", retryAt: now() + 60_000 }, { ifGeneration: claim.generation }).catch(() => {});
       throw error;
+    } finally {
+      if (lock) await store.remove(lock.key, { ifGeneration: lock.generation }).catch(() => {});
     }
+  }
+  // 読み直しの鍵：10分より古い鍵は止まった読み直しのものなので取り直してよい。
+  async function claimRereadLock(id) {
+    const lockKey = `reread-lock/${id}`;
+    const held = await store.get(lockKey);
+    if (held && now() - Date.parse(held.envelope.at || 0) <= STALE_PENDING_MS) throw new ApiError(409, "analysis_pending", "このレシピは読み直している途中です。");
+    const put = await store.put(lockKey, { at: new Date(now()).toISOString() }, { ifGeneration: held?.generation ?? 0 });
+    if (!put) throw new ApiError(409, "analysis_pending", "このレシピは読み直している途中です。");
+    return { key: lockKey, generation: put.generation };
   }
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
-    async import(rawUrl, { forceVideo = false, household = "", unlimited = false, aiGate = null } = {}) {
+    async import(rawUrl, { forceVideo = false, household = "", unlimited = false, aiGate = null, reread = false } = {}) {
       const id = extractYouTubeVideoId(rawUrl);
-      const key = forceVideo ? `${id}:video:${household}` : id;
-      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited, aiGate }).finally(() => inFlight.delete(key)));
+      const key = forceVideo ? `${id}:video:${household}` : reread ? `${id}:reread` : id;
+      if (!inFlight.has(key)) inFlight.set(key, run(id, { forceVideo, household, unlimited, aiGate, reread }).finally(() => inFlight.delete(key)));
       return structuredClone(await inFlight.get(key));
     },
     // 表示用の読み出し（一覧の GET から使う）：保存済みの読み取り結果を返すだけ。AIも YouTube API も呼ばない。

@@ -16,6 +16,7 @@ import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
 import { createChannelStats } from "./channelStats.js";
 import { checkStepTimes, ISSUE_LABEL } from "./timecodeCheck.js";
+import { usage } from "./aiUsage.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
 import { createFeedbackDesk } from "./feedback.js";
@@ -51,7 +52,8 @@ export function createApp(env = process.env, deps = {}) {
       checkVideos: async (ids) => Object.fromEntries(Object.entries(await (deps.fetchYouTubeStatuses || fetchYouTubeStatuses)(ids, env)).map(([id, v]) => [id, v.status === "public" ? { status: "public", caption: buildCaption(v.snippet), channelTitle: v.snippet.channelTitle } : { status: v.status }])) });
   const timecodeBook = createTimecodeBook(recipeStore, { analyze: deps.analyzeStepTimes || ((url, steps, o) => analyzeStepTimes(url, steps, env, o)), reserveBudget: () => catalog.reserveAnalysisBudget(),
     matchChapters: deps.matchStepsToChapters || ((steps, chapters) => matchStepsToChapters(steps, chapters, env)),
-    snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.VIDEO_MAX_SECONDS || 600), now: deps.now || Date.now });
+    // 手順の時刻は動画の最後まで見る（30分まで。5秒に1コマなので費用は抑えられる。2026-10-04）。レシピの読み取り（VIDEO_MAX_SECONDS）とは別。
+    snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), now: deps.now || Date.now });
   const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
   // 掲載停止・再開が変わったら、新着・みんなの定番の表示キャッシュをすぐ捨てる（停止した料理を10分残さない）。
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now, onChange: () => { trendBook?.clearCache?.(); popularBook?.clearCache?.(); } });
@@ -412,9 +414,9 @@ export function createApp(env = process.env, deps = {}) {
       const dish = (await dishBook.classify([{ videoId, title: r.title || "", dishName: r.dishName || "" }]).catch(() => ({})))[videoId] || null;
       // 手順の時刻：作る画面と同じ時刻（レシピの時刻 → なければ保存済みの時刻）と、0円の点検の結果。
       const url = canonicalYouTubeUrl(videoId);
-      const { times, source } = await timesOf(url, r);
+      const { times, source, seenSeconds } = await timesOf(url, r);
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
-      const check = checkStepTimes(r.steps || [], times, { durationSeconds, source });
+      const check = checkStepTimes(r.steps || [], times, { durationSeconds, source, seenSeconds });
       return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null };
     }));
   });
@@ -439,7 +441,7 @@ export function createApp(env = process.env, deps = {}) {
     const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
     if (st && (st.cleared || ["fix", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
     if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
-    return { times: st?.stepTimes || [], source: st?.source || "" };
+    return { times: st?.stepTimes || [], source: st?.source || "", ...(st?.seenSeconds ? { seenSeconds: st.seenSeconds } : {}) };
   }
   app.get("/api/admin/timecodes/check", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -452,14 +454,61 @@ export function createApp(env = process.env, deps = {}) {
         const url = canonicalYouTubeUrl(x.videoId);
         // 一覧の料理には出どころ（analyzedFrom・stepTimesFrom）がないので、保存済みの読み取り結果を読む（AI は呼ばない）。
         const full = (await catalog.peek(url).catch(() => null)) || x;
-        const { times, source } = await timesOf(url, { ...x, stepTimes: full.stepTimes ?? x.stepTimes, stepTimesFrom: full.stepTimesFrom, analyzedFrom: full.analyzedFrom });
-        const c = checkStepTimes(x.steps, times, { durationSeconds: lengths[x.videoId] ?? null, source });
+        const { times, source, seenSeconds } = await timesOf(url, { ...x, stepTimes: full.stepTimes ?? x.stepTimes, stepTimesFrom: full.stepTimesFrom, analyzedFrom: full.analyzedFrom });
+        const c = checkStepTimes(x.steps, times, { durationSeconds: lengths[x.videoId] ?? null, source, seenSeconds });
         count[c.status] += 1;
         if (c.coarse) count.coarse = (count.coarse || 0) + 1;
         if (c.status === "warn") rows.push({ videoId: x.videoId, title: x.title || "", channelTitle: x.channelTitle || "", steps: c.steps, found: c.found, source, issues: c.issues });
       }
       rows.sort((a, b) => b.issues.length - a.issues.length);
       return { checked: items.length, coarse: 0, ...count, labels: ISSUE_LABEL, rows };
+    })());
+  });
+  // 管理：説明欄から読み直す（1品約1円・考えるモードなし）。以前の上限で手順が10個で切れたレシピを直す（2026-10-04）。
+  const rereadOne = async (videoId) => {
+    const url = canonicalYouTubeUrl(videoId);
+    const before = await catalog.peek(url).catch(() => null);
+    const after = await usage.run({ lite: true }, () => catalog.import(url, { reread: true }));
+    trendBook.clearCache(); popularBook.clearCache();
+    return { videoId, before: (before?.steps || []).length, after: (after?.steps || []).length };
+  };
+  app.post("/api/admin/recipes/:videoId/reread", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, rereadOne(videoId));
+  });
+  // 管理：手順がちょうど10個（説明欄から読んだ・まだ読み直していない）新着を、1回に max 品まで読み直す。left：残り。
+  app.post("/api/admin/reread/steps10", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const max = Math.max(1, Math.min(10, Number(req.body?.max) || 5));
+    send(res, (async () => {
+      const targets = [];
+      for (const x of ((await trendBook.list({ promote: false })).items || []).filter((x) => (x.steps || []).length === 10)) {
+        const r = await catalog.peek(canonicalYouTubeUrl(x.videoId)).catch(() => null);
+        if (r && r.analyzedFrom === "description" && !r.rereadAt) targets.push(x.videoId);
+      }
+      const done = [];
+      for (const videoId of targets.slice(0, max)) {
+        try { done.push(await rereadOne(videoId)); }
+        catch (error) { done.push({ videoId, error: error?.code || "failed", message: error?.message || "" }); }
+      }
+      return { done, left: Math.max(0, targets.length - max) };
+    })());
+  });
+  // 管理：動画から手順の時刻を探し直す（保存はしない＝見比べて「時刻を保存」。5秒に1コマ・30分まで）。
+  app.post("/api/admin/recipes/:videoId/timecodes/reanalyze", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, (async () => {
+      const url = canonicalYouTubeUrl(videoId);
+      const r = await catalog.peek(url);
+      if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      return usage.run({}, () => timecodeBook.reanalyze({ url, steps: r.steps || [] }));
     })());
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {
