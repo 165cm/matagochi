@@ -54,6 +54,7 @@
   .ctl { display: grid; gap: 8px; }
   .chk { display: inline-flex; gap: 6px; align-items: center; font-weight: 700; font-size: 14px; }
   tr.over td { color: var(--s2); font-weight: 700; }
+  tr.dim td { color: var(--n1); }
   .run-status { font-weight: 700; margin: 0; font-size: 14px; } .run-status:empty { display: none; }
   .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 6px 16px; }
   .meter .line { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
@@ -563,8 +564,21 @@
     box.append(el("h3", `検索語（${words.length}語・点＝1回の検索で増えた20分以内の料理の見込み。まだ使っていない語は ${w.wordPrior ?? 2}）`));
     box.append(words.length ? scroll(table(["方向", "検索語・料理", "検索", "増えた", "20分以内", "点"], words.map((x) => [AX[x.axis] || x.axis, x.word, x.s, x.added, x.fast, { text: x.score.toFixed(2), value: x.score }]), [2, 3, 4, 5], null, { wide: true, bars: [5] })) : el("p", "まだ記録がありません（次に集めると記録されます）。", "empty"));
     const h = el("h3", ch ? `投稿者（${ch.learned}人・外している ${ch.skipped}人＝${ch.minReads}本以上読んで料理になる見込み ${Math.round(ch.minRate * 100)}%未満）` : "投稿者"); h.style.marginTop = "12px"; box.append(h);
-    const top = ch?.top || [];
-    box.append(top.length ? scroll(table(["チャンネルID", "読んだ", "料理", "20分以内", "料理になる見込み", ""], top.map((c) => [c.id, c.ai, c.ok, c.fast, `${c.rate}%`, c.skip ? "外す" : ""]), [1, 2, 3, 4], null, { wide: true })) : el("p", "まだ記録がありません。", "empty"));
+    // 投稿者の一覧（2026-10-03）：YouTube の名前・登録者数・動画数・開設と、新着での品数・割合、成績、状態。押すと YouTube のチャンネル。
+    const board = last.seed?.channelBoard;
+    const rows = board?.rows || [];
+    const man = (n) => (n == null ? "非公開" : n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}万` : String(n));
+    const state = (c) => (c.opted ? "掲載停止" : c.low ? "外す（作り方なし）" : c.full ? "3%到達" : c.digOk ? "深掘りできる" : c.dugAt ? `深掘り ${String(c.dugAt).slice(5, 10)}` : "");
+    if (rows.length) {
+      const t = table(["投稿者", "登録者", "動画", "開設", "新着に", "読んだ", "料理", "20分以内", "料理になる見込み", "状態"],
+        rows.map((c) => [c.youtube?.title || c.name || c.id, c.youtube ? man(c.youtube.subscribers) : "—", c.youtube?.videos ?? "—", c.youtube?.since || "—", c.inList ? `${c.inList}品（${c.share}%）` : "—", c.ai, c.ok, c.ok ? `${c.fast}（${c.fastShare}%）` : "—", c.ai ? `${c.rate}%` : "—", state(c)]),
+        [1, 2, 4, 5, 6, 7, 8], (i) => { const id = rows[i].id; if (/^UC[\w-]{22}$/.test(id)) window.open(`https://www.youtube.com/channel/${id}`, "_blank", "noopener"); }, { wide: true });
+      [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { if (rows[i].opted || rows[i].low) tr.classList.add("dim"); if (rows[i].full) tr.classList.add("over"); });
+      box.append(el("p", `新着全体 ${board.total}品・1人 ${board.maxPer}品（3%）まで。登録者・動画数は YouTube の情報（7日ごとに取り直し・30日で消す）。押すと YouTube のチャンネルを開きます。`, "meta"), scroll(t));
+    } else {
+      const top = ch?.top || [];
+      box.append(top.length ? scroll(table(["チャンネルID", "読んだ", "料理", "20分以内", "料理になる見込み", ""], top.map((c) => [c.id, c.ai, c.ok, c.fast, `${c.rate}%`, c.skip ? "外す" : ""]), [1, 2, 3, 4], null, { wide: true })) : el("p", "まだ記録がありません。", "empty"));
+    }
   }
   function renderAll() { renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderLearn(); renderQueries(); renderCatalog(); }
   async function load() {

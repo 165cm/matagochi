@@ -263,6 +263,20 @@ export async function resolveYouTubeChannel(input, env = process.env, fetchImpl 
 }
 
 // 新着の一覧に出す投稿者のアイコン（チャンネルの小さな画像）。50件まで1回で。
+// 管理の画面の投稿者の評価用：名前・登録者数（非公開なら null）・動画数・総再生数・開設日（50件まで1回・1単位）。
+export async function fetchChannelStats(channelIds, env = process.env, fetchImpl = fetch) {
+  const ids = [...new Set(channelIds.filter((id) => /^UC[\w-]{22}$/.test(id)))].slice(0, 50);
+  if (!ids.length) return {};
+  const data = await youtubeGet("channels", { part: "snippet,statistics", id: ids.join(","), maxResults: "50" }, env, fetchImpl, AbortSignal.timeout(10_000));
+  const num = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
+  return Object.fromEntries((data.items || []).filter((item) => ids.includes(item.id)).map((item) => [item.id, {
+    title: String(item.snippet?.title || "").slice(0, 80),
+    subscribers: item.statistics?.hiddenSubscriberCount ? null : num(item.statistics?.subscriberCount),
+    videos: num(item.statistics?.videoCount),
+    views: num(item.statistics?.viewCount),
+    since: String(item.snippet?.publishedAt || "").slice(0, 7),
+  }]));
+}
 export async function fetchChannelIcons(channelIds, env = process.env, fetchImpl = fetch) {
   const ids = [...new Set(channelIds.filter((id) => /^UC[\w-]{22}$/.test(id)))].slice(0, 50);
   if (!ids.length) return {};

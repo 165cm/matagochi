@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 管理の画面の投稿者の一覧に、チャンネル名・登録者数・動画数・開設・新着での割合・状態（APP_MAP §46-6） | api/src/channelStats.js・api/src/youtube.js・api/src/trends.js・api/src/server.js・admin/catalog.html・api/test・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
