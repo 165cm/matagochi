@@ -145,6 +145,9 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=60"); send(res, trendBook.list()); });
   // 新着集めのあとに、1日1回の後片付け（YouTube API の情報を決めた期間を超えて持たない。§41）。
   app.post("/api/trends/refresh", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.step().then(async (result) => ({ ...result, housekeeping: await housekeeping.run().catch((error) => ({ error: error?.code || "failed" })) }))); });
+  // 親料理ごとの自動の補充（2026-10-03）：毎日の新着集め（refresh）とは別の要求にする（1回の要求の時間を短く保つ。review fix #135）。
+  // 定期実行（.github/workflows/trends.yml）が refresh の後に done になるまで呼ぶ。1日の枠（料理15品・AI 25回）・月の上限の中。
+  app.post("/api/trends/refill", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.refill()); });
   app.post("/api/skill/photo", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, skillJudge.judge(req.body || {}, householdOf(req))); });
   // 通知：鍵・登録（この先のお知らせも一緒に）・解除・テスト・定期実行（GitHub Actions が15分ごとに呼ぶ）
   app.get("/api/push/key", (req, res) => { res.setHeader("Cache-Control", "public, max-age=3600"); send(res, pushDesk.publicKey()); });
@@ -338,7 +341,7 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/admin/trends/seed", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.seedStatus().then(async (d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length, youtubeSearch: await searchQuota.status(), portfolio: await trendBook.portfolio().catch(() => null), channelBoard: await trendBook.channelBoard().then(async (b) => { const info = await channelStats.get(b.rows.map((r) => r.id)).catch(() => ({})); return { ...b, rows: b.rows.map((r) => ({ ...r, ...(info[r.id] ? { youtube: info[r.id] } : {}) })) }; }).catch(() => null),
+    send(res, trendBook.seedStatus().then(async (d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length, youtubeSearch: await searchQuota.status(), portfolio: await trendBook.portfolio().catch(() => null), parentStock: await trendBook.parentStock().catch(() => null), channelBoard: await trendBook.channelBoard().then(async (b) => { const info = await channelStats.get(b.rows.map((r) => r.id)).catch(() => ({})); return { ...b, rows: b.rows.map((r) => ({ ...r, ...(info[r.id] ? { youtube: info[r.id] } : {}) })) }; }).catch(() => null),
       // 検索語の一覧と進み具合（済み／いまの候補を読んでいる／これから）。段階の上限の回数を出すための目安の単価。
       queries: SEED_QUERIES.map(([q, label], i) => ({ q, label, status: i < (d.q || 0) - ((d.candidates || []).some((c) => !c.wave) ? 1 : 0) ? "done" : i < (d.q || 0) ? "current" : "todo" })),
       waves: { ...waveStatus(d, (deps.now || Date.now)()), digReady: await trendBook.digReady().catch(() => 0) },
