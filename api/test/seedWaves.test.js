@@ -10,7 +10,7 @@ const { createApp } = await import('../src/server.js');
 // 検索語を使い切った後の広げ方（2026-10-01）：「話題」（公開60日以内）と「定番」（公開1年より前・料理名ごと）を、重ならないように。
 const DAY = 86_400_000;
 const id = (n) => `wave${String(n).padStart(7, '0')}`;
-const recipe = (v, title = `料理${v}`) => ({ title, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: 'chX', ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps: ['切る', '炒める'], tags: [], planning: { minutes: 10 } });
+const recipe = (v, title = `料理${v}`) => ({ title, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: `ch-${v}`, ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps: ['切る', '炒める'], tags: [], planning: { minutes: 10 } });
 function fakeCatalog() {
   const ready = new Map(), calls = [];
   return { ready, calls,
@@ -259,7 +259,7 @@ test('classic: one classic dish search picks at most 3 videos (no 8 variants of 
   const r = await book.seed({ yen: 6, axis: 'classic' });
   const searches = r.waves.log.filter((e) => !e.skipped);
   assert.equal(searches.length, 2);
-  assert.ok(searches.every((e) => e.picked === 3 && e.added === 3));
+  assert.ok(searches.every((e) => e.picked === 8 && e.added === 3), 'up to 8 kept, reading stops at 3 dishes (2026-10-03)');
   assert.equal(r.stage.skipped.classic_enough, 10);
 });
 

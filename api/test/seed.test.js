@@ -11,7 +11,7 @@ const { createApp } = await import('../src/server.js');
 // 新着の手動の一括収集（初期投資・2026-10-01）：足りない分野の検索語で、説明欄だけで読める動画を、1段階＝ yen 円（目安）まで。
 const DAY = 86_400_000;
 const id = (n) => `seed${String(n).padStart(7, '0')}`;
-const recipe = (v, extra = {}) => ({ title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: 'chX', channelTitle: 'ちゃんねる', ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps: ['切る', '炒める'], tags: [], planning: { minutes: 10 }, ...extra });
+const recipe = (v, extra = {}) => ({ title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: `ch-${v}`, channelTitle: 'ちゃんねる', ingredients: [{ name: '豚こま' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], steps: ['切る', '炒める'], tags: [], planning: { minutes: 10 }, ...extra });
 function fakeCatalog(special = {}) {
   const ready = new Map(), calls = [];
   return { ready, calls,

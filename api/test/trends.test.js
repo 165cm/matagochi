@@ -136,7 +136,7 @@ test('a creator who asks to be left out disappears from trends and popular at on
   const catalog = fakeCatalog(Object.fromEntries(ids.map((id, i) => [id, { channelId: i < 3 ? ch : 'UCother' }])));
   const book = createTrendBook(store, { catalog, optedOut: () => desk.optedOut(), now: () => Date.parse('2026-09-28T01:00:00Z'), search: async () => ids.map((videoId, i) => ({ videoId, channelId: i < 3 ? ch : `c${i}`, title: 'レシピ' })) });
   await book.step();
-  assert.equal((await book.list()).items.filter((i) => i.channelId === ch).length, 2, 'two per channel');
+  assert.equal((await book.list()).items.filter((i) => i.channelId === ch).length, 1, 'one per channel while the list is small (3% of the whole list, 2026-10-03)');
   await assert.rejects(desk.request({ channel: 'https://example.com' }), { code: 'channel_not_found' });
   assert.equal((await desk.request({ channel: 'https://www.youtube.com/@taro', message: '掲載を止めてください' })).removed, true);
   const fresh = createTrendBook(store, { catalog, optedOut: () => desk.optedOut(), now: () => Date.parse('2026-09-28T01:00:00Z'), search: async () => [] });

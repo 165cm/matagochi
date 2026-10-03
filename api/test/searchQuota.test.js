@@ -92,5 +92,5 @@ test('quota: all search paths share it through the server (seed, daily collectio
 
 test('review fix (#131): the admin button stays usable while put-off candidates remain (they may be read without searching)', () => {
   const html = readFileSync(new URL('../../admin/catalog.html', import.meta.url), 'utf8');
-  assert.match(html, /const dayFull = searchFull && !d\.candidatesLeft && !d\.queriesLeft && !d\.laterLeft;/);
+  assert.match(html, /const dayFull = searchFull && !d\.candidatesLeft && !d\.queriesLeft && !d\.laterLeft && !wv\?\.digReady;/, 'also not while a channel can be dug (2026-10-03)');
 });
