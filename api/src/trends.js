@@ -96,8 +96,9 @@ export const WAVE_TREND_REUSE_DAYS = 7; // 2026-10-02 のユーザーの判断�
 export const WAVE_CLASSIC_AGE_DAYS = 365;
 export const WAVE_CLASSIC_ENOUGH = 2;
 export const WAVE_AXES = ["both", "trend", "classic"];
-// 広げ方の検索は1日に WAVE_SEARCH_PER_DAY 回まで（1回100単位。YouTube の1日の枠1万単位のうち、毎日の新着集めの分を残す）。
-export const WAVE_SEARCH_PER_DAY = 30;
+// 広げ方の検索は1日に WAVE_SEARCH_PER_DAY 回まで（1回100単位。YouTube の1日の枠1万単位のうち、毎日の新着集め（9回まで）・ほかの作り方の分を残す）。
+// 2026-10-03 のユーザーの判断で30回 → 60回（AI の費用は段階の金額と月の上限で止まるので増えない）。日本時間の0時に戻る。
+export const WAVE_SEARCH_PER_DAY = 60;
 export const WAVE_TREND_WORDS = [
   "晩ごはん レシピ 材料", "バズレシピ 夕飯 材料", "簡単 おかず レシピ 材料", "豚こま レシピ 材料", "鶏むね肉 レシピ 材料",
   "ひき肉 レシピ 材料", "野菜 おかず レシピ 材料", "魚 おかず レシピ 材料", "豆腐 レシピ 材料", "レンジ おかず 材料",
@@ -161,7 +162,7 @@ const emptyWaves = () => ({ turn: 0, trend: 0, trendAt: {}, classic: 0, classicU
 // 定番の料理名をもう使ったか（以前の形：前から w.classic 品を使った。今の形：使った料理名を classicUsed に）。
 const classicUsed = (w, i) => i < (w.classic || 0) || !!w.classicUsed?.[WAVE_CLASSIC_DISHES[i][0]];
 // 次に使う広げ方の検索（使えるものがなければ null）。doc.waves を進める。haveDish(料理名) は、もう新着にある品数。
-export async function nextWave(doc, axis, nowMs, haveDish = async () => 0, { quick = false } = {}) {
+export async function nextWave(doc, axis, nowMs, haveDish = async () => 0, { quick = false, longOk = true } = {}) {
   const w = (doc.waves ||= emptyWaves());
   w.words ||= {};
   const trend = () => {
@@ -183,10 +184,10 @@ export async function nextWave(doc, axis, nowMs, haveDish = async () => 0, { qui
   const classic = async () => {
     w.classicUsed ||= {};
     for (;;) {
-      // まだ使っていない料理名を並び順に。時短が足りない時は、ふつう30分以上かかる料理（"L"）を後回し。
+      // まだ使っていない料理名を並び順に。時短が足りない時・30分以上の料理を入れる余地がない時は、ふつう30分以上かかる料理（"L"）を後回し。
       const left = WAVE_CLASSIC_DISHES.map((_, i) => i).filter((i) => !classicUsed(w, i));
       if (!left.length) return null;
-      const i = (quick ? left.find((j) => WAVE_CLASSIC_DISHES[j][2] !== "L") : undefined) ?? left[0];
+      const i = (quick || !longOk ? left.find((j) => WAVE_CLASSIC_DISHES[j][2] !== "L") : undefined) ?? left[0];
       const [dish, group] = WAVE_CLASSIC_DISHES[i];
       w.classicUsed[dish] = new Date(nowMs).toISOString();
       if ((await haveDish(dish)) >= WAVE_CLASSIC_ENOUGH) { w.log.push({ n: ++w.n, axis: "classic", q: dish, label: `定番・${group}`, at: new Date(nowMs).toISOString(), skipped: "enough", picked: 0, added: 0 }); continue; }
@@ -611,7 +612,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               if (day >= WAVE_SEARCH_PER_DAY) { reason = "search_day_limit"; break; }
               doc.waves ||= emptyWaves();
               const waveDoc = structuredClone(doc.waves);
-              wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added) });
+              wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added), longOk: longRoom(stage.added) });
               // 選んだ方向だけ使い切った時は、段階を終わりにしない（もう一方の方向で続けられる）。
               if (!wave) { reason = axis === "both" ? "exhausted" : "axis_exhausted"; break; }
               ({ q, label, opts } = wave);

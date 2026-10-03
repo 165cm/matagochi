@@ -47,15 +47,16 @@ test('waves: after the fixed words, trend (recent) and classic (old) searches al
   assert.equal(t1[0], `時短 ${WAVE_TREND_WORDS[0]}`);
   assert.equal(t1[1].publishedAfter, new Date(now - WAVE_TREND_DAYS * DAY).toISOString());
   assert.equal(t1[1].publishedBefore, undefined);
-  assert.equal(c1[0], `${WAVE_CLASSIC_DISHES[1][0]} レシピ 材料 作り方`, 'the dish already in the list is skipped (no search)');
+  // 1品目（肉じゃが）は新着に2品あるので検索しない。2品目（さばの味噌煮＝ふつう30分以上）は、30分以上の余地がない（時短2品）ので後回し（2026-10-03）
+  assert.equal(c1[0], `${WAVE_CLASSIC_DISHES[2][0]} レシピ 材料 作り方`, 'the dish already in the list is skipped (no search); a long one waits');
   assert.equal(c1[1].publishedBefore, new Date(now - WAVE_CLASSIC_AGE_DAYS * DAY).toISOString());
   assert.equal(c1[1].publishedAfter, undefined);
   assert.ok(Date.parse(t1[1].publishedAfter) > Date.parse(c1[1].publishedBefore), 'the two directions never share a video');
   assert.equal(t2[0], WAVE_TREND_WORDS[1]);
-  assert.equal(c2[0], `${WAVE_CLASSIC_DISHES[2][0]} レシピ 材料 作り方`);
+  assert.equal(c2[0], `${WAVE_CLASSIC_DISHES[1][0]} レシピ 材料 作り方`, 'with 6 quick dishes there is room for one long dish → list order again');
   assert.deepEqual(r.stage.byAxis, { trend: 4, classic: 4 });
   assert.equal(r.stage.byQuery['話題の新作'], 4);
-  assert.equal(r.stage.byQuery[`定番・${WAVE_CLASSIC_DISHES[1][1]}`] >= 2, true);
+  assert.equal(r.stage.byQuery[`定番・${WAVE_CLASSIC_DISHES[2][1]}`] >= 2, true);
   const log = r.waves.log;
   assert.equal(log.find((e) => e.skipped === 'enough').q, dish0);
   assert.ok(log.filter((e) => !e.skipped).every((e) => e.picked === 2 && e.added === 2 && e.ai === 2), 'each search records how many it picked, read with the AI and added');

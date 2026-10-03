@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 広げ方の検索を1日60回に・上限の時はボタンを止めて0時からと出す・30分以上の余地がない時は長い定番を後回し（APP_MAP §46-3・§46-5） | api/src/trends.js・admin/catalog.html・api/test・docs |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
