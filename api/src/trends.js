@@ -563,15 +563,26 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // lite：説明欄の読み取りで AI に「考える」部分を使わせない（費用を下げる。analyzer.js）。
         const collector = { lite: true };
         const done = (c, why) => { doc.tried.push(c.videoId); seen.add(c.videoId); if (why) skip(why); };
-        // 後回しの候補：この実行で一度だけ候補に戻す（30分以上の枠が空いた時・候補を使い切った時。検索より先に。0円）。
+        // 後回しの候補：
+        //   ① 実行の始めに、その間に保存済みになった（0円で読める）候補を候補に戻す（実際の調理時間で決める。review fix #130 r2）。
+        //   ② 30分以上の枠が空いて候補がなくなった時、検索より先に1本ずつ戻す（1本の結果を段階に入れてから、枠を数え直す）。
+        //   どちらも、この実行で戻すのは各動画1度だけ（同じ実行で回り続けない）。
         doc.later = (doc.later || []).filter((c) => !seen.has(c.videoId));
         const retried = new Set();
-        const takeLater = () => {
-          const back = doc.later.filter((c) => !retried.has(c.videoId));
-          if (!back.length) return false;
+        if (doc.later.length) {
+          const saved = [];
+          for (let i = 0; i < doc.later.length; i += 20) saved.push(...(await Promise.all(doc.later.slice(i, i + 20).map((c) => peek(c.videoId).then((r) => !!r).catch(() => false)))));
+          const back = doc.later.filter((_, i) => saved[i]);
           for (const c of back) retried.add(c.videoId);
-          doc.later = doc.later.filter((c) => !back.includes(c));
-          doc.candidates.push(...back);
+          doc.later = doc.later.filter((_, i) => !saved[i]);
+          doc.candidates.unshift(...back);
+        }
+        const takeLater = () => {
+          const c = doc.later.find((x) => !retried.has(x.videoId));
+          if (!c) return false;
+          retried.add(c.videoId);
+          doc.later = doc.later.filter((x) => x !== c);
+          doc.candidates.push(c);
           return true;
         };
         let reason = "", waveUndo = null;

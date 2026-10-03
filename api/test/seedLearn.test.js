@@ -206,3 +206,49 @@ test('review fix (#130): a candidate put off (title_long / channel_slow) is kept
     assert.equal(r3.laterLeft, 0);
   }
 });
+
+test('review fix (#130 r2): a put-off candidate that became a saved dish meanwhile is decided by its real time, even with no room for a long dish', async () => {
+  for (const [minutes, want] of [[10, 'added'], [45, 'long_quota_free']]) {
+    let now = NOW;
+    const store = createMemorySyncStore();
+    await start(store);
+    const catalog = fakeCatalog();
+    let first = true;
+    const book = createTrendBook(store, { catalog, now: () => now, yenPerAi: 1, yenPerMonth: 1000, search: async () => { if (first) { first = false; return [{ videoId: id(8), channelId: 'c8', title: 'じっくり煮込み' }]; } return []; } });
+    const r1 = await book.seed({ yen: 5, axis: 'classic' });
+    assert.equal(r1.laterLeft, 1);
+    catalog.ready.set(id(8), recipe(id(8), minutes)); // ほかの人の取り込みで保存済みになった
+    now += DAY;
+    const r2 = await book.seed({ yen: 5, axis: 'classic' });
+    assert.equal(catalog.calls.length, 0, 'no AI');
+    assert.equal(r2.laterLeft, 0);
+    if (want === 'added') assert.ok(r2.stage.added.some((a) => a.videoId === id(8) && a.free));
+    else assert.equal(r2.stage.skipped.long_quota_free, 1);
+    assert.ok((await store.get('trends/seed')).envelope.tried.includes(id(8)));
+  }
+});
+
+test('review fix (#130 r2): with room for just one long dish, put-off candidates come back one at a time (AI once, 1 added, 2 stay for later)', async () => {
+  const store = createMemorySyncStore();
+  await start(store, { later: [9, 10, 11].map((n) => ({ videoId: id(n), channelId: `c${n}`, label: '定番・肉', wave: 1, axis: 'classic', word: '肉じゃが', hint: 'slow' })), ...longAgo(4) });
+  const catalog = fakeCatalog((v) => recipe(v, 30));
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async () => [] });
+  const r = await book.seed({ yen: 5, axis: 'classic' });
+  assert.equal(catalog.calls.length, 1, 'AI once');
+  assert.equal(r.stage.added.filter((a) => a.minutes === 30).length, 1);
+  assert.equal(r.stage.skipped.long_quota, undefined);
+  assert.equal(r.laterLeft, 2, 'the other two wait');
+  const doc = (await store.get('trends/seed')).envelope;
+  assert.deepEqual(doc.later.map((c) => c.videoId), [id(10), id(11)]);
+  assert.ok(!doc.tried.includes(id(10)) && !doc.tried.includes(id(11)));
+});
+
+test('review fix (#130 r2): quick results let the next put-off candidate be read in the same run', async () => {
+  const store = createMemorySyncStore();
+  await start(store, { later: [12, 13].map((n) => ({ videoId: id(n), channelId: `c${n}`, label: '定番・肉', wave: 1, axis: 'classic', word: '肉じゃが', hint: 'slow' })), ...longAgo(4) });
+  const catalog = fakeCatalog((v) => recipe(v, 15));
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async () => [] });
+  const r = await book.seed({ yen: 5, axis: 'classic' });
+  assert.deepEqual(catalog.calls, [id(12), id(13)]);
+  assert.equal(r.laterLeft, 0);
+});
