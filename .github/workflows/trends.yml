@@ -20,12 +20,14 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Collect this week's trend recipes (until 10 are ready)
+        id: refresh
         run: |
           for i in 1 2 3 4 5 6 7 8; do
             out=$(curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \
               https://matagochi-api-292190013809.us-central1.run.app/api/trends/refresh || echo '{}')
             echo "Round $i: $out"
-            echo "$out" | grep -q '"done":true' && exit 0
+            # その日の分がそろった時だけ、次の「親料理の補充」へ進む（review fix #135）。
+            echo "$out" | grep -q '"done":true' && { echo "done=true" >> "$GITHUB_OUTPUT"; exit 0; }
             # AI全体の枠・設定の不足は、今日はここまで。通信や一時的な失敗は、少し待ってやり直す（done にはならない）。
             echo "$out" | grep -q '"paused":"ai_budget"' && { echo "AIの今日の枠を利用者に残すため、続きは明日。"; exit 0; }
             echo "$out" | grep -q '"paused":"not_configured"' && { echo "サーバーの設定が足りません（AI・YouTube APIキー）。"; exit 1; }
@@ -35,6 +37,8 @@ jobs:
           done
           echo "Not finished yet; the next run continues."
       - name: Refill parent dishes (until today's share is done)
+        # 新着集めがその日の分を終えた（done:true を確かめた）時だけ。AI全体の枠を利用者に残す日・終わらなかった日は補充しない。
+        if: steps.refresh.outputs.done == 'true'
         run: |
           for i in 1 2 3 4 5 6; do
             out=$(curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \

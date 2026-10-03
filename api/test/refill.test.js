@@ -215,3 +215,30 @@ test('review fix (#135): the daily refresh no longer runs the refill; the refill
   const res = await fetch(base + '/api/trends/refill', { method: 'POST' });
   assert.notEqual(res.status, 404);
 });
+
+test('review fix (#135 r2): if the collection throws (e.g. its record could not be saved after using the AI), the daily share is not given back', async () => {
+  const base = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  await withList(base, catalog, times(60, ['ほかの料理', 10]));
+  await start(base);
+  let seedPuts = 0;
+  // 段階の予約の保存は通し、最後の記録の保存だけ失敗させる（AI は使った後）
+  const store = { ...base, get: base.get.bind(base), list: base.list?.bind(base), remove: base.remove?.bind(base),
+    put: async (k, v, o) => { if (k === 'trends/seed' && ++seedPuts > 1 && v?.stages?.at?.(-1)?.added?.length) return false; return base.put(k, v, o); } };
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
+    search: async (q) => { const name = q.split(' ')[0]; return [1, 2].map(() => { const v = vid(); catalog.make.set(v, recipe(v, `かんたん${name}`, 10)); return { videoId: v, channelId: `c-${v}`, title: `かんたん${name}` }; }); } });
+  await assert.rejects(book.refill(), (e) => e.code === 'seed_not_saved');
+  assert.ok(catalog.calls.length > 0, 'the AI was used');
+  const saved = (await base.get('trends/refill')).envelope;
+  assert.deepEqual([saved.ai, saved.added], [REFILL_AI_PER_DAY, REFILL_DISH_PER_DAY], 'kept in full');
+  assert.equal((await book.refill()).skipped, 'today_done');
+});
+
+test('review fix (#135 r2): the workflow refills only after the daily collection said done:true', async () => {
+  const { readFileSync } = await import('node:fs');
+  const yml = readFileSync(new URL('../../.github/workflows/trends.yml', import.meta.url), 'utf8');
+  assert.match(yml, /id: refresh/);
+  assert.match(yml, /grep -q '"done":true' && \{ echo "done=true" >> "\$GITHUB_OUTPUT"; exit 0; \}/);
+  assert.match(yml, /if: steps\.refresh\.outputs\.done == 'true'\n\s+run: \|\n[\s\S]*\/api\/trends\/refill/);
+  assert.ok(!/ai_budget"' && \{[^}]*GITHUB_OUTPUT/.test(yml), 'the AI-budget stop does not mark done');
+});

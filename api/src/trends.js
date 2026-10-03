@@ -1023,20 +1023,18 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       let ok = false;
       try { ok = !!(await store.put("trends/refill", reservedDoc, { ifGeneration: cur?.generation ?? 0 })); } catch { ok = false; }
       if (!ok) return { skipped: "busy", done: false, ...today };
-      let r;
-      try { r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs }); }
-      catch (error) { r = { error }; }
-      const usedAi = r?.busy || r?.error ? 0 : Math.min(aiLeft, r.ran?.ai || 0), usedAdd = r?.busy || r?.error ? 0 : Math.min(addLeft, r.ran?.added || 0);
+      // seed が例外（記録の保存の失敗など）の時は、AI を使った・料理を足したかが分からないので、予約は返さない（多めに数えたまま。review fix #135 r2）。
+      const r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs });
+      const usedAi = r?.busy ? 0 : Math.min(aiLeft, r.ran?.ai || 0), usedAdd = r?.busy ? 0 : Math.min(addLeft, r.ran?.added || 0);
       // 予約のうち使わなかった分を返す（その間にほかの呼び出しが書いていても、差だけを返す）。
       let back = null;
       for (let attempt = 0; attempt < 3 && !back; attempt++) {
         const now2 = await store.get("trends/refill").catch(() => null);
         const e = now2?.envelope?.day === day ? now2.envelope : null;
         if (!e) break;
-        const next = { ...e, ai: Math.max(0, e.ai - (aiLeft - usedAi)), added: Math.max(0, e.added - (addLeft - usedAdd)), reason: r?.reason || (r?.busy ? "busy" : r?.error ? "error" : ""), at: new Date(now()).toISOString() };
+        const next = { ...e, ai: Math.max(0, e.ai - (aiLeft - usedAi)), added: Math.max(0, e.added - (addLeft - usedAdd)), reason: r?.reason || (r?.busy ? "busy" : ""), at: new Date(now()).toISOString() };
         try { if (await store.put("trends/refill", next, { ifGeneration: now2.generation })) back = next; } catch { break; }
       }
-      if (r?.error) throw r.error;
       const out = back || { ...reservedDoc, reason: r?.reason };
       return { ...out, done: !!r?.busy ? false : !["time", "wait"].includes(r?.reason), ran: { ai: usedAi, added: usedAdd } };
     },
