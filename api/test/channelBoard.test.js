@@ -79,3 +79,42 @@ test('channel board: the admin status adds YouTube names and numbers', async (t)
   assert.equal(d.channelBoard.rows[0].youtube.title, 'たろうの台所');
   assert.equal(d.channelBoard.rows[0].youtube.subscribers, 123000);
 });
+
+test('review fix (#133): after a failed or missing fetch, the same channel is not asked again for a day; old values still vanish 30 days after they were fetched', async () => {
+  let now = NOW;
+  const store = createMemorySyncStore();
+  const asked = [];
+  let mode = 'ok';
+  const stats = createChannelStats(store, { now: () => now, fetchStats: async (ids) => { asked.push([...ids]); if (mode === 'fail') throw new Error('down'); if (mode === 'missing') return {}; return Object.fromEntries(ids.map((id) => [id, { title: 'A', subscribers: 1, videos: 1 }])); } });
+  await stats.get([ch('a')]);
+  now += 8 * DAY; mode = 'fail';
+  await stats.get([ch('a')]);
+  await stats.get([ch('a')]);
+  assert.equal(asked.length, 2, 'one retry, not one per reload');
+  const doc = (await store.get('youtube/channel-stats')).envelope;
+  assert.equal(doc.map[ch('a')].at, new Date(NOW).toISOString(), 'the old value is not made younger');
+  now += DAY + 1; mode = 'missing';
+  await stats.get([ch('a')]);
+  await stats.get([ch('a')]);
+  assert.equal(asked.length, 3, 'a missing answer also waits a day');
+  // 新しいチャンネルが応答に含まれない時も
+  await stats.get([ch('z')]); await stats.get([ch('z')]);
+  assert.equal(asked.filter((a) => a.includes(ch('z'))).length, 1);
+  now = NOW + 31 * DAY;
+  const got = await stats.get([]);
+  assert.deepEqual(got, {});
+  const after = (await store.get('youtube/channel-stats')).envelope;
+  assert.equal(after.map[ch('a')], undefined, 'gone 30 days after it was fetched');
+});
+
+test('review fix (#133): the daily housekeeping removes channel info older than 30 days even if the admin page is never opened', async () => {
+  const { createHousekeeping } = await import('../src/housekeeping.js');
+  const store = createMemorySyncStore();
+  await store.put('youtube/channel-stats', { map: { [ch('a')]: { title: '古い', at: new Date(NOW - 31 * DAY).toISOString() }, [ch('b')]: { title: '新しい', at: new Date(NOW - 2 * DAY).toISOString() } }, checked: { [ch('c')]: new Date(NOW - 31 * DAY).toISOString() } }, { ifGeneration: 0 });
+  const hk = createHousekeeping(store, { now: () => NOW });
+  const out = await hk.run();
+  assert.deepEqual(out.channelStats, { kept: 1, removed: 1 });
+  const doc = (await store.get('youtube/channel-stats')).envelope;
+  assert.deepEqual(Object.keys(doc.map), [ch('b')]);
+  assert.deepEqual(doc.checked, {});
+});
