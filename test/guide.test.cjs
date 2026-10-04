@@ -60,3 +60,35 @@ test("review fix (#139): the app's step fingerprint matches the server's; a rewr
   assert.equal(run("c.guide"), undefined);
   assert.equal(run(`recipeGuide(${JSON.stringify({ ...item, guideOf: undefined })})`), null, "no fingerprint, no rewrite");
 });
+
+test("2026-10-04 pilot: a recipe already in the meal plan (a copy without the rewrite) uses the rewrite from the latest list, only while the steps are the same", () => {
+  const run = app();
+  run(`discover.trends = [${JSON.stringify(item)}]`);
+  const copy = { id: "slot-1", title: item.title, videoUrl: item.videoUrl, steps: item.steps, ingredients: item.ingredients };
+  assert.equal(run(`recipeGuide(${JSON.stringify(copy)}).length`), 2);
+  assert.match(run(`cookSections(${JSON.stringify(copy)}, 2).steps`), /動画では：手順1・2/);
+  assert.equal(run(`recipeGuide(${JSON.stringify({ ...copy, steps: [...item.steps.slice(0, 3), "自分で直した手順"] })})`), null, "steps changed → not used");
+  assert.equal(run(`recipeGuide(${JSON.stringify({ ...copy, videoUrl: "https://www.youtube.com/watch?v=zzzzzzzzzzz" })})`), null);
+});
+
+test("review fix (#141): an old rewrite in the new list does not hide the matching one in the popular list", () => {
+  const run = app();
+  run(`discover.trends = [${JSON.stringify({ ...item, guideOf: "00000000" })}]; discover.popular = [${JSON.stringify(item)}]`);
+  const copy = { id: "slot-1", title: item.title, videoUrl: item.videoUrl, steps: item.steps, ingredients: item.ingredients };
+  assert.equal(run(`recipeGuide(${JSON.stringify(copy)}).length`), 2);
+});
+
+test("review fix (#141): refetching the same list does not redraw the screen (typing is not lost); a changed rewrite does", async () => {
+  const run = app();
+  let body = { items: [{ ...item, expiresAt: "2099-01-01T00:00:00Z" }] };
+  run("globalThis.renders = 0; render = () => { globalThis.renders += 1 }; state.view = 'plan'");
+  run("globalThis.reply = null; fetchWithTimeout = async () => ({ ok: true, json: async () => JSON.parse(globalThis.reply) })");
+  const fetchOnce = async (b) => { run(`globalThis.reply = ${JSON.stringify(JSON.stringify(b))}; discover.savedAt = "2020-01-01T00:00:00Z"; discoverTriedAt = 0`); await run("loadDiscover()"); };
+  await fetchOnce(body);
+  assert.equal(run("renders"), 1, "first time: new items");
+  await fetchOnce(body);
+  assert.equal(run("renders"), 1, "same items: no redraw");
+  body = { items: [{ ...body.items[0], guide: [{ text: "全部まとめて：切って2分焼き、1分炒める。", from: [0, 1, 2, 3] }] }] };
+  await fetchOnce(body);
+  assert.equal(run("renders"), 2, "a changed rewrite is drawn");
+});
