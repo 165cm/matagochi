@@ -16,14 +16,20 @@ export const GUIDE_TEXT_MAX = 90;
 const N = String.raw`\d+(?:\.\d+)?(?:/\d+)?(?:と\d+(?:\.\d+)?(?:/\d+)?)?`;
 const RANGE = String.raw`${N}(?:\s*[〜~\-–]\s*${N})?`;
 const UNITS = "時間|分|秒|℃|°C|度|W|w|kg|mg|g|ml|mL|cc|L|cm|mm|個|本|枚|片|袋|缶|カップ|合|切れ|かけ|束|パック|株|玉|房|粒|杯|人分|人前|等分|回|倍|%";
-const NUMBER = new RegExp(String.raw`(?:大さじ|小さじ|カップ)\s*${RANGE}|${RANGE}\s*(?:${UNITS})`, "g");
-const canon = (x) => x.replace(/\s+/g, "").replace(/[〜~\-–]/g, "~").replace("°C", "℃").replace("mL", "ml").replace(/w$/, "W");
+// 「3分の1」は分量（時間の「3分」ではない）→ 1/3 にそろえる。単位のない分数（全体の1/3）も分量として数える（review fix #139 r3）。
+const NUMBER = new RegExp(String.raw`(?:大さじ|小さじ|カップ)\s*${RANGE}|\d+\s*分の\s*\d+|${RANGE}\s*(?:${UNITS})|\d+/\d+`, "g");
+const canon = (x) => {
+  const y = x.replace(/\s+/g, "");
+  const part = y.match(/^(\d+)分の(\d+)$/);
+  if (part) return `${part[2]}/${part[1]}`;
+  return y.replace(/[〜~\-–]/g, "~").replace("°C", "℃").replace("mL", "ml").replace(/w$/, "W");
+};
 // 重なりも数える（同じ「2分」が2回あれば2つ）。
 export function numbersIn(text) {
   return (String(text || "").normalize("NFKC").match(NUMBER) || []).map(canon);
 }
 // 数字の種類（並びを比べる単位）。
-const kindOf = (n) => (/(時間|分|秒)$/.test(n) && !/人分$/.test(n) ? "time" : /(℃|度)$/.test(n) ? "temp" : /W$/.test(n) ? "power" : "amount");
+const kindOf = (n) => (/(時間|分|秒)$/.test(n) && !/(人分|等分)$/.test(n) ? "time" : /(℃|度)$/.test(n) ? "temp" : /W$/.test(n) ? "power" : "amount");
 const KIND_LABEL = { time: "時間", temp: "温度", power: "ワット数", amount: "分量" };
 const countOf = (list) => list.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
 

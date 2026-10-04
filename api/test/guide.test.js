@@ -228,3 +228,13 @@ test('review fix (#139 r2): the pilot stops when the failed-check mark cannot be
   assert.equal((await res.json()).error.code, 'guide_tried_not_saved');
   assert.equal(calls, 2, 'stopped after the first recipe (2 tries), the second is not charged');
 });
+
+test('review fix (#139 r3): "4等分" and "3分の1" are amounts, not times — a correct rewrite is not refused', () => {
+  const c = (orig, text) => codes(checkGuide([orig], [{ text, from: [0] }], { limit: 7 }));
+  assert.deepEqual(c('生地を4等分にして5分休ませる', '休ませる時間は5分。生地を4等分にしてから休ませる'), []);
+  assert.deepEqual(numbersIn('全体の3分の1を加える'), ['1/3']);
+  assert.deepEqual(c('全体の3分の1を加える', '全体の1/3を加える'), []);
+  assert.deepEqual(c('全体の3分の1を加える', '全体の半分を加える'), ['number_lost']);
+  assert.deepEqual(c('全体の3分の1を加えて3分煮る', '全体の1/3を加えて3分煮る'), []);
+  assert.deepEqual(c('3分煮て2分蒸らす', '2分煮て3分蒸らす'), ['number_order'], 'real times are still checked');
+});
