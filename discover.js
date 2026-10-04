@@ -22,15 +22,18 @@ const DISCOVER_TREND_MAX = 120;
 async function loadDiscover({ force = false } = {}) {
   if (!API_BASE_URL || discoverLoading) return;
   pruneDiscover();
+  // 新しい版のアプリになった最初の1回は、待たずに取り直す（公開した直しや書き直しがすぐ届くように。2026-10-04）。
+  // （15分を待たないだけ。取れなかった時の1分あける決まりはそのまま。）
+  const newVersion = typeof APP_VERSION === "string" && discover.appVersion !== APP_VERSION;
   // 取り直しは15分ごと（読み出すだけで AI は使わない。管理の画面で直した書き直し・時刻が早く届くように。2026-10-04 に1時間から短くした）。
   // まだ1品もない時は覚えずに、次に開いた時また取りに行く。
-  if (!force && discover.savedAt && discover.trends.length && Date.now() - Date.parse(discover.savedAt) < 15 * 60_000) return;
+  if (!force && !newVersion && discover.savedAt && discover.trends.length && Date.now() - Date.parse(discover.savedAt) < 15 * 60_000) return;
   // 取れなかった時（0品・通信エラー）は、1分あける。描き直すたびに取りに行って、画面が作り直され続けないように。
   if (!force && Date.now() - discoverTriedAt < 60_000) return;
   discoverTriedAt = Date.now();
   discoverLoading = true;
   // 描き直すかは、一覧の中身（書き直し・時刻も含む）で決める。取った時刻（savedAt）は毎回変わるので比べない（入力中の欄を消さない。review fix #141）。
-  const before = JSON.stringify([discover.trends, discover.popular]);
+  const before = JSON.stringify([discover.trends, discover.popular, discover.guides]);
   try {
     const [t, p] = await Promise.all([
       fetchWithTimeout(`${API_BASE_URL}/api/trends`, {}, 15_000).then((r) => (r.ok ? r.json() : null)).catch(() => null),
@@ -38,10 +41,12 @@ async function loadDiscover({ force = false } = {}) {
     ]);
     if (t?.items) discover.trends = t.items.filter(liveItem).slice(0, DISCOVER_TREND_MAX);
     if (p?.items) discover.popular = p.items.slice(0, 20);
-    if (t || p) { discover.savedAt = discover.trends.length ? new Date().toISOString() : ""; saveDiscover(); }
+    // 書き直した手順は、受け取った全部の料理の分を覚える（献立に入れた料理が、今日の新着の上位120品から外れていても使えるように。2026-10-04）。
+    if (t?.items || p?.items) discover.guides = { trends: t?.items ? guidesOf(t.items) : discover.guides?.trends || {}, popular: p?.items ? guidesOf(p.items) : discover.guides?.popular || {} };
+    if (t || p) { discover.savedAt = discover.trends.length ? new Date().toISOString() : ""; if (newVersion) discover.appVersion = APP_VERSION; saveDiscover(); }
   } finally { discoverLoading = false; }
   // 中身が変わった時だけ描き直す（入力中の欄を消さない）。
-  if (before === JSON.stringify([discover.trends, discover.popular])) return;
+  if (before === JSON.stringify([discover.trends, discover.popular, discover.guides])) return;
   if (["collection", "plan"].includes(state.view) || FUNNEL[state.onboardingDraft?.quickSetupIndex] === "picks") render();
 }
 // サーバーの読み取り結果を、アプリのレシピの形に。読み取り専用の「おすすめ」として扱う（保存すると自分のレシピになる）。
@@ -157,6 +162,12 @@ function stepsKey(steps) {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h.toString(16).padStart(8, "0");
 }
+// 一覧の料理から、書き直しだけを { videoId: { guide, guideOf } } に。
+function guidesOf(items) {
+  const out = {};
+  for (const x of items || []) if (x?.videoId && Array.isArray(x.guide) && typeof x.guideOf === "string") out[x.videoId] = { guide: x.guide, guideOf: x.guideOf };
+  return out;
+}
 function guideFor(recipe, g, of) {
   const n = (recipe?.steps || []).length;
   if (!Array.isArray(g) || !g.length || g.length > 30 || n < 2) return null;
@@ -172,7 +183,8 @@ function recipeGuide(recipe) {
   const id = typeof youtubeVideoId === "function" ? youtubeVideoId(recipe?.videoUrl) : "";
   if (!id) return null;
   // 新着とみんなの定番の両方を順に見て、いまの元の手順に合う最初の書き直しを使う（古い書き直しが先にあっても止まらない。review fix #141）。
-  for (const x of [...(discover.trends || []), ...(discover.popular || [])]) {
+  const kept = [discover.guides?.trends?.[id], discover.guides?.popular?.[id]].filter(Boolean).map((x) => ({ videoId: id, ...x }));
+  for (const x of [...(discover.trends || []), ...(discover.popular || []), ...kept]) {
     if (x?.videoId !== id) continue;
     const g = guideFor(recipe, x.guide, x.guideOf);
     if (g) return g;

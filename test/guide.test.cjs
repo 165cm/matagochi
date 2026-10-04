@@ -92,3 +92,22 @@ test("review fix (#141): refetching the same list does not redraw the screen (ty
   await fetchOnce(body);
   assert.equal(run("renders"), 2, "a changed rewrite is drawn");
 });
+
+test("2026-10-04: a planned recipe outside today's top 120 new recipes still gets its rewrite; a new app version refetches the list at once", async () => {
+  const run = app();
+  // サーバーは121品以上：書き直しのある料理が121品目（アプリの一覧には残らない）
+  const others = Array.from({ length: 120 }, (_, i) => ({ videoId: `other${String(i).padStart(6, "0")}`, title: `料理${i}`, videoUrl: `https://www.youtube.com/watch?v=other${String(i).padStart(6, "0")}`, ingredients: [], steps: ["a", "b"], expiresAt: "2099-01-01T00:00:00Z" }));
+  const body = { items: [...others, { ...item, expiresAt: "2099-01-01T00:00:00Z" }] };
+  run("render = () => {}; globalThis.calls = 0");
+  run(`fetchWithTimeout = async (url) => { if (url.includes('/api/trends')) globalThis.calls += 1; return { ok: true, json: async () => (url.includes('/api/trends') ? ${JSON.stringify(body)} : { items: [] }) }; }`);
+  run(`discover.savedAt = new Date().toISOString(); discover.trends = [${JSON.stringify(others[0])}]; discover.appVersion = "old"; discoverTriedAt = 0`);
+  await run("loadDiscover()");
+  assert.equal(run("calls"), 1, "the list was fresh (savedAt now) but the app version changed → refetched");
+  assert.equal(run("discover.trends.length"), 120);
+  assert.equal(run(`discover.trends.some((x) => x.videoId === "${item.videoId}")`), false);
+  const copy = { id: "slot-1", title: item.title, videoUrl: item.videoUrl, steps: item.steps, ingredients: item.ingredients };
+  assert.equal(run(`recipeGuide(${JSON.stringify(copy)}).length`), 2, "the rewrite is kept for all received recipes");
+  run("discoverTriedAt = 0");
+  await run("loadDiscover()");
+  assert.equal(run("calls"), 1, "same version: waits 15 minutes as before");
+});
