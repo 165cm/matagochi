@@ -41,7 +41,8 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | `account.js` `discover.js` | ログイン・おすすめ／動画プレーヤー／▶の時刻 |
 | `app.js` | 起動・状態の保存と同期・登録画面・設定・`APP_VERSION` |
 | `styles.css` | すべての見た目（後ろに書いたものが優先） |
-| `sw.js` | サービスワーカー（キャッシュ。版の上げ方は `DEVELOPMENT.md`） |
+| `sw.js` | サービスワーカー（キャッシュ。入口の画面はブラウザの保存を通さずに取る。版の上げ方は `DEVELOPMENT.md`） |
+| `version.json` | いま公開している版。アプリが開いた時・戻った時に比べて、違えば読み込み直す（app.js `checkAppUpdate`） |
 | `assets/` | 料理の写真・キャラクター `assets/yohaku/*.webp` など |
 | `lp/` `legal/` | LP・規約とポリシー |
 

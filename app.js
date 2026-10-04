@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261004-guide3";
+const APP_VERSION = "20261004-update";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -272,6 +272,47 @@ function requestPersistentStorage() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.register("./sw.js").catch(() => {});
+  // ホーム画面のアプリ（iPhone）は閉じても裏で動き続け、古い版のままになりやすい。開いた時・戻った時に新しい版を確かめる（2026-10-04）。
+  setTimeout(() => checkAppUpdate(), 3000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkAppUpdate(); });
+}
+
+// 新しい版の確かめ：version.json（毎回サーバーから）と、いま動いている版（APP_VERSION）を比べる。
+// 違えば、サービスワーカーを更新してから読み込み直す。入力中・🍳料理モードの間は読み込み直さず、帯の「更新する」で。
+// 同じ版への読み込み直しは1回まで（古い画面が返ってきても、くり返し読み込み直さない）。
+let appUpdateCheckedAt = 0;
+async function checkAppUpdate({ now = Date.now() } = {}) {
+  if (now - appUpdateCheckedAt < 60_000) return "skip";
+  appUpdateCheckedAt = now;
+  let version = "";
+  try {
+    const r = await fetch(`./version.json?t=${now}`, { cache: "no-store" });
+    if (!r.ok) return "error";
+    version = String((await r.json())?.version || "");
+  } catch { return "error"; }
+  if (!version || version === APP_VERSION) return "same";
+  // 新しいサービスワーカーに替わるのを待ってから読み込み直す（古いサービスワーカーが古い画面を返さないように。5秒まで）。
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration?.();
+    await reg?.update?.();
+    if (reg?.installing || reg?.waiting) await new Promise((resolve) => { navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }); setTimeout(resolve, 5000); });
+  } catch {}
+  let tried = "";
+  try { tried = sessionStorage.getItem("ripigochi-reloaded-for") || ""; } catch {}
+  const busy = !!document.activeElement?.matches?.("input, textarea, select") || !!document.body?.classList?.contains("cook-mode-open");
+  if (busy || tried === version) { showUpdateBar(version); return "bar"; }
+  try { sessionStorage.setItem("ripigochi-reloaded-for", version); } catch {}
+  location.reload();
+  return "reload";
+}
+function showUpdateBar() {
+  if (document.querySelector(".update-bar")) return;
+  const bar = document.createElement("div");
+  bar.className = "update-bar";
+  bar.setAttribute("role", "status");
+  bar.innerHTML = '<span>新しい版があります</span><button type="button" class="primary-button">更新する</button>';
+  bar.querySelector("button").addEventListener("click", () => location.reload());
+  document.body.append(bar);
 }
 
 function freshState() {

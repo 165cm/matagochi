@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | ホーム画面のアプリが古い版のままにならないように（version.json と比べて自動で読み込み直す・入口の画面はブラウザの保存を通さない）| app.js・sw.js・version.json・styles.css・index.html |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
