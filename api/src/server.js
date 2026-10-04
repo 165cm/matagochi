@@ -584,7 +584,8 @@ export function createApp(env = process.env, deps = {}) {
         catch (error) {
           done.push({ videoId: x.videoId, error: error?.code || "failed", message: error?.message || "" });
           // 予算・通信の失敗は印を付けない（あとでもう一度）。書き直しが確かめで落ちた時だけ印。
-          if (error?.code === "guide_invalid") await markGuideTried(x.videoId);
+          // 印を保存できない時は、ここで止める（印がないまま次へ進むと、次のお試しで同じ料理にまた費用を使う。review fix #139 r2）。
+          if (error?.code === "guide_invalid" && !(await markGuideTried(x.videoId))) throw new ApiError(503, "guide_tried_not_saved", `${x.videoId} の「書き直せなかった」印を保存できなかったので止めました。少し待ってからもう一度押してください。`);
         }
       }
       return { done, left: Math.max(0, targets.length - max) };

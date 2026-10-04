@@ -197,3 +197,34 @@ test('review fix (#139): the same recipe is not rewritten twice at once; a faile
   assert.equal(p.done[0].error, 'guide_invalid');
   assert.deepEqual((await store.get('guide/tried')).envelope.ids.sort(), ['someone', 'zzzzzzzzzzz']);
 });
+
+test('review fix (#139 r2): swapping times or temperatures inside merged steps fails; numbers of different kinds may change places', () => {
+  const c = (orig, text) => codes(checkGuide(orig, [{ text, from: orig.map((_, i) => i) }], { limit: 7 }));
+  assert.deepEqual(c(['200℃で10分焼く', 'その後5分休ませる'], '200℃で5分焼き、その後10分休ませる'), ['number_order']);
+  assert.deepEqual(c(['600Wで2分', '200Wで5分'], '600Wで5分、200Wで2分'), ['number_order']);
+  assert.deepEqual(c(['600Wで2分', '200Wで5分'], '200Wで2分、600Wで5分'), ['number_order']);
+  assert.deepEqual(c(['180℃で5分', '200℃で5分'], '200℃で5分、180℃で5分'), ['number_order']);
+  assert.deepEqual(c(['2分（600W）チンする', '混ぜる'], '600Wで2分チンして混ぜる'), [], 'a different kind may come first');
+  assert.deepEqual(c(['200℃で10分焼く', 'その後5分休ませる'], '200℃で10分焼き、その後5分休ませる'), []);
+});
+
+test('review fix (#139 r2): the pilot stops when the failed-check mark cannot be saved (no charge again next time)', async (t) => {
+  const store = createMemorySyncStore();
+  const NOW = Date.now();
+  const mk = (v) => store.put(`youtube-${v}`, { status: 'ready', result: { title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelTitle: 'ch', channelId: `UC${v}`, ingredients: [{ name: '豚肉' }, { name: 'キャベツ' }, { name: '塩' }], steps: Array.from({ length: 9 }, (_, i) => `手順${i + 1}`), planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 } } }, { ifGeneration: 0 });
+  await mk('badaaaaaaa1'); await mk('badaaaaaaa2');
+  await store.put('trends/index', { weeks: [{ week: weekOf(NOW), startedAt: new Date(NOW).toISOString(), candidates: [], tried: [], items: [{ videoId: 'badaaaaaaa1' }, { videoId: 'badaaaaaaa2' }], skipped: {} }] }, { ifGeneration: 0 });
+  let calls = 0;
+  const put = store.put.bind(store);
+  store.put = async (key, ...rest) => (key === 'guide/tried' ? null : put(key, ...rest));
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [],
+    rewriteRecipeSteps: async () => { calls++; return { steps: [{ text: 'x', from: [1] }] }; },
+    videoDetails: async (list) => Object.fromEntries(list.map((id) => [id, { status: 'public', durationSeconds: 600 }])) });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/guide/pilot`, { method: 'POST', headers: { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' }, body: '{"max":5}' });
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).error.code, 'guide_tried_not_saved');
+  assert.equal(calls, 2, 'stopped after the first recipe (2 tries), the second is not charged');
+});

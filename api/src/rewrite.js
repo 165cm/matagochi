@@ -22,6 +22,9 @@ const canon = (x) => x.replace(/\s+/g, "").replace(/[〜~\-–]/g, "~").replace(
 export function numbersIn(text) {
   return (String(text || "").normalize("NFKC").match(NUMBER) || []).map(canon);
 }
+// 数字の種類（並びを比べる単位）。
+const kindOf = (n) => (/(時間|分|秒)$/.test(n) && !/人分$/.test(n) ? "time" : /(℃|度)$/.test(n) ? "temp" : /W$/.test(n) ? "power" : "amount");
+const KIND_LABEL = { time: "時間", temp: "温度", power: "ワット数", amount: "分量" };
 const countOf = (list) => list.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
 
 // 0円の確かめ：数・長さ・from の範囲と順番・元の手順の抜け・数字の取りこぼし。issues が空なら使える。
@@ -59,6 +62,15 @@ export function checkGuide(steps, guide, { limit = 10 } = {}) {
   const fewer = [...before].filter(([n, c]) => c > (after.get(n) || 0) && after.has(n)).map(([n]) => n);
   if (added.length) add("number_added", null, added.join("・"));
   if (fewer.length) add("number_lost", null, `数が減った：${fewer.join("・")}`);
+  // 並びも比べる：時間・温度・ワット数・分量それぞれの数字が、元の手順と同じ順に出てくる（「200℃で10分焼き、5分休ませる」の10分と5分を入れ替えない。review fix #139 r2）。
+  // 種類が違う数字（600W と 2分）の前後は問わない（「2分（600W）」→「600Wで2分」はよい）。
+  // 数字の消えた・足した・手順の抜けがある時は、そちらだけ伝える（並びの理由は重ねない）。
+  if (!issues.some((x) => x.code === "missing" || x.code.startsWith("number_"))) {
+    const seq = (texts) => { const by = {}; for (const n of texts.flatMap(numbersIn)) (by[kindOf(n)] ||= []).push(n); return by; };
+    const a = seq(list), b = seq(items.map((g) => g?.text));
+    const swapped = Object.keys(a).filter((k) => (a[k] || []).join("|") !== (b[k] || []).join("|"));
+    if (swapped.length) add("number_order", null, swapped.map((k) => `${KIND_LABEL[k]}：元 ${a[k].join("→")}／書き直し ${(b[k] || []).join("→")}`).join("、"));
+  }
   return { ok: !issues.length, issues };
 }
 
@@ -72,6 +84,7 @@ export const GUIDE_ISSUE_LABEL = {
   missing: "入っていない元の手順がある",
   number_lost: "元の手順の数字（時間・温度・分量）が消えた",
   number_added: "元の手順にない数字（時間・温度・分量）がある",
+  number_order: "数字の順番が元の手順と違う（時間・温度の入れ替え）",
 };
 
 // AI の答えを形にそろえる（from は 1 から → 0 から）。
