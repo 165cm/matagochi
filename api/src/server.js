@@ -543,12 +543,15 @@ export function createApp(env = process.env, deps = {}) {
       await recipeStore.remove(lockKey, { ifGeneration: lock.generation }).catch(() => {});
     }
   };
-  // 書き直しが確かめで落ちた料理の印（二度と試さない）。ほかの書き込みと重なったら読み直して3回まで。
+  // 書き直しが確かめで落ちた料理の印（二度と試さない）。AI への指示を直したら鍵の版を上げて、落ちた料理をもう一度試せるようにする
+  // （v2：2026-10-04 のお試しで「元にない数字」が多かった → 材料の分量を渡さない・2回目に具体的な直し方を伝える）。
+  const GUIDE_TRIED_KEY = "guide/tried-v2";
+  // ほかの書き込みと重なったら読み直して3回まで。
   const markGuideTried = async (videoId) => {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const entry = await recipeStore.get("guide/tried");
+      const entry = await recipeStore.get(GUIDE_TRIED_KEY);
       const ids = [...new Set([...(entry?.envelope?.ids || []), videoId])].slice(-500);
-      if (await recipeStore.put("guide/tried", { ids }, { ifGeneration: entry?.generation ?? 0 }).catch(() => null)) return true;
+      if (await recipeStore.put(GUIDE_TRIED_KEY, { ids }, { ifGeneration: entry?.generation ?? 0 }).catch(() => null)) return true;
     }
     return false;
   };
@@ -575,7 +578,7 @@ export function createApp(env = process.env, deps = {}) {
     send(res, (async () => {
       const items = ((await trendBook.list({ promote: false })).items || []).filter((x) => (x.steps || []).filter(Boolean).length >= 2 && !x.guide);
       // 試した印（失敗も）がある料理は飛ばす（同じ料理に何度も費用を使わない）。
-      const tried = new Set(((await recipeStore.get("guide/tried"))?.envelope?.ids) || []);
+      const tried = new Set(((await recipeStore.get(GUIDE_TRIED_KEY))?.envelope?.ids) || []);
       const over = (x) => (x.steps || []).length - guideLimit(x.planning?.minutes);
       const targets = items.filter((x) => !tried.has(x.videoId)).sort((a, b) => over(b) - over(a) || String(a.videoId).localeCompare(String(b.videoId)));
       const done = [];

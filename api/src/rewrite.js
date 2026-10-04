@@ -99,19 +99,40 @@ export function normalizeGuide(raw) {
 
 // 書き直す（AI 1回。だめなら理由を伝えてもう1回まで）。使えなければ ApiError(422) に理由。
 // write：({ title, ingredients, steps, limit, retry }) → AI の答え。beforeRetry：2回目の前に予算を通す。
+// 2回目に AI へ伝える直し方（どの数字・どの手順かを具体的に。2026-10-04 のお試しで、理由が分からず同じ間違いをくり返したため）。
+export function retryNotes(issues, { limit = 10 } = {}) {
+  const at = (x) => (Number.isInteger(x.item) ? `書き直した手順${x.item + 1}` : "");
+  const note = (x) => {
+    switch (x.code) {
+      case "number_added": return `元の手順にない数字（${x.detail}）を書かない。材料の分量・目安の時間や温度も、元の手順に書いていなければ書かない`;
+      case "number_lost": return `元の手順の数字を書き落とさない（${x.detail}）`;
+      case "number_order": return `時間どうし・温度どうしの数字の順番を元の手順と同じにする（${x.detail}）`;
+      case "order": return `${at(x)}の from が、前の手順がまとめた番号より前に戻っている。元の手順の順番どおりにまとめる`;
+      case "missing": return `${x.detail} がどの手順の from にも入っていない。全部の元の手順をどこかに入れる`;
+      case "too_many": return `手順を${limit}個以内にする`;
+      case "text_long": return `${at(x)}を${GUIDE_TEXT_MAX}字以内にする（2つに分けてもよい）`;
+      case "from_bad": return `${at(x)}の from を、元の手順の番号（1から・小さい順）にする`;
+      default: return GUIDE_ISSUE_LABEL[x.code] || x.code;
+    }
+  };
+  return [...new Set(issues.map(note))];
+}
+
 export async function rewriteGuide(recipe, { write, beforeRetry } = {}) {
   const steps = (recipe.steps || []).map((s) => String(s || "").trim());
   const limit = guideLimit(recipe.planning?.minutes);
   let last = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0) await beforeRetry?.();
-    const raw = await write({ title: recipe.title || "", ingredients: recipe.ingredients || [], steps, limit, retry: last?.issues || null });
+    const raw = await write({ title: recipe.title || "", ingredients: recipe.ingredients || [], steps, limit, retry: last ? retryNotes(last.issues, { limit }) : null });
     const guide = normalizeGuide(raw);
     const check = checkGuide(steps, guide, { limit });
     if (check.ok) return { steps: guide, limit, tries: attempt + 1 };
     last = check;
   }
-  const error = new ApiError(422, "guide_invalid", `書き直しを確かめると問題がありました：${last.issues.map((x) => GUIDE_ISSUE_LABEL[x.code] || x.code).join("・")}`);
+  // 管理の画面に、何がだめだったかを具体的に（同じ理由はまとめる）。
+  const reasons = [...new Set(last.issues.map((x) => `${GUIDE_ISSUE_LABEL[x.code] || x.code}${x.detail ? `（${x.detail}）` : ""}`))];
+  const error = new ApiError(422, "guide_invalid", `書き直しを確かめると問題がありました：${reasons.join("・")}`);
   error.issues = last.issues;
   throw error;
 }

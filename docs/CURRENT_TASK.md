@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 手順の書き直しのお試しの改善（材料の分量を渡さない・2回目に具体的な直し方・失敗の理由に数字・落ちた料理をもう一度試せる）（APP_MAP §49）| api/src/rewrite.js・analyzer.js・server.js |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
