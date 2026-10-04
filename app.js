@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261004-update";
+const APP_VERSION = "20261004-update2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -310,7 +310,8 @@ function showUpdateBar() {
   const bar = document.createElement("div");
   bar.className = "update-bar";
   bar.setAttribute("role", "status");
-  bar.innerHTML = '<span>新しい版があります</span><button type="button" class="primary-button">更新する</button>';
+  // はじめての人でも迷わず押せる言葉に（UI_RULES §1-2）：何が起きるか・データは消えないこと・押した後のことを短く。
+  bar.innerHTML = '<span><b>✨ アプリが新しくなりました</b><small>献立や記録はそのまま残ります</small></span><button type="button" class="primary-button">新しくする</button>';
   bar.querySelector("button").addEventListener("click", () => location.reload());
   document.body.append(bar);
 }
