@@ -30,7 +30,7 @@ git worktree add ../matagochi-codex  -b codex/<タスク名>  origin/main
 ## テスト
 
 ```
-node --test test/*.cjs                 # アプリ（vanilla JS）。今は 254件
+node --test test/*.cjs                 # アプリ（vanilla JS）。今は 261件
 cd api && node --test                  # API（Node）。今は 287件
 ```
 
@@ -42,8 +42,9 @@ cd api && node --test                  # API（Node）。今は 287件
 
 アプリはサービスワーカーでキャッシュしているので、**変更のたびに版を上げる**。上げないとスマホに古い画面が残る。
 
-- `app.js` の `APP_VERSION`、`sw.js` の `APP_VERSION`、`index.html` の `?v=` を**同じ文字列**に（例：`20260929-pantry`）。まとめて置き換えるなら：
-  `grep -rl "旧版" --include=*.js --include=*.html . | xargs sed -i 's/旧版/新版/g'`
+- `app.js` の `APP_VERSION`、`sw.js` の `APP_VERSION`、`index.html` の `?v=`、`version.json` の `version` を**同じ文字列**に（例：`20260929-pantry`。テスト `test/app-update.test.cjs` で確かめる）。まとめて置き換えるなら：
+  `grep -rl "旧版" --include=*.js --include=*.html --include=*.json . | grep -v node_modules | xargs sed -i 's/旧版/新版/g'`
+- 公開した版は、アプリを開いた時・裏から戻った時に `version.json` と比べる（ホーム画面のアプリも。2026-10-04）。自動で読み込み直すのは、開いてからまだ何も触っていない時だけ（同じ版へは1回まで・印を残せない時はしない）。それ以外は帯「✨ 新しくなりました／献立や記録はそのまま残ります［最新情報に更新する］」。保存していない入力（記録の編集・晩ごはんタイプの質問の途中・▶ の時刻を直している途中・レシピの登録や編集・🍳料理モード・入力欄）がある間は帯を出さず、押されても読み込み直さない（app.js `hasUnsavedWork`。review fix #143）
 - `sw.js` の `CACHE_NAME`（`ripigochi-vNNN`）の数字を1つ上げる
 
 ## 新しい JS ファイルを足す時
