@@ -60,3 +60,13 @@ test("review fix (#139): the app's step fingerprint matches the server's; a rewr
   assert.equal(run("c.guide"), undefined);
   assert.equal(run(`recipeGuide(${JSON.stringify({ ...item, guideOf: undefined })})`), null, "no fingerprint, no rewrite");
 });
+
+test("2026-10-04 pilot: a recipe already in the meal plan (a copy without the rewrite) uses the rewrite from the latest list, only while the steps are the same", () => {
+  const run = app();
+  run(`discover.trends = [${JSON.stringify(item)}]`);
+  const copy = { id: "slot-1", title: item.title, videoUrl: item.videoUrl, steps: item.steps, ingredients: item.ingredients };
+  assert.equal(run(`recipeGuide(${JSON.stringify(copy)}).length`), 2);
+  assert.match(run(`cookSections(${JSON.stringify(copy)}, 2).steps`), /動画では：手順1・2/);
+  assert.equal(run(`recipeGuide(${JSON.stringify({ ...copy, steps: [...item.steps.slice(0, 3), "自分で直した手順"] })})`), null, "steps changed → not used");
+  assert.equal(run(`recipeGuide(${JSON.stringify({ ...copy, videoUrl: "https://www.youtube.com/watch?v=zzzzzzzzzzz" })})`), null);
+});

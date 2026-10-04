@@ -22,8 +22,9 @@ const DISCOVER_TREND_MAX = 120;
 async function loadDiscover({ force = false } = {}) {
   if (!API_BASE_URL || discoverLoading) return;
   pruneDiscover();
-  // 取り直しは1時間ごと。まだ1品もない時は覚えずに、次に開いた時また取りに行く。
-  if (!force && discover.savedAt && discover.trends.length && Date.now() - Date.parse(discover.savedAt) < 3_600_000) return;
+  // 取り直しは15分ごと（読み出すだけで AI は使わない。管理の画面で直した書き直し・時刻が早く届くように。2026-10-04 に1時間から短くした）。
+  // まだ1品もない時は覚えずに、次に開いた時また取りに行く。
+  if (!force && discover.savedAt && discover.trends.length && Date.now() - Date.parse(discover.savedAt) < 15 * 60_000) return;
   // 取れなかった時（0品・通信エラー）は、1分あける。描き直すたびに取りに行って、画面が作り直され続けないように。
   if (!force && Date.now() - discoverTriedAt < 60_000) return;
   discoverTriedAt = Date.now();
@@ -155,12 +156,22 @@ function stepsKey(steps) {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h.toString(16).padStart(8, "0");
 }
-function recipeGuide(recipe) {
-  const g = recipe?.guide, n = (recipe?.steps || []).length;
+function guideFor(recipe, g, of) {
+  const n = (recipe?.steps || []).length;
   if (!Array.isArray(g) || !g.length || g.length > 30 || n < 2) return null;
-  if (recipe.guideOf !== stepsKey(recipe.steps)) return null;
+  if (of !== stepsKey(recipe.steps)) return null;
   const ok = g.every((x) => typeof x?.text === "string" && x.text.trim() && Array.isArray(x.from) && x.from.length && x.from.every((j) => Number.isInteger(j) && j >= 0 && j < n));
   return ok ? g : null;
+}
+function recipeGuide(recipe) {
+  const own = guideFor(recipe, recipe?.guide, recipe?.guideOf);
+  if (own) return own;
+  // 献立に入れた・保存した料理は、その時の写し。あとから付いた書き直しも、新着・みんなの定番の同じ動画から使う
+  // （元の手順が同じ時だけ。2026-10-04 のお試しで、献立の料理に書き直しが出なかったため）。
+  const id = typeof youtubeVideoId === "function" ? youtubeVideoId(recipe?.videoUrl) : "";
+  if (!id) return null;
+  const item = [...(discover.trends || []), ...(discover.popular || [])].find((x) => x?.videoId === id && Array.isArray(x.guide));
+  return item ? guideFor(recipe, item.guide, item.guideOf) : null;
 }
 // 手順ごとの動画の時刻は、手順の数と合う時だけ使う。
 function stepTimesFor(steps, times) {
