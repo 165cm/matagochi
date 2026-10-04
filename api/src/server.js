@@ -10,13 +10,14 @@ import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
 import { createChannelStats } from "./channelStats.js";
 import { checkStepTimes, ISSUE_LABEL } from "./timecodeCheck.js";
-import { usage } from "./aiUsage.js";
+import { usage, usageYen } from "./aiUsage.js";
+import { rewriteGuide, guideLimit, listedGuide, stepsKey, GUIDE_ISSUE_LABEL } from "./rewrite.js";
 import { createPushDesk } from "./push.js";
 import { createWeeklyMenu } from "./weeklyMenu.js";
 import { createFeedbackDesk } from "./feedback.js";
@@ -417,7 +418,9 @@ export function createApp(env = process.env, deps = {}) {
       const { times, source, seenSeconds } = await timesOf(url, r);
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const check = checkStepTimes(r.steps || [], times, { durationSeconds, source, seenSeconds });
-      return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null };
+      return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
+        // 書き直した手順（APP_MAP §49）と、その時間の上限。
+        guide: listedGuide(r), guideLimit: guideLimit(r.planning?.minutes), guideLabels: GUIDE_ISSUE_LABEL };
     }));
   });
   // 管理：手順の時刻の0円の点検（新着の全部。AI・検索は使わない。動画の長さは videos.list・50本で1単位）。
@@ -509,6 +512,83 @@ export function createApp(env = process.env, deps = {}) {
       const r = await catalog.peek(url);
       if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
       return usage.run({}, () => timecodeBook.reanalyze({ url, steps: r.steps || [] }));
+    })());
+  });
+  // 管理：手順の書き直し（覚えやすい手順。APP_MAP §49）。AI 1回（確かめで落ちたらもう1回まで）・1品約1円。
+  // まず10品で試す（2026-10-04 のユーザーの判断）。書き直しは表に出し、元の手順は「動画では」として残す。
+  const writeGuide = deps.rewriteRecipeSteps || ((x) => rewriteRecipeSteps(x, env));
+  // 同じ料理の書き直しは同時に1つだけ（別のタブ・再送・お試しの重なり・複数の台でも。予算を通す前に世代つきの書き込みで鍵を取る。review fix #139）。
+  // 鍵の長さ：AI 2回分（各90秒）より十分長く。これより古い鍵は止まった書き直しのもの。
+  const GUIDE_LOCK_MS = 5 * 60_000;
+  const guideOne = async (videoId) => {
+    const url = canonicalYouTubeUrl(videoId);
+    const lockKey = `guide-lock/${videoId}`;
+    const held = await recipeStore.get(lockKey);
+    const nowMs = (deps.now || Date.now)();
+    if (held && nowMs - Date.parse(held.envelope.at || 0) <= GUIDE_LOCK_MS) throw new ApiError(409, "guide_pending", "この料理は書き直している途中です。");
+    const lock = await recipeStore.put(lockKey, { at: new Date(nowMs).toISOString() }, { ifGeneration: held?.generation ?? 0 });
+    if (!lock) throw new ApiError(409, "guide_pending", "この料理は書き直している途中です。");
+    try {
+      const r = await catalog.peek(url);
+      if (!r) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      if ((r.steps || []).filter(Boolean).length < 2) throw new ApiError(400, "steps_required", "手順が2つ以上いります。");
+      await catalog.reserveAnalysisBudget();
+      const collector = {};
+      const guide = await usage.run(collector, () => rewriteGuide(r, { write: writeGuide, beforeRetry: () => catalog.reserveAnalysisBudget() }));
+      // 書き直しを頼んだ時の元の手順の指紋を添える（保存の時に変わっていたら断る）。
+      const saved = await catalog.setGuide(url, { ...guide, of: stepsKey(r.steps), model: collector.model || "" });
+      trendBook.clearCache(); popularBook.clearCache();
+      return { videoId, before: (r.steps || []).length, after: guide.steps.length, limit: guide.limit, tries: guide.tries, yen: Math.round(usageYen(collector, env) * 100) / 100, guide: saved.guide };
+    } finally {
+      await recipeStore.remove(lockKey, { ifGeneration: lock.generation }).catch(() => {});
+    }
+  };
+  // 書き直しが確かめで落ちた料理の印（二度と試さない）。ほかの書き込みと重なったら読み直して3回まで。
+  const markGuideTried = async (videoId) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const entry = await recipeStore.get("guide/tried");
+      const ids = [...new Set([...(entry?.envelope?.ids || []), videoId])].slice(-500);
+      if (await recipeStore.put("guide/tried", { ids }, { ifGeneration: entry?.generation ?? 0 }).catch(() => null)) return true;
+    }
+    return false;
+  };
+  app.post("/api/admin/recipes/:videoId/guide", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, guideOne(videoId));
+  });
+  // 書き直しを外す（ブラウザから送れる方法に合わせて POST）。
+  app.post("/api/admin/recipes/:videoId/guide/remove", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, catalog.setGuide(canonicalYouTubeUrl(videoId), null).then((x) => { trendBook.clearCache(); popularBook.clearCache(); return x; }));
+  });
+  // 管理：お試し（新着から、まだ書き直していない料理を max 品。手順が上限より多い料理から）。left：候補の残り。
+  app.post("/api/admin/guide/pilot", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const max = Math.max(1, Math.min(5, Number(req.body?.max) || 5));
+    send(res, (async () => {
+      const items = ((await trendBook.list({ promote: false })).items || []).filter((x) => (x.steps || []).filter(Boolean).length >= 2 && !x.guide);
+      // 試した印（失敗も）がある料理は飛ばす（同じ料理に何度も費用を使わない）。
+      const tried = new Set(((await recipeStore.get("guide/tried"))?.envelope?.ids) || []);
+      const over = (x) => (x.steps || []).length - guideLimit(x.planning?.minutes);
+      const targets = items.filter((x) => !tried.has(x.videoId)).sort((a, b) => over(b) - over(a) || String(a.videoId).localeCompare(String(b.videoId)));
+      const done = [];
+      for (const x of targets.slice(0, max)) {
+        try { done.push(await guideOne(x.videoId)); }
+        catch (error) {
+          done.push({ videoId: x.videoId, error: error?.code || "failed", message: error?.message || "" });
+          // 予算・通信の失敗は印を付けない（あとでもう一度）。書き直しが確かめで落ちた時だけ印。
+          // 印を保存できない時は、ここで止める（印がないまま次へ進むと、次のお試しで同じ料理にまた費用を使う。review fix #139 r2）。
+          if (error?.code === "guide_invalid" && !(await markGuideTried(x.videoId))) throw new ApiError(503, "guide_tried_not_saved", `${x.videoId} の「書き直せなかった」印を保存できなかったので止めました。少し待ってからもう一度押してください。`);
+        }
+      }
+      return { done, left: Math.max(0, targets.length - max) };
     })());
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {

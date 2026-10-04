@@ -4098,3 +4098,15 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .parent-line { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: var(--surface-soft); display: grid; gap: 6px; }
 .parent-line p { margin: 0; }
 .parent-line .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* 覚えやすく書き直した手順（AI。APP_MAP §49）：元の手順は各手順の下に小さく「動画では」 */
+.guide-badge { color: var(--muted); }
+.cooking-steps.has-guide details.guide-src { margin-top: 4px; font-size: 0.78rem; color: var(--muted); }
+.cooking-steps.has-guide details.guide-src summary { cursor: pointer; list-style: none; display: inline-block; padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.cooking-steps.has-guide details.guide-src summary::-webkit-details-marker { display: none; }
+.cooking-steps.has-guide details.guide-src summary::after { content: " ▾"; }
+.cooking-steps.has-guide details.guide-src[open] summary::after { content: " ▴"; }
+.cooking-steps.has-guide ol.guide-orig { margin: 6px 0 2px; padding-left: 1.6em; list-style: decimal; }
+.cooking-steps.has-guide ol.guide-orig li { display: list-item; padding: 0; margin: 2px 0; border: 0; line-height: 1.5; }
+.cooking-steps.has-guide .guide-key { margin-right: 0.15em; color: var(--sage-dark); }
+.cooking-steps.has-guide .guide-key::after { content: "："; }

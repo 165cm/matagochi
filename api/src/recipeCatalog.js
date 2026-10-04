@@ -5,6 +5,7 @@ import { createGcsSyncStore, createMemorySyncStore } from "./syncStore.js";
 import { extractYouTubeVideoId, canonicalYouTubeUrl } from "./youtube.js";
 import { normalizeImportResult } from "./importRecipe.js";
 import { localizeRecipe } from "./units.js";
+import { stepsKey } from "./rewrite.js";
 
 export function createRecipeStore(env) {
   const bucket = env.RECIPE_BUCKET || env.SYNC_BUCKET;
@@ -199,6 +200,22 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (current.envelope.result?.dishName || current.envelope.result?.dishNameFrom) return "skip";
       const result = { ...current.envelope.result, dishNameFrom: "ai-backfill" };
       return !!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }));
+    },
+    // 管理：書き直した手順（guide。APP_MAP §49）を付ける・外す（null）。元の手順・時刻には触らない。
+    // 読み直し（取り込み・reread）では結果を作り直すので、書き直しは消える（元の手順が変わるので）。
+    async setGuide(rawUrl, guide) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      const result = structuredClone(current.envelope.result);
+      // 書き直しを頼んだ時の元の手順（guide.of）と、いまの元の手順（一覧と同じく単位をそろえた形）が違えば保存しない（AI の間に読み直された。review fix #139）。
+      const seen = stepsKey(localizeRecipe(result).steps);
+      if (guide && guide.of !== seen) throw new ApiError(409, "catalog_conflict", "書き直している間に元の手順が変わりました。もう一度書き直してください。");
+      if (guide) result.guide = { steps: guide.steps.map((g) => ({ text: g.text, from: g.from })), limit: guide.limit, of: seen, at: new Date(now()).toISOString(), ...(guide.model ? { model: guide.model } : {}) };
+      else delete result.guide;
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
+      return { guide: result.guide || null };
     },
     async setStepTimes(rawUrl, stepTimes) {
       required();

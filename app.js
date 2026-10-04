@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261001-compare";
+const APP_VERSION = "20261004-guide";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2845,6 +2845,8 @@ async function handleAction(event) {
       existing.caption = state.draft.caption;
       existing.ingredients = ingredients;
       existing.originalIngredients = originalIngredients;
+      // 手順を直したら、書き直した手順（AI）は合わなくなるので外す。
+      if (JSON.stringify(existing.steps || []) !== JSON.stringify(steps)) delete existing.guide;
       existing.steps = steps;
       existing.tags = [mealLabel(state.draft.mealType), state.draft.source, "動画"];
       existing.author = state.draft.author || "";

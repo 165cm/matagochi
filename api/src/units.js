@@ -111,11 +111,14 @@ export function localizeAmount(amount, to = "ja-JP") {
 // 手順の中の温度（350°F など）を換算して添える。
 export function localizeStep(step, to = "ja-JP") {
   if (to !== "ja-JP") return step;
-  return String(step).replace(/(\d{3})\s*°\s*F\b/gi, (all, f) => `${fahrenheitToCelsius(Number(f))}℃（${all}）`);
+  // もう「175℃（350°F）」の形なら換算しない（何度通しても同じ。review fix #139）。
+  return String(step).replace(/(?<!℃（)(\d{3})\s*°\s*F\b/gi, (all, f) => `${fahrenheitToCelsius(Number(f))}℃（${all}）`);
 }
 
 // 保存済みの読み取り結果にも、換算を通す（この対応表を入れる前に読み取った分のため）。
 export function localizeRecipe(result, to = "ja-JP") {
   if (!result || !Array.isArray(result.ingredients)) return result;
-  return { ...result, ingredients: result.ingredients.map((i) => ({ ...i, amount: localizeAmount(i.amount, to) })), steps: Array.isArray(result.steps) ? result.steps.map((x) => localizeStep(x, to)) : result.steps };
+  return { ...result, ingredients: result.ingredients.map((i) => ({ ...i, amount: localizeAmount(i.amount, to) })), steps: Array.isArray(result.steps) ? result.steps.map((x) => localizeStep(x, to)) : result.steps,
+    // 書き直した手順（APP_MAP §49）も同じように日本の単位に。
+    ...(Array.isArray(result.guide?.steps) ? { guide: { ...result.guide, steps: result.guide.steps.map((g) => ({ ...g, text: localizeStep(g.text, to) })) } } : {}) };
 }
