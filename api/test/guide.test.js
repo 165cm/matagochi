@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { guideLimit, numbersIn, checkGuide, rewriteGuide, listedGuide, stepsKey } from '../src/rewrite.js';
+import { guideLimit, numbersIn, checkGuide, rewriteGuide, listedGuide, stepsKey, retryNotes } from '../src/rewrite.js';
 import { localizeStep } from '../src/units.js';
 import { createRecipeCatalog } from '../src/recipeCatalog.js';
 import { weekOf } from '../src/trends.js';
@@ -48,7 +48,7 @@ test('rewrite: a failed check is sent back once with the reasons (through the AI
   const g = await rewriteGuide({ title: '豚キャベツ', steps: ORIG, planning: { minutes: 10 } }, { write: async (x) => { asked.push(x); return answers[asked.length - 1]; }, beforeRetry: async () => { budget++; } });
   assert.equal(g.steps.length, 2); assert.deepEqual(g.steps[1].from, [2, 3, 4, 5]); assert.equal(g.limit, 7); assert.equal(g.tries, 2);
   assert.equal(asked[0].limit, 7); assert.equal(asked[0].retry, null);
-  assert.ok(asked[1].retry.some((x) => x.code === 'missing')); assert.equal(budget, 1);
+  assert.ok(asked[1].retry.some((x) => /元の手順2 がどの手順の from にも入っていない/.test(x)), asked[1].retry.join('\n')); assert.equal(budget, 1);
   await assert.rejects(rewriteGuide({ steps: ORIG }, { write: async () => answers[0] }), (e) => e.code === 'guide_invalid' && e.status === 422 && e.issues.length > 0);
 });
 
@@ -177,7 +177,7 @@ test('review fix (#139): the same recipe is not rewritten twice at once; a faile
   // guide/tried の最初の書き込みだけ、ほかの書き込みと重なった扱いにする
   const put = store.put.bind(store);
   let clash = true;
-  store.put = async (key, ...rest) => { if (key === 'guide/tried' && clash) { clash = false; await put(key, { ids: ['someone'] }, { ifGeneration: 0 }); return null; } return put(key, ...rest); };
+  store.put = async (key, ...rest) => { if (key === 'guide/tried-v2' && clash) { clash = false; await put(key, { ids: ['someone'] }, { ifGeneration: 0 }); return null; } return put(key, ...rest); };
   const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], rewriteRecipeSteps: write,
     videoDetails: async (list) => Object.fromEntries(list.map((id) => [id, { status: 'public', durationSeconds: 600 }])) });
   const server = app.listen(0, '127.0.0.1');
@@ -195,7 +195,7 @@ test('review fix (#139): the same recipe is not rewritten twice at once; a faile
   // 失敗の印：重なっても読み直して残す
   const p = await (await post('/api/admin/guide/pilot')).json();
   assert.equal(p.done[0].error, 'guide_invalid');
-  assert.deepEqual((await store.get('guide/tried')).envelope.ids.sort(), ['someone', 'zzzzzzzzzzz']);
+  assert.deepEqual((await store.get('guide/tried-v2')).envelope.ids.sort(), ['someone', 'zzzzzzzzzzz']);
 });
 
 test('review fix (#139 r2): swapping times or temperatures inside merged steps fails; numbers of different kinds may change places', () => {
@@ -216,7 +216,7 @@ test('review fix (#139 r2): the pilot stops when the failed-check mark cannot be
   await store.put('trends/index', { weeks: [{ week: weekOf(NOW), startedAt: new Date(NOW).toISOString(), candidates: [], tried: [], items: [{ videoId: 'badaaaaaaa1' }, { videoId: 'badaaaaaaa2' }], skipped: {} }] }, { ifGeneration: 0 });
   let calls = 0;
   const put = store.put.bind(store);
-  store.put = async (key, ...rest) => (key === 'guide/tried' ? null : put(key, ...rest));
+  store.put = async (key, ...rest) => (key === 'guide/tried-v2' ? null : put(key, ...rest));
   const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [],
     rewriteRecipeSteps: async () => { calls++; return { steps: [{ text: 'x', from: [1] }] }; },
     videoDetails: async (list) => Object.fromEntries(list.map((id) => [id, { status: 'public', durationSeconds: 600 }])) });
@@ -249,4 +249,24 @@ test('review fix (#139 r4): "2分の1個" and "1/2個", "大さじ2分の1" and 
   assert.deepEqual(c('大さじ2分の1を加える', '大さじ1/2を加える'), []);
   assert.deepEqual(c('玉ねぎを2分の1個切る', '玉ねぎを1個切る'), ['number_added', 'number_lost'], 'a changed amount still fails');
   assert.deepEqual(numbersIn('5分のあいだ煮る'), ['5分'], 'a time followed by の stays a time');
+});
+
+test('2026-10-04 pilot: the retry tells the AI exactly which numbers and steps to fix; the admin sees the numbers too', async () => {
+  const issues = checkGuide(['豚肉を炒める', '塩をふる'], [{ text: '豚肉200gを3分炒める', from: [0] }, { text: '塩をふる', from: [1] }], { limit: 7 }).issues;
+  const notes = retryNotes(issues, { limit: 7 });
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /元の手順にない数字（200g・3分）を書かない。材料の分量/);
+  assert.match(retryNotes([{ code: 'text_long', item: 2 }])[0], /書き直した手順3を90字以内/);
+  await assert.rejects(rewriteGuide({ steps: ['豚肉を炒める', '塩をふる'] }, { write: async () => ({ steps: [{ text: '豚肉200gを炒める', from: [1] }, { text: '塩をふる', from: [2] }] }) }),
+    (e) => e.code === 'guide_invalid' && /元の手順にない数字（時間・温度・分量）がある（200g）/.test(e.message));
+});
+
+test('review fix (#140): "10品で試す" counts every tried recipe (done or failed), so it stops at 10 even when most fail', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../../admin/catalog.html', import.meta.url), 'utf8');
+  const loop = html.slice(html.indexOf('document.getElementById("gd-pilot")'), html.indexOf('async function loadRecipes()'));
+  assert.match(loop, /tried \+= d\.done\.length/);
+  assert.match(loop, /round < 4 && tried < 10/);
+  assert.match(loop, /max: Math\.min\(5, 10 - tried\)/);
+  assert.doesNotMatch(loop, /10 - ok/);
 });

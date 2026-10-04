@@ -626,18 +626,21 @@
     box.replaceChildren(el("p", "書き直しています…", "meta"), log);
     let ok = 0, yen = 0;
     try {
-      for (let round = 0; round < 4 && ok < 10; round++) {
-        const d = await api("/api/admin/guide/pilot", { max: Math.min(5, 10 - ok) });
+      // 試した品（できた・落ちたの両方）で10品まで。できた品だけで数えると、落ちる品が多い時に20品以上 AI を呼んでしまう（review fix #140）。
+      let tried = 0;
+      for (let round = 0; round < 4 && tried < 10; round++) {
+        const d = await api("/api/admin/guide/pilot", { max: Math.min(5, 10 - tried) });
         if (my !== session) return;
+        tried += d.done.length;
         for (const x of d.done) {
           if (!x.error) { ok += 1; yen += x.yen || 0; }
           const li = el("li", x.error ? `${x.videoId}：${x.message || x.error}` : `${x.videoId}：手順 ${x.before} → ${x.after}（上限 ${x.limit}）`);
           li.style.cursor = "pointer"; li.addEventListener("click", () => openRecipe(x.videoId)); log.append(li);
         }
-        box.firstChild.textContent = `書き直しています…（できた ${ok}品・約${Math.round(yen)}円・候補の残り ${d.left}品）`;
+        box.firstChild.textContent = `書き直しています…（試した ${tried}品・できた ${ok}品・約${Math.round(yen)}円・候補の残り ${d.left}品）`;
         if (!d.left || !d.done.some((x) => !x.error)) break;
       }
-      box.firstChild.textContent = `書き直しました：${ok}品（約${Math.round(yen)}円）。行を押すとレシピを開いて見比べられます。アプリの作る画面でも確かめてください。`;
+      box.firstChild.textContent = `書き直しました：試した ${tried}品のうち ${ok}品（約${Math.round(yen)}円）。行を押すとレシピを開いて見比べられます。アプリの作る画面でも確かめてください。`;
     } catch (error) { box.firstChild.textContent = error.message; }
     finally { btn.disabled = false; }
   });
