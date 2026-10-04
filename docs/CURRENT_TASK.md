@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 書き直しを上位120品の外の料理にも出す・新しい版で一覧をすぐ取り直す（APP_MAP §49）| discover.js・index.html・app.js・sw.js |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
