@@ -955,7 +955,10 @@
     runStatus.textContent = ""; progress(false);
     document.querySelector("#added-box > summary").textContent = "増えた料理";
     const dlg = document.getElementById("recipe"); if (dlg.open) dlg.close();
-    for (const id of ["stage", "queries", "stages", "sources", "added", "items", "cost", "ask", "stage-progress", "waves-left", "dish-parents", "dish-candidates", "dish-other", "rl-list", "rl-count", "backfill", "tc-check"]) document.getElementById(id).textContent = "";
+    for (const id of ["goal", "stage", "queries", "stages", "sources", "parents", "portfolio", "learn", "added", "items", "cost", "ask", "stage-progress", "waves-left", "dish-parents", "dish-candidates", "dish-other", "rl-list", "rl-count", "backfill", "tc-check"]) document.getElementById(id).textContent = "";
+    // 目標の欄は隠し、畳んだ記録の見出しの要点の数字も消す（合言葉を消した後に管理の数字を残さない。review fix #144）。
+    document.getElementById("goal").hidden = true;
+    document.querySelectorAll("details > summary .sum").forEach((x) => x.remove());
     document.getElementById("seed-run").disabled = true;
     document.getElementById("login-box").hidden = false; document.getElementById("reload").hidden = true;
     status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;
