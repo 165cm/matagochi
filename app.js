@@ -8,7 +8,7 @@ const SYNC_DEBOUNCE_MS = 8000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261004-update3";
+const APP_VERSION = "20261004-update4";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -273,14 +273,30 @@ function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.register("./sw.js").catch(() => {});
   // ホーム画面のアプリ（iPhone）は閉じても裏で動き続け、古い版のままになりやすい。開いた時・戻った時に新しい版を確かめる（2026-10-04）。
+  for (const type of ["pointerdown", "keydown", "input"]) document.addEventListener(type, () => { appTouched = true; }, { capture: true, passive: true });
   setTimeout(() => checkAppUpdate(), 3000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkAppUpdate(); });
+  // 入力の途中で帯を出さなかった時は、入力が終わったら出す（サーバーには聞き直さない）。
+  setInterval(() => { if (appUpdatePending && !hasUnsavedWork()) showUpdateBar(); }, 15_000);
 }
 
 // 新しい版の確かめ：version.json（毎回サーバーから）と、いま動いている版（APP_VERSION）を比べる。
-// 違えば、サービスワーカーを更新してから読み込み直す。入力中・🍳料理モードの間は読み込み直さず、帯の「更新する」で。
-// 同じ版への読み込み直しは1回まで（古い画面が返ってきても、くり返し読み込み直さない）。
+// 自動で読み込み直すのは、開いてからまだ何も触っていない時だけ（メモリの中の下書きが消えないように。review fix #143）。
+// それ以外は帯「最新情報に更新する」で、本人が押した時だけ。保存していない入力がある間は帯を出さない・押しても読み込み直さない。
+// 同じ版への自動の読み込み直しは1回まで。印（sessionStorage）を残せない時は自動で読み込み直さない（くり返さないように）。
 let appUpdateCheckedAt = 0;
+let appTouched = false;
+let appUpdatePending = "";
+// 保存していない入力・途中の操作（読み込み直すと消えるもの）があるか。
+function hasUnsavedWork() {
+  if (document.activeElement?.matches?.("input, textarea, select")) return true;
+  if (document.body?.classList?.contains("cook-mode-open")) return true;
+  if (typeof recordDraft !== "undefined" && recordDraft) return true; // 記録の編集
+  if (typeof talkTypeDraft !== "undefined" && talkTypeDraft) return true; // 晩ごはんタイプの質問の途中
+  if (typeof timeFix !== "undefined" && timeFix) return true; // ▶ の時刻を直している途中
+  if (state?.editingRecipeId || ["register", "playlist", "recordDetails"].includes(state?.view)) return true; // レシピの登録・編集
+  return false;
+}
 async function checkAppUpdate({ now = Date.now() } = {}) {
   if (now - appUpdateCheckedAt < 60_000) return "skip";
   appUpdateCheckedAt = now;
@@ -291,19 +307,26 @@ async function checkAppUpdate({ now = Date.now() } = {}) {
     version = String((await r.json())?.version || "");
   } catch { return "error"; }
   if (!version || version === APP_VERSION) return "same";
+  appUpdatePending = version;
   // 新しいサービスワーカーに替わるのを待ってから読み込み直す（古いサービスワーカーが古い画面を返さないように。5秒まで）。
   try {
     const reg = await navigator.serviceWorker?.getRegistration?.();
     await reg?.update?.();
     if (reg?.installing || reg?.waiting) await new Promise((resolve) => { navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }); setTimeout(resolve, 5000); });
   } catch {}
-  let tried = "";
-  try { tried = sessionStorage.getItem("ripigochi-reloaded-for") || ""; } catch {}
-  const busy = !!document.activeElement?.matches?.("input, textarea, select") || !!document.body?.classList?.contains("cook-mode-open");
-  if (busy || tried === version) { showUpdateBar(version); return "bar"; }
-  try { sessionStorage.setItem("ripigochi-reloaded-for", version); } catch {}
-  location.reload();
-  return "reload";
+  let marked = false;
+  if (!appTouched && !hasUnsavedWork()) {
+    try {
+      if (sessionStorage.getItem("ripigochi-reloaded-for") !== version) {
+        sessionStorage.setItem("ripigochi-reloaded-for", version);
+        marked = sessionStorage.getItem("ripigochi-reloaded-for") === version;
+      }
+    } catch { marked = false; }
+  }
+  if (marked) { location.reload(); return "reload"; }
+  if (hasUnsavedWork()) return "later";
+  showUpdateBar();
+  return "bar";
 }
 function showUpdateBar() {
   if (document.querySelector(".update-bar")) return;
@@ -312,7 +335,11 @@ function showUpdateBar() {
   bar.setAttribute("role", "status");
   // はじめての人でも迷わず押せる言葉に（UI_RULES §1-2）：何が起きるか・データは消えないこと・押した後のことを短く。
   bar.innerHTML = '<span><b>✨ 新しくなりました</b><small>献立や記録はそのまま残ります</small></span><button type="button" class="primary-button">最新情報に更新する</button>';
-  bar.querySelector("button").addEventListener("click", () => location.reload());
+  bar.querySelector("button").addEventListener("click", () => {
+    // 押す前に入力の途中になっていたら、読み込み直さない（入力が消えないように）。
+    if (hasUnsavedWork()) { bar.remove(); showToast("入力の途中です。保存してから、もう一度お知らせします"); return; }
+    location.reload();
+  });
   document.body.append(bar);
 }
 
