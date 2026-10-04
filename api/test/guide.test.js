@@ -260,3 +260,13 @@ test('2026-10-04 pilot: the retry tells the AI exactly which numbers and steps t
   await assert.rejects(rewriteGuide({ steps: ['豚肉を炒める', '塩をふる'] }, { write: async () => ({ steps: [{ text: '豚肉200gを炒める', from: [1] }, { text: '塩をふる', from: [2] }] }) }),
     (e) => e.code === 'guide_invalid' && /元の手順にない数字（時間・温度・分量）がある（200g）/.test(e.message));
 });
+
+test('review fix (#140): "10品で試す" counts every tried recipe (done or failed), so it stops at 10 even when most fail', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../../admin/catalog.html', import.meta.url), 'utf8');
+  const loop = html.slice(html.indexOf('document.getElementById("gd-pilot")'), html.indexOf('async function loadRecipes()'));
+  assert.match(loop, /tried \+= d\.done\.length/);
+  assert.match(loop, /round < 4 && tried < 10/);
+  assert.match(loop, /max: Math\.min\(5, 10 - tried\)/);
+  assert.doesNotMatch(loop, /10 - ok/);
+});
