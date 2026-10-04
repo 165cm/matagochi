@@ -29,7 +29,8 @@ async function loadDiscover({ force = false } = {}) {
   if (!force && Date.now() - discoverTriedAt < 60_000) return;
   discoverTriedAt = Date.now();
   discoverLoading = true;
-  const before = JSON.stringify([discover.trends.length, discover.popular.length, discover.savedAt]);
+  // 描き直すかは、一覧の中身（書き直し・時刻も含む）で決める。取った時刻（savedAt）は毎回変わるので比べない（入力中の欄を消さない。review fix #141）。
+  const before = JSON.stringify([discover.trends, discover.popular]);
   try {
     const [t, p] = await Promise.all([
       fetchWithTimeout(`${API_BASE_URL}/api/trends`, {}, 15_000).then((r) => (r.ok ? r.json() : null)).catch(() => null),
@@ -40,7 +41,7 @@ async function loadDiscover({ force = false } = {}) {
     if (t || p) { discover.savedAt = discover.trends.length ? new Date().toISOString() : ""; saveDiscover(); }
   } finally { discoverLoading = false; }
   // 中身が変わった時だけ描き直す（入力中の欄を消さない）。
-  if (before === JSON.stringify([discover.trends.length, discover.popular.length, discover.savedAt])) return;
+  if (before === JSON.stringify([discover.trends, discover.popular])) return;
   if (["collection", "plan"].includes(state.view) || FUNNEL[state.onboardingDraft?.quickSetupIndex] === "picks") render();
 }
 // サーバーの読み取り結果を、アプリのレシピの形に。読み取り専用の「おすすめ」として扱う（保存すると自分のレシピになる）。
@@ -170,8 +171,13 @@ function recipeGuide(recipe) {
   // （元の手順が同じ時だけ。2026-10-04 のお試しで、献立の料理に書き直しが出なかったため）。
   const id = typeof youtubeVideoId === "function" ? youtubeVideoId(recipe?.videoUrl) : "";
   if (!id) return null;
-  const item = [...(discover.trends || []), ...(discover.popular || [])].find((x) => x?.videoId === id && Array.isArray(x.guide));
-  return item ? guideFor(recipe, item.guide, item.guideOf) : null;
+  // 新着とみんなの定番の両方を順に見て、いまの元の手順に合う最初の書き直しを使う（古い書き直しが先にあっても止まらない。review fix #141）。
+  for (const x of [...(discover.trends || []), ...(discover.popular || [])]) {
+    if (x?.videoId !== id) continue;
+    const g = guideFor(recipe, x.guide, x.guideOf);
+    if (g) return g;
+  }
+  return null;
 }
 // 手順ごとの動画の時刻は、手順の数と合う時だけ使う。
 function stepTimesFor(steps, times) {
