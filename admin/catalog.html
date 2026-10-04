@@ -46,6 +46,14 @@
   details.info.left[open] > div { left: 0; right: auto; }
   details.fold > summary { cursor: pointer; font-weight: 800; font-size: 15px; }
   details.fold[open] > summary { margin-bottom: 8px; }
+  .folds { display: grid; gap: 0; }
+  .folds > * { min-width: 0; }
+  .folds > h2 { margin-bottom: 4px; }
+  .folds > details.fold { border-top: 1px solid var(--line); padding: 10px 0; }
+  .folds > details.fold > summary { font-size: 14px; }
+  .folds > details.fold > summary .sum { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  #goal .goal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  details.more > summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 8px; }
   /* タブ */
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .tabs button { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); min-height: 36px; }
@@ -157,7 +165,9 @@
   </div>
 
   <div id="panel-seed" role="tabpanel" aria-labelledby="tab-seed" style="display:grid;gap:10px">
-    <!-- ① 操作と進み具合 -->
+    <!-- ① 目標までの進み具合（いちばん上。2026-10-04 の整理） -->
+    <section id="goal" aria-label="目標までの進み具合" hidden></section>
+    <!-- ② 操作と、今日・今月の上限 -->
     <section class="ctl" aria-label="集める">
       <div class="row">
         <button type="button" id="seed-run" disabled>100円分集める</button>
@@ -187,17 +197,19 @@
       </div>
       <div id="stage-progress" class="meters"></div>
     </section>
-    <!-- ② いまの段階 -->
+    <!-- ③ いまの段階（数字5つ。内訳は畳む） -->
     <section id="stage" aria-label="いまの段階"><p class="empty">合言葉を入れると表示します。</p></section>
-    <!-- ③ どこから増えたか・段階の比較 -->
-    <div class="grid2">
-      <section aria-label="どこから増えたか"><div class="head"><h2>どこから増えたか</h2><span class="meta" id="waves-left"></span></div><div id="sources" style="margin-top:8px"><p class="empty">—</p></div></section>
-      <section aria-label="段階の比較"><h2>段階の比較</h2><div id="stages" style="margin-top:8px"><p class="empty">—</p></div></section>
-    </div>
-    <!-- ④ 細かい記録（畳む） -->
-    <section><details class="fold" id="added-box"><summary>増えた料理</summary><div id="added"></div></details></section>
-    <section><details class="fold" id="learn-box"><summary>成績表（検索語・投稿者）</summary><div id="learn"><p class="empty">—</p></div></details></section>
-    <section><details class="fold"><summary>検索の記録</summary><div id="queries"><p class="empty">—</p></div></details></section>
+    <!-- ④ くわしい記録（全部畳む。見出しに要点の数字。開いたものは覚える） -->
+    <section class="folds" aria-label="くわしい記録">
+      <h2>くわしい記録</h2>
+      <details class="fold" id="f-stages"><summary>段階の比較</summary><div id="stages"><p class="empty">—</p></div></details>
+      <details class="fold" id="f-sources"><summary>どこから増えたか（広げ方の効率）</summary><p class="meta" id="waves-left"></p><div id="sources"><p class="empty">—</p></div></details>
+      <details class="fold" id="f-parents"><summary>子が足りない親料理</summary><div id="parents"><p class="empty">—</p></div></details>
+      <details class="fold" id="f-portfolio"><summary>投稿者の比率</summary><div id="portfolio"><p class="empty">—</p></div></details>
+      <details class="fold" id="added-box"><summary>増えた料理</summary><div id="added"></div></details>
+      <details class="fold" id="learn-box"><summary>成績表（検索語・投稿者）</summary><div id="learn"><p class="empty">—</p></div></details>
+      <details class="fold" id="f-queries"><summary>検索の記録</summary><div id="queries"><p class="empty">—</p></div></details>
+    </section>
   </div>
 
   <div id="panel-adopt" role="tabpanel" aria-labelledby="tab-adopt" hidden style="display:grid;gap:10px">
@@ -361,7 +373,7 @@
     if (w) box.append(meter(w.searchedToday || 0, w.searchPerDay || 60, "今日の広げ方の検索", `${w.searchedToday || 0} / ${w.searchPerDay || 60}回`));
     if (yt) box.append(meter(yt.used, yt.perDay, "YouTube の検索（全体・今日）", `${yt.used} / ${yt.perDay}回`));
     const m = (last.catalog?.cost || [])[0];
-    if (m) box.append(meter(m.yen, m.cap, `${m.month} の新着集め（目安）`, `${yen(m.yen)} / ${yen(m.cap)}`));
+    if (m) box.append(meter(m.yen, m.cap, "今月の費用（目安）", `${yen(m.yen)} / ${yen(m.cap)}`));
   }
   // ② いまの段階：数字の列と、候補のゆくえ（0円で外した → AI で読んだ → 料理になった）
   function renderStage() {
@@ -376,13 +388,15 @@
     const k = el("div", undefined, "kpis");
     const tile = (label, value, note, cls) => { const t = el("div", undefined, "kpi"); t.append(el("small", label)); const b = el("b", value); t.append(b); if (note) t.append(el("em", note, cls)); return t; };
     const change = prev?.perDish && sum.perDish !== null ? Math.round(((sum.perDish - prev.perDish) / prev.perDish) * 100) : null;
-    const yenTile = tile("費用（実測）", yen(s.yenMeasured)); yenTile.title = `読んだトークン ${s.input || 0}・書いたトークン ${s.output || 0}`;
+    const yenTile = tile("費用（実測）", yen(s.yenMeasured), `AI ${s.ai || 0}回`); yenTile.title = `読んだトークン ${s.input || 0}・書いたトークン ${s.output || 0}`;
+    const mins0 = (s.added || []).map((a) => Number(a.minutes) || 0);
+    const quick0 = mins0.filter((m) => m > 0 && m <= 20).length;
     k.append(
       tile("増えた料理", `${sum.added}品`, sum.free ? `うち0円 ${sum.free}` : ""),
-      tile("AI を使った", `${s.ai || 0}回`),
+      tile("20分以内", pct(quick0, mins0.length), "目標 8割", mins0.length && quick0 / mins0.length >= 0.8 ? "good" : ""),
       yenTile,
       tile("1品あたり", sum.perDish === null ? "—" : yen(sum.perDish), change === null ? "" : `前の段階比 ${change > 0 ? "+" : ""}${change}%`, change !== null && change < 0 ? "good" : ""),
-      tile("料理になった割合", pct(sum.out.made, sum.aiRead), `AI で読んだ ${sum.aiRead}本中`));
+      tile("料理になった", pct(sum.out.made, sum.aiRead), `AI で読んだ ${sum.aiRead}本中`));
     box.append(k);
     // 候補のゆくえ（2段）
     const flow = el("div", undefined, "flow");
@@ -396,7 +410,10 @@
     const r3 = el("div"); const l3 = el("div", undefined, "line"); l3.append(el("span", "調理時間"), el("span", `20分以内 ${quickN}品（${pct(quickN, mins.length)}）・目標8割`, "num"));
     r3.append(l3, ...stack([["10分以内", mins.filter((m) => m > 0 && m <= 10).length, "--s3"], ["15〜20分", mins.filter((m) => m > 10 && m <= 20).length, "--s1"], ["30分", mins.filter((m) => m > 20 && m <= 30).length, "--s4"], ["45分以上", mins.filter((m) => m > 30).length, "--s2"], ["不明", mins.filter((m) => !m).length, "--n2"]], "調理時間"));
     flow.append(r1, r2, r3);
-    box.append(flow);
+    // 内訳の3本の棒は畳む（数字5つで足りる時は見なくてよい。2026-10-04 の整理）
+    const more = el("details", undefined, "more"); more.id = "f-flow";
+    more.append(el("summary", `内訳を見る（候補のゆくえ・AI で読んだ結果・調理時間）`), flow);
+    box.append(more); keepFold(more);
   }
   // ③ どこから増えたか：方向ごとの効率（広げ方の記録の累計）と、この段階の分野ごと
   function renderSources() {
@@ -404,6 +421,7 @@
     const w = last.seed?.waves, s = (last.seed?.stages || []).at(-1);
     document.getElementById("waves-left").textContent = w ? `残り：話題 ${w.trendReady}/${w.trendTotal}語・定番 ${w.classicLeft}/${w.classicTotal}品・深掘りできる投稿者 ${w.digReady ?? 0}人` : "";
     const log = w?.log || [];
+    setSum("f-sources", w ? `話題 残り${w.trendReady}語・定番 残り${w.classicLeft}品` : "");
     if (log.length) {
       // 当たり＝ AI で読んだうち料理になった割合。分子も分母も AI で読んだ分だけ（0円の料理は入れない。ai と aiAdded の両方が記録されている検索だけで数える＝古い記録は「不明」として外す）。
       const agg = { parent: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, channel: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, trend: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 }, classic: { s: 0, ai: 0, add: 0, hitAi: 0, hit: 0, skip: 0 } };
@@ -419,21 +437,20 @@
     }
     // 親料理の在庫（2026-10-03）：目標＝親80 × 子5（20分以内4・30分以上1）。子が足りない親の一覧と、今日の自動補充。
     const ps = last.seed?.parentStock;
+    const pbox = document.getElementById("parents"); pbox.textContent = "";
     if (ps) {
-      const hp = el("h3", `親料理の在庫（見えている ${ps.visible}品 / 目標 ${ps.target}品・子${ps.children}品そろった親 ${ps.filled} / ${ps.parents.length}）`); hp.style.marginTop = "10px";
-      box.append(hp);
-      const mm = el("div", undefined, "meters");
-      mm.append(meter(ps.visible, ps.target, "見えている新着", `${ps.visible} / ${ps.target}品`), meter(ps.filled, ps.parents.length, `子${ps.children}品そろった親`, `${ps.filled} / ${ps.parents.length}`),
-        meter(ps.today.added, ps.perDay.added, "今日の自動補充", `${ps.today.added}/${ps.perDay.added}品・AI ${ps.today.ai}/${ps.perDay.ai}`));
-      box.append(mm);
+      setSum("f-parents", `${ps.parents.length - ps.filled} / ${ps.parents.length}品`);
       const lack = ps.parents.filter((p) => p.total < ps.children).sort((a, b) => a.total - b.total).slice(0, 15);
-      if (lack.length) box.append(el("p", `子が足りない親（少ない順・${ps.parents.length - ps.filled}品のうち15品）`, "meta"), scroll(table(["親料理", "20分以内", "30分以上", "合計", "足りない"], lack.map((p) => [p.name, `${p.quick} / 4`, `${p.long} / 1`, p.total, Math.max(0, ps.children - p.total)]), [1, 2, 3, 4])));
-    }
+      if (lack.length) pbox.append(el("p", `少ない順・${ps.parents.length - ps.filled}品のうち15品。毎日の自動補充で、上から子を足します。`, "meta"), scroll(table(["親料理", "20分以内", "30分以上", "合計", "足りない"], lack.map((p) => [p.name, `${p.quick} / 4`, `${p.long} / 1`, p.total, Math.max(0, ps.children - p.total)]), [1, 2, 3, 4])));
+      else pbox.append(el("p", "すべての親料理に子がそろっています。", "empty"));
+    } else pbox.append(el("p", "—", "empty"));
     // 投稿者の比率（新着全体）：上位15人。3%を超えている投稿者は赤字（以前に入った分。これからは入れない）。
     const pf = last.seed?.portfolio;
+    const fbox = document.getElementById("portfolio"); fbox.textContent = "";
     if (pf) {
-      const hp = el("h3", `投稿者の比率（新着全体 ${pf.total}品・${pf.channels}人・1人 ${pf.sharePct}%＝${pf.maxPer}品まで${pf.over ? `・超えている ${pf.over}人` : ""}）`); hp.style.marginTop = "10px";
-      box.append(hp);
+      setSum("f-portfolio", `${pf.channels}人・1人 ${pf.sharePct}%まで${pf.over ? `・超えている ${pf.over}人` : ""}`);
+      fbox.append(el("p", `新着全体 ${pf.total}品・1人 ${pf.sharePct}%＝${pf.maxPer}品まで（上位15人。赤は超えている人＝以前に入った分。これからは入れません）`, "meta"));
+      const box = fbox;
       if (pf.top.length) {
         const t = table(["投稿者", "品数", "割合"], pf.top.map((c) => [c.name || c.id, c.n, { text: `${c.share}%`, value: c.share }]), [1, 2], null, { bars: [2] });
         [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { if (pf.top[i].share > pf.sharePct) tr.classList.add("over"); });
@@ -444,11 +461,43 @@
     const h = el("h3", `この段階の分野ごと（${by.reduce((a, b) => a + b[1], 0)}品）`); h.style.marginTop = "10px";
     box.append(h, by.length ? obars(by) : el("p", "まだありません。", "empty"));
   }
-  // ③ 段階の比較（1品あたりは、文字の下に薄い棒）
+  // 畳んだ記録の見出しに、要点の数字を添える（開かなくても分かるように）。
+  function setSum(id, text) {
+    const sm = document.querySelector(`#${id} > summary`); if (!sm) return;
+    sm.querySelector(".sum")?.remove();
+    if (text) sm.append(el("span", text, "sum"));
+  }
+  // 開いた・閉じたを覚える（読み込み直しても同じ形で。この端末だけ）。
+  const FOLD_KEY = "admin-catalog-folds";
+  function keepFold(d) {
+    let open = {};
+    try { open = JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; } catch {}
+    if (d.id && d.id in open) d.open = !!open[d.id];
+    d.addEventListener("toggle", () => {
+      try { const o = JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {}; o[d.id] = d.open; localStorage.setItem(FOLD_KEY, JSON.stringify(o)); } catch {}
+    });
+  }
+  document.querySelectorAll("#panel-seed .folds > details.fold").forEach(keepFold);
+  // ① 目標までの進み具合：見える量 約400品（親80 × 子5）・子のそろった親・今日の自動補充（2026-10-04 の整理でいちばん上に）。
+  function renderGoal() {
+    const box = document.getElementById("goal"), ps = last.seed?.parentStock;
+    box.hidden = !ps; box.textContent = "";
+    if (!ps) return;
+    const head = el("div", undefined, "goal-head");
+    head.append(el("h2", "目標までの進み具合"), el("span", `約${ps.target}品＝親料理${ps.parents.length}品 × ${ps.children}品`, "meta"));
+    const mm = el("div", undefined, "meters"); mm.style.marginTop = "8px";
+    mm.append(meter(ps.visible, ps.target, "見えている新着", `${ps.visible} / ${ps.target}品`),
+      meter(ps.filled, ps.parents.length, `子${ps.children}品そろった親料理`, `${ps.filled} / ${ps.parents.length}`),
+      meter(ps.today.added, ps.perDay.added, "今日の自動補充", `${ps.today.added} / ${ps.perDay.added}品`));
+    box.append(head, mm);
+  }
+  // 段階の比較（1品あたりは、文字の下に薄い棒）
   function renderStages() {
     const box = document.getElementById("stages"); box.textContent = "";
     const stages = last.seed?.stages || [];
     if (!stages.length) { box.append(el("p", "—", "empty")); return; }
+    const all = stages.reduce((a, s) => ({ added: a.added + (s.added || []).length, yen: a.yen + (s.yenMeasured || 0) }), { added: 0, yen: 0 });
+    setSum("f-stages", `${stages.length}段階・合計 ${all.added}品・1品 ${all.added ? yen(all.yen / all.added) : "—"}`);
     const rows = stages.map((s) => { const sum = summarize(s); return [`第${s.n}${s.done ? "" : "（続き）"}`, sum.added, s.ai || 0, yen(s.yenMeasured), sum.perDish === null ? "—" : { text: yen(sum.perDish), value: sum.perDish }, pct(sum.out.made, sum.aiRead)]; });
     const total = stages.reduce((a, s) => ({ added: a.added + (s.added || []).length, ai: a.ai + (s.ai || 0), yen: a.yen + (s.yenMeasured || 0) }), { added: 0, ai: 0, yen: 0 });
     const t = table(["段階", "品数", "AI", "費用", "1品あたり", "なった割合"], rows, [1, 2, 3, 4, 5], null, { bars: [4] });
@@ -461,7 +510,8 @@
   function renderAdded() {
     const box = document.getElementById("added"); box.textContent = "";
     const s = (last.seed?.stages || []).at(-1), list = s?.added || [];
-    document.querySelector("#added-box > summary").textContent = s ? `増えた料理（第${s.n}段階・${list.length}品）— 押すとレシピと手順の時刻` : "増えた料理";
+    document.querySelector("#added-box > summary").textContent = "増えた料理";
+    setSum("added-box", s ? `第${s.n}段階・${list.length}品（押すとレシピ）` : "");
     if (!list.length) { box.append(el("p", "まだありません。", "empty")); return; }
     box.append(scroll(table(["料理", "分野", "時間", "費用"], list.map((a) => [a.title || "（題名は保存していません）", a.label, a.minutes ? `${a.minutes}分` : "—", a.free ? "0円" : "AI"]), [2], (i) => openRecipe(list[i].videoId), { wide: true })));
   }
@@ -676,7 +726,7 @@
       box.append(top.length ? scroll(table(["チャンネルID", "読んだ", "料理", "20分以内", "料理になる見込み", ""], top.map((c) => [c.id, c.ai, c.ok, c.fast, `${c.rate}%`, c.skip ? "外す" : ""]), [1, 2, 3, 4], null, { wide: true })) : el("p", "まだ記録がありません。", "empty"));
     }
   }
-  function renderAll() { renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderLearn(); renderQueries(); renderCatalog(); }
+  function renderAll() { renderGoal(); renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderLearn(); renderQueries(); renderCatalog(); }
   async function load() {
     if (!token) return;
     const my = session;

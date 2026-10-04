@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 管理の画面「集める」タブの整理（目標を上に・いまの段階は数字5つ・くわしい記録は1枚に畳む）（APP_MAP §46-2）| admin/catalog.html |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
