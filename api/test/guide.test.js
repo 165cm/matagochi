@@ -238,3 +238,15 @@ test('review fix (#139 r3): "4等分" and "3分の1" are amounts, not times — 
   assert.deepEqual(c('全体の3分の1を加えて3分煮る', '全体の1/3を加えて3分煮る'), []);
   assert.deepEqual(c('3分煮て2分蒸らす', '2分煮て3分蒸らす'), ['number_order'], 'real times are still checked');
 });
+
+test('review fix (#139 r4): "2分の1個" and "1/2個", "大さじ2分の1" and "大さじ1/2" are the same amount', () => {
+  const c = (orig, text) => codes(checkGuide([orig], [{ text, from: [0] }], { limit: 7 }));
+  assert.deepEqual(numbersIn('玉ねぎを2分の1個切る'), ['1/2個']);
+  assert.deepEqual(numbersIn('大さじ2分の1を加える'), ['大さじ1/2']);
+  assert.deepEqual(c('玉ねぎを2分の1個切る', '玉ねぎを1/2個切る'), []);
+  assert.deepEqual(c('にんじん2分の1本を切る', 'にんじん1/2本を切る'), []);
+  assert.deepEqual(c('牛乳2分の1カップを加える', '牛乳1/2カップを加える'), []);
+  assert.deepEqual(c('大さじ2分の1を加える', '大さじ1/2を加える'), []);
+  assert.deepEqual(c('玉ねぎを2分の1個切る', '玉ねぎを1個切る'), ['number_added', 'number_lost'], 'a changed amount still fails');
+  assert.deepEqual(numbersIn('5分のあいだ煮る'), ['5分'], 'a time followed by の stays a time');
+});
