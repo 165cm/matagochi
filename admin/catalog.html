@@ -101,7 +101,9 @@
   .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 10px; }
   /* 表 */
   .scroll { overflow-x: auto; max-width: 100%; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  /* 表は中身の幅に（数が名前から遠く離れないように。2026-10-05） */
+  table { width: auto; max-width: 100%; border-collapse: collapse; font-size: 13px; }
+  .scroll table { max-width: none; }
   .scroll table.wide { min-width: 560px; }
   th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
   th { color: var(--muted); font-weight: 700; font-size: 12px; white-space: nowrap; }
@@ -112,6 +114,20 @@
   td.cellbar > i { position: absolute; inset: 4px auto 4px 0; background: var(--soft); border-radius: 0 4px 4px 0; }
   td.cellbar > span { position: relative; }
   tr.clickable { cursor: pointer; } tr.clickable:hover td { background: #fff3e6; }
+  /* 並べ替えできる見出し（2026-10-05）：押せると分かるように ↕、並べている列は ▲▼ と濃い色 */
+  th { vertical-align: bottom; }
+  th .th-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; color: var(--muted); border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
+  th.num .th-sort { flex-direction: row; }
+  th .th-sort:hover { color: var(--ink); background: #f6ecdf; }
+  th .th-sort:focus-visible { outline: 2px solid var(--tomato); outline-offset: 1px; }
+  th .th-sort .arrow { font-size: 10px; opacity: .45; }
+  th.sorted .th-sort { color: var(--ink); }
+  th.sorted .th-sort .arrow { opacity: 1; color: var(--tomato); }
+  /* 数を読みやすく：数の列は右寄せ・桁をそろえる・折り返さない・幅をそろえる。長い文字の列だけ折り返す。1行おきに薄い色 */
+  td.num, th.num { min-width: 4.2em; }
+  td.wrap { white-space: normal; min-width: 11em; max-width: 26em; overflow-wrap: anywhere; }
+  tr[data-ri]:nth-of-type(odd) td { background: #fffaf2; }
+  tr.clickable:hover td { background: #fff3e6; }
   /* レシピ一覧（親ごと） */
   details.group { border-bottom: 1px solid var(--line); }
   details.group > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; padding: 6px 2px; list-style: none; }
@@ -286,25 +302,86 @@
   const sec = (s) => (Number.isFinite(s) && s !== null ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "");
   const parseSec = (v) => { const t = String(v || "").trim(); if (!t) return null; const m = t.match(/^(\d+):([0-5]?\d)$/); if (m) return Number(m[1]) * 60 + Number(m[2]); return /^\d+$/.test(t) ? Number(t) : NaN; };
   // 表。nums の列は右寄せ。bars の列は、値の大きさの薄い棒を文字の下に重ねる（{ text, value }）。
-  function table(head, rows, nums = [], onRow, { wide = false, bars = [] } = {}) {
+  // 表：id を渡すと見出しを押して並べ替えられる（▲▼。並べ方は表ごとにこの端末で覚える）。sort：最初の並べ方 [列, "asc"|"desc"]。
+  // wrap：折り返してよい長い文字の列（料理名・検索語など）。セルは文字・数・{ text, value }（value で並べる・棒の長さ）。
+  // 行には元の順番（data-ri）を持たせる。行に色やボタンを付ける時は data-ri で元の行を引く（並べ替えても合うように）。
+  const SORT_KEY = "admin-catalog-sort";
+  let sortState = {};
+  try { sortState = JSON.parse(localStorage.getItem(SORT_KEY) || "{}") || {}; } catch {}
+  // 並べ替えに使う値：数・{ value }・「12分」「1.38円」「58%」「3 / 4」「12品（5%）」「1.2万」は数、それ以外は文字。「—」・空は最後。
+  function sortValue(v, numeric) {
+    if (v && typeof v === "object") v = v.value ?? v.text;
+    if (typeof v === "number") return Number.isFinite(v) ? v : null;
+    const s = String(v ?? "").trim();
+    if (!s || s === "—" || s === "-") return null;
+    const m = s.replace(/,/g, "").match(/^(-?\d+(?:\.\d+)?)\s*(万)?\s*(円|%|分|品|回|本|人|件)?\s*(?:[（(].*[)）]|\/\s*\d+)?$/);
+    if (m) return Number(m[1]) * (m[2] ? 10000 : 1);
+    return numeric ? null : s;
+  }
+  function compareValues(a, b) {
+    if (a === null || b === null) return 0;
+    if (typeof a === "number" && typeof b === "number") return a - b;
+    return String(a).localeCompare(String(b), "ja", { numeric: true });
+  }
+  function table(head, rows, nums = [], onRow, { wide = false, bars = [], id = "", sort = null, wrap = [] } = {}) {
     const t = el("table"), tr = el("tr");
     if (wide) t.className = "wide";
-    head.forEach((h, i) => { const th = el("th", h); if (nums.includes(i)) th.className = "num"; tr.append(th); });
+    const keys = rows.map((r) => r.map((v, i) => sortValue(v, nums.includes(i))));
+    const apply = () => {
+      const st = sortState[id];
+      const data = [...t.querySelectorAll("tr[data-ri]")];
+      const tail = t.querySelector("tr.total");
+      if (st) data.sort((x, y) => {
+        const a = keys[x.dataset.ri][st[0]], b = keys[y.dataset.ri][st[0]];
+        if (a === null && b === null) return x.dataset.ri - y.dataset.ri;
+        if (a === null) return 1; if (b === null) return -1;
+        return (compareValues(a, b) * (st[1] === "desc" ? -1 : 1)) || x.dataset.ri - y.dataset.ri;
+      });
+      else data.sort((x, y) => x.dataset.ri - y.dataset.ri);
+      for (const row of data) t.insertBefore(row, tail);
+      tr.querySelectorAll("th[data-col]").forEach((th) => {
+        const on = st && Number(th.dataset.col) === st[0];
+        th.setAttribute("aria-sort", on ? (st[1] === "desc" ? "descending" : "ascending") : "none");
+        th.querySelector(".arrow").textContent = on ? (st[1] === "desc" ? "▼" : "▲") : "↕";
+        th.classList.toggle("sorted", !!on);
+      });
+    };
+    if (id && !(id in sortState) && sort) sortState[id] = sort;
+    head.forEach((h, i) => {
+      const th = el("th"); if (nums.includes(i)) th.className = "num";
+      if (id && h && rows.length > 1) {
+        th.dataset.col = i;
+        const b = el("button", undefined, "th-sort"); b.type = "button"; b.title = "押すと並べ替えます";
+        b.append(el("span", h), el("span", "↕", "arrow"));
+        // 数の列は多い順から、文字の列は五十音順から。同じ列をもう一度押すと逆に。
+        b.addEventListener("click", () => {
+          const cur = sortState[id];
+          sortState[id] = cur && cur[0] === i ? [i, cur[1] === "desc" ? "asc" : "desc"] : [i, nums.includes(i) ? "desc" : "asc"];
+          try { localStorage.setItem(SORT_KEY, JSON.stringify(sortState)); } catch {}
+          apply();
+        });
+        th.append(b);
+      } else th.textContent = h;
+      tr.append(th);
+    });
     t.append(tr);
     const max = {}; for (const c of bars) max[c] = Math.max(1e-9, ...rows.map((r) => Number(r[c]?.value) || 0));
     rows.forEach((r, ri) => {
-      const row = el("tr");
+      const row = el("tr"); row.dataset.ri = ri;
       r.forEach((v, i) => {
-        const td = el("td"); if (nums.includes(i)) td.className = "num";
+        const td = el("td"); if (nums.includes(i)) td.className = "num"; if (wrap.includes(i)) td.classList.add("wrap");
         if (bars.includes(i) && v && typeof v === "object") { td.classList.add("cellbar"); const b = el("i"); b.style.width = `${((Number(v.value) || 0) / max[i]) * 100}%`; td.append(b, el("span", v.text)); }
-        else td.textContent = v ?? "—";
+        else td.textContent = v && typeof v === "object" ? v.text ?? "—" : v ?? "—";
         row.append(td);
       });
       if (onRow) { row.className = "clickable"; row.tabIndex = 0; row.addEventListener("click", () => onRow(ri)); row.addEventListener("keydown", (e) => { if (e.key === "Enter") onRow(ri); }); }
       t.append(row);
     });
+    if (id) apply();
     return t;
   }
+  // 並べ替えた表の行を、元の行の順番（data-ri）で回す。
+  const dataRows = (t) => [...t.querySelectorAll("tr[data-ri]")].map((tr) => [tr, Number(tr.dataset.ri)]);
   const scroll = (node) => { const s = el("div", undefined, "scroll"); s.append(node); return s; };
   // 進み具合の小さな棒（ラベルと数字は1行・棒は細く）。
   function meter(value, max, label, right) {
@@ -430,8 +507,9 @@
         a.s += 1; a.ai += e.ai || 0; a.add += e.added || 0;
         if (Number.isFinite(e.ai) && Number.isFinite(e.aiAdded)) { a.hitAi += e.ai; a.hit += e.aiAdded; }
       }
-      const rows = [["親料理", agg.parent], ["話題", agg.trend], ["定番", agg.classic], ["投稿者", agg.channel]].filter(([l, a]) => (l !== "投稿者" && l !== "親料理") || a.s).map(([label, a]) => [label, a.s, a.ai, a.add, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—"]);
-      box.append(scroll(table(["広げ方", "検索", "AI", "増えた", "1検索で", "当たり"], rows, [1, 2, 3, 4, 5], null, { bars: [4] })));
+      const rows = [["親料理", agg.parent], ["話題", agg.trend], ["定番", agg.classic], ["投稿者", agg.channel]].filter(([l, a]) => (l !== "投稿者" && l !== "親料理") || a.s).map(([label, a]) => [label, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—", a.add, a.s, a.ai]);
+      // 効率（1検索で増えた品数・当たり）を名前のすぐ右に。最初は1検索での多い順。
+      box.append(scroll(table(["広げ方", "1検索で", "当たり", "増えた", "検索", "AI"], rows, [1, 2, 3, 4, 5], null, { bars: [1], id: "sources", sort: [1, "desc"] })));
       const skipped = agg.classic.skip;
       box.append(el("p", `話題＝公開60日以内・定番＝公開1年より前・⚡＝時短を足した検索。当たり＝AI で読んだうち料理になった割合。${skipped ? `定番の ${skipped}品は、もう新着に2品あるので検索せず（0円）。` : ""}`, "meta"));
     }
@@ -440,8 +518,9 @@
     const pbox = document.getElementById("parents"); pbox.textContent = "";
     if (ps) {
       setSum("f-parents", `${ps.parents.length - ps.filled} / ${ps.parents.length}品`);
-      const lack = ps.parents.filter((p) => p.total < ps.children).sort((a, b) => a.total - b.total).slice(0, 15);
-      if (lack.length) pbox.append(el("p", `少ない順・${ps.parents.length - ps.filled}品のうち15品。毎日の自動補充で、上から子を足します。`, "meta"), scroll(table(["親料理", "20分以内", "30分以上", "合計", "足りない"], lack.map((p) => [p.name, `${p.quick} / 4`, `${p.long} / 1`, p.total, Math.max(0, ps.children - p.total)]), [1, 2, 3, 4])));
+      // 全部の足りない親を出して、足りない数の多い順（見出しで並べ替え）。
+      const lack = ps.parents.filter((p) => p.total < ps.children);
+      if (lack.length) pbox.append(el("p", `${lack.length}品。毎日の自動補充で、足りない親から子を足します。`, "meta"), scroll(table(["親料理", "足りない", "合計", "20分以内", "30分以上"], lack.map((p) => [p.name, Math.max(0, ps.children - p.total), p.total, { text: `${p.quick} / 4`, value: p.quick }, { text: `${p.long} / 1`, value: p.long }]), [1, 2, 3, 4], null, { id: "parents", sort: [1, "desc"] })));
       else pbox.append(el("p", "すべての親料理に子がそろっています。", "empty"));
     } else pbox.append(el("p", "—", "empty"));
     // 投稿者の比率（新着全体）：上位15人。3%を超えている投稿者は赤字（以前に入った分。これからは入れない）。
@@ -452,8 +531,8 @@
       fbox.append(el("p", `新着全体 ${pf.total}品・1人 ${pf.sharePct}%＝${pf.maxPer}品まで（上位15人。赤は超えている人＝以前に入った分。これからは入れません）`, "meta"));
       const box = fbox;
       if (pf.top.length) {
-        const t = table(["投稿者", "品数", "割合"], pf.top.map((c) => [c.name || c.id, c.n, { text: `${c.share}%`, value: c.share }]), [1, 2], null, { bars: [2] });
-        [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { if (pf.top[i].share > pf.sharePct) tr.classList.add("over"); });
+        const t = table(["投稿者", "割合", "品数"], pf.top.map((c) => [c.name || c.id, { text: `${c.share}%`, value: c.share }, c.n]), [1, 2], null, { bars: [1], id: "portfolio", sort: [1, "desc"] });
+        dataRows(t).forEach(([tr, i]) => { if (pf.top[i].share > pf.sharePct) tr.classList.add("over"); });
         box.append(scroll(t));
       } else box.append(el("p", "まだありません。", "empty"));
     }
@@ -498,11 +577,11 @@
     if (!stages.length) { box.append(el("p", "—", "empty")); return; }
     const all = stages.reduce((a, s) => ({ added: a.added + (s.added || []).length, yen: a.yen + (s.yenMeasured || 0) }), { added: 0, yen: 0 });
     setSum("f-stages", `${stages.length}段階・合計 ${all.added}品・1品 ${all.added ? yen(all.yen / all.added) : "—"}`);
-    const rows = stages.map((s) => { const sum = summarize(s); return [`第${s.n}${s.done ? "" : "（続き）"}`, sum.added, s.ai || 0, yen(s.yenMeasured), sum.perDish === null ? "—" : { text: yen(sum.perDish), value: sum.perDish }, pct(sum.out.made, sum.aiRead)]; });
+    const rows = stages.map((s) => { const sum = summarize(s); return [{ text: `第${s.n}${s.done ? "" : "（続き）"}`, value: s.n }, sum.added, sum.perDish === null ? "—" : { text: yen(sum.perDish), value: sum.perDish }, pct(sum.out.made, sum.aiRead), yen(s.yenMeasured), s.ai || 0]; });
     const total = stages.reduce((a, s) => ({ added: a.added + (s.added || []).length, ai: a.ai + (s.ai || 0), yen: a.yen + (s.yenMeasured || 0) }), { added: 0, ai: 0, yen: 0 });
-    const t = table(["段階", "品数", "AI", "費用", "1品あたり", "なった割合"], rows, [1, 2, 3, 4, 5], null, { bars: [4] });
+    const t = table(["段階", "品数", "1品あたり", "なった割合", "費用", "AI"], rows, [1, 2, 3, 4, 5], null, { bars: [2], id: "stages", sort: [0, "asc"] });
     const tr = el("tr", undefined, "total");
-    for (const [v, n] of [["合計", false], [total.added, true], [total.ai, true], [yen(total.yen), true], [total.added ? yen(total.yen / total.added) : "—", true], ["", true]]) { const td = el("td", v); if (n) td.className = "num"; tr.append(td); }
+    for (const [v, n] of [["合計", false], [total.added, true], [total.added ? yen(total.yen / total.added) : "—", true], ["", true], [yen(total.yen), true], [total.ai, true]]) { const td = el("td", v); if (n) td.className = "num"; tr.append(td); }
     t.append(tr);
     box.append(scroll(t));
   }
@@ -513,7 +592,7 @@
     document.querySelector("#added-box > summary").textContent = "増えた料理";
     setSum("added-box", s ? `第${s.n}段階・${list.length}品（押すとレシピ）` : "");
     if (!list.length) { box.append(el("p", "まだありません。", "empty")); return; }
-    box.append(scroll(table(["料理", "分野", "時間", "費用"], list.map((a) => [a.title || "（題名は保存していません）", a.label, a.minutes ? `${a.minutes}分` : "—", a.free ? "0円" : "AI"]), [2], (i) => openRecipe(list[i].videoId), { wide: true })));
+    box.append(scroll(table(["料理", "時間", "分野", "費用"], list.map((a) => [a.title || "（題名は保存していません）", a.minutes ? `${a.minutes}分` : "—", a.label, a.free ? "0円" : "AI"]), [1], (i) => openRecipe(list[i].videoId), { wide: true, id: "added", wrap: [0] })));
   }
   // ④ 検索の記録：広げ方の検索（新しい順）と、決めた検索語
   function renderQueries() {
@@ -521,23 +600,24 @@
     const d = last.seed || {}, log = d.waves?.log || [], qs = d.queries || [];
     const AX = { trend: "話題", classic: "定番", channel: "投稿者", parent: "親料理" };
     box.append(el("h3", `広げ方の検索（新しい順・${log.length}件）`));
-    box.append(log.length ? scroll(table(["方向", "検索語・料理", "日", "候補", "AI", "増えた"], log.map((e) => [(AX[e.axis] || e.axis) + (e.quick ? "⚡" : ""), e.q, String(e.at).slice(5, 10), e.skipped === "enough" ? "検索せず" : e.picked, e.skipped ? "—" : e.ai || 0, e.skipped ? "—" : e.added]), [3, 4, 5], null, { wide: true })) : el("p", "まだ広げていません。", "empty"));
+    box.append(log.length ? scroll(table(["日", "方向", "検索語・料理", "増えた", "AI", "候補"], log.map((e) => [{ text: String(e.at).slice(5, 10), value: String(e.at) }, (AX[e.axis] || e.axis) + (e.quick ? "⚡" : ""), e.q, e.skipped ? "—" : e.added, e.skipped ? "—" : e.ai || 0, e.skipped === "enough" ? "検索せず" : e.picked]), [3, 4, 5], null, { wide: true, id: "log", sort: [0, "desc"], wrap: [2] })) : el("p", "まだ広げていません。", "empty"));
     const h = el("h3", `決めた検索語（残り ${d.queriesLeft ?? "—"}・読む前の候補 ${d.candidatesLeft ?? "—"}・後回し ${d.laterLeft ?? 0}）`); h.style.marginTop = "12px"; box.append(h);
     const LABEL = { done: "済み", current: "読んでいる", todo: "これから" };
-    const t = table(["検索語", "分野", "状態"], qs.map((q) => [q.q, q.label, LABEL[q.status]]));
-    [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = tr.lastChild; td.textContent = ""; td.append(el("span", LABEL[qs[i].status], `chip ${qs[i].status}`)); });
+    const ORDER = { current: 0, todo: 1, done: 2 };
+    const t = table(["状態", "検索語", "分野"], qs.map((q) => [{ text: LABEL[q.status], value: ORDER[q.status] ?? 9 }, q.q, q.label]), [], null, { id: "queries", wrap: [1] });
+    dataRows(t).forEach(([tr, i]) => { const td = tr.firstChild; td.textContent = ""; td.append(el("span", LABEL[qs[i].status], `chip ${qs[i].status}`)); });
     box.append(scroll(t));
   }
   function renderCatalog() {
     const data = last.catalog || {};
     const cost = document.getElementById("cost"); cost.textContent = "";
-    if ((data.cost || []).length) { const m = data.cost[0]; cost.append(meter(m.yen, m.cap, `${m.month} の新着集め（目安）`, `${yen(m.yen)} / ${yen(m.cap)}`)); const sc = scroll(table(["月", "AI の回数", "目安の費用", "上限"], data.cost.map((x) => [x.month, x.ai, yen(x.yen), yen(x.cap)]), [1, 2, 3])); sc.style.marginTop = "8px"; cost.append(sc); }
+    if ((data.cost || []).length) { const m = data.cost[0]; cost.append(meter(m.yen, m.cap, `${m.month} の新着集め（目安）`, `${yen(m.yen)} / ${yen(m.cap)}`)); const sc = scroll(table(["月", "目安の費用", "上限", "AI の回数"], data.cost.map((x) => [x.month, yen(x.yen), yen(x.cap), x.ai]), [1, 2, 3], null, { id: "cost", sort: [0, "desc"] })); sc.style.marginTop = "8px"; cost.append(sc); }
     else cost.append(el("p", "まだありません。", "empty"));
     const ask = document.getElementById("ask"); ask.textContent = "";
-    ask.append((data.askConsent || []).length ? table(["投稿者", "動画", "献立に入った回数"], data.askConsent.map((a) => [a.channelTitle || a.channelId, a.videos, a.planned]), [1, 2]) : el("p", "いまはいません。", "empty"));
+    ask.append((data.askConsent || []).length ? table(["投稿者", "献立に入った回数", "動画"], data.askConsent.map((a) => [a.channelTitle || a.channelId, a.planned, a.videos]), [1, 2], null, { id: "ask", sort: [1, "desc"] }) : el("p", "いまはいません。", "empty"));
     const items = document.getElementById("items"); items.textContent = "";
     const list = data.items || [];
-    items.append(list.length ? table(["料理", "投稿者", "候補に出た", "献立に入った", "作った", "採用率", "残す", "同意"], list.map((i) => [i.title || i.videoId, i.channelTitle, i.shown, i.planned, i.cooked, i.rate == null ? "—" : `${i.rate}%`, i.kept ? "✓" : "", i.publicConsent ? "✓" : ""]), [2, 3, 4, 5], (ri) => openRecipe(list[ri].videoId), { wide: true }) : el("p", "まだありません（献立の候補に出ると数えます）。", "empty"));
+    items.append(list.length ? table(["料理", "献立に入った", "採用率", "候補に出た", "作った", "投稿者", "残す", "同意"], list.map((i) => [i.title || i.videoId, i.planned, i.rate == null ? "—" : `${i.rate}%`, i.shown, i.cooked, i.channelTitle, i.kept ? "✓" : "", i.publicConsent ? "✓" : ""]), [1, 2, 3, 4], (ri) => openRecipe(list[ri].videoId), { wide: true, id: "items", sort: [1, "desc"], wrap: [0] }) : el("p", "まだありません（献立の候補に出ると数えます）。", "empty"));
   }
   // 🍲 親の料理名
   const SOURCE = { seed: "最初の辞書", promoted: "格上げ", alias: "別名" };
@@ -546,22 +626,22 @@
     b.addEventListener("click", async () => { b.disabled = true; try { await api("/api/admin/dishes", body); await Promise.all([loadDishes(), loadRecipes()]); } catch (error) { status.textContent = error.message; b.disabled = false; } });
     return b;
   }
-  function withButtons(t, rows, make) { [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = el("td"); td.append(make(rows[i])); tr.append(td); }); t.querySelector("tr").append(el("th", "")); return t; }
+  function withButtons(t, rows, make) { dataRows(t).forEach(([tr, i]) => { const td = el("td"); td.append(make(rows[i])); tr.append(td); }); t.querySelector("tr").append(el("th", "")); return t; }
   function renderDishes() {
     const d = last.dishes; if (!d) return;
     document.getElementById("dish-rule").textContent = `${d.rule.videos}本・投稿者${d.rule.channels}人`;
     const box = document.getElementById("dish-parents"); box.textContent = "";
     box.append(el("p", `いまの新着で親のある料理名 ${d.parents.length}・子 ${d.parents.reduce((a, p) => a + p.videos, 0)}品`, "meta"));
     if (d.parents.length) {
-      const t = withButtons(table(["親", "どこから", "子", "投稿者", "例"], d.parents.map((p) => [p.name, `${SOURCE[p.source] || p.source}${p.since ? `（${p.since}）` : ""}`, { text: String(p.videos), value: p.videos }, p.channels, p.examples.join(" / ")]), [2, 3], null, { wide: true, bars: [2] }), d.parents, (p) => actionButton("外す", { op: "remove", key: p.key }));
+      const t = withButtons(table(["親", "子", "投稿者", "どこから", "例"], d.parents.map((p) => [p.name, { text: String(p.videos), value: p.videos }, p.channels, `${SOURCE[p.source] || p.source}${p.since ? `（${p.since}）` : ""}`, p.examples.join(" / ")]), [1, 2], null, { wide: true, bars: [1], id: "dish-parents", sort: [1, "desc"], wrap: [4] }), d.parents, (p) => actionButton("外す", { op: "remove", key: p.key }));
       // 親の名前を押すと、レシピ一覧でその親の子を開く。
-      [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { const td = tr.firstChild, p = d.parents[i]; td.textContent = ""; const b = el("button", p.name, "linkish"); b.type = "button"; b.title = "レシピ一覧で子を見る"; b.addEventListener("click", () => showParent(p.key, p.name)); td.append(b); });
+      dataRows(t).forEach(([tr, i]) => { const td = tr.firstChild, p = d.parents[i]; td.textContent = ""; const b = el("button", p.name, "linkish"); b.type = "button"; b.title = "レシピ一覧で子を見る"; b.addEventListener("click", () => showParent(p.key, p.name)); td.append(b); });
       box.append(scroll(t));
     } else box.append(el("p", "まだありません。", "empty"));
     const c = document.getElementById("dish-candidates"); c.textContent = "";
-    c.append(d.candidates.length ? scroll(withButtons(table(["料理名", "動画", "投稿者", "例"], d.candidates.map((x) => [x.name, x.videos, x.channels, x.examples.join(" / ")]), [1, 2]), d.candidates, (x) => actionButton("親にする", { op: "promote", name: x.name }))) : el("p", "いまはありません。", "empty"));
+    c.append(d.candidates.length ? scroll(withButtons(table(["料理名", "動画", "投稿者", "例"], d.candidates.map((x) => [x.name, x.videos, x.channels, x.examples.join(" / ")]), [1, 2], null, { id: "dish-candidates", sort: [1, "desc"], wrap: [3] }), d.candidates, (x) => actionButton("親にする", { op: "promote", name: x.name }))) : el("p", "いまはありません。", "empty"));
     const o = document.getElementById("dish-other"); o.textContent = "";
-    if ((d.aliases || []).length) { o.append(el("h3", "まとめた表記")); o.append(table(["表記", "まとめ先"], d.aliases.map((a) => [a.from, a.to]))); }
+    if ((d.aliases || []).length) { o.append(el("h3", "まとめた表記")); o.append(table(["表記", "まとめ先"], d.aliases.map((a) => [a.from, a.to]), [], null, { id: "dish-aliases" })); }
     const h = el("h3", "外した料理名"); h.style.marginTop = "8px"; o.append(h);
     o.append((d.removed || []).length ? withButtons(table(["料理名"], d.removed.map((r) => [r.name])), d.removed, (r) => actionButton("戻す", { op: "restore", key: r.key })) : el("p", "ありません。", "empty"));
   }
@@ -596,7 +676,7 @@
   const rlState = { q: "", src: "all", group: true, open: "" };
   const SRC = (r) => [r.trend ? "新着" : "", r.kept ? "定番に残した" : ""].filter(Boolean).join("・") || "候補に出た";
   function recipeRows(list) {
-    return scroll(table(["料理", "投稿者", "時間", "出どころ", "候補に出た", "献立に入った", "採用率"], list.map((r) => [r.title || "（題名なし）", r.channelTitle || "", r.minutes ? `${r.minutes}分` : "—", SRC(r), r.shown ?? 0, r.planned ?? 0, r.rate == null ? "—" : `${r.rate}%`]), [4, 5, 6], (i) => openRecipe(list[i].videoId), { wide: true }));
+    return scroll(table(["料理", "時間", "献立に入った", "採用率", "候補に出た", "出どころ", "投稿者"], list.map((r) => [r.title || "（題名なし）", r.minutes ? `${r.minutes}分` : "—", r.planned ?? 0, r.rate == null ? "—" : `${r.rate}%`, r.shown ?? 0, SRC(r), r.channelTitle || ""]), [1, 2, 3, 4], (i) => openRecipe(list[i].videoId), { wide: true, id: "rl-group", wrap: [0] }));
   }
   function renderRecipeList() {
     const box = document.getElementById("rl-list"); if (!last.recipes) return; box.textContent = "";
@@ -607,7 +687,7 @@
     document.getElementById("rl-count").textContent = `${list.length}品・親 ${parents.size}`;
     if (!list.length) { box.append(el("p", "当てはまるレシピはありません。", "empty")); return; }
     if (!rlState.group) {
-      box.append(scroll(table(["料理", "親", "投稿者", "時間", "出どころ", "献立に入った", "採用率"], list.map((r) => [r.title, r.dish?.name || "—", r.channelTitle || "", r.minutes ? `${r.minutes}分` : "—", SRC(r), r.planned ?? 0, r.rate == null ? "—" : `${r.rate}%`]), [5, 6], (i) => openRecipe(list[i].videoId), { wide: true })));
+      box.append(scroll(table(["料理", "親", "時間", "献立に入った", "採用率", "出どころ", "投稿者"], list.map((r) => [r.title, r.dish?.name || "—", r.minutes ? `${r.minutes}分` : "—", r.planned ?? 0, r.rate == null ? "—" : `${r.rate}%`, SRC(r), r.channelTitle || ""]), [2, 3, 4], (i) => openRecipe(list[i].videoId), { wide: true, id: "rl-flat", sort: [3, "desc"], wrap: [0] })));
       return;
     }
     const groups = new Map();
@@ -641,7 +721,7 @@
       box.append(el("p", Object.entries(by).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${d.labels[c] || c}：${n}品`).join("／"), "meta"));
       const SRC = { recipe: "読み取り", fix: "運営が直した", chapters: "説明欄の章", video: "AI（動画）", "": "—" };
       const rows = d.rows;
-      box.append(scroll(table(["料理", "投稿者", "手順", "▶ あり", "時刻の出どころ", "要確認の理由"], rows.map((r) => [r.title, r.channelTitle, r.steps, r.found, SRC[r.source] ?? r.source, [...new Set(r.issues.map((i) => d.labels[i.code] || i.code))].join("・")]), [2, 3], (i) => openRecipe(rows[i].videoId), { wide: true })));
+      box.append(scroll(table(["料理", "要確認の理由", "手順", "▶ あり", "時刻の出どころ", "投稿者"], rows.map((r) => [r.title, [...new Set(r.issues.map((i) => d.labels[i.code] || i.code))].join("・"), r.steps, r.found, SRC[r.source] ?? r.source, r.channelTitle]), [2, 3], (i) => openRecipe(rows[i].videoId), { wide: true, id: "tc-check", wrap: [0, 1] })));
     } catch (error) { box.replaceChildren(el("p", error.message)); }
     finally { btn.disabled = false; }
   }
@@ -706,7 +786,7 @@
     const w = last.seed?.waves || {}, words = w.words || [], ch = w.channels;
     const AX = { trend: "話題", classic: "定番" };
     box.append(el("h3", `検索語（${words.length}語・点＝1回の検索で増えた20分以内の料理の見込み。まだ使っていない語は ${w.wordPrior ?? 2}）`));
-    box.append(words.length ? scroll(table(["方向", "検索語・料理", "検索", "増えた", "20分以内", "点"], words.map((x) => [AX[x.axis] || x.axis, x.word, x.s, x.added, x.fast, { text: x.score.toFixed(2), value: x.score }]), [2, 3, 4, 5], null, { wide: true, bars: [5] })) : el("p", "まだ記録がありません（次に集めると記録されます）。", "empty"));
+    box.append(words.length ? scroll(table(["検索語・料理", "点", "20分以内", "増えた", "検索", "方向"], words.map((x) => [x.word, { text: x.score.toFixed(2), value: x.score }, x.fast, x.added, x.s, AX[x.axis] || x.axis]), [1, 2, 3, 4], null, { wide: true, bars: [1], id: "words", sort: [1, "desc"], wrap: [0] })) : el("p", "まだ記録がありません（次に集めると記録されます）。", "empty"));
     const h = el("h3", ch ? `投稿者（${ch.learned}人・外している ${ch.skipped}人＝${ch.minReads}本以上読んで料理になる見込み ${Math.round(ch.minRate * 100)}%未満）` : "投稿者"); h.style.marginTop = "12px"; box.append(h);
     // 投稿者の一覧（2026-10-03）：YouTube の名前・登録者数・動画数・開設と、新着での品数・割合、成績、状態。押すと YouTube のチャンネル。
     const board = last.seed?.channelBoard;
@@ -714,16 +794,17 @@
     const man = (n) => (n == null ? "非公開" : n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}万` : String(n));
     const state = (c) => (c.opted ? "掲載停止" : c.low ? "説明欄に作り方なし" : c.full ? "3%到達" : c.digOk ? "深掘りできる" : c.dugAt ? `深掘り ${String(c.dugAt).slice(5, 10)}` : "");
     if (rows.length) {
-      const t = table(["投稿者", "登録者", "動画", "開設", "新着に", "読んだ", "料理", "20分以内", "料理になる見込み", "状態"],
-        rows.map((c) => [c.youtube?.title || c.name || c.id, c.youtube ? man(c.youtube.subscribers) : "—", c.youtube?.videos ?? "—", c.youtube?.since || "—", c.inList ? `${c.inList}品（${c.share}%）` : "—", c.ai, c.ok, c.ok ? `${c.fast}（${c.fastShare}%）` : "—", c.ai ? `${c.rate}%` : "—", state(c)]),
-        [1, 2, 4, 5, 6, 7, 8], (i) => { const id = rows[i].id; if (/^UC[\w-]{22}$/.test(id)) window.open(`https://www.youtube.com/channel/${id}`, "_blank", "noopener"); }, { wide: true });
-      [...t.querySelectorAll("tr")].slice(1).forEach((tr, i) => { if (rows[i].opted || rows[i].low) tr.classList.add("dim"); if (rows[i].full) tr.classList.add("over"); });
+      // 成績（料理になる見込み・新着の品数）を名前のすぐ右に。YouTube の情報（登録者・動画・開設）は右の方に。最初は読んだ本数の多い順。
+      const t = table(["投稿者", "料理になる見込み", "新着に", "読んだ", "料理", "20分以内", "登録者", "動画", "開設", "状態"],
+        rows.map((c) => [c.youtube?.title || c.name || c.id, c.ai ? `${c.rate}%` : "—", c.inList ? { text: `${c.inList}品（${c.share}%）`, value: c.inList } : "—", c.ai, c.ok, c.ok ? { text: `${c.fast}（${c.fastShare}%）`, value: c.fast } : "—", c.youtube ? { text: man(c.youtube.subscribers), value: c.youtube.subscribers } : "—", c.youtube?.videos ?? "—", c.youtube?.since || "—", state(c)]),
+        [1, 2, 3, 4, 5, 6, 7], (i) => { const id = rows[i].id; if (/^UC[\w-]{22}$/.test(id)) window.open(`https://www.youtube.com/channel/${id}`, "_blank", "noopener"); }, { wide: true, id: "channels", sort: [3, "desc"] });
+      dataRows(t).forEach(([tr, i]) => { if (rows[i].opted || rows[i].low) tr.classList.add("dim"); if (rows[i].full) tr.classList.add("over"); });
       // 数字・年月の列は折り返さない（「2023-」「05」と2行にならないように）。
       for (const tr of t.querySelectorAll("tr")) [...tr.children].forEach((td, j) => { if (j >= 1) td.style.whiteSpace = "nowrap"; });
       box.append(el("p", `新着全体 ${board.total}品・1人 ${board.maxPer}品（3%）まで。登録者・動画数は YouTube の情報（7日ごとに取り直し・30日で消す）。押すと YouTube のチャンネルを開きます。「説明欄に作り方なし」は一括収集（説明欄だけを読む）で外す投稿者です。毎日の新着集めは動画からも読むので、新着に入っていることがあります。`, "meta"), scroll(t));
     } else {
       const top = ch?.top || [];
-      box.append(top.length ? scroll(table(["チャンネルID", "読んだ", "料理", "20分以内", "料理になる見込み", ""], top.map((c) => [c.id, c.ai, c.ok, c.fast, `${c.rate}%`, c.skip ? "外す" : ""]), [1, 2, 3, 4], null, { wide: true })) : el("p", "まだ記録がありません。", "empty"));
+      box.append(top.length ? scroll(table(["チャンネルID", "料理になる見込み", "読んだ", "料理", "20分以内", ""], top.map((c) => [c.id, `${c.rate}%`, c.ai, c.ok, c.fast, c.skip ? "外す" : ""]), [1, 2, 3, 4], null, { wide: true, id: "channels-top", sort: [2, "desc"] })) : el("p", "まだ記録がありません。", "empty"));
     }
   }
   function renderAll() { renderGoal(); renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderLearn(); renderQueries(); renderCatalog(); }

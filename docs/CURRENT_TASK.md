@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| （なし） | | | | |
+| Claude | レビュー待ち | claude/optimistic-albattani-jg5211 | 管理の画面の一覧表を見出しで並べ替え・列の並びと最初の並べ方の見直し・数を読みやすく（UI_RULES §1-3・APP_MAP §46-2）| admin/catalog.html |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
