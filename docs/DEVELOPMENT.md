@@ -23,6 +23,13 @@ git worktree add ../matagochi-codex  -b codex/<タスク名>  origin/main
 3. マージ後、作業ブランチは `origin/main` から作り直す（同じ名前を使い回す時は `git checkout -B <branch> origin/main` → `git push --force-with-lease`）
 4. 相互レビュー：片方のAIが作ったPRを、もう片方がレビューしてから公開するとよい（思考のクセが違うので抜けが見つかりやすい）
 
+### Codex の自動レビューと、Claude の自律的な直し（2026-10-05 のユーザーの判断。165cm/UbeROI と同じ流れ）
+
+- このリポジトリは Codex の GitHub アプリ（chatgpt-codex-connector）が、**PR を作った時に自動でレビュー**する。指摘があれば PR にレビューのコメント（P1〜P3 のバッジつき）、なければ 👍 の反応
+- Claude は PR を作ったら、その PR の動き（コメント・CI）を見張る（subscribe）。Codex の指摘が付いたら、ユーザーが貼り付けるのを待たずに**自分で読みに行って直す**：直す → 直す前のコードで落ちる回帰テスト → テスト → push → 指摘のスレッドに「どう直したか（コミット）」を1行で返信 → PR に「@codex review」とコメントして再レビューを頼む
+- 再レビューで指摘がなく（👍・「問題なし」）、CI が通ったら、ユーザーに「PR #N を本番公開してよいですか？」と聞く（公開はいつもユーザーの OK の後）
+- 指摘が仕様の判断（どちらにするかユーザーが決めること）の時は、直さずにユーザーに聞く
+
 - コミットメッセージは Conventional Commits（`feat:` `fix:` `docs:` など）。本文は日本語で「何を・なぜ」
 - APIキー・トークン・`.env`・個人情報はコミットしない。秘密の値はチャットに貼らせず、ユーザーに `gcloud` コマンドで設定してもらう
 - モデル名（Claude／GPT のバージョン名）をコミット・PR・コードに書かない
@@ -30,7 +37,7 @@ git worktree add ../matagochi-codex  -b codex/<タスク名>  origin/main
 ## テスト
 
 ```
-node --test test/*.cjs                 # アプリ（vanilla JS）。今は 262件
+node --test test/*.cjs                 # アプリ（vanilla JS）。今は 265件
 cd api && node --test                  # API（Node）。今は 287件
 ```
 
