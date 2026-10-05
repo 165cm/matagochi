@@ -37,3 +37,10 @@ test("every list table in the admin page can be sorted (has an id)", () => {
   assert.ok(calls.length >= 15);
   assert.deepEqual(without, []);
 });
+
+test("review fix (#145): a value shown as — (not measured yet) sorts last even when its inner value is 0", () => {
+  assert.equal(sortValue({ text: "—", value: 0 }, true), null);
+  assert.equal(sortValue({ text: "0.0", value: 0 }, true), 0, "a real zero is still a number");
+  const s = html.slice(html.indexOf("function renderSources"), html.indexOf("function renderStages"));
+  assert.doesNotMatch(s, /value: a\.s \? a\.add \/ a\.s : 0/);
+});

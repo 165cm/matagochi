@@ -310,7 +310,8 @@
   try { sortState = JSON.parse(localStorage.getItem(SORT_KEY) || "{}") || {}; } catch {}
   // 並べ替えに使う値：数・{ value }・「12分」「1.38円」「58%」「3 / 4」「12品（5%）」「1.2万」は数、それ以外は文字。「—」・空は最後。
   function sortValue(v, numeric) {
-    if (v && typeof v === "object") v = v.value ?? v.text;
+    // 「—」と見せている値は、中の値にかかわらず最後（まだ測っていない＝0 とは別。review fix #145）。
+    if (v && typeof v === "object") { if (v.text === "—" || v.text === "") return null; v = v.value ?? v.text; }
     if (typeof v === "number") return Number.isFinite(v) ? v : null;
     const s = String(v ?? "").trim();
     if (!s || s === "—" || s === "-") return null;
@@ -507,7 +508,7 @@
         a.s += 1; a.ai += e.ai || 0; a.add += e.added || 0;
         if (Number.isFinite(e.ai) && Number.isFinite(e.aiAdded)) { a.hitAi += e.ai; a.hit += e.aiAdded; }
       }
-      const rows = [["親料理", agg.parent], ["話題", agg.trend], ["定番", agg.classic], ["投稿者", agg.channel]].filter(([l, a]) => (l !== "投稿者" && l !== "親料理") || a.s).map(([label, a]) => [label, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : 0 }, a.hitAi ? pct(a.hit, a.hitAi) : "—", a.add, a.s, a.ai]);
+      const rows = [["親料理", agg.parent], ["話題", agg.trend], ["定番", agg.classic], ["投稿者", agg.channel]].filter(([l, a]) => (l !== "投稿者" && l !== "親料理") || a.s).map(([label, a]) => [label, { text: a.s ? (a.add / a.s).toFixed(1) : "—", value: a.s ? a.add / a.s : null }, a.hitAi ? pct(a.hit, a.hitAi) : "—", a.add, a.s, a.ai]);
       // 効率（1検索で増えた品数・当たり）を名前のすぐ右に。最初は1検索での多い順。
       box.append(scroll(table(["広げ方", "1検索で", "当たり", "増えた", "検索", "AI"], rows, [1, 2, 3, 4, 5], null, { bars: [1], id: "sources", sort: [1, "desc"] })));
       const skipped = agg.classic.skip;
