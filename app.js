@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261024-livesync";
+const APP_VERSION = "20261024-livesync2";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -187,6 +187,7 @@ let idbAvailable = typeof indexedDB !== "undefined";
 let syncTimer = null;
 let syncInFlight = false;
 let syncQueued = false;
+let syncRenderPending = false;
 let lastSyncedFingerprint = "";
 let syncRuntimeStatus = "";
 
@@ -791,8 +792,15 @@ function shouldPollSync() {
   if ((state.family || []).length < 2) return false;
   return !hasUnsavedWork();
 }
+// 入力の途中で描き直しを見送った分を、入力が終わったら描く。
+function flushSyncRender() {
+  if (!syncRenderPending || hasUnsavedWork()) return false;
+  syncRenderPending = false;
+  render();
+  return true;
+}
 function startSyncPolling() {
-  setInterval(() => { if (shouldPollSync()) syncNow({ silent: true }); }, SYNC_POLL_MS);
+  setInterval(() => { if (!flushSyncRender() && shouldPollSync()) syncNow({ silent: true }); }, SYNC_POLL_MS);
 }
 
 function scheduleAutoSync() {
@@ -957,8 +965,12 @@ async function syncNow({ silent = false } = {}) {
   } finally {
     syncInFlight = false;
     if (changedLocal) {
-      if (state.view === "register") captureDraft();
-      render();
+      // 返事を待っている間に入力が始まっていたら、描き直さない（入力が消えないように。入力が終わったら flushSyncRender が描く。review fix #146）。
+      if (silent && hasUnsavedWork()) syncRenderPending = true;
+      else {
+        if (state.view === "register") captureDraft();
+        render();
+      }
     }
     if (syncQueued) {
       syncQueued = false;

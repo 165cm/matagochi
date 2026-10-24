@@ -52,3 +52,28 @@ test("ひとりのとき・つながっていないとき・裏にいるとき�
   busy.run(joined + "; syncInFlight = true");
   assert.equal(busy.run("shouldPollSync()"), false);
 });
+
+test("review fix (#146): 返事を待つ間に入力が始まったら描き直さず、入力が終わってから描く", async () => {
+  const a = app();
+  a.run(joined + "; renders = 0; render = () => { renders += 1; }; syncOnce = async () => ({ done: true, changedLocal: true }); saveState = () => {}");
+  // 入力中（hasUnsavedWork）に取り込みが終わった：描かない
+  a.run("state.editingRecipeId = 'x'; recipeById = () => ({})");
+  await a.run("syncNow({ silent: true })");
+  assert.equal(a.run("renders"), 0);
+  assert.equal(a.run("syncRenderPending"), true);
+  // まだ入力中：描かない
+  assert.equal(a.run("flushSyncRender()"), false);
+  // 入力が終わった：描く（1回だけ）
+  a.run("state.editingRecipeId = null");
+  assert.equal(a.run("flushSyncRender()"), true);
+  assert.equal(a.run("renders"), 1);
+  assert.equal(a.run("flushSyncRender()"), false);
+});
+
+test("入力中でなければ、取り込んだ変更はすぐ描く", async () => {
+  const a = app();
+  a.run(joined + "; renders = 0; render = () => { renders += 1; }; syncOnce = async () => ({ done: true, changedLocal: true }); saveState = () => {}");
+  await a.run("syncNow({ silent: true })");
+  assert.equal(a.run("renders"), 1);
+  assert.equal(a.run("syncRenderPending"), false);
+});
