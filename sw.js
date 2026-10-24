@@ -1,4 +1,4 @@
-const CACHE_NAME = "ripigochi-v154";
+const CACHE_NAME = "ripigochi-v156";
 const APP_VERSION = "20261024-widen";
 const CORE_ASSETS = [
   "./",

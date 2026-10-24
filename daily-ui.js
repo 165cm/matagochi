@@ -342,8 +342,8 @@ let calPick = ""; // 献立の週の表（household.js）でタップした日
 // Why this dish on this day, most important first: request, who wants it again (and when), variety, season.
 function planReason(day) {
   const c = day.candidate;
-  if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.repeat?.reason, day.rotation?.reason, day.season?.reason].find(Boolean) || "";
-  return c ? [c.request && `${c.request.from}のリクエスト`, c.warn, c.chosen && "✋ 自分で決めた一皿", c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.repeat?.reason, c.rotation?.reason, c.season?.reason].find(Boolean) || "" : "";
+  if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.repeat?.reason, day.rotation?.reason, day.useUp?.reason, day.season?.reason].find(Boolean) || "";
+  return c ? [c.request && `${c.request.from}のリクエスト`, c.warn, c.chosen && "✋ 自分で決めた一皿", c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.repeat?.reason, c.rotation?.reason, c.useUp?.reason, c.season?.reason].find(Boolean) || "" : "";
 }
 // The last time someone pressed 買い物完了. Meals confirmed before it were bought on that trip.
 function lastShoppedAt() {
