@@ -4,11 +4,14 @@ const IDB_STORE = "state";
 const API_BASE_URL = (globalThis.MATAGOCHI_API_BASE_URL || "").replace(/\/$/, "");
 const SYNC_ROOM_SALT = "matagochi-sync-v1";
 const SYNC_MIN_CODE_LENGTH = 6;
-const SYNC_DEBOUNCE_MS = 8000;
+const SYNC_DEBOUNCE_MS = 2000;
+// 家族（2人以上）でつながっている間、画面が見えていれば、この間隔で相手の変更を取りにいく。
+// 変わっていなければ ?since= の軽い問い合わせだけで済む（中身は受け取らない・書き戻さない）。
+const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261004-update4";
+const APP_VERSION = "20261024-livesync";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -778,6 +781,18 @@ function applySyncPayload(payload) {
   Object.keys(state.planOverrides).forEach((date) => {
     if (!recipeById(state.planOverrides[date])) delete state.planOverrides[date];
   });
+}
+
+// 家族で見ている間の「相手の変更を取りにいく」を、いま動かしてよいか。
+// 入力の途中・料理モード中などは、取り込みの描き直しで消えないように止める。
+function shouldPollSync() {
+  if (!state || !syncEnabled() || syncInFlight) return false;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
+  if ((state.family || []).length < 2) return false;
+  return !hasUnsavedWork();
+}
+function startSyncPolling() {
+  setInterval(() => { if (shouldPollSync()) syncNow({ silent: true }); }, SYNC_POLL_MS);
 }
 
 function scheduleAutoSync() {
@@ -4270,6 +4285,7 @@ document.addEventListener("visibilitychange", () => {
     setTimeout(() => document.querySelector('[data-action="fetch-caption"]:not([disabled])')?.click(), 300);
   }
   if (syncEnabled()) syncNow({ silent: true });
+  startSyncPolling();
   refreshTickets();
   loadAuth();
   loadDiscover();

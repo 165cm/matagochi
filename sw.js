@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v150";
-const APP_VERSION = "20261004-update4";
+const CACHE_NAME = "ripigochi-v151";
+const APP_VERSION = "20261024-livesync";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -38,12 +38,12 @@ const CORE_ASSETS = [
   `./discover.js?v=${APP_VERSION}`,
   `./app.js?v=${APP_VERSION}`,
   `./image-import.js?v=${APP_VERSION}`,
-  "./manifest.webmanifest?v=20261004-update4",
-  "./icons/favicon-32.png?v=20261004-update4",
-  "./icons/icon-192.png?v=20261004-update4",
-  "./icons/icon-512.png?v=20261004-update4",
-  "./icons/icon-maskable-512.png?v=20261004-update4",
-  "./icons/apple-touch-icon.png?v=20261004-update4"
+  "./manifest.webmanifest?v=20261024-livesync",
+  "./icons/favicon-32.png?v=20261024-livesync",
+  "./icons/icon-192.png?v=20261024-livesync",
+  "./icons/icon-512.png?v=20261024-livesync",
+  "./icons/icon-maskable-512.png?v=20261024-livesync",
+  "./icons/apple-touch-icon.png?v=20261024-livesync"
 ];
 
 self.addEventListener("install", (event) => {
