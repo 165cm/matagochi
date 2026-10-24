@@ -77,3 +77,20 @@ test("入力中でなければ、取り込んだ変更はすぐ描く", async ()
   assert.equal(a.run("renders"), 1);
   assert.equal(a.run("syncRenderPending"), false);
 });
+
+test("review fix (#146): 画面の動画を再生している間は、取りにいかず・描き直しも見送る（動画が止まらない）", async () => {
+  const a = app();
+  a.run(joined + "; renders = 0; render = () => { renders += 1; }; syncOnce = async () => ({ done: true, changedLocal: true }); saveState = () => {}");
+  a.run("document.querySelector = (s) => (s === '.creator-credit .video-frame' ? {} : null); videoPlayer.playing = true");
+  assert.equal(a.run("shouldPollSync()"), false);
+  await a.run("syncNow({ silent: true })");
+  assert.equal(a.run("renders"), 0);
+  assert.equal(a.run("flushSyncRender()"), false);
+  // 止めたら描く
+  a.run("videoPlayer.playing = false");
+  assert.equal(a.run("flushSyncRender()"), true);
+  assert.equal(a.run("renders"), 1);
+  // 動画の枠が画面になければ（ほかの画面へ移った後に再生中の印が残っていても）止めない
+  a.run("videoPlayer.playing = true; document.querySelector = () => null");
+  assert.equal(a.run("shouldPollSync()"), true);
+});

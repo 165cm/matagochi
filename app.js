@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261024-livesync2";
+const APP_VERSION = "20261024-livesync3";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -784,17 +784,23 @@ function applySyncPayload(payload) {
   });
 }
 
+// 同期の取り込みで画面を描き直してはいけない時：入力の途中・料理モードのほか、画面の動画を再生している間
+// （描き直すと動画の iframe が作り直されて、再生が止まり続きから見られない。review fix #146）。
+function syncRenderBusy() {
+  if (hasUnsavedWork()) return true;
+  return typeof videoPlayer !== "undefined" && !!videoPlayer.playing && !!document.querySelector?.(".creator-credit .video-frame");
+}
 // 家族で見ている間の「相手の変更を取りにいく」を、いま動かしてよいか。
 // 入力の途中・料理モード中などは、取り込みの描き直しで消えないように止める。
 function shouldPollSync() {
   if (!state || !syncEnabled() || syncInFlight) return false;
   if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
   if ((state.family || []).length < 2) return false;
-  return !hasUnsavedWork();
+  return !syncRenderBusy();
 }
 // 入力の途中で描き直しを見送った分を、入力が終わったら描く。
 function flushSyncRender() {
-  if (!syncRenderPending || hasUnsavedWork()) return false;
+  if (!syncRenderPending || syncRenderBusy()) return false;
   syncRenderPending = false;
   render();
   return true;
@@ -966,7 +972,7 @@ async function syncNow({ silent = false } = {}) {
     syncInFlight = false;
     if (changedLocal) {
       // 返事を待っている間に入力が始まっていたら、描き直さない（入力が消えないように。入力が終わったら flushSyncRender が描く。review fix #146）。
-      if (silent && hasUnsavedWork()) syncRenderPending = true;
+      if (silent && syncRenderBusy()) syncRenderPending = true;
       else {
         if (state.view === "register") captureDraft();
         render();
