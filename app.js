@@ -4,11 +4,14 @@ const IDB_STORE = "state";
 const API_BASE_URL = (globalThis.MATAGOCHI_API_BASE_URL || "").replace(/\/$/, "");
 const SYNC_ROOM_SALT = "matagochi-sync-v1";
 const SYNC_MIN_CODE_LENGTH = 6;
-const SYNC_DEBOUNCE_MS = 8000;
+const SYNC_DEBOUNCE_MS = 2000;
+// 家族（2人以上）でつながっている間、画面が見えていれば、この間隔で相手の変更を取りにいく。
+// 変わっていなければ ?since= の軽い問い合わせだけで済む（中身は受け取らない・書き戻さない）。
+const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261004-update4";
+const APP_VERSION = "20261024-livesync3";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -184,6 +187,7 @@ let idbAvailable = typeof indexedDB !== "undefined";
 let syncTimer = null;
 let syncInFlight = false;
 let syncQueued = false;
+let syncRenderPending = false;
 let lastSyncedFingerprint = "";
 let syncRuntimeStatus = "";
 
@@ -780,6 +784,31 @@ function applySyncPayload(payload) {
   });
 }
 
+// 同期の取り込みで画面を描き直してはいけない時：入力の途中・料理モードのほか、画面の動画を再生している間
+// （描き直すと動画の iframe が作り直されて、再生が止まり続きから見られない。review fix #146）。
+function syncRenderBusy() {
+  if (hasUnsavedWork()) return true;
+  return typeof videoPlayer !== "undefined" && !!videoPlayer.playing && !!document.querySelector?.(".creator-credit .video-frame");
+}
+// 家族で見ている間の「相手の変更を取りにいく」を、いま動かしてよいか。
+// 入力の途中・料理モード中などは、取り込みの描き直しで消えないように止める。
+function shouldPollSync() {
+  if (!state || !syncEnabled() || syncInFlight) return false;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
+  if ((state.family || []).length < 2) return false;
+  return !syncRenderBusy();
+}
+// 入力の途中で描き直しを見送った分を、入力が終わったら描く。
+function flushSyncRender() {
+  if (!syncRenderPending || syncRenderBusy()) return false;
+  syncRenderPending = false;
+  render();
+  return true;
+}
+function startSyncPolling() {
+  setInterval(() => { if (!flushSyncRender() && shouldPollSync()) syncNow({ silent: true }); }, SYNC_POLL_MS);
+}
+
 function scheduleAutoSync() {
   if (!syncEnabled()) return;
   clearTimeout(syncTimer);
@@ -942,8 +971,12 @@ async function syncNow({ silent = false } = {}) {
   } finally {
     syncInFlight = false;
     if (changedLocal) {
-      if (state.view === "register") captureDraft();
-      render();
+      // 返事を待っている間に入力が始まっていたら、描き直さない（入力が消えないように。入力が終わったら flushSyncRender が描く。review fix #146）。
+      if (silent && syncRenderBusy()) syncRenderPending = true;
+      else {
+        if (state.view === "register") captureDraft();
+        render();
+      }
     }
     if (syncQueued) {
       syncQueued = false;
@@ -4270,6 +4303,7 @@ document.addEventListener("visibilitychange", () => {
     setTimeout(() => document.querySelector('[data-action="fetch-caption"]:not([disabled])')?.click(), 300);
   }
   if (syncEnabled()) syncNow({ silent: true });
+  startSyncPolling();
   refreshTickets();
   loadAuth();
   loadDiscover();
