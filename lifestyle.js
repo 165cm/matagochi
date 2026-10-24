@@ -1128,6 +1128,56 @@
     return [...new Set(list)].join(" + ");
   }
 
+  // 1タップで添えられる超簡単な汁物・副菜（主菜1品モデルを邪魔しない日常サポート）
+  const QUICK_SIDES = [
+    {
+      id: "tofu",
+      name: "冷奴",
+      icon: "🥢",
+      desc: "豆腐にかつお節・しょうゆをかけるだけ",
+      ingredients: [{ name: "絹豆腐", amount: "1/2丁", category: "日配" }],
+    },
+    {
+      id: "wakame_soup",
+      name: "わかめスープ",
+      icon: "🥣",
+      desc: "わかめ・鶏ガラスープの素・ごま油にお湯を注ぐだけ",
+      ingredients: [{ name: "乾燥わかめ", amount: "1袋", category: "乾物" }],
+    },
+    {
+      id: "cabbage",
+      name: "ちぎりキャベツ",
+      icon: "🥬",
+      desc: "キャベツを手でちぎって塩・ごま油を和えるだけ",
+      ingredients: [{ name: "キャベツ", amount: "100g", category: "野菜" }],
+    },
+    {
+      id: "tomato",
+      name: "トマトスライス",
+      icon: "🍅",
+      desc: "切るだけで彩りとビタミンがプラス",
+      ingredients: [{ name: "トマト", amount: "1個", category: "野菜" }],
+    },
+    {
+      id: "cucumber",
+      name: "たたききゅうり",
+      icon: "🥒",
+      desc: "きゅうりを叩いて塩昆布・ごま油と和えるだけ",
+      ingredients: [{ name: "きゅうり", amount: "1本", category: "野菜" }],
+    },
+    {
+      id: "namul",
+      name: "もやしナムル",
+      icon: "🥢",
+      desc: "レンジで1分半加熱してごま油・塩と和えるだけ",
+      ingredients: [{ name: "もやし", amount: "1袋", category: "野菜" }],
+    },
+  ];
+
+  function sideOf(name) {
+    return QUICK_SIDES.find((s) => s.name === name || s.id === name);
+  }
+
   function shopping({
     slots,
     start,
@@ -1161,6 +1211,24 @@
           g.parts.push(`${s.date}:${s.recipe.id}:${amount}`);
           if (!g.uses.includes(s.recipe.title)) g.uses.push(s.recipe.title);
         });
+        if (s.side) {
+          const side = sideOf(s.side);
+          if (side) {
+            side.ingredients.forEach((item) => {
+              const name = shoppingName(item.name);
+              if (notPurchased.test(name)) return;
+              const k = key(name);
+              if (!groups.has(k))
+                groups.set(k, { id: k, name, category: item.category || "その他", amounts: [], parts: [], uses: [] });
+              const g = groups.get(k);
+              const amount = item.amount;
+              g.amounts.push(amount);
+              g.parts.push(`${s.date}:side:${s.side}:${amount}`);
+              const sideUse = `${s.recipe.title}（添え物：${s.side}）`;
+              if (!g.uses.includes(sideUse)) g.uses.push(sideUse);
+            });
+          }
+        }
       });
     Object.entries(manual)
       .filter(([, m]) => !m.deleted)
@@ -1591,6 +1659,8 @@
     formatAmountFromParts,
     INGREDIENT_UNITS,
     fractionGuide,
+    QUICK_SIDES,
+    sideOf,
     curated,
     traits,
     tags,
