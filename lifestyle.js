@@ -297,6 +297,105 @@
       skillNeed: need,
     };
   }
+  // 条件で候補が足りない時の緩和の提案：どの条件（時間・スキルなど）を少し広げれば、何品増えるかを数える。
+  // ★安全のため、食べられないもの（restrictions）と苦手（dislikes）は絶対に緩めない（提案もしない）。
+  function widenHints({
+    recipes = [],
+    profile: p,
+    dates = [],
+    cyclesOf = () => ({}),
+    autoBlocked = () => false,
+    repeatScore = () => 0,
+  }) {
+    if (!p) return [];
+    const dinners = (recipes || []).filter(
+      (r) =>
+        r &&
+        r.mealType === "dinner" &&
+        repeatScore(r) !== -Infinity &&
+        !autoBlocked(r) &&
+        !Object.values(cyclesOf(r) || {}).includes("never"),
+    );
+    const isWe = (d) => [0, 6].includes(new Date(d + "T12:00:00").getDay());
+    const targetDates = dates.length ? dates : ["2026-10-01", "2026-10-03"];
+    const hasWd = targetDates.some((d) => !isWe(d));
+    const hasWe = targetDates.some((d) => isWe(d));
+    const wdDate = targetDates.find((d) => !isWe(d)) || "2026-10-01";
+    const weDate = targetDates.find((d) => isWe(d)) || "2026-10-03";
+
+    const hints = [];
+
+    // 1. 平日の調理時間 (weekdayMinutes)
+    if (hasWd && p.weekdayMinutes && p.weekdayMinutes < 60) {
+      const next = [15, 20, 30, 45, 60].find((m) => m > p.weekdayMinutes);
+      if (next) {
+        const p2 = { ...p, weekdayMinutes: next };
+        const gain = dinners.filter((r) => !fit(r, p, wdDate).ok && fit(r, p2, wdDate).ok).length;
+        if (gain > 0) {
+          hints.push({
+            key: "weekdayMinutes",
+            value: next,
+            gain,
+            label: `平日${p.weekdayMinutes}分→${next}分（＋${gain}品）`,
+          });
+        }
+      }
+    }
+
+    // 2. 休日の調理時間 (weekendMinutes)
+    if (hasWe && p.weekendMinutes && p.weekendMinutes < 60) {
+      const next = [20, 30, 60].find((m) => m > p.weekendMinutes);
+      if (next) {
+        const p2 = { ...p, weekendMinutes: next };
+        const gain = dinners.filter((r) => !fit(r, p, weDate).ok && fit(r, p2, weDate).ok).length;
+        if (gain > 0) {
+          hints.push({
+            key: "weekendMinutes",
+            value: next,
+            gain,
+            label: `休日${p.weekendMinutes}分→${next}分（＋${gain}品）`,
+          });
+        }
+      }
+    }
+
+    // 3. 料理スキル (skillLevel)
+    if (p.skillLevel && p.skillLevel < 5) {
+      const next = p.skillLevel + 1;
+      const p2 = { ...p, skillLevel: next };
+      const refDate = hasWd ? wdDate : weDate;
+      const okPlain = (r, prof, d) => {
+        const f = fit(r, prof, d);
+        return f.ok && !f.challenge;
+      };
+      const gain = dinners.filter((r) => !okPlain(r, p, refDate) && okPlain(r, p2, refDate)).length;
+      if (gain > 0) {
+        hints.push({
+          key: "skillLevel",
+          value: next,
+          gain,
+          label: `レベル★${next}まで（＋${gain}品）`,
+        });
+      }
+    }
+
+    // 4. かんたん優先 (skill === "easy")
+    if (p.skill === "easy") {
+      const p2 = { ...p, skill: "any" };
+      const refDate = hasWd ? wdDate : weDate;
+      const gain = dinners.filter((r) => !fit(r, p, refDate).ok && fit(r, p2, refDate).ok).length;
+      if (gain > 0) {
+        hints.push({
+          key: "skill",
+          value: "any",
+          gain,
+          label: `かんたん以外も（＋${gain}品）`,
+        });
+      }
+    }
+
+    return hints.sort((a, b) => b.gain - a.gain).slice(0, 2);
+  }
   const restrictionOptions = [
     "卵",
     "乳",
@@ -1142,6 +1241,7 @@
     pantryCommon,
     pantryDefaults,
     restrictionOptions,
+    widenHints,
     key,
     fit,
     freshness,
