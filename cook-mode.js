@@ -209,7 +209,8 @@ const CookMode = (() => {
     const amount = recipe.amountOf || ((x) => x.amount || "");
     const usesList = [...u.items.map((x) => `<li><span>${escapeHtml(x.name)}</span><b>${escapeHtml(amount(x))}</b></li>`),
       ...u.groups.map((g) => `<li class="cm-group"><p>🥣 ${escapeHtml(groupLabel(g.group))}</p><ul>${g.items.map((x) => `<li><span>${escapeHtml(x.name)}</span><b>${escapeHtml(amount(x))}</b></li>`).join("")}</ul></li>`)].join("");
-    el.querySelector(".cm-body").innerHTML = `<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`, { thumb: true })}</p>
+    const riceAlert = recipe.staple === "other" && at === 0 ? `<div class="cm-rice-alert"><span class="cm-rice-icon" aria-hidden="true">🍚</span><span>ごはん（主食）は準備できていますか？</span>${recipe.side ? `<b class="cm-side-tag">🥢 添え物：${escapeHtml(recipe.side)}</b>` : ""}</div>` : "";
+    el.querySelector(".cm-body").innerHTML = `${riceAlert}<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`, { thumb: true })}</p>
       ${showAll ? `<div class="cm-uses is-all"><p class="cm-uses-head">📋 材料ぜんぶ <button type="button" class="link-inline" data-cook-mode="uses">この手順だけ</button></p>${ingredientsHtml(recipe.ingredients, amount, "cm-list")}</div>`
         : `<div class="cm-uses">${usesList ? `<p class="cm-uses-head">🥄 この手順で使う <button type="button" class="link-inline" data-cook-mode="all">ぜんぶ</button></p><ul class="cm-list">${usesList}</ul>` : `<p class="cm-uses-head">🥄 <button type="button" class="link-inline" data-cook-mode="all">材料をぜんぶ見る</button></p>`}</div>`}`;
     el.querySelector('[data-cook-mode="prev"]').disabled = at === 0;
