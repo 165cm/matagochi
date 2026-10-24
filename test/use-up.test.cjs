@@ -70,3 +70,36 @@ test("a day the user picked ahead (override) also counts for the days before it"
   assert.equal(plan[2].candidate.recipe.id, pick.id);
   assert.equal(plan[0].candidate.recipe.id, withCabbage.id);
 });
+
+test("review fix (#147): きのこの種類（しめじ・えのき・しいたけ等）を区別し、別のきのこは使い回しにしない", () => {
+  const shimeji1 = recipe("shimeji1", "豚としめじの炒め物", ["豚こま切れ肉", "しめじ", "醤油"]);
+  const enoki = recipe("a-enoki", "鶏とえのきの塩炒め", ["鶏もも肉", "えのき", "塩"]);
+  const shimeji2 = recipe("z-shimeji2", "鶏としめじの塩炒め", ["鶏もも肉", "しめじ", "塩"]);
+  assert.deepEqual([...L.useUpKeys(shimeji1)], ["しめじ"]);
+  assert.deepEqual([...L.useUpKeys(enoki)], ["えのき"]);
+  assert.equal(L.useUpFit(enoki, [{ date: start, labels: L.useUpKeys(shimeji1) }]).score, 0);
+  const day = pickDay1([shimeji1, enoki, shimeji2], shimeji1);
+  assert.equal(day.recipe.id, shimeji2.id);
+  assert.match(day.useUp.reason, /🥬 .のしめじを使い回し/);
+});
+
+test("review fix (#147): planReason と献立カードの表示に「🥬 ◯の◯◯を使い回し」が出る", () => {
+  const fs = require("node:fs"), vm = require("node:vm"), path = require("node:path");
+  const ctx = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] } });
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "profile-talk.js", "talk-ui.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "weekly.js", "cook-type.js", "plan-moves.js", "plus.js", "cook-mode.js", "folders.js", "install.js", "push.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+    let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    if (f === "app.js") s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
+    vm.runInContext(s, ctx);
+  }
+  const run = (s) => vm.runInContext(s, ctx);
+  run("state=freshState(); state.onboarded=true; saveState=()=>{}; render=()=>{}; showToast=()=>{}");
+  // 主食も主菜も同じにして rotation.reason が空になる組で、planReason が useUp.reason を返すことを確かめる
+  const r1 = recipe("r1", "豚とキャベツの炒め物", ["豚肉", "キャベツ"]);
+  const r2 = recipe("r2", "牛とキャベツの炒め物", ["牛肉", "キャベツ"]);
+  const plan = L.propose({ recipes: [r1, r2], profile, start, length: 2, addDays, slots: { [start]: slotOf(start, r1) } });
+  assert.equal(plan[1].candidate.rotation.reason, "");
+  ctx.day = plan[1];
+  assert.match(run("planReason(day)"), /🥬 .のキャベツを使い回し/);
+  ctx.day0 = plan[0];
+  assert.match(run("planReason(day0)"), /🥬 .のキャベツを使い回し/);
+});
