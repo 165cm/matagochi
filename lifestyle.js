@@ -846,12 +846,294 @@
   const shoppingName = (name) =>
     String(name || "").normalize("NFKC").trim().replace(/^ごはん\(炊飯済み\)$/, "ごはん").replace(/^しょうゆ\(濃口\)$/, "しょうゆ");
   const notPurchased = /^(?:水|お湯|湯|熱湯|冷水|氷水|ぬるま湯)$/;
+
+  // 1より小さい量は、レシピでよく使う分数に（0.125→1/8、0.5→1/2、0.33→1/3）。
+  const NICE_FRACTIONS = [[1, 8], [1, 4], [1, 3], [1, 2], [2, 3], [3, 4]];
+  function formatScaledNumber(value) {
+    if (!Number.isFinite(value)) return "";
+    if (value > 0 && value < 1) {
+      const hit = NICE_FRACTIONS.find(([n, d]) => Math.abs(value - n / d) < 0.02);
+      if (hit) return `${hit[0]}/${hit[1]}`;
+    }
+    const rounded = Math.round(value * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/\.?0+$/, "");
+  }
+
+  function normalizeUnit(unit) {
+    unit = String(unit || "").trim();
+    if (/^(?:グラム|g|ｇ)$/i.test(unit)) return "g";
+    if (/^(?:ミリリットル|ml|ｍｌ)$/i.test(unit)) return "ml";
+    if (/^[コつ箇ケヶ]$/.test(unit)) return "個";
+    return unit;
+  }
+
+  function amountStep(prefix, unit, value) {
+    if (/大さじ|小さじ/.test(prefix) || /杯|合/.test(unit)) return 0.5;
+    if (/g|ml|ｍｌ|グラム/.test(unit)) {
+      if (value >= 100) return 25;
+      if (value >= 20) return 10;
+      return 5;
+    }
+    if (/玉|丁|袋|パック|株|缶|束|本|枚|個|切れ|膳/.test(unit)) return 1;
+    return 0.5;
+  }
+
+  function parseAmountParts(amount) {
+    let raw = String(amount || "").normalize("NFKC").trim();
+    if (!raw) return null;
+    raw = raw.replace(/[（(][^）)]*[）)]/g, "").trim();
+    const halfMatch = raw.match(/^半(.+)$/);
+    if (halfMatch) {
+      const unit = normalizeUnit(halfMatch[1]);
+      return { prefix: "", value: 0.5, unit, step: 0.5 };
+    }
+    const m = raw.match(/^(約|およそ)?\s*(大さじ|小さじ)?\s*(?:(\d+)\s*(?:と|\s+)\s*(\d+)\s*\/\s*(\d+)|(\d+)\s*\/\s*(\d+)|(\d+(?:\.\d+)?))\s*(.*)$/);
+    if (!m) return null;
+    const prefix = (m[1] || "") + (m[2] || "");
+    let value;
+    if (m[3] && m[4] && m[5]) value = Number(m[3]) + (Number(m[4]) / Number(m[5]));
+    else if (m[6] && m[7]) value = Number(m[6]) / Number(m[7]);
+    else if (m[8]) value = Number(m[8]);
+    if (!Number.isFinite(value)) return null;
+    const unit = normalizeUnit(m[9] || "");
+    return { prefix, value, unit, step: amountStep(prefix, unit, value) };
+  }
+
+  function formatAmountFromParts(parts, value) {
+    return `${parts.prefix}${formatScaledNumber(value)}${parts.unit}`;
+  }
+
+  // 標準的な食材の換算レート（グラム換算・目安パック/個数）
+  const INGREDIENT_UNITS = [
+    {
+      pattern: /キャベツ/,
+      baseUnit: "g",
+      rates: { "玉": 1000, "個": 1000, "枚": 50, "g": 1 },
+      packGuide: (g) => {
+        if (g <= 300) return "1/4玉";
+        if (g <= 650) return "1/2玉";
+        if (g <= 1200) return "1玉";
+        return `${Math.round((g / 1000) * 10) / 10}玉`;
+      }
+    },
+    {
+      pattern: /白菜|はくさい/,
+      baseUnit: "g",
+      rates: { "株": 2000, "玉": 2000, "個": 2000, "枚": 80, "g": 1 },
+      packGuide: (g) => {
+        if (g <= 350) return "1/4株";
+        if (g <= 800) return "1/2株";
+        if (g <= 1600) return "1株";
+        return `${Math.round((g / 2000) * 10) / 10}株`;
+      }
+    },
+    {
+      pattern: /レタス/,
+      baseUnit: "g",
+      rates: { "個": 300, "玉": 300, "枚": 30, "g": 1 },
+      packGuide: (g) => {
+        if (g <= 180) return "1/2個";
+        if (g <= 400) return "1個";
+        return `${Math.ceil(g / 300)}個`;
+      }
+    },
+    {
+      pattern: /玉ねぎ|たまねぎ|玉葱|タマネギ/,
+      baseUnit: "g",
+      rates: { "個": 200, "玉": 200, "g": 1 },
+      packGuide: (g) => `${Math.max(1, Math.ceil(g / 200))}個`
+    },
+    {
+      pattern: /じゃがいも|ジャガイモ/,
+      baseUnit: "g",
+      rates: { "個": 150, "g": 1 },
+      packGuide: (g) => `${Math.max(1, Math.ceil(g / 150))}個`
+    },
+    {
+      pattern: /にんじん|ニンジン|人参/,
+      baseUnit: "g",
+      rates: { "本": 150, "g": 1 },
+      packGuide: (g) => `${Math.max(1, Math.ceil(g / 150))}本`
+    },
+    {
+      pattern: /(?<!切り干し)大根|だいこん/,
+      baseUnit: "g",
+      rates: { "本": 1000, "cm": 35, "g": 1 },
+      packGuide: (g) => {
+        if (g <= 350) return "1/3本";
+        if (g <= 650) return "1/2本";
+        if (g <= 1200) return "1本";
+        return `${Math.round((g / 1000) * 10) / 10}本`;
+      }
+    },
+    {
+      pattern: /長ねぎ|長ネギ|白ねぎ|白ネギ|ねぎ|ネギ/,
+      baseUnit: "g",
+      rates: { "本": 100, "束": 200, "g": 1 },
+      packGuide: (g) => `${Math.max(1, Math.ceil(g / 100))}本`
+    },
+    {
+      pattern: /トマト(?!缶)/,
+      baseUnit: "g",
+      rates: { "個": 150, "g": 1 },
+      packGuide: (g) => `${Math.max(1, Math.ceil(g / 150))}個`
+    },
+    {
+      pattern: /きゅうり|胡瓜|キュウリ/,
+      baseUnit: "g",
+      rates: { "本": 100, "g": 1 },
+      packGuide: (g) => `${Math.max(1, Math.ceil(g / 100))}本`
+    },
+    {
+      pattern: /なす|ナス|茄子/,
+      baseUnit: "g",
+      rates: { "本": 80, "個": 80, "g": 1 },
+      packGuide: (g) => `${Math.max(1, Math.ceil(g / 80))}本`
+    },
+    {
+      pattern: /ピーマン/,
+      baseUnit: "g",
+      rates: { "個": 30, "袋": 150, "g": 1 },
+      packGuide: (g) => {
+        const p = Math.max(1, Math.ceil(g / 30));
+        return p <= 5 ? `${p}個（1袋）` : `${p}個（約${Math.ceil(p / 5)}袋）`;
+      }
+    },
+    {
+      pattern: /もやし/,
+      baseUnit: "袋",
+      rates: { "袋": 1, "g": 1 / 200 },
+      packGuide: (bags) => `${Math.max(1, Math.ceil(bags))}袋`
+    },
+    {
+      pattern: /えのき|エノキ/,
+      baseUnit: "袋",
+      rates: { "袋": 1, "パック": 1, "株": 1, "g": 1 / 100 },
+      packGuide: (bags) => `${Math.max(1, Math.ceil(bags))}袋`
+    },
+    {
+      pattern: /しめじ|シメジ/,
+      baseUnit: "パック",
+      rates: { "パック": 1, "袋": 1, "株": 1, "g": 1 / 100 },
+      packGuide: (packs) => `${Math.max(1, Math.ceil(packs))}パック`
+    },
+    {
+      pattern: /まいたけ|舞茸/,
+      baseUnit: "パック",
+      rates: { "パック": 1, "袋": 1, "g": 1 / 100 },
+      packGuide: (packs) => `${Math.max(1, Math.ceil(packs))}パック`
+    },
+    {
+      pattern: /鶏もも|鶏胸|鶏むね|とりもも|とりむね/,
+      baseUnit: "g",
+      rates: { "枚": 250, "g": 1 },
+      packGuide: (g) => {
+        const pieces = Math.round((g / 250) * 10) / 10;
+        return pieces <= 1 ? "1枚" : `${Math.ceil(pieces)}枚`;
+      }
+    },
+    {
+      pattern: /ささみ|ササミ/,
+      baseUnit: "本",
+      rates: { "本": 1, "枚": 1, "g": 1 / 50 },
+      packGuide: (b) => `${Math.max(1, Math.ceil(b))}本`
+    },
+    {
+      pattern: /豚.*(?:薄切り|スライス|バラ|ロース|しゃぶ)/,
+      baseUnit: "g",
+      rates: { "枚": 20, "g": 1 },
+      packGuide: (g) => {
+        const packs = Math.ceil(g / 200);
+        return packs <= 1 ? "1パック" : `${packs}パック`;
+      }
+    },
+    {
+      pattern: /ひき肉|挽肉|挽き肉|ミンチ/,
+      baseUnit: "g",
+      rates: { "パック": 200, "g": 1 },
+      packGuide: (g) => {
+        const packs = Math.ceil(g / 200);
+        return packs <= 1 ? "1パック" : `${packs}パック`;
+      }
+    },
+    {
+      pattern: /豆腐|木綿|絹/,
+      baseUnit: "丁",
+      rates: { "丁": 1, "パック": 1, "g": 1 / 300 },
+      packGuide: (chou) => `${Math.max(1, Math.ceil(chou))}丁`
+    },
+    {
+      pattern: /^(?:卵|たまご|玉子)$/,
+      baseUnit: "個",
+      rates: { "個": 1, "個分": 1, "パック": 10, "g": 1 / 50 },
+      packGuide: (pieces) => {
+        const p = Math.ceil(pieces);
+        return p <= 6 ? `${p}個` : "1パック（10個）";
+      }
+    }
+  ];
+
+  function fractionGuide(name, unit, value) {
+    if (!value || value <= 0) return null;
+    const isFraction = Math.abs(value - Math.round(value)) > 0.01;
+    if (unit === "丁" && /豆腐|木綿|絹/.test(name) && isFraction) {
+      return `${Math.ceil(value)}丁`;
+    }
+    if (unit === "個" && /^(?:卵|たまご|玉子)$/.test(name)) {
+      if (isFraction) return `${Math.ceil(value)}個`;
+      if (value > 6) return "1パック（10個）";
+    }
+    if ((unit === "袋" || unit === "パック") && isFraction) {
+      return `${Math.ceil(value)}${unit}`;
+    }
+    if (unit === "g" && /ひき肉|挽肉|挽き肉|ミンチ/.test(name) && value >= 100) {
+      const packs = Math.ceil(value / 200);
+      return packs <= 1 ? "1パック" : `${packs}パック`;
+    }
+    return null;
+  }
+
+  function combineAmounts(amounts, ingredientName = "") {
+    const list = (amounts || []).filter(Boolean);
+    if (!list.length) return "";
+    const name = String(ingredientName || "").trim();
+    const parsedList = list.map((a) => parseAmountParts(a));
+    const first = parsedList[0];
+
+    // 同一単位かつ同一接頭辞
+    if (first && parsedList.every((p) => p && p.unit === first.unit && p.prefix === first.prefix)) {
+      const total = parsedList.reduce((sum, p) => sum + p.value, 0);
+      const formatted = formatAmountFromParts(first, total);
+      const fg = fractionGuide(name, first.unit, total);
+      return fg ? `${formatted}（目安: ${fg}）` : formatted;
+    }
+
+    // 異なる単位の合算（換算辞書によるグラムまたは基本単位への集約）
+    if (name && parsedList.every((p) => p)) {
+      const conv = INGREDIENT_UNITS.find((c) => c.pattern.test(name));
+      if (conv && parsedList.every((p) => typeof conv.rates[p.unit] === "number")) {
+        const totalBase = parsedList.reduce((sum, p) => sum + (p.value * conv.rates[p.unit]), 0);
+        let formattedBase = "";
+        if (conv.baseUnit === "g") {
+          const roundedG = Math.round(totalBase);
+          formattedBase = `約${roundedG}g`;
+        } else {
+          formattedBase = `約${formatScaledNumber(totalBase)}${conv.baseUnit}`;
+        }
+        const guide = conv.packGuide ? conv.packGuide(totalBase) : "";
+        return guide ? `${formattedBase}（目安: ${guide}）` : formattedBase;
+      }
+    }
+
+    return [...new Set(list)].join(" + ");
+  }
+
   function shopping({
     slots,
     start,
     end,
     scale,
-    combine,
+    combine = combineAmounts,
     pantry = {},
     marks = {},
     manual = {},
@@ -908,7 +1190,7 @@
       return {
         ...g,
         signature,
-        amount: combine(g.amounts),
+        amount: combine ? combine(g.amounts, g.name) : combineAmounts(g.amounts, g.name),
         status,
         recheck: !!mark && mark.status !== "buy" && !covered && !owned,
       };
@@ -1304,6 +1586,11 @@
     shoppingName,
     shoppingKey: (name) => key(shoppingName(name)),
     isBought: (name) => !notPurchased.test(shoppingName(name)),
+    combineAmounts,
+    parseAmountParts,
+    formatAmountFromParts,
+    INGREDIENT_UNITS,
+    fractionGuide,
     curated,
     traits,
     tags,
