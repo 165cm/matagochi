@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261024-widen";
+const APP_VERSION = "20261025-units";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1895,7 +1895,10 @@ function getShoppingChecks() {
 
 function buildShoppingList() { return dailyShopping(); }
 
-function combineAmounts(amounts) {
+function combineAmounts(amounts, ingredientName = "") {
+  if (typeof Lifestyle !== "undefined" && typeof Lifestyle.combineAmounts === "function") {
+    return Lifestyle.combineAmounts(amounts, ingredientName);
+  }
   const parsedList = amounts.map((amount) => parseAmountParts(amount));
   const first = parsedList[0];
   if (first && parsedList.every((parts) => parts && parts.unit === first.unit && parts.prefix === first.prefix)) {
@@ -3944,6 +3947,9 @@ function adjustAmount(amount, delta) {
 }
 
 function parseAmountParts(amount) {
+  if (typeof Lifestyle !== "undefined" && typeof Lifestyle.parseAmountParts === "function") {
+    return Lifestyle.parseAmountParts(amount);
+  }
   const value = String(amount || "").trim();
   const halfMatch = value.match(/^半(.+)$/);
   if (halfMatch) {
@@ -3959,7 +3965,7 @@ function parseAmountParts(amount) {
 }
 
 function amountStep(prefix, unit, value) {
-  if (prefix || /杯|合/.test(unit)) return 0.5;
+  if (/大さじ|小さじ/.test(prefix) || /杯|合/.test(unit)) return 0.5;
   if (/g|ml|ｍｌ|グラム/.test(unit)) {
     if (value >= 100) return 25;
     if (value >= 20) return 10;
