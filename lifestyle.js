@@ -584,12 +584,17 @@
     const need = (r) => SkillDB()?.rate(r).level || 1;
     let challenges = p.skillLevel ? timeline.filter((m) => between(m.date, start) <= 6 && need(m.recipe) > p.skillLevel).length : 0;
     const dayInRound = (date, i) => { const r = (rounds || []).find((x) => x.includes(date)); return r ? r.indexOf(date) : i; };
-    // 使い回し：決まっている日（確定・日付を指定した料理）と、これまでに選んだ日の「余りやすい食材」。同じ買い物のまとまりの中だけ見る。
+    // 使い回し：同じ買い物のまとまりの過去の日（作った・確定した料理）と、決まっている日・これまでに選んだ日の「余りやすい食材」。
     const meals = [];
+    for (const d of (rounds || []).flat()) {
+      if (d >= start || meals.some((m) => m.date === d)) continue;
+      const r = slots[d] && slots[d].status !== "removed" ? slots[d].recipe : timeline.find((m) => m.date === d)?.recipe;
+      if (r) meals.push({ date: d, labels: useUpKeys(r) });
+    }
     for (let i = 0; i < length; i += 1) {
       const d = addDays(start, i);
       const r = slots[d] && slots[d].status !== "removed" ? slots[d].recipe : (!slots[d] ? byId.get(overrides[d]) : null);
-      if (r) meals.push({ date: d, labels: useUpKeys(r) });
+      if (r && !meals.some((m) => m.date === d)) meals.push({ date: d, labels: useUpKeys(r) });
     }
     const sameRound = (a, b) => { const r = (rounds || []).find((x) => x.includes(a)); return r ? r.includes(b) : Math.abs(between(a, b)) <= 3; };
     const days = Array.from({ length }, (_, i) => {

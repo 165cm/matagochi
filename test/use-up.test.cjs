@@ -103,3 +103,21 @@ test("review fix (#147): planReason と献立カードの表示に「🥬 ◯の
   ctx.day0 = plan[0];
   assert.match(run("planReason(day0)"), /🥬 .のキャベツを使い回し/);
 });
+
+test("review fix (#147): 同じ買い物のまとまりの過去の日（昨日作った・確定した料理）とも使い回す", () => {
+  const yesterday = addDays(start, -1);
+  const withCabbage = recipe("z-chicken-cabbage", "鶏とキャベツの塩炒め", ["鶏もも肉", "キャベツ", "塩"]);
+  const without = recipe("a-chicken-zucchini", "鶏とズッキーニの塩炒め", ["鶏もも肉", "ズッキーニ", "塩"]);
+  const plan = L.propose({
+    recipes: [pork, withCabbage, without],
+    profile,
+    start,
+    length: 1,
+    addDays,
+    slots: { [yesterday]: { date: yesterday, status: "cooked", recipe: pork, mealType: "dinner", servings: 2 } },
+    rounds: [[yesterday, start]],
+  });
+  assert.equal(plan[0].candidate.recipe.id, withCabbage.id);
+  assert.equal(plan[0].candidate.useUp.score, 1.5);
+  assert.match(plan[0].candidate.useUp.reason, /🥬 .のキャベツを使い回し/);
+});
