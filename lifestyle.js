@@ -489,6 +489,36 @@
     }
     return { urgency, total, label };
   }
+  // 使い回し：1回の買い物で「丸ごと買うと余りやすい」食材（キャベツ・大根・豆腐など）を、同じ買い物のまとまりの別の日の料理でも使う。
+  // [食材名の正規表現, 表示名]。薬味・缶詰・加工品は数えない（KEEPS）。主食・主菜・味付けの「かぶらない」を壊さないよう、点数は小さな加点だけ。
+  const USE_UP = [
+    [/キャベツ|きゃべつ/, "キャベツ"], [/白菜/, "白菜"], [/大根/, "大根"], [/にんじん|人参/, "にんじん"],
+    [/玉ねぎ|たまねぎ|玉葱|オニオン/, "玉ねぎ"], [/長ねぎ|長ネギ|白ねぎ/, "長ねぎ"], [/ごぼう|牛蒡/, "ごぼう"], [/れんこん|蓮根/, "れんこん"],
+    [/かぼちゃ|南瓜/, "かぼちゃ"], [/ブロッコリー/, "ブロッコリー"], [/ほうれん草|ほうれんそう/, "ほうれん草"], [/小松菜/, "小松菜"],
+    [/ニラ|にら/, "ニラ"], [/もやし/, "もやし"], [/豆腐|とうふ/, "豆腐"], [/なす|ナス|茄子/, "なす"], [/ピーマン/, "ピーマン"],
+    [/きゅうり|胡瓜/, "きゅうり"], [/トマト(?!ケチャップ|ピューレ|ペースト)/, "トマト"], [/じゃがいも|ジャガイモ/, "じゃがいも"],
+    [/さつまいも/, "さつまいも"], [/しめじ/, "しめじ"], [/えのき/, "えのき"], [/しいたけ|椎茸/, "しいたけ"], [/まいたけ|舞茸/, "まいたけ"], [/エリンギ/, "エリンギ"],
+  ];
+  function useUpKeys(recipe = {}) {
+    const found = new Set();
+    for (const i of recipe.ingredients || []) {
+      const name = String(i?.name || "").normalize("NFKC");
+      if (KEEPS.test(name)) continue;
+      const hit = USE_UP.find(([re]) => re.test(name));
+      if (hit) found.add(hit[1]);
+    }
+    return found;
+  }
+  // 同じまとまりの、ほかの日の料理（others: [{ date, labels }]）と重なる食材。最大2つまで、1つにつき 1.5 点（かぶらない点数より小さい）。
+  const USE_UP_PER_ITEM = 1.5, USE_UP_MAX_ITEMS = 2, USE_UP_WD = "日月火水木金土";
+  function useUpFit(recipe, others = []) {
+    const mine = useUpKeys(recipe);
+    const hits = [];
+    for (const o of others) for (const l of o.labels) if (mine.has(l) && !hits.some((h) => h.label === l)) hits.push({ label: l, date: o.date });
+    const used = hits.slice(0, USE_UP_MAX_ITEMS);
+    const reason = used.length ? `🥬 ${USE_UP_WD[new Date(used[0].date + "T12:00:00").getDay()]}の${used[0].label}を使い回し` : "";
+    return { score: used.length * USE_UP_PER_ITEM, hits: used, reason };
+  }
   // 買い物からの日数（その回の何日目か）で、急ぐ食材の料理を前へ・後ろの日には出にくくする。
   // 0日目 +1.5×急ぎ度、1日目 +0.5×、2日目 −0.5×、3日目 −1.5×、そのあと1日ごとに −0.5×（下限 −3×）。
   function freshScore(f, k) { return f.urgency * Math.max(-3, k >= 3 ? -1.5 - (k - 3) * 0.5 : 1.5 - k); }
@@ -554,6 +584,19 @@
     const need = (r) => SkillDB()?.rate(r).level || 1;
     let challenges = p.skillLevel ? timeline.filter((m) => between(m.date, start) <= 6 && need(m.recipe) > p.skillLevel).length : 0;
     const dayInRound = (date, i) => { const r = (rounds || []).find((x) => x.includes(date)); return r ? r.indexOf(date) : i; };
+    // 使い回し：同じ買い物のまとまりの過去の日（作った・確定した料理）と、決まっている日・これまでに選んだ日の「余りやすい食材」。
+    const meals = [];
+    for (const d of (rounds || []).flat()) {
+      if (d >= start || meals.some((m) => m.date === d)) continue;
+      const r = slots[d] && slots[d].status !== "removed" ? slots[d].recipe : timeline.find((m) => m.date === d)?.recipe;
+      if (r) meals.push({ date: d, labels: useUpKeys(r) });
+    }
+    for (let i = 0; i < length; i += 1) {
+      const d = addDays(start, i);
+      const r = slots[d] && slots[d].status !== "removed" ? slots[d].recipe : (!slots[d] ? byId.get(overrides[d]) : null);
+      if (r && !meals.some((m) => m.date === d)) meals.push({ date: d, labels: useUpKeys(r) });
+    }
+    const sameRound = (a, b) => { const r = (rounds || []).find((x) => x.includes(a)); return r ? r.includes(b) : Math.abs(between(a, b)) <= 3; };
     const days = Array.from({ length }, (_, i) => {
       const date = addDays(start, i);
       const slot = slots[date];
@@ -585,6 +628,7 @@
           fresh: freshness(x.recipe),
           season: season(x.recipe, date),
           pref: preferenceOf(x.recipe, date),
+          useUp: useUpFit(x.recipe, meals.filter((m) => m.date !== date && sameRound(date, m.date))),
         }))
         .filter((x) => !x.repeat.exclude)
         .map((x) => ({
@@ -598,6 +642,7 @@
             x.rotation.penalty +
             freshScore(x.fresh, dayInRound(date, i)) +
             x.season.score +
+            x.useUp.score +
             (x.pref?.score || 0) +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
@@ -624,16 +669,18 @@
       const forcedRecipe = overrides[date] && !candidates.some((x) => x.recipe.id === overrides[date]) ? recipes.find((r) => r.id === overrides[date]) : null;
       const forced = forcedRecipe
         ? { recipe: forcedRecipe, ok: true, forced: true, warn: fit(forcedRecipe, p, date).reason === "避けたい食材を含みます" ? "⚠ 避けたい食材あり" : "", score: 0, reasons: [], rotation: rotation(forcedRecipe, date, timeline, between),
-            repeat: repeatFit(forcedRecipe, date, timeline, between, cyclesOf(forcedRecipe)), request: requestOf(forcedRecipe), fresh: freshness(forcedRecipe), season: season(forcedRecipe, date) }
+            repeat: repeatFit(forcedRecipe, date, timeline, between, cyclesOf(forcedRecipe)), request: requestOf(forcedRecipe), fresh: freshness(forcedRecipe), season: season(forcedRecipe, date),
+            useUp: useUpFit(forcedRecipe, meals.filter((m) => m.date !== date && sameRound(date, m.date))) }
         : null;
       const selected =
         pool.find((x) => x.recipe.id === overrides[date]) || candidates.find((x) => x.recipe.id === overrides[date]) || forced || pinned || pool[0];
       if (selected) {
         if (overrides[date] && selected.recipe.id === overrides[date]) selected.chosen = true;
-        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.repeat.reason, selected.rotation.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : "", selected.season.reason, selected.pref?.reason]
+        [selected.request ? `${selected.request.from}のリクエスト` : "", selected.repeat.reason, selected.rotation.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : "", selected.useUp?.reason, selected.season.reason, selected.pref?.reason]
           .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
         if (pinned && selected === pinned) selected.reasons.unshift(`📌 毎週${WD[Number(dow)]}曜`);
         timeline.push({ date, recipe: selected.recipe });
+        if (!meals.some((m) => m.date === date)) meals.push({ date, labels: useUpKeys(selected.recipe) });
         if (used.has(selected.recipe.id)) {
           selected.repeated = true;
           selected.reasons.push("候補が少ないため、もう一度登場");
@@ -652,6 +699,9 @@
       }
       return { date, candidate: selected || null };
     });
+    for (const d of days) {
+      if (d.slot?.recipe) d.useUp = useUpFit(d.slot.recipe, meals.filter((m) => m.date !== d.date && sameRound(d.date, m.date)));
+    }
     return days;
   }
   function normalizeSlots(raw = {}) {
@@ -1145,6 +1195,8 @@
     key,
     fit,
     freshness,
+    useUpKeys,
+    useUpFit,
     propose,
     normalizeSlots,
     mergeMap,
