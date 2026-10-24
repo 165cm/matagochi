@@ -424,6 +424,18 @@ function planMeta(recipe, reasons = []) {
   const minutes = recipe?.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
   return [minutes, ...reasons.filter((r) => !/分目安$|器具を確認/.test(r)).slice(0, 2)].filter(Boolean).join(" · ");
 }
+function widenButtons(dates = []) {
+  if (isViewer()) return "";
+  const hp = typeof hiddenParents === "function" ? hiddenParents() : new Set();
+  const hints = Lifestyle.widenHints({
+    recipes: typeof planRecipes === "function" ? planRecipes() : allDinnerRecipes(),
+    profile: dailyProfile(),
+    dates,
+    cyclesOf: typeof plannedCycles === "function" ? plannedCycles() : () => ({}),
+    autoBlocked: hp.size ? (r) => hp.has(typeof parentKeyOf === "function" ? parentKeyOf(r) : "") : () => false,
+  });
+  return hints.map((h) => dailyButton("life-widen", h.label, `data-key="${h.key}" data-value="${h.value}"`)).join("");
+}
 function renderDailyPlan() {
   const plan = dailyPlan();
   const locks = lockedDates(plan);
@@ -446,7 +458,7 @@ function renderDailyPlan() {
         return renderLockStrip(run);
       }
       if (!recipe)
-        return `<article class="plan-card"><div class="plan-photo yohaku-tile">${yohaku("normal")}${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">条件に合う候補がありません</strong><p class="plan-time">時間・食材・器具をゆるめるか、レシピを追加してください。</p>${dailyButton("life-profile", "条件を確認")}</div></article>`;
+        return `<article class="plan-card"><div class="plan-photo yohaku-tile">${yohaku("normal")}${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">条件に合う候補がありません</strong><p class="plan-time">時間・食材・器具をゆるめるか、レシピを追加してください。</p><div class="plan-controls">${widenButtons([day.date])}${dailyButton("life-profile", "条件を確認")}</div></div></article>`;
       const status = day.slot?.status === "cooked" ? "作った" : day.slot ? "確定" : "";
       const note = carryNote(day.slot) || planReason(day) || (bothLike(recipe) ? "ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe));
       const minutes = recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
@@ -458,7 +470,7 @@ function renderDailyPlan() {
     ;
   // 条件に合う料理が足りず、同じ料理が2回出ている時は、条件をゆるめずにそう伝える（PR 4a・docs/PERSONALIZE_PLAN.md §7.2）。
   const repeats = plan.filter((d) => d.candidate?.repeated && !locks.has(d.date)).length;
-  const shortNote = repeats && !isViewer() ? `<p class="plan-short small" role="status"><span>🔁 合う料理が少なく、同じ料理が${repeats}回出ています ${tip("食べられないもの・時間などの条件はゆるめません。レシピを足すと、ちがう料理が出せます")}</span>${dailyButton("go-view", "レシピを足す", 'data-view="collection"')}</p>` : "";
+  const shortNote = repeats && !isViewer() ? `<p class="plan-short small" role="status"><span>🔁 合う料理が少なく、同じ料理が${repeats}回出ています ${tip("食べられないもの・時間などの条件はゆるめません。レシピを足すと、ちがう料理が出せます")}</span>${widenButtons(plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart && !d.slot).map((d) => d.date))}${dailyButton("go-view", "レシピを足す", 'data-view="collection"')}</p>` : "";
   const cards = shortNote + cardList.map((html, i) => {
     if (!rhythmOn()) return html;
     const date = plan[i].date;
@@ -1343,6 +1355,35 @@ function handleDailyAction(action, data) {
     profileEditing = true;
     profileDraft();
     state.view = "today";
+  }
+  if (action === "life-widen") {
+    const k = data.key, v = data.value;
+    if (k === "weekdayMinutes") {
+      const m = Math.max(5, Math.min(60, Number(v) || 20));
+      state.foodProfile = Lifestyle.profile({ ...state.foodProfile, weekdayMinutes: m });
+      if (state.householdProfile && Object.hasOwn(state.householdProfile, "weekdayMinutes")) state.householdProfile.weekdayMinutes = m;
+      if (state.onboardingDraft) state.onboardingDraft.weekdayMinutes = m;
+      showToast(`平日の調理時間を${m}分以内に広げました。`);
+    } else if (k === "weekendMinutes") {
+      const m = [10, 20, 30, 60].includes(Number(v)) ? Number(v) : 30;
+      state.foodProfile = Lifestyle.profile({ ...state.foodProfile, weekendMinutes: m });
+      if (state.householdProfile && Object.hasOwn(state.householdProfile, "weekendMinutes")) state.householdProfile.weekendMinutes = m;
+      if (state.onboardingDraft) state.onboardingDraft.weekendMinutes = m;
+      showToast(`休日の調理時間を${m}分以内に広げました。`);
+    } else if (k === "skillLevel" && state.skillProfile) {
+      const lvl = Math.max(1, Math.min(5, Number(v) || 1));
+      state.skillProfile = { ...state.skillProfile, level: lvl, updatedAt: nowIso() };
+      showToast(`料理レベルを★${lvl}まで広げました。`);
+    } else if (k === "skill") {
+      state.foodProfile = Lifestyle.profile({ ...state.foodProfile, skill: "any" });
+      if (state.householdProfile && Object.hasOwn(state.householdProfile, "skill")) state.householdProfile.skill = "any";
+      if (state.onboardingDraft) state.onboardingDraft.skill = "any";
+      showToast("かんたん以外の料理も出すようにしました。");
+    }
+    state.planOverrides = {};
+    saveState();
+    render();
+    return true;
   }
   if (action === "life-equipment-group") equipmentGroupIndex = Math.max(0, Math.min(2, Number(data.group) || 0));
   if (action === "life-pantry-toggle") {
