@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-25（手順の動画タイムコード精度改善・保存済みレシピの0円一括補正・料理モードの1タップ微調整）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-25（ファーストビューの整理と定番フォルダ・親の料理名の統合）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 手順のタイムコード精度改善と保存済みレシピへの反映 | レビュー待ち | fix/timecode-accuracy-and-backfill | MM:SS形式＋根拠出力、短尺動画のFPS自動最適化、重複・逆転・密集タイムコードの0円自動細分化、保存済みレシピの一括0円補正、料理モード内の1タップ微調整（-5秒/ここ/+5秒） | api/src/chapters.js, api/src/timecodeCheck.js, api/src/analyzer.js, api/src/timecodes.js, api/src/importRecipe.js, api/src/recipeCatalog.js, api/src/server.js, cook-mode.js, discover.js, daily-ui.js, admin/catalog.html, styles.css, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| ファーストビューの整理と定番フォルダ・親の料理名の統合 | レビュー待ち | claude/firstview-and-concept-cleanup | 献立・今日画面のファーストビュー整理（残っている食材パネルの1行折りたたみ化・補助案内の下部移動）、レシピ詳細の料理グループ枠統合、定番タブへの自動料理グループ表示と1タップ定番登録 | daily-ui.js, folders.js, app.js, styles.css, sw.js, index.html, version.json, test/parents-b.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
@@ -26,6 +26,8 @@
 7. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- ファーストビューの整理と「定番フォルダ・親の料理名」の統合：献立画面のファーストビューで週間ボードと料理カード一覧がすぐ見えるよう補助案内を下部へ移動し、「家に残っている食材」を未選択時は1行に折りたたむ段階的開示に変更。今日画面でも今夜の一品の直下に「今日やること」「明日の献立」を配置。レシピ詳細の「親の料理名」と「定番フォルダ」を1つの枠（`.dish-group-box`）に統合し、「📁 定番」タブに自動でまとまった料理グループ（`autoDishGroups`）と1タップ定番登録（`life-folder-from-dish`）を追加（APP_MAP §53）
 
 - 手順の動画タイムコード精度改善・保存済みレシピの0円一括補正・料理モードの1タップ微調整：AI の動画解析で `MM:SS` 形式＋根拠（`stepCues`）を出力させて秒換算の計算ミスを排除・短尺動画（3分以下 0.5fps／6分以下 0.35fps）のコマ密度を自動で引き上げ・同じ章の時刻が並んだ場合や順番逆転・動画尺超過・密集を文字数と調理時間の重みで0円自動細分化（`refineStepTimes` / `CookMode.refineTimes`）・書き直し手順（`guide`）の時刻引き継ぎ改善・保存済みの過去動画もアプリ側で即座に自動補正＋管理画面に「🔧 保存済みの時刻を0円で一括補正」（`POST /api/admin/timecodes/repair`）・料理モード（`#cook-mode`）に「⏪ -5秒」「📍ここ」「+5秒 ⏩」ボタンと音声操作を追加（APP_MAP §52）
 

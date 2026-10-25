@@ -4092,8 +4092,15 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .rhythm-week .chip-button[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--sage-dark); }
 
 /* ---- 残っている食材・献立を変えた時の買い物の差分（PR 5b） ---- */
-.leftover-panel { display: grid; gap: 8px; margin: 0 0 12px; padding: 12px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); }
-.leftover-panel .quick-sub { margin: 0; }
+.leftover-panel { margin: 0 0 10px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); overflow: hidden; }
+.leftover-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; user-select: none; }
+.leftover-summary::-webkit-details-marker { display: none; }
+.leftover-summary .quick-sub { margin: 0; font-size: 14px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.leftover-badge { padding: 1px 8px; border-radius: 999px; background: #fff1ec; color: var(--sage-dark); font-size: 11.5px; font-weight: 800; border: 1px solid var(--tomato); }
+.leftover-toggle { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.leftover-panel[open] .leftover-summary { padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+.leftover-body { display: grid; gap: 8px; padding: 8px 12px 12px; }
+.leftover-lead { margin: 0; }
 .leftover-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .leftover-chips .chip-button { min-height: 44px; padding: 4px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; }
 .leftover-chips .chip-button[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--sage-dark); }
@@ -4108,10 +4115,19 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .shopping-inline.later-btn { min-width: 52px; font-size: 13px; }
 /* 同じ親（料理名）の作り方の数（APP_MAP §48）。押すと料理名で探す。 */
 button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; border: 1.5px solid var(--line, #efe4d6); border-radius: 999px; background: var(--surface, #fffdf8); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
-/* レシピの詳細：親（料理名）の行（APP_MAP §48）。 */
+/* レシピの詳細：親（料理名）と定番フォルダの統合枠（APP_MAP §48）。 */
+.dish-group-box { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: var(--surface-soft); border: 1px solid var(--line); display: grid; gap: 8px; }
+.dish-group-box .parent-line, .dish-group-box .folder-line { margin: 0; padding: 0; background: none; border-radius: 0; }
+.dish-group-box .parent-line + .folder-line { padding-top: 8px; border-top: 1px dashed var(--line); }
 .parent-line { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: var(--surface-soft); display: grid; gap: 6px; }
 .parent-line p { margin: 0; }
 .parent-line .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.auto-dish-section { margin-top: 14px; display: grid; gap: 8px; }
+.auto-dish-section > p { margin: 0; }
+.auto-dish-card { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.auto-dish-card .folder-card.is-static { padding: 0; border: 0; background: none; cursor: default; }
+.auto-dish-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.auto-dish-actions button { min-height: 36px; padding: 4px 12px; font-size: 13px; }
 
 /* 覚えやすく書き直した手順（AI。APP_MAP §49）：元の手順は各手順の下に小さく「動画では」 */
 .guide-badge { color: var(--muted); }

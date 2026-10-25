@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261025-timecodes";
+const APP_VERSION = "20261025-firstview";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1499,7 +1499,7 @@ function renderCollection() {
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderSaveGuide()}
     ${renderStarterHint()}
-    ${isViewer() ? "" : `<div class="tabs-row"><div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("folders", "📁 定番", folderList().length || null)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>${recipeTab === "creators" || recipeTab === "folders" ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>`}
+    ${isViewer() ? "" : `<div class="tabs-row"><div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("folders", "📁 定番", (folderList().length + autoDishGroups().length) || null)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>${recipeTab === "creators" || recipeTab === "folders" ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>`}
     ${recipeTab === "folders" ? renderFolders() : recipeTab === "creators" ? renderCreators(allSaved) : `${renderFacets(pool)}
     <section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>
     ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}`}
