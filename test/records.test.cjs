@@ -191,3 +191,34 @@ test("review fix (#113): on a day with two records the calendar shows and opens 
   html = run("renderReflection()");
   assert.match(html, /data-id="a" aria-label="10月1日 唐揚げ・さばと豆腐のみそ丼の記録を開く"/);
 });
+
+test("Proposal 10: post-cook quick repeat-cycle chips on Today card, next-day todo rate bar, and staple growth badges & candidates", () => {
+  const run = app();
+  run(`state.recipes.push(${JSON.stringify(RECIPE)});
+       state.mealSlots[today()] = { date: today(), status: "confirmed", servings: 2, updatedAt: nowIso(), recipe: ${JSON.stringify(RECIPE)} };
+       dailyRecord(state.mealSlots[today()]);`);
+  let todayHtml = run("renderToday()");
+  assert.match(todayHtml, /class="tonight-quick-rate"/);
+  assert.match(todayHtml, /🍽 次はいつ食べたい？/);
+  const evalId = run("state.evaluations[0].id");
+  const rater = run("raterNames()[0]");
+  run(`handleDailyAction("life-rate", { id: ${JSON.stringify(evalId)}, member: ${JSON.stringify(rater)}, cycle: "weekly" })`);
+  // 2人分なのでもう1人も答える
+  const rater2 = run("raterNames()[1]");
+  if (rater2) run(`handleDailyAction("life-rate", { id: ${JSON.stringify(evalId)}, member: ${JSON.stringify(rater2)}, cycle: "weekly" })`);
+  todayHtml = run("renderToday()");
+  assert.match(todayHtml, /あと1回作ると「🏆 わが家の定番」入り！/);
+  // ふりかえり画面でも「🌱 もうすぐ定番」として見える
+  let reflHtml = run("renderReflection()");
+  assert.match(reflHtml, /もうすぐ定番/);
+  assert.match(reflHtml, /1回（あと1回！）/);
+  // 2回目を作って「毎週」をつけると「🏆 わが家の定番」に昇格トーストが出る
+  run(`state.evaluations.unshift({ id: "meal-2026-09-20", recipeId: ${JSON.stringify(RECIPE.id)}, recipeTitle: ${JSON.stringify(RECIPE.title)}, cookedAt: "2026-09-20", mealType: "dinner", preferencePending: true, familyRepeatCycles: {}, updatedAt: "2026-09-20T12:00:00Z" });
+       state.evaluations.find((e) => e.id === ${JSON.stringify(evalId)}).familyRepeatCycles = {};
+       state.evaluations.find((e) => e.id === ${JSON.stringify(evalId)}).preferencePending = true;`);
+  run(`handleDailyAction("life-rate", { id: ${JSON.stringify(evalId)}, member: ${JSON.stringify(rater)}, cycle: "weekly" })`);
+  if (rater2) run(`handleDailyAction("life-rate", { id: ${JSON.stringify(evalId)}, member: ${JSON.stringify(rater2)}, cycle: "weekly" })`);
+  assert.match(J(run, "toasts.at(-1)"), /わが家の定番に入りました/);
+  reflHtml = run("renderReflection()");
+  assert.match(reflHtml, /🏆 定番/);
+});
