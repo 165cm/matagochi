@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261025-staples";
+const APP_VERSION = "20261025-dataprotect";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2346,6 +2346,58 @@ function openSetting(id) {
   document.querySelector(`#setting-${id}`)?.scrollIntoView({ block: "start" });
 }
 
+function dataProtectionStatus() {
+  const recipes = state.recipes.length;
+  const evaluations = state.evaluations.length;
+  const total = recipes + evaluations;
+  const cloudSynced = syncEnabled() && Boolean(state.sync?.lastSyncAt);
+  const hasAccount = typeof account !== "undefined" && Boolean(account);
+  const installed = (typeof isInstalledApp === "function" && isInstalledApp()) || (typeof installInfo === "function" && Boolean(installInfo()?.installed));
+  const lastBackup = state.lastBackupAt || "";
+  const recentBackup = Boolean(lastBackup) && daysBetween(lastBackup, today()) < 30;
+  const level = (cloudSynced || recentBackup) ? "safe" : (hasAccount || installed || Boolean(lastBackup)) ? "partial" : "local";
+  const badge = level === "safe" ? "🟢 保護ずみ" : level === "partial" ? "🟡 一部保護" : "🟠 この端末のみ";
+  return { recipes, evaluations, total, cloudSynced, hasAccount, installed, lastBackup, recentBackup, level, badge };
+}
+
+function renderDataProtectionCard() {
+  if (isViewer()) return "";
+  const st = dataProtectionStatus();
+  const sub = st.cloudSynced
+    ? `クラウド共有中（最終同期：${formatSyncTime(state.sync.lastSyncAt)}）· 好み・食材制限はバックアップファイルにも残せます`
+    : st.recentBackup
+      ? `最終バックアップ：${formatDate(st.lastBackup)} · 端末変更時もファイルから復元できます`
+      : st.total
+        ? `レシピ${st.recipes}品・記録${st.evaluations}回がこのブラウザだけに保存されています。消去や機種変更に備えて保護できます。`
+        : "レシピや記録が増えたら、ファイル書き出しやクラウド共有で保護できます。";
+  const shareBtn = typeof navigator !== "undefined" && typeof navigator.share === "function"
+    ? `<button class="secondary-button" type="button" data-action="share-backup">📤 共有・ファイル保存</button>`
+    : "";
+  const cloudBtn = !st.cloudSynced && typeof shareAvailable === "function" && shareAvailable()
+    ? `<button class="secondary-button" type="button" data-action="life-share-open">☁️ 家族・別端末と共有</button>`
+    : "";
+  return `
+    <section class="panel data-protection-card is-${st.level}" aria-label="データの保護状態">
+      <div class="dp-head">
+        <strong>🛡 データの保護状態</strong>
+        <span class="dp-badge is-${st.level}">${st.badge}</span>
+      </div>
+      <p class="muted small dp-sub">${escapeHtml(sub)}</p>
+      <div class="dp-pills" role="list" aria-label="保護の内訳">
+        <span class="dp-pill ${st.cloudSynced ? "is-on" : ""}" role="listitem">${st.cloudSynced ? "✓" : "○"} クラウド共有</span>
+        <span class="dp-pill ${st.recentBackup ? "is-on" : ""}" role="listitem">${st.recentBackup ? "✓" : "○"} バックアップ${st.lastBackup ? `（${escapeHtml(formatDate(st.lastBackup))}）` : ""}</span>
+        <span class="dp-pill ${st.hasAccount ? "is-on" : ""}" role="listitem">${st.hasAccount ? "✓" : "○"} アカウント</span>
+        <span class="dp-pill ${st.installed ? "is-on" : ""}" role="listitem">${st.installed ? "✓" : "○"} ホーム画面</span>
+      </div>
+      <div class="actions dp-actions">
+        <button class="primary-button" type="button" data-action="export-data">💾 バックアップを保存</button>
+        ${shareBtn}
+        ${cloudBtn}
+      </div>
+    </section>
+  `;
+}
+
 function renderSettings() {
   if (isViewer()) return `
     ${renderAccountPanel()}
@@ -2360,6 +2412,7 @@ function renderSettings() {
   return `
     ${betaNote()}
     ${renderAccountPanel()}
+    ${renderDataProtectionCard()}
     <section class="settings-list" aria-label="設定">
     ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 12 ? "disabled" : ""}>＋</button></div></div>
       ${(() => { const p = dailyProfile(); return `<dl class="planning-summary"><div><dt>平日の時間</dt><dd>${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"}</dd></div><div><dt>食べられない</dt><dd>${escapeHtml(p.restrictions.join("・") || "未指定")}</dd></div><div><dt>苦手</dt><dd>${escapeHtml(p.dislikes.join("・") || "未指定")}</dd></div></dl>`; })()}
@@ -2384,6 +2437,7 @@ function renderSettings() {
       <p class="muted small">前回の書き出し: ${state.lastBackupAt ? formatDate(state.lastBackupAt) : "まだありません"}</p>
       <div class="actions">
         <button class="primary-button" type="button" data-action="export-data">書き出す</button>
+        ${typeof navigator !== "undefined" && typeof navigator.share === "function" ? '<button class="secondary-button" type="button" data-action="share-backup">共有・ファイル保存</button>' : ""}
         <button class="secondary-button" type="button" data-action="import-data">読み込む</button>
       </div>
       <input id="import-file" type="file" accept="application/json,.json" hidden>`)}
@@ -3118,6 +3172,11 @@ async function handleAction(event) {
     exportData();
   }
 
+  if (action === "share-backup") {
+    await shareBackupData();
+    return;
+  }
+
   if (action === "sync-connect") {
     await connectSync();
     return;
@@ -3498,6 +3557,27 @@ function exportData() {
   render();
 }
 
+async function shareBackupData() {
+  const json = JSON.stringify(state, null, 2);
+  const fileName = `matagochi-backup-${today()}.json`;
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof File === "function") {
+      const file = new File([json], fileName, { type: "application/json" });
+      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: `リピごち バックアップ（${today()}）` });
+        state.lastBackupAt = today();
+        saveState();
+        showToast("バックアップを共有・保存しました。");
+        render();
+        return;
+      }
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+  }
+  exportData();
+}
+
 function backupReminderDue() {
   if (!state.recipes.length && !state.evaluations.length) return false;
   // 同期済みならサーバー側にもコピーがあるので、バックアップ催促は控える
@@ -3508,20 +3588,29 @@ function backupReminderDue() {
 }
 
 function renderBackupReminder() {
-  if (!backupReminderDue()) return "";
+  if (!backupReminderDue() || isViewer()) return "";
   const lastText = state.lastBackupAt
     ? `前回の書き出しは${formatDate(state.lastBackupAt)}です。`
     : "まだ一度も書き出していません。";
+  const countText = `レシピ${state.recipes.length}品・記録${state.evaluations.length}回`;
+  const shareBtn = typeof navigator !== "undefined" && typeof navigator.share === "function"
+    ? `<button class="secondary-button" type="button" data-action="share-backup">📤 共有・ファイル保存</button>`
+    : "";
+  const syncBtn = typeof shareAvailable === "function" && shareAvailable() && !syncEnabled()
+    ? `<button class="secondary-button" type="button" data-action="life-share-open">☁️ クラウド共有</button>`
+    : `<button class="secondary-button" type="button" data-action="go-view" data-view="settings">⚙️ 設定・引き継ぎ</button>`;
   return `
-    <section class="panel backup-reminder">
+    <section class="panel backup-reminder" role="region" aria-label="バックアップのおすすめ">
       <div class="section-head">
         <div>
-          <h3>バックアップのおすすめ</h3>
-          <p>データはこの端末にだけ保存されています。${lastText}</p>
+          <h3>🛡 バックアップのおすすめ（${escapeHtml(countText)}）</h3>
+          <p>データはこの端末にだけ保存されています。${escapeHtml(lastText)}</p>
         </div>
       </div>
       <div class="actions">
-        <button class="primary-button" type="button" data-action="export-data">いま書き出す</button>
+        <button class="primary-button" type="button" data-action="export-data">💾 いま書き出す</button>
+        ${shareBtn}
+        ${syncBtn}
         <button class="secondary-button" type="button" data-action="snooze-backup">2週間後に再通知</button>
       </div>
     </section>

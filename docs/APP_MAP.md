@@ -922,3 +922,11 @@ MVP の間は、読み取りの決まりを変えるたびに、前に集めた�
   - ふりかえり画面の「🏆 わが家の定番」で、作った回数に応じた成長ランクバッジ（2回：`🏆 定番`、3〜4回：`⭐ 常連`、5回以上：`👑 殿堂`）を表示。
   - 2回目に「明日でも／毎週」の評価がついて定番入りした瞬間には、「`🏆「◯◯」がわが家の定番に入りました！`」とお祝いトーストを表示。
   - まだ1回しか作っていないが「明日でも／毎週」の評価がついた料理を「`🌱 もうすぐ定番（あと1回作ると定番入り！）`」（`stapleCandidates`）として表示し、定番図鑑が育っていく楽しみを可視化する。
+
+## 55. データ保護ステータスと自然なバックアップ導線（提案11）
+
+- **設定画面の「🛡 データの保護状態」カード（`dataProtectionStatus` / `renderDataProtectionCard` in `app.js`）**
+  - クラウド共有（`syncEnabled() && state.sync.lastSyncAt`）・直近30日以内のバックアップファイル作成（`state.lastBackupAt`）・アカウント登録（`account`）・ホーム画面追加（`isInstalledApp`）の4つの保護状態を一目でわかるバッジ（`🟢 保護ずみ`／`🟡 一部保護`／`🟠 この端末のみ`）と内訳ピルで表示する。
+  - カード上から1タップで「`💾 バックアップを保存`」（`export-data`）、「`📤 共有・ファイル保存`」（`share-backup`：Web Share API対応端末でファイルやKeepメモ等に直接保存）、「`☁️ 家族・別端末と共有`」（`life-share-open`）を実行できる。
+- **日常導線への自然な組み込み（`renderBackupReminder` / `renderTodayTodos` / `renderReflection`）**
+  - レシピと記録の合計が3件以上たまり、クラウド未同期かつ14日以上バックアップがない場合（`backupReminderDue()`）、レシピ一覧（`renderCollection`）だけでなく、ふりかえり画面（`renderReflection`）および今日画面の「今日やること」（`renderTodayTodos` の `.is-backup-row`）にも控えめに案内を表示し、1タップで書き出しまたは2週間スヌーズ（`snooze-backup`）できる。
