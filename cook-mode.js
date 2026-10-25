@@ -418,7 +418,7 @@ const CookMode = (() => {
     const box = el?.querySelector(".cm-voice");
     if (!box) return;
     el.classList.toggle("voice-on", voice.on && voice.status === "ready");
-    const privacy = typeof tip === "function" ? tip("🎙️ 声で操作：「次へ」「戻る」「タイマー」「ストップ」などと話しかけて操作できます。音声はスマホの外に送りません") : "";
+    const privacy = typeof tip === "function" ? tip("🎙️ 声で操作：声を聞き取りやすくするため動画は消音になります。「次へ」「戻る」「タイマー」「ストップ」などと話しかけて操作できます。音声はスマホの外に送りません") : "";
     box.innerHTML = `<button type="button" class="cm-voice-btn ${voice.on ? "is-active" : ""}" data-cook-mode="voice" aria-pressed="${voice.on}" aria-label="${voice.on ? "声で操作をやめる" : "声で操作する"}" ${voice.status === "loading" ? "disabled" : ""}>${voice.status === "loading" ? "⏳ 準備中" : voice.on ? "🎙️ 操作中" : "🎙️ 声で操作"}</button>${privacy}`;
   }
 
@@ -434,6 +434,7 @@ const CookMode = (() => {
     voice.on = true;
     voice.status = "loading";
     drawVoice();
+    try { post("mute"); } catch {}
 
     try {
       const rec = new SpeechRec();
@@ -502,6 +503,7 @@ const CookMode = (() => {
   function voiceStop() {
     voice.on = false;
     voice.listening = false;
+    try { post("unMute"); } catch {}
     if (voice.rec) {
       try { voice.rec.stop(); } catch {}
       voice.rec = null;
