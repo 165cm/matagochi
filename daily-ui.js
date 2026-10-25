@@ -703,6 +703,9 @@ function renderTodayTodos() {
   const talk = renderTalkTodo();
   if (talk) rows.push(talk);
   if (!state.foodProfile?.completed) rows.push(`<div class="todo-row"><span>✍️</span><p>好みとキッチンを教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`);
+  if (typeof backupReminderDue === "function" && backupReminderDue() && !isViewer()) {
+    rows.push(`<div class="todo-row is-backup-row"><span>🛡</span><p><b>レシピ${state.recipes.length}品・記録${state.evaluations.length}回</b>をバックアップして保護</p>${dailyButton("export-data", "保存する")}<button type="button" class="todo-x" data-action="snooze-backup" aria-label="2週間後に再通知">×</button></div>`);
+  }
   return rows.length ? `<section class="today-todos" aria-label="今日やること"><h3 class="section-title"><span class="marker">今日やること</span></h3>${rows.join("")}</section>` : "";
 }
 function plan0Undecided() {
@@ -1139,7 +1142,8 @@ function renderReflection() {
   ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
   ${reflMonth === 0 ? renderMenuAlbum() : ""}
   <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3>${list.length ? `<div class="view-switch" role="group" aria-label="見せ方"><button type="button" class="chip-button" data-action="life-refl-view" data-view="cal" aria-pressed="${reflView === "cal"}">📅 カレンダー</button><button type="button" class="chip-button" data-action="life-refl-view" data-view="grid" aria-pressed="${reflView === "grid"}">🖼 写真</button></div>` : ""}</div>
-  ${tiles ? (reflView === "cal" ? renderRecordCalendar(list, month.key, recipeOf, photoOf) : `<div class="table-grid">${tiles}</div>`) + '<p class="muted small">タップで記録を開く</p>' : `<div class="empty-state">${yohaku("bowl")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>`;
+  ${tiles ? (reflView === "cal" ? renderRecordCalendar(list, month.key, recipeOf, photoOf) : `<div class="table-grid">${tiles}</div>`) + '<p class="muted small">タップで記録を開く</p>' : `<div class="empty-state">${yohaku("bowl")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>
+  ${reflMonth === 0 && typeof renderBackupReminder === "function" ? renderBackupReminder() : ""}`;
 }
 function saveOwnRecipe(recipe) {
   const existing = state.recipes.find(

@@ -222,3 +222,26 @@ test("Proposal 10: post-cook quick repeat-cycle chips on Today card, next-day to
   reflHtml = run("renderReflection()");
   assert.match(reflHtml, /🏆 定番/);
 });
+
+test("Proposal 11: data protection status card in Settings, contextual backup reminder in Reflection & Today todos, and snooze / backup completion", () => {
+  const run = app();
+  setup(run, [
+    evalOf("e1", "2026-09-10", { me: "weekly" }),
+    evalOf("e2", "2026-09-20", { me: "weekly" }),
+  ]);
+  // 1 recipe + 2 evaluations = 3 items, no sync and no backup -> level is "local" and backupReminderDue() is true
+  const st1 = J(run, "dataProtectionStatus()");
+  assert.equal(st1.level, "local");
+  assert.equal(J(run, "backupReminderDue()"), true);
+  assert.match(run("renderSettings()"), /🛡 データの保護状態[\s\S]*🟠 この端末のみ/);
+  assert.match(run("renderReflection()"), /🛡 バックアップのおすすめ（レシピ1品・記録2回）/);
+  assert.match(run("renderTodayTodos()"), /is-backup-row[\s\S]*レシピ1品・記録2回<\/b>をバックアップして保護/);
+  // バックアップ実施後は level が "safe" になり、催促は消える
+  run("state.lastBackupAt = today()");
+  const st2 = J(run, "dataProtectionStatus()");
+  assert.equal(st2.level, "safe");
+  assert.equal(J(run, "backupReminderDue()"), false);
+  assert.match(run("renderSettings()"), /🛡 データの保護状態[\s\S]*🟢 保護ずみ/);
+  assert.doesNotMatch(run("renderReflection()"), /バックアップのおすすめ/);
+  assert.doesNotMatch(run("renderTodayTodos()"), /is-backup-row/);
+});

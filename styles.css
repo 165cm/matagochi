@@ -4196,3 +4196,19 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .staple-card.is-growing .staple-candidates { margin-top: 0; padding-top: 0; border-top: 0; }
 .staple-cand-head { margin: 0; font-size: 13px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .staple-list.is-cand li { opacity: 0.92; }
+
+/* データ保護ステータス＆軽量バックアップ導線（提案11） */
+.data-protection-card { display: grid; gap: 8px; padding: 14px 16px; margin-bottom: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); }
+.data-protection-card.is-safe { border-color: #b7dfc5; background: #f6fbf7; }
+.data-protection-card.is-local { border-color: #f0d090; background: #fffaf0; }
+.dp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14.5px; }
+.dp-badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #fff3d6; color: #8a5300; border: 1px solid #f0d090; }
+.dp-badge.is-safe { background: #e6f5ec; color: #1f6b3b; border-color: #b7dfc5; }
+.dp-badge.is-local { background: #ffeed9; color: #9a4b00; border-color: #f2c48d; }
+.dp-sub { margin: 0; line-height: 1.45; }
+.dp-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.dp-pill { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; background: var(--surface-soft); color: var(--muted); border: 1px solid var(--line); }
+.dp-pill.is-on { background: #eef8f1; color: #1f6b3b; border-color: #bfe3cb; font-weight: 700; }
+.dp-actions { margin-top: 2px; }
+.todo-row.is-backup-row { position: relative; padding-right: 36px; }
+.todo-row.is-backup-row .todo-x { position: absolute; top: 6px; right: 6px; }
