@@ -245,7 +245,7 @@
       <div id="rl-list" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div>
     </section>
     <section style="margin-top:12px">
-      <div class="head"><h2>手順の時刻の点検（0円）</h2><div class="row"><button type="button" class="quiet small" id="gd-pilot">✍ 書き直しを10品で試す（約1円/品）</button><button type="button" class="quiet small" id="tc-reread">手順10個を読み直す（約1円/品）</button><button type="button" class="quiet small" id="tc-run">点検する</button></div></div>
+      <div class="head"><h2>手順の時刻の点検（0円）</h2><div class="row"><button type="button" class="quiet small" id="gd-pilot">✍ 書き直しを10品で試す（約1円/品）</button><button type="button" class="quiet small" id="tc-reread">手順10個を読み直す（約1円/品）</button><button type="button" class="quiet small" id="tc-repair">🔧 保存済みの時刻を0円で一括補正</button><button type="button" class="quiet small" id="tc-run">点検する</button></div></div>
       <p class="meta">新着の全部の「▶ 時刻」を、順番・動画の長さ・AI が見ていない後半・固まり・抜けで点検します（AI・検索は使いません）。手順がちょうど10個のレシピ（以前の上限で切れているかも）も出します。行を押すとレシピを開いて直せます。</p>
       <div id="tc-check"></div>
     </section>
@@ -727,6 +727,23 @@
     finally { btn.disabled = false; }
   }
   document.getElementById("tc-run").addEventListener("click", runTimecodeCheck);
+  // 保存済みの過去動画のタイムコードを0円で一括補正（順番の逆転・同じ章時刻の分割・動画長超過・密集・空白を按分補間）。
+  document.getElementById("tc-repair").addEventListener("click", async () => {
+    const btn = document.getElementById("tc-repair"), box = document.getElementById("tc-check");
+    if (!confirm("すでに保存済みの過去動画の時刻（同じ章時刻の重複・順番の逆転・空白など）を0円で一括補正します。よろしいですか？（人が手で直した時刻は変えません）")) return;
+    btn.disabled = true;
+    box.replaceChildren(el("p", "保存済みの時刻を補正しています…", "meta"));
+    const my = session;
+    try {
+      const d = await api("/api/admin/timecodes/repair", {});
+      if (my !== session) return;
+      box.replaceChildren(el("p", `✓ 補正しました：確認 ${d.checked}品のうち ${d.repaired}品を補正（章の重複分割 ${d.coarseFixed || 0}品）。続けて「点検する」で最新の結果を見られます。`, "meta"));
+    } catch (error) {
+      box.replaceChildren(el("p", error.message));
+    } finally {
+      btn.disabled = false;
+    }
+  });
   // 手順がちょうど10個のレシピ（説明欄から読んだ・まだ読み直していない）を、5品ずつ説明欄から読み直す（2026-10-04）。
   document.getElementById("tc-reread").addEventListener("click", async () => {
     const btn = document.getElementById("tc-reread"), box = document.getElementById("tc-check");
@@ -985,7 +1002,21 @@
       } catch (error) { fixNote.textContent = error.message; }
       finally { ra.disabled = false; }
     });
-    fixRow.append(rr, ra, fixNote); body.append(fixRow);
+    const rp = el("button", "🔧 0円で自動補正", "quiet small"); rp.type = "button";
+    rp.addEventListener("click", async () => {
+      rp.disabled = true; fixNote.textContent = "補正しています…";
+      try {
+        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/repair`, {});
+        if (x.changed && Array.isArray(x.after)) {
+          x.after.forEach((t, i) => { if (inputs[i]) { inputs[i].value = sec(t); inputs[i].classList.remove("is-bad"); inputs[i].classList.add("is-new"); } });
+          fixNote.textContent = "✓ 順番・重複・空白を0円で補正して保存しました。";
+        } else {
+          fixNote.textContent = "補正が必要な箇所はありませんでした。";
+        }
+      } catch (error) { fixNote.textContent = error.message; }
+      finally { rp.disabled = false; }
+    });
+    fixRow.append(rr, ra, rp, fixNote); body.append(fixRow);
     const ol = el("ol", undefined, "steps");
     const inputs = [];
     (r.steps || []).forEach((step, i) => {

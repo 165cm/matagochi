@@ -204,16 +204,187 @@ const CookMode = (() => {
   }
 
   // ---- 🍳 料理モード ----
-  // recipe: { title, steps, times[秒], videoId, shorts, ingredients, amountOf }
-  let recipe = null, at = -1, loop = true, showAll = false, frame = null, ready = false, lastSeek = 0;
-  function setRecipe(r) { recipe = r; }
+  // recipe: { title, steps, times[秒], videoId, shorts, ingredients, amountOf, onTimeFix }
+  let recipe = null, at = -1, loop = true, showAll = false, frame = null, ready = false, lastSeek = 0, videoTime = null, localTimes = {};
+  function parseTime(raw) {
+    const val = raw && typeof raw === "object" ? (raw.time ?? raw.seconds ?? raw.start ?? null) : raw;
+    if (val === null || val === undefined || val === "" || typeof val === "boolean") return null;
+    if (typeof val === "number") return Number.isFinite(val) && val >= 0 && val < 36_000 ? Math.floor(val) : null;
+    if (typeof val !== "string") return null;
+    const s = val.normalize("NFKC").trim();
+    if (!s) return null;
+    const colon = s.match(/^(?:(\d{1,2}):)?(\d{1,3}):(\d{2})(?:\.\d+)?$/);
+    if (colon) {
+      const [, h, m, sec] = colon;
+      if (Number(sec) >= 60) return null;
+      const total = (h ? Number(h) * 3600 : 0) + Number(m) * 60 + Number(sec);
+      return total >= 0 && total < 36_000 ? Math.floor(total) : null;
+    }
+    const num = s.match(/^(\d+(?:\.\d+)?)\s*s?$/i);
+    if (num) {
+      const n = Number(num[1]);
+      return Number.isFinite(n) && n >= 0 && n < 36_000 ? Math.floor(n) : null;
+    }
+    return null;
+  }
+  function stepWeight(step) {
+    const s = String(step || "").trim();
+    if (!s) return 0;
+    const action = /(切る|炒める|焼く|煮る|揚げる|茹でる|ゆでる|蒸す|混ぜる|こねる|包む|盛る|漬ける|冷やす|温める)/.test(s) ? 15 : 0;
+    return 10 + Math.min(60, s.length) + action;
+  }
+  // 保存済みレシピや大まかな章時刻の自動補正：逆転（order）・重複（same/coarse）・密集（cluster）を按分補間する。
+  function refineTimes(steps = [], rawTimes = [], { durationSeconds = null } = {}) {
+    const n = Math.max(Array.isArray(steps) ? steps.length : 0, Array.isArray(rawTimes) ? rawTimes.length : 0);
+    if (!n) return [];
+    const dur = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.floor(durationSeconds) : null;
+    const list = Array.from({ length: n }, (_, i) => String(steps?.[i] ?? `手順${i + 1}`).trim());
+    const t = list.map((s, i) => (!s ? null : parseTime(Array.isArray(rawTimes) ? rawTimes[i] : null)));
+    if (!t.some((x) => x !== null)) return t;
+    const needsFill = new Set();
+    if (dur !== null) {
+      t.forEach((x, i) => {
+        if (x !== null && x >= dur) { t[i] = null; needsFill.add(i); }
+      });
+    }
+    const validIdx = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+    if (validIdx.length >= 2) {
+      let inv = false;
+      for (let k = 1; k < validIdx.length; k++) if (t[validIdx[k]] < t[validIdx[k - 1]]) { inv = true; break; }
+      if (inv) {
+        const m = validIdx.length, dp = new Array(m).fill(1), prev = new Array(m).fill(-1);
+        let best = 0;
+        for (let i = 1; i < m; i++) {
+          for (let j = 0; j < i; j++) if (t[validIdx[j]] <= t[validIdx[i]] && dp[j] + 1 >= dp[i]) { dp[i] = dp[j] + 1; prev[i] = j; }
+          if (dp[i] >= dp[best]) best = i;
+        }
+        const keep = new Set();
+        for (let c = best; c >= 0; c = prev[c]) keep.add(validIdx[c]);
+        for (const idx of validIdx) if (!keep.has(idx)) { t[idx] = null; needsFill.add(idx); }
+      }
+    }
+    const afterOrder = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+    const maxKnown = afterOrder.length ? Math.max(...afterOrder.map((i) => t[i])) : 0;
+    for (let k = 0; k + 3 < afterOrder.length; k++) {
+      const i0 = afterOrder[k], i3 = afterOrder[k + 3];
+      if (t[i0] !== null && t[i3] !== null && t[i3] - t[i0] < 30) {
+        let endIdx = k + 3;
+        while (endIdx + 1 < afterOrder.length && t[afterOrder[endIdx + 1]] - t[i0] < 30) endIdx += 1;
+        const hasLaterAnchor = endIdx + 1 < afterOrder.length && t[afterOrder[endIdx + 1]] - t[i0] >= 30;
+        const hasDurationRoom = dur !== null && dur >= t[i0] + 60;
+        if (hasLaterAnchor || hasDurationRoom) {
+          for (let c = k + 1; c <= endIdx; c++) { t[afterOrder[c]] = null; needsFill.add(afterOrder[c]); }
+        }
+        k = endIdx;
+      }
+    }
+    let lastSeen = null;
+    for (let i = 0; i < n; i++) {
+      if (t[i] === null) continue;
+      if (lastSeen !== null && t[i] === lastSeen) { t[i] = null; needsFill.add(i); }
+      else lastSeen = t[i];
+    }
+    if (!needsFill.size) return t;
+    // 動画の長さ（dur）が不明な時は、既存の最大時刻（maxKnown）を超えて末尾へ広げないよう終端アンカーを固定する
+    if (dur === null && maxKnown >= n) {
+      const curAnchors = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+      const lastA = curAnchors.length ? curAnchors[curAnchors.length - 1] : -1;
+      const trailingFill = [...needsFill].filter((i) => i > lastA && list[i]).sort((a, b) => a - b);
+      if (trailingFill.length) {
+        const endIdx = trailingFill[trailingFill.length - 1];
+        for (const a of curAnchors) if (t[a] >= maxKnown) { t[a] = null; needsFill.add(a); }
+        t[endIdx] = maxKnown;
+        needsFill.delete(endIdx);
+      }
+    }
+    const anchors = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+    if (!anchors.length) return t;
+    const firstA = anchors[0];
+    const leading = [];
+    for (let i = 0; i < firstA; i++) if (needsFill.has(i) && list[i]) leading.push(i);
+    if (leading.length) {
+      const endT = t[firstA], startT = Math.max(0, endT - leading.length * 25);
+      const group = [...leading, firstA], weights = group.map((idx) => stepWeight(list[idx]) || 10), totalW = weights.reduce((a, b) => a + b, 0) || 1;
+      let wAcc = 0;
+      for (let k = 0; k < leading.length; k++) {
+        const rawT = startT + ((endT - startT) * wAcc) / totalW;
+        const prevT = k === 0 ? startT : t[leading[k - 1]] + 1;
+        t[leading[k]] = Math.max(0, Math.min(Math.max(0, endT - (leading.length - k)), Math.max(prevT, Math.round(rawT))));
+        wAcc += weights[k];
+      }
+    }
+    for (let aIdx = 0; aIdx + 1 < anchors.length; aIdx++) {
+      const left = anchors[aIdx], right = anchors[aIdx + 1], mid = [];
+      for (let i = left + 1; i < right; i++) if (needsFill.has(i) && list[i]) mid.push(i);
+      if (!mid.length) continue;
+      const startT = t[left], endT = t[right], span = Math.max(mid.length + 1, endT - startT);
+      const group = [left, ...mid], weights = group.map((idx) => stepWeight(list[idx]) || 10), totalW = weights.reduce((a, b) => a + b, 0) || 1;
+      let wAcc = weights[0];
+      for (let k = 0; k < mid.length; k++) {
+        const rawT = startT + (span * wAcc) / totalW;
+        const prevT = k === 0 ? startT + 1 : t[mid[k - 1]] + 1;
+        t[mid[k]] = Math.min(Math.max(prevT, endT - (mid.length - k)), Math.max(prevT, Math.round(rawT)));
+        wAcc += weights[k + 1];
+      }
+    }
+    const lastA = anchors[anchors.length - 1], trailing = [];
+    for (let i = lastA + 1; i < n; i++) if (needsFill.has(i) && list[i]) trailing.push(i);
+    if (trailing.length) {
+      const startT = t[lastA], defaultSpan = (trailing.length + 1) * 35;
+      const endT = dur !== null && dur > startT + 2 ? Math.min(dur - 1, startT + defaultSpan) : Math.min(35_999, startT + defaultSpan);
+      const span = Math.max(trailing.length + 1, endT - startT);
+      const group = [lastA, ...trailing], weights = group.map((idx) => stepWeight(list[idx]) || 10), totalW = weights.reduce((a, b) => a + b, 0) || 1;
+      let wAcc = weights[0];
+      for (let k = 0; k < trailing.length; k++) {
+        const rawT = startT + (span * wAcc) / totalW;
+        const prevT = k === 0 ? startT + 1 : t[trailing[k - 1]] + 1;
+        const clamped = dur !== null ? Math.min(dur - 1, Math.max(prevT, Math.round(rawT))) : Math.max(prevT, Math.round(rawT));
+        t[trailing[k]] = Math.min(35_999, clamped);
+        wAcc += weights[k + 1];
+      }
+    }
+    return t;
+  }
+  function setRecipe(r) {
+    if (recipe?.videoId !== r?.videoId || JSON.stringify(recipe?.steps) !== JSON.stringify(r?.steps)) {
+      localTimes = {};
+      videoTime = null;
+    }
+    recipe = r;
+  }
+  function currentTimes() {
+    const raw = recipe?.timesOf?.() || recipe?.times || [];
+    const fixed = typeof recipe?.timesFixed === "function" ? !!recipe.timesFixed() : !!recipe?.timesFixed;
+    const hasLocal = Object.keys(localTimes).some((k) => Number.isFinite(localTimes[k]));
+    const base = (fixed || hasLocal)
+      ? (recipe?.steps || []).map((_, i) => parseTime(raw[i]))
+      : refineTimes(recipe?.steps || [], raw, { durationSeconds: recipe?.durationSeconds });
+    return base.map((v, idx) => (localTimes[idx] !== undefined ? localTimes[idx] : v));
+  }
   // その手順の場面：始まり＝その手順の時刻、終わり＝次に時刻がある手順の始まり。
   function segment(i) {
-    const times = recipe?.timesOf?.() || recipe?.times || [];
+    const times = currentTimes();
     const s = Number.isFinite(times[i]) ? times[i] : null;
     if (s == null) return null;
     const next = times.slice(i + 1).find((t) => Number.isFinite(t) && t > s);
     return { start: s, end: next ?? null };
+  }
+  function nudgeTime(kind) {
+    if (at < 0 || !recipe) return;
+    const seg = segment(at);
+    const cur = seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0);
+    let nextSec = cur;
+    if (kind === "time-minus") nextSec = Math.max(0, cur - 5);
+    else if (kind === "time-plus") nextSec = Math.min(35_999, cur + 5);
+    else if (kind === "time-here") {
+      if (Number.isFinite(videoTime)) nextSec = Math.max(0, Math.floor(videoTime) - 1);
+      else if (seg) nextSec = seg.start;
+    }
+    localTimes[at] = nextSec;
+    try { recipe.onTimeFix?.(at, nextSec); } catch {}
+    drawMode();
+    seekTo(at);
+    flash(`🔁 始まりを ${fmt(nextSec)} に調整`);
   }
   const hasVideo = () => !!recipe?.videoId;
   function post(func, args = []) { frame?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*"); }
@@ -224,6 +395,7 @@ const CookMode = (() => {
     if (ready) { post("seekTo", [seg.start, true]); post("playVideo"); }
   }
   function drawMode() {
+    if (typeof document === "undefined" || !document.getElementById) return;
     let el = document.getElementById("cook-mode");
     if (at < 0 || !recipe) { el?.remove(); frame = null; document.body.classList.remove("cook-mode-open"); return; }
     const steps = recipe.steps || [];
@@ -252,7 +424,9 @@ const CookMode = (() => {
     const usesList = [...u.items.map((x) => `<li><span>${escapeHtml(x.name)}</span><b>${escapeHtml(amount(x))}</b></li>`),
       ...u.groups.map((g) => `<li class="cm-group"><p>🥣 ${escapeHtml(groupLabel(g.group))}</p><ul>${g.items.map((x) => `<li><span>${escapeHtml(x.name)}</span><b>${escapeHtml(amount(x))}</b></li>`).join("")}</ul></li>`)].join("");
     const riceAlert = recipe.staple === "other" && at === 0 ? `<div class="cm-rice-alert"><span class="cm-rice-icon" aria-hidden="true">🍚</span><span>ごはん（主食）は準備できていますか？</span>${recipe.side ? `<b class="cm-side-tag">🥢 添え物：${escapeHtml(recipe.side)}</b>` : ""}</div>` : "";
-    el.querySelector(".cm-body").innerHTML = `${riceAlert}<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`, { thumb: true })}</p>
+    const curSeg = segment(at);
+    const timeBar = hasVideo() ? `<div class="cm-time-bar" role="group" aria-label="動画のループ位置の微調整"><span class="cm-time-range">🔁 ${curSeg ? `${fmt(curSeg.start)} 〜 ${curSeg.end != null ? fmt(curSeg.end) : "最後"}` : "位置未設定"}</span><div class="cm-time-btns"><button type="button" class="cm-time-btn" data-cook-mode="time-minus" aria-label="この手順の始まりを5秒前にする">⏪ -5秒</button><button type="button" class="cm-time-btn cm-time-here" data-cook-mode="time-here" aria-label="いま再生している位置をこの手順の始まりにする">📍ここ</button><button type="button" class="cm-time-btn" data-cook-mode="time-plus" aria-label="この手順の始まりを5秒後にする">+5秒 ⏩</button></div></div>` : "";
+    el.querySelector(".cm-body").innerHTML = `${riceAlert}${timeBar}<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`, { thumb: true })}</p>
       ${showAll ? `<div class="cm-uses is-all"><p class="cm-uses-head">📋 材料ぜんぶ <button type="button" class="link-inline" data-cook-mode="uses">この手順だけ</button></p>${ingredientsHtml(recipe.ingredients, amount, "cm-list")}</div>`
         : `<div class="cm-uses">${usesList ? `<p class="cm-uses-head">🥄 この手順で使う <button type="button" class="link-inline" data-cook-mode="all">ぜんぶ</button></p><ul class="cm-list">${usesList}</ul>` : `<p class="cm-uses-head">🥄 <button type="button" class="link-inline" data-cook-mode="all">材料をぜんぶ見る</button></p>`}</div>`}`;
     el.querySelector('[data-cook-mode="prev"]').disabled = at === 0;
@@ -277,6 +451,7 @@ const CookMode = (() => {
     if (kind === "close") return closeMode();
     if (kind === "prev") at = Math.max(0, at - 1);
     if (kind === "next") { if (at >= n - 1) { closeMode(); try { showToast("🎉 おつかれさま！「作った！」で記録"); } catch {} return; } at += 1; }
+    if (kind === "time-minus" || kind === "time-plus" || kind === "time-here") return nudgeTime(kind);
     if (kind === "hand") { hand.on ? handStop() : handStart(); return; }
     if (kind === "voice") { voice.on ? voiceStop() : voiceStart(); return; }
     if (kind === "coach-start" || kind === "coach-later" || kind === "coach-voice") {
@@ -333,6 +508,15 @@ const CookMode = (() => {
     if (/(材料|ざいりょう|分量|調味料)/.test(s)) {
       return { act: "toggle-uses", label: "材料" };
     }
+    if (/(5秒前|五秒前|少し前|ちょっと前|もっと前|早めて)/.test(s)) {
+      return { act: "time-minus", label: "5秒前へ" };
+    }
+    if (/(5秒後|五秒後|少し後|ちょっと後|もっと後|遅らせて)/.test(s)) {
+      return { act: "time-plus", label: "5秒後へ" };
+    }
+    if (/(ここを始まり|ここから開始|今の場面|いまの場面)/.test(s)) {
+      return { act: "time-here", label: "ここを始まりに" };
+    }
     if (/^(前|前へ|まえ|まえへ|戻る|もどる|戻して|ひとつ前|1つ前)$/.test(s) || /(前へ|戻る|もどして)/.test(s)) {
       return { act: "prev", label: "前へ" };
     }
@@ -374,6 +558,7 @@ const CookMode = (() => {
     if (cmd.act === "prev") return modeOp("prev");
     if (cmd.act === "close") return modeOp("close");
     if (cmd.act === "repeat") return seekTo(at);
+    if (cmd.act === "time-minus" || cmd.act === "time-plus" || cmd.act === "time-here") return nudgeTime(cmd.act);
     if (cmd.act === "toggle-uses") return modeOp(showAll ? "uses" : "all");
     if (cmd.act === "timer") {
       const ringing = timers.filter((t) => t.done);
@@ -414,6 +599,7 @@ const CookMode = (() => {
   }
 
   function drawVoice() {
+    if (typeof document === "undefined" || !document.getElementById) return;
     const el = document.getElementById("cook-mode");
     const box = el?.querySelector(".cm-voice");
     if (!box) return;
@@ -589,6 +775,7 @@ const CookMode = (() => {
     else flash("⏱ この手順に時間はありません");
   }
   function flash(text) {
+    if (typeof document === "undefined" || !document.querySelector) return;
     const box = document.querySelector("#cook-mode .cm-video");
     if (!box) return;
     box.querySelector(".hg-flash")?.remove();
@@ -597,6 +784,7 @@ const CookMode = (() => {
   }
   // ✋ のオン・オフは見出しの ✕ の左。合図は各ボタンの中の絵文字（◀ 前へ✌️・次へ ▶✋・⏰3分👍）。
   function drawHand() {
+    if (typeof document === "undefined" || !document.getElementById) return;
     const el = document.getElementById("cook-mode");
     const box = el?.querySelector(".cm-hand");
     if (!box) return;
@@ -613,6 +801,7 @@ const CookMode = (() => {
   function seenCoach() { try { return localStorage.getItem(COACH_KEY) === "1"; } catch { return true; } }
   function markCoach() { try { localStorage.setItem(COACH_KEY, "1"); } catch {} }
   function drawCoach() {
+    if (typeof document === "undefined" || !document.getElementById) return;
     const el = document.getElementById("cook-mode");
     if (!el || el.querySelector(".cm-coach")) return;
     const c = document.createElement("div");
@@ -627,6 +816,7 @@ const CookMode = (() => {
   }
   // いま見えている形のボタンを光らせ、見せ続けた長さをバーで出す。
   function drawHandLive() {
+    if (typeof document === "undefined" || !document.querySelectorAll) return;
     document.querySelectorAll("#cook-mode [data-g]").forEach((g) => {
       const btn = g.closest("button") || g;
       const on = hand.on && g.dataset.g === hand.name;
@@ -641,6 +831,7 @@ const CookMode = (() => {
     let data; try { data = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch { return; }
     if (["onReady", "initialDelivery", "infoDelivery"].includes(data?.event) && !ready) { ready = true; }
     const t = data?.info?.currentTime;
+    if (Number.isFinite(t)) videoTime = t;
     if (!loop || !Number.isFinite(t) || Date.now() - lastSeek < 1200) return;
     const seg = segment(at);
     if (seg?.end != null && (t >= seg.end - 0.2 || t < seg.start - 1.5)) seekTo(at);
@@ -662,6 +853,6 @@ const CookMode = (() => {
     else if (ev.key === "Escape") closeMode();
   });
 
-  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
+  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, refineTimes, nudgeTime, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
 })();
 if (typeof module !== "undefined") module.exports = CookMode;

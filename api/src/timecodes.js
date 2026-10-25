@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId } from "./youtube.js";
-import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
+import { parseChapters, timesFromChapterIndexes, parseTimeValue } from "./chapters.js";
+import { refineStepTimes } from "./timecodeCheck.js";
 import { VIDEO_TIMEOUT_MS, VIDEO_CLIENTS_MAX } from "./analyzer.js";
 
 // レシピの手順に「▶ 2:15」を付ける。動画と手順の組ごとに保存して全員で使い回す。
@@ -16,7 +17,7 @@ const normalize = (steps) => (Array.isArray(steps) ? steps.map((s) => String(s |
 const found = (times) => Array.isArray(times) && times.some((t) => Number.isFinite(t));
 const cleanTimes = (raw, list) => {
   const times = Array.isArray(raw) ? raw.slice(0, list.length) : [];
-  return list.map((step, i) => (!step || times[i] === null || times[i] === undefined || !Number.isFinite(Number(times[i])) || Number(times[i]) < 0 || Number(times[i]) >= 36_000 ? null : Math.floor(Number(times[i]))));
+  return list.map((step, i) => (!step ? null : parseTimeValue(times[i])));
 };
 
 export function createTimecodeBook(store, { analyze, matchChapters, snippet = async () => null, reserveBudget, maxSeconds = 600, now = Date.now } = {}) {
@@ -45,7 +46,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
     const done = await countTry(household);
     await reserveBudget();
     const raw = await matchChapters(list, chapters).catch(() => null);
-    const stepTimes = cleanTimes(timesFromChapterIndexes(raw?.chapterIndex, chapters, list.length), list);
+    const stepTimes = refineStepTimes(list, cleanTimes(timesFromChapterIndexes(raw?.chapterIndex, chapters, list.length), list), { durationSeconds: info?.durationSeconds });
     if (!found(stepTimes)) { await save(key, { ...(cached?.envelope || {}), chaptersChecked: true }, cached); return null; }
     await save(key, { stepTimes, source: "chapters", chaptersChecked: true }, cached);
     await done();
@@ -86,8 +87,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         const seconds = info?.durationSeconds ?? (await snippet(videoId).catch(() => null))?.durationSeconds;
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
         // 接続先を切り替える時も、切り替えの直前ごとに AI の予算を通す（最初の1回は上の reserveBudget）。
-        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, beforeRetry: reserveBudget });
-        const stepTimes = cleanTimes(raw?.stepTimes, list);
+        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, durationSeconds: seconds, beforeRetry: reserveBudget });
+        const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
         if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
         // seenSeconds：AI が見た長さ（点検で「見ていない後半に時刻がない」を見分ける）。
         await save(key, { stepTimes, source: "video", chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
@@ -111,8 +112,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         await reserveBudget();
         const seconds = (await snippet(videoId).catch(() => null))?.durationSeconds;
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
-        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, beforeRetry: reserveBudget });
-        const stepTimes = cleanTimes(raw?.stepTimes, list);
+        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, durationSeconds: seconds, beforeRetry: reserveBudget });
+        const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
         if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
         return { stepTimes, source: "video", seenSeconds: clipSeconds || seconds || null };
       } finally {
@@ -126,6 +127,30 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
       if (list.filter(Boolean).length < 2) return null;
       const entry = (await store.get(keyOf(extractYouTubeVideoId(url), list)))?.envelope;
       return entry ? { stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
+    },
+    // すでに保存済みの時刻（AI・章）を0円で補正して保存し直す（だれかが直した時刻 fix や消した時刻 cleared は触らない）。
+    async repair({ url, steps, stepTimes, source = "video", durationSeconds = null, fillGaps = true }) {
+      required();
+      const videoId = extractYouTubeVideoId(url);
+      const list = normalize(steps);
+      if (list.filter(Boolean).length < 2) return null;
+      const key = keyOf(videoId, list);
+      const cached = await store.get(key);
+      const entry = cached?.envelope;
+      if (entry?.cleared || entry?.source === "fix") return { stepTimes: cleanTimes(entry.stepTimes, list), source: "fix", skipped: true };
+      const baseTimes = cleanTimes(stepTimes ?? entry?.stepTimes, list);
+      if (!found(baseTimes)) return null;
+      const refined = refineStepTimes(list, baseTimes, { durationSeconds, fillGaps });
+      const effectiveSource = entry?.source || (source === "chapters" ? "chapters" : "video");
+      await store.put(key, {
+        ...(entry || {}),
+        stepTimes: refined,
+        source: effectiveSource,
+        chaptersChecked: true,
+        repairedAt: new Date(now()).toISOString(),
+        at: new Date(now()).toISOString(),
+      }, { ifGeneration: cached?.generation ?? 0 }).catch(() => {});
+      return { stepTimes: refined, source: effectiveSource };
     },
     // だれかが直した時刻を保存して、同じ動画・同じ手順を見る全員で使う（最後に直したものが使われる）。
     async fix({ url, steps, stepTimes }, household = "", { admin = false } = {}) {

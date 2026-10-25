@@ -2,7 +2,8 @@ import { localizeAmount, localizeStep } from "./units.js";
 import { cleanDishName } from "./dishes.js";
 import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from "./youtube.js";
-import { parseChapters, timesFromChapterIndexes } from "./chapters.js";
+import { parseChapters, timesFromChapterIndexes, parseTimeValue } from "./chapters.js";
+import { refineStepTimes } from "./timecodeCheck.js";
 import { detectServings } from "./servings.js";
 
 const DEFAULT_CATEGORY = "その他";
@@ -64,7 +65,9 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   if (chaptersAllowed) {
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
     const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);
-    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: times }; analyzedTimes = "chapters"; }
+    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }
+  } else if (Array.isArray(analysis.stepTimes) && finalSteps.length >= 2) {
+    analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, analysis.stepTimes, { durationSeconds: duration }) };
   }
 
   // AIが人数を取りこぼした時は、説明文とタイトルから決まったルールで読む。
@@ -170,7 +173,7 @@ function normalizeSteps(value) {
 
 function normalizeStepTimes(value, count) {
   if (!Array.isArray(value) || !count) return [];
-  const times = value.slice(0, count).map((t) => (Number.isFinite(Number(t)) && t !== null && Number(t) >= 0 && Number(t) < 36_000 ? Math.floor(Number(t)) : null));
+  const times = value.slice(0, count).map((t) => parseTimeValue(t));
   return times.some((t) => t !== null) ? times : [];
 }
 

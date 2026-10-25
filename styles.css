@@ -4152,3 +4152,11 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .cm-rice-icon { font-size: 16px; }
 .cm-side-tag { color: #27671f; background: #eef7ed; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
 .shop-rice-tip { background: #fff9f0; border: 1px dashed #f0ca8c; border-radius: 8px; padding: 8px 12px; margin: 8px 0 12px; font-size: 12px; color: #8a5814; display: flex; align-items: center; gap: 8px; }
+
+/* 料理モード内：動画ループ位置のワンタップ微調整バー */
+.cm-time-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 6px 10px; margin-bottom: 10px; border-radius: 10px; background: rgba(255, 248, 238, 0.9); border: 1px solid #f0dfc4; font-size: 12.5px; }
+.cm-time-range { font-weight: 700; color: #6e5233; white-space: nowrap; }
+.cm-time-btns { display: inline-flex; align-items: center; gap: 6px; }
+.cm-time-btn { min-height: 34px; padding: 4px 10px; border-radius: 999px; border: 1px solid #dcc5a3; background: #fff; color: #4a3a28; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.cm-time-btn:active { background: #f5ebd9; }
+.cm-time-btn.cm-time-here { border-color: #e0a53a; background: #fff4db; color: #8a5a00; }

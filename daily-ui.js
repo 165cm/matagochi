@@ -871,13 +871,30 @@ function cookSections(recipe, servings) {
   // 覚えやすく書き直した手順があれば、それを表に（元の手順は各手順の下の「動画では」に。▶ はまとめた最初の元の手順の時刻。APP_MAP §49）。
   const guide = recipeGuide(recipe);
   const shown = guide ? guide.map((g) => g.text) : steps;
-  const timesOf = guide ? () => { const t = recipeStepTimes(recipe); return guide.map((g) => (Number.isFinite(t[g.from[0]]) ? t[g.from[0]] : null)); } : () => recipeStepTimes(recipe);
+  const guideSlotOf = (g, t) => g.from.find((j) => Number.isFinite(t?.[j])) ?? g.from[0];
+  const isFixed = () => typeof isTimecodeFixed === "function" && isTimecodeFixed(recipe);
+  const timesOf = guide ? () => {
+    const t = recipeStepTimes(recipe);
+    const mapped = guide.map((g) => {
+      const j = guideSlotOf(g, t);
+      return Number.isFinite(t[j]) ? t[j] : null;
+    });
+    if (isFixed()) return mapped;
+    return typeof CookMode?.refineTimes === "function" ? CookMode.refineTimes(shown, mapped, { durationSeconds: recipe.durationSeconds }) : mapped;
+  } : () => recipeStepTimes(recipe);
   // 埋め込み再生ができない動画は、料理モードでは写真を出す（動画は YouTube で開く）。
   const slot = state.mealSlots?.[cookingDate];
   CookMode.setRecipe({
     title: recipe.title,
     steps: shown,
     timesOf,
+    timesFixed: isFixed,
+    durationSeconds: recipe.durationSeconds,
+    onTimeFix: (idx, sec) => {
+      if (typeof saveQuickTimeFix !== "function") return;
+      const origIdx = guide && guide[idx] ? guideSlotOf(guide[idx], recipeStepTimes(recipe)) : idx;
+      saveQuickTimeFix(recipe, origIdx, sec);
+    },
     videoId: recipe.embeddable === false ? "" : youtubeVideoId(recipe.videoUrl),
     shorts: /youtube\.com\/shorts\//i.test(recipe.videoUrl || ""),
     ingredients: recipe.ingredients || [],
@@ -890,7 +907,8 @@ function cookSections(recipe, servings) {
   const fixing = typeof timeFix !== "undefined" && timeFix?.key === timecodeKey(recipe);
   // 最初の「下ごしらえ：」などの要点は太字に（覚える手がかり）。
   const guideKeyHtml = (text, gi) => { const m = String(text).match(/^([^：:。、]{1,10})[：:]\s*(.+)$/s); return m ? `<b class="guide-key">${escapeHtml(m[1])}</b>${CookMode.stepHtml(m[2], `${gi + 1}. ${m[1]}`)}` : CookMode.stepHtml(text, `${gi + 1}. ${String(text).slice(0, 12)}`); };
-  const guideList = () => `<ol class="cooking-steps cook-list has-guide" data-steps-of="${escapeAttr(recipe.id)}">${guide.map((g, gi) => `<li><div class="cs-text"><span class="step-time-slot" data-guide-slot="${g.from[0]}">${stepTimeButton(recipe, g.from[0])}</span>${guideKeyHtml(g.text, gi)}</div>${CookMode.usesHtml(g.text, recipe.ingredients || [], amountOf)}<details class="guide-src"${fixing ? " open" : ""}><summary>動画では：手順${g.from.map((j) => j + 1).join("・")}</summary><ol class="guide-orig">${g.from.map((j) => `<li value="${j + 1}">${stepTimeSlot(recipe, j)}${escapeHtml(steps[j])}</li>`).join("")}</ol></details></li>`).join("")}</ol>`;
+  const curTimes = recipeStepTimes(recipe);
+  const guideList = () => `<ol class="cooking-steps cook-list has-guide" data-steps-of="${escapeAttr(recipe.id)}">${guide.map((g, gi) => { const slotIdx = guideSlotOf(g, curTimes); return `<li><div class="cs-text"><span class="step-time-slot" data-guide-slot="${slotIdx}">${stepTimeButton(recipe, slotIdx)}</span>${guideKeyHtml(g.text, gi)}</div>${CookMode.usesHtml(g.text, recipe.ingredients || [], amountOf)}<details class="guide-src"${fixing ? " open" : ""}><summary>動画では：手順${g.from.map((j) => j + 1).join("・")}</summary><ol class="guide-orig">${g.from.map((j) => `<li value="${j + 1}">${stepTimeSlot(recipe, j)}${escapeHtml(steps[j])}</li>`).join("")}</ol></details></li>`; }).join("")}</ol>`;
   return {
     ingredients: (recipe.ingredients || []).length ? CookMode.ingredientsHtml(recipe.ingredients, amountOf) : '<p class="muted small">材料が登録されていません。</p>',
     steps: `<div class="cooking-steps-head"><h3>作り方 <small class="muted">${guide ? `<span class="guide-badge">✍ 覚えやすい手順${tip("動画の手順をAIが覚えやすくまとめました。数字（時間・温度・分量）は動画のまま。各手順の下の「動画では」で元の手順を見られます")}</span>${timed ? "・" : ""}` : ""}${timed ? "⏰でタイマー" : ""}${timecodeHintHtml(recipe, timed || guide ? "・" : "")}</small></h3>${steps.length ? '<div class="cook-mode-cta"><button type="button" class="primary-button cook-mode-open" data-cook-mode="open">🍳 料理モード</button><small>✋ 手をかざして進める</small></div>' : ""}</div>

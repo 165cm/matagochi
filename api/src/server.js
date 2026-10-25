@@ -15,7 +15,7 @@ import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
 import { createChannelStats } from "./channelStats.js";
-import { checkStepTimes, ISSUE_LABEL } from "./timecodeCheck.js";
+import { checkStepTimes, refineStepTimes, ISSUE_LABEL } from "./timecodeCheck.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { rewriteGuide, guideLimit, listedGuide, stepsKey, GUIDE_ISSUE_LABEL } from "./rewrite.js";
 import { createPushDesk } from "./push.js";
@@ -465,6 +465,70 @@ export function createApp(env = process.env, deps = {}) {
       }
       rows.sort((a, b) => b.issues.length - a.issues.length);
       return { checked: items.length, coarse: 0, ...count, labels: ISSUE_LABEL, rows };
+    })());
+  });
+  // 管理：すでに保存済みの過去動画のタイムコードを0円で一括補正（順番の逆転・同じ章時刻の分割・動画長超過・密集・空白を按分補間。人が直した fix は触らない）。
+  const repairTimecodesOne = async (videoId, durationSeconds = null) => {
+    const url = canonicalYouTubeUrl(videoId);
+    const full = await catalog.peek(url).catch(() => null);
+    if (!full || (full.steps || []).filter(Boolean).length < 2) return { videoId, changed: false, skipped: true };
+    const { times, source, seenSeconds } = await timesOf(url, full);
+    if (source === "fix" || !(times || []).some((t) => Number.isFinite(t))) return { videoId, changed: false, skipped: true, source };
+    const beforeCheck = checkStepTimes(full.steps, times, { durationSeconds, source, seenSeconds });
+    const normBefore = full.steps.map((_, i) => (Number.isFinite(Number(times[i])) && times[i] !== null ? Math.floor(Number(times[i])) : null));
+    const refined = refineStepTimes(full.steps, normBefore, { durationSeconds, fillGaps: true });
+    if (JSON.stringify(refined) === JSON.stringify(normBefore)) return { videoId, changed: false, stepTimes: refined, source };
+    await catalog.setStepTimes(url, refined, { from: full.stepTimesFrom || (source === "chapters" ? "chapters" : "") }).catch(() => {});
+    await timecodeBook.repair({ url, steps: full.steps, stepTimes: refined, source, durationSeconds, fillGaps: true }).catch(() => {});
+    return {
+      videoId,
+      title: full.title || "",
+      changed: true,
+      source,
+      before: normBefore,
+      after: refined,
+      issuesBefore: beforeCheck.issues.map((i) => i.code),
+      coarseBefore: beforeCheck.coarse || 0,
+    };
+  };
+  app.post("/api/admin/timecodes/repair", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, (async () => {
+      const seenIds = new Set();
+      for (const x of (await trendBook.list({ promote: false })).items || []) if ((x.steps || []).length >= 2) seenIds.add(x.videoId);
+      let extra = 0;
+      for (const s of await popularBook.stats().catch(() => [])) {
+        if (!seenIds.has(s.videoId) && extra < 500) { seenIds.add(s.videoId); extra += 1; }
+      }
+      const ids = [...seenIds];
+      const lengths = await durationsOf(ids);
+      const rows = [];
+      let coarseFixed = 0;
+      for (const id of ids) {
+        const resOne = await repairTimecodesOne(id, lengths[id] ?? null);
+        if (resOne.changed) {
+          rows.push(resOne);
+          if (resOne.coarseBefore) coarseFixed += 1;
+        }
+      }
+      if (rows.length) {
+        trendBook.clearCache();
+        popularBook.clearCache();
+      }
+      return { checked: ids.length, repaired: rows.length, coarseFixed, rows };
+    })());
+  });
+  app.post("/api/admin/recipes/:videoId/timecodes/repair", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, (async () => {
+      const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
+      const out = await repairTimecodesOne(videoId, durationSeconds);
+      if (out.changed) { trendBook.clearCache(); popularBook.clearCache(); }
+      return out;
     })());
   });
   // 管理：説明欄から読み直す（1品約1円・考えるモードなし）。以前の上限で手順が10個で切れたレシピを直す（2026-10-04）。

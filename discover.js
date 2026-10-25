@@ -204,15 +204,44 @@ const timecodeKey = (recipe) => `${youtubeVideoId(recipe?.videoUrl)}|${(recipe?.
 // 確かさの順：だれかが直した時刻・説明欄のタイムスタンプ（サーバーから）→ レシピに入っている時刻 → AIが動画から探した時刻。
 const TRUSTED_TIMES = new Set(["fix", "chapters"]);
 let timeFix = null; // 時刻を直している間：{ key, recipeId, times }
+function isTimecodeFixed(recipe) {
+  const key = timecodeKey(recipe);
+  if (timeFix?.key === key) return true;
+  const entry = timecodes.get(key);
+  if (entry?.cleared || entry?.source === "fix") return true;
+  if (recipe?.stepTimesFrom === "admin" || recipe?.stepTimesFrom === "fix") return true;
+  return false;
+}
 function recipeStepTimes(recipe) {
   const key = timecodeKey(recipe);
   if (timeFix?.key === key) return timeFix.times;
   const entry = timecodes.get(key);
   // 運営がすべて消した時刻（cleared）は、手元に古い時刻があっても使わない。
   if (entry?.cleared) return entry.times;
-  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.times;
-  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return recipe.stepTimes;
-  return entry?.times || [];
+  const fixed = isTimecodeFixed(recipe);
+  const refine = (arr) => (!fixed && typeof CookMode !== "undefined" && typeof CookMode.refineTimes === "function" && Array.isArray(arr) && arr.some((t) => Number.isFinite(t)) ? CookMode.refineTimes(recipe?.steps || [], arr, { durationSeconds: recipe?.durationSeconds }) : arr);
+  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.source === "fix" ? entry.times : refine(entry.times);
+  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return refine(recipe.stepTimes);
+  return refine(entry?.times || []);
+}
+function saveQuickTimeFix(recipe, stepIndex, newSeconds) {
+  if (!recipe || !Array.isArray(recipe.steps) || stepIndex < 0 || stepIndex >= recipe.steps.length || !Number.isFinite(newSeconds)) return;
+  const key = timecodeKey(recipe);
+  const current = recipeStepTimes(recipe);
+  const times = recipe.steps.map((_, i) => (i === stepIndex ? Math.max(0, Math.floor(newSeconds)) : (Number.isFinite(current[i]) ? Math.floor(current[i]) : null)));
+  timecodes.set(key, { status: "done", at: Date.now(), times, source: "fix" });
+  recipe.stepTimes = times;
+  recipe.stepTimesFrom = "fix";
+  const own = state.recipes?.find((r) => r.id === recipe.id && timecodeKey(r) === key);
+  if (own) { own.stepTimes = times; own.stepTimesFrom = "fix"; saveState(); }
+  if (["recipe", "cooking"].includes(state.view)) patchStepTimes(recipe);
+  if (API_BASE_URL && youtubeVideoId(recipe.videoUrl) && recipe.steps.length >= 2) {
+    globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Household": householdKey() },
+      body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, stepTimes: times }),
+    }).catch(() => {});
+  }
 }
 function timecodesLoading(recipe) { return timecodes.get(timecodeKey(recipe))?.status === "loading"; }
 // 見出しの横の小さな案内：探している間と、見つからなかった時（理由つき）。
@@ -252,7 +281,11 @@ function ensureTimecodes(recipe) {
       else timecodes.set(key, { status: times.length ? "done" : "none", at: Date.now(), times, source: data?.source || "", reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
       // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
       const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
-      if (own && times.length && (!peek || TRUSTED_TIMES.has(data.source))) { own.stepTimes = times; saveState(); }
+      if (own && times.length && (!peek || TRUSTED_TIMES.has(data.source))) {
+        own.stepTimes = times;
+        if (data.source === "fix") own.stepTimesFrom = "fix";
+        saveState();
+      }
       // 画面全体は描き直さない（再生中の動画が最初に戻らないように）。▶ と案内だけ差し替える。
       if (["recipe", "cooking"].includes(state.view)) patchStepTimes(recipe);
     });
@@ -308,8 +341,9 @@ function handleTimeFixAction(action, data) {
       .then((d) => {
         const saved = stepTimesFor(recipe.steps, d.stepTimes);
         timecodes.set(timeFix.key, { status: "done", at: Date.now(), times: saved, source: "fix" });
+        recipe.stepTimesFrom = "fix";
         const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === timeFix.key);
-        if (own) { own.stepTimes = saved; saveState(); }
+        if (own) { own.stepTimes = saved; own.stepTimesFrom = "fix"; saveState(); }
         timeFix = null; patchStepTimes(recipe);
         showToast("直した時刻を保存しました。同じ動画を見るみんなにも使われます。");
       })
