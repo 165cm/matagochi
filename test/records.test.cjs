@@ -245,3 +245,35 @@ test("Proposal 11: data protection status card in Settings, contextual backup re
   assert.doesNotMatch(run("renderReflection()"), /バックアップのおすすめ/);
   assert.doesNotMatch(run("renderTodayTodos()"), /is-backup-row/);
 });
+
+test("Proposal 12: Lifestyle.planBalance and renderPlanBalance summarize main protein, vegetable kinds (including quick sides), and mood balance", () => {
+  const L = require("../lifestyle.js");
+  // All meat, 0 veg -> warns about meat bias and low veg
+  const meatOnly = [
+    { date: "2026-10-01", candidate: { recipe: { title: "鶏の唐揚げ", ingredients: [{ name: "鶏もも肉", amount: "250g" }] } } },
+    { date: "2026-10-02", candidate: { recipe: { title: "豚の生姜焼き", ingredients: [{ name: "豚ロース", amount: "200g" }] } } },
+    { date: "2026-10-03", candidate: { recipe: { title: "牛丼", ingredients: [{ name: "牛こま切れ肉", amount: "200g" }] } } },
+  ];
+  const b1 = L.planBalance(meatOnly);
+  assert.equal(b1.proteinText, "🍖肉3");
+  assert.equal(b1.vegCount, 0);
+  assert.match(b1.vegLabel, /野菜少なめ/);
+  assert.match(b1.moodNote, /お肉中心/);
+
+  // Adding a fish dish and quick sides increases veg variety and switches to balanced note
+  const balanced = [
+    { date: "2026-10-01", slot: { recipe: { title: "鶏とキャベツの炒め物", ingredients: [{ name: "鶏もも肉" }, { name: "キャベツ" }, { name: "にんじん" }] }, side: "トマトスライス" } },
+    { date: "2026-10-02", candidate: { recipe: { title: "鮭としめじのバター醤油", ingredients: [{ name: "鮭" }, { name: "しめじ" }, { name: "玉ねぎ" }] } } },
+  ];
+  const b2 = L.planBalance(balanced);
+  assert.equal(b2.proteinText, "🍖肉1・🐟魚1");
+  assert.equal(b2.vegCount, 5); // キャベツ, にんじん, トマト, きのこ, 玉ねぎ
+  assert.match(b2.vegLabel, /🥬 野菜たっぷり5種/);
+  assert.match(b2.moodNote, /肉・魚バランス◎/);
+
+  // renderDailyPlan includes .plan-balance-bar
+  const run = app();
+  const planHtml = run("renderDailyPlan()");
+  assert.match(planHtml, /class="plan-balance-bar"/);
+  assert.match(planHtml, /aria-label="献立のバランス"/);
+});

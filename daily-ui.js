@@ -454,6 +454,13 @@ function renderPlanStapleNote(recipe, slot, date) {
   const foldHtml = !slot?.side && !isViewer() ? `<details class="side-fold"><summary class="side-fold-btn">＋ 添え物</summary><div class="side-chips">${(Lifestyle.QUICK_SIDES || []).map((s) => `<button type="button" class="side-chip" data-action="life-add-side" data-date="${date}" data-side="${escapeAttr(s.name)}">${s.icon} ${escapeHtml(s.name)}</button>`).join("")}</div></details>` : "";
   return `<div class="plan-staple-note">${isOther ? '<span class="staple-tip" title="主菜（おかず）の日は、ごはんの準備をお忘れなく">🍚 ごはん準備</span>' : ""}${sideHtml}${foldHtml}</div>`;
 }
+function renderPlanBalance(plan, locks = new Set()) {
+  if (typeof Lifestyle?.planBalance !== "function") return "";
+  const unlocked = (plan || []).filter((d) => !locks.has(d.date));
+  const b = Lifestyle.planBalance(unlocked);
+  if (!b) return "";
+  return `<div class="plan-balance-bar" role="status" aria-label="献立のバランス"><span class="pb-chip pb-protein">${escapeHtml(b.proteinText)}</span><span class="pb-chip pb-veg ${b.vegCount < 2 ? "is-low" : ""}">${escapeHtml(b.vegLabel)}</span><span class="pb-mood">${escapeHtml(b.moodNote)}</span>${tip(`主菜の内訳と、使う野菜の種類（${b.vegKinds.length ? b.vegKinds.join("・") : "なし"}）のざっくり目安です。栄養価の計算ではありません`)}</div>`;
+}
 function renderDailyPlan() {
   const plan = dailyPlan();
   const locks = lockedDates(plan);
@@ -504,7 +511,7 @@ function renderDailyPlan() {
     return head + html + foot;
   }).join("");
   const ready = plan.filter((d) => d.candidate && !locks.has(d.date)).length;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}${renderLeftoverPanel()}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderRhythmInvite()}${renderTicketNudge("plan")}${renderShareInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}${renderLeftoverPanel()}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderRhythmInvite()}${renderTicketNudge("plan")}${renderShareInvite()}`;
 }
 let swapShowAll = false;
 // 好きの度合い（評価）：「明日でも」がいちばん。家族の中でいちばん低い評価で比べる。
