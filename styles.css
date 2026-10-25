@@ -4176,3 +4176,23 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .cm-time-btn { min-height: 34px; padding: 4px 10px; border-radius: 999px; border: 1px solid #dcc5a3; background: #fff; color: #4a3a28; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .cm-time-btn:active { background: #f5ebd9; }
 .cm-time-btn.cm-time-here { border-color: #e0a53a; background: #fff4db; color: #8a5a00; }
+
+/* 食後・翌日の1タップ周期フィードバック＆定番図鑑の成長実感（提案10） */
+.tonight-quick-rate { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface-soft); border: 1px solid var(--line); display: grid; gap: 8px; }
+.tonight-quick-rate.is-done { background: #fff8ee; border-color: #f0dfc4; gap: 4px; }
+.qr-head, .qr-done-line { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13.5px; }
+.qr-edit { font-size: 12.5px; padding: 2px 6px; min-height: 30px; }
+.qr-chips .rv-chip { transition: transform 0.12s ease, background 0.15s ease; }
+.qr-chips .rv-chip:active { transform: scale(0.93); }
+.qr-growth { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 800; color: #2f7d55; }
+.qr-growth.is-staple { color: #b86b00; }
+.todo-row.is-rate-row { grid-template-columns: 28px minmax(0, 1fr); align-items: start; }
+.todo-rate-body { display: grid; gap: 6px; }
+.todo-rate-body p { margin: 0; }
+.staple-rank { display: inline-flex; align-items: center; padding: 1px 7px; margin-left: 4px; border-radius: 999px; font-size: 11px; font-weight: 800; background: #fff4e0; color: #9a5b00; border: 1px solid #f0d090; vertical-align: 1px; }
+.staple-rank.is-silver { background: #eef6ff; color: #2b5c8f; border-color: #b8d4f2; }
+.staple-rank.is-gold { background: linear-gradient(90deg, #fff3c4, #ffe082); color: #7a4a00; border-color: #e6b83a; }
+.staple-candidates { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: grid; gap: 6px; }
+.staple-card.is-growing .staple-candidates { margin-top: 0; padding-top: 0; border-top: 0; }
+.staple-cand-head { margin: 0; font-size: 13px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.staple-list.is-cand li { opacity: 0.92; }

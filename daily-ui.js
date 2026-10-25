@@ -646,7 +646,7 @@ function renderToday() {
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
   return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt() || renderRoundReview()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div>
-    ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", /好物|日ぶり/.test(reason) ? "" : bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
+    ${pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", /好物|日ぶり/.test(reason) ? "" : bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>${slot?.status === "cooked" ? renderTonightQuickRate(today(), recipe) : ""}` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
     ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-skip" data-date="${today()}">🍽 今日は外食・中食にする</button>` : ""}</div>` : ""}</section>
   ${renderSkipPanel(today())}
@@ -656,11 +656,35 @@ function renderToday() {
   ${renderInstallCard()}
   ${renderTicketNudge("cook")}`;
 }
+// 食後すぐの1タップ評価（「ごちそうさま！」のカード内で、次に食べたい頃をスタンプ感覚で選べる）。
+function renderTonightQuickRate(date, recipe) {
+  if (isViewer()) return "";
+  const e = state.evaluations.find((x) => x.id === `meal-${date}` || (x.recipeId === recipe?.id && (x.cookedAt || "").slice(0, 10) === date));
+  if (!e) return "";
+  const names = raterNames();
+  const who = names.find((n) => !e.familyRepeatCycles?.[n]) || names[0];
+  const cur = e.familyRepeatCycles?.[who];
+  const allDone = names.every((n) => !!e.familyRepeatCycles?.[n]);
+  const times = cookHistory(e.recipeId).length;
+  const isLove = Object.values(e.familyRepeatCycles || {}).some((c) => c === "weekly" || c === "tomorrow");
+  const growth = allDone && isLove ? (times >= 2 ? `<span class="qr-growth is-staple">🏆 わが家の定番（${times}回目）</span>` : `<span class="qr-growth">🌱 あと1回作ると「🏆 わが家の定番」入り！</span>`) : "";
+  if (allDone) {
+    const summary = names.map((n) => `${escapeHtml(n)}：${escapeHtml(CYCLE_CHOICES.find((c) => c.cycle === e.familyRepeatCycles[n])?.label || "")}`).join(" · ");
+    return `<div class="tonight-quick-rate is-done" role="region" aria-label="次に食べたい頃"><div class="qr-done-line"><span>✨ 次は <b>${summary}</b> 頃</span><button type="button" class="text-button qr-edit" data-action="life-edit-record" data-id="${escapeAttr(e.id)}">メモ・写真 ›</button></div>${growth}</div>`;
+  }
+  return `<div class="tonight-quick-rate" role="region" aria-label="次に食べたい頃"><p class="qr-head"><span>🍽 次はいつ食べたい？${names.length > 1 ? `（<b>${escapeHtml(who)}</b>）` : ""}</span><button type="button" class="text-button qr-edit" data-action="life-edit-record" data-id="${escapeAttr(e.id)}">写真・メモ ›</button></p>
+    <div class="rv-chips qr-chips" role="group" aria-label="${escapeAttr(`${who}：次に食べたい頃`)}">${REVIEW_CHOICES.map(([c, icon, label]) => `<button type="button" class="rv-chip" data-action="life-rate" data-id="${escapeAttr(e.id)}" data-member="${escapeAttr(who)}" data-cycle="${c}" aria-pressed="${cur === c}"><span aria-hidden="true">${icon}</span><small>${label}</small></button>`).join("")}</div></div>`;
+}
 // Only things that need doing today; each row is one tap to the place where it gets done.
 function renderTodayTodos() {
   const rows = [];
   Object.values(state.mealSlots || {}).filter((s) => s.status === "confirmed" && s.date < today() && canRecordDate(s.date)).sort((a, b) => b.date.localeCompare(a.date))
     .forEach((s) => rows.push(`<div class="todo-row"><span>🍳</span><p><b>${formatDate(s.date)}の${escapeHtml(s.recipe.title)}</b>、作った？</p>${dailyButton("life-record-past", "作った", `data-date="${s.date}"`)}</div>`));
+  const yestEval = state.evaluations.find((e) => (e.cookedAt || "").slice(0, 10) === addDays(today(), -1) && e.preferencePending && raterNames().some((n) => !e.familyRepeatCycles?.[n]));
+  if (yestEval && !isViewer() && !reviewDue()) {
+    const who = raterNames().find((n) => !yestEval.familyRepeatCycles?.[n]) || raterNames()[0];
+    rows.push(`<div class="todo-row is-rate-row"><span>😋</span><div class="todo-rate-body"><p><b>昨日の${escapeHtml(yestEval.recipeTitle)}</b>、また食べたい？${raterNames().length > 1 ? `<small>（${escapeHtml(who)}）</small>` : ""}</p><div class="rv-chips qr-chips">${REVIEW_CHOICES.map(([c, icon, label]) => `<button type="button" class="rv-chip" data-action="life-rate" data-id="${escapeAttr(yestEval.id)}" data-member="${escapeAttr(who)}" data-cycle="${c}" aria-pressed="${yestEval.familyRepeatCycles?.[who] === c}"><span aria-hidden="true">${icon}</span><small>${label}</small></button>`).join("")}</div></div></div>`);
+  }
   const fromOthers = openRequests().filter((q) => q.from !== me());
   if (fromOthers.length) rows.push(`<div class="todo-row"><span>💌</span><p><b>${escapeHtml(fromOthers[0].from)}</b>から「${escapeHtml(requestRecipe(fromOthers[0]).title || fromOthers[0].recipeTitle)}」${fromOthers.length > 1 ? `ほか${fromOthers.length - 1}件` : ""}のリクエスト</p>${dailyButton("go-view", "献立へ", 'data-view="plan"')}</div>`);
   if (rhythmOn()) {
@@ -1035,11 +1059,30 @@ function stapleRecipes(recipeOf) {
   return [...times].filter(([id, n]) => n >= 2 && Object.values(ratings.get(id)?.cycles || {}).some((c) => c === "weekly" || c === "tomorrow"))
     .sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, n]) => ({ recipe: recipeOf(latest.get(id)), times: n, last: latest.get(id).cookedAt.slice(0, 10) }));
 }
+// 🌱 もうすぐ定番（1回作って「明日でも／毎週」がついた料理。あと1回作ると定番入り）。
+function stapleCandidates(recipeOf) {
+  const latest = new Map();
+  const times = new Map();
+  for (const e of state.evaluations) {
+    if (!e.recipeId || !e.cookedAt) continue;
+    times.set(e.recipeId, (times.get(e.recipeId) || 0) + 1);
+    const cur = latest.get(e.recipeId);
+    if (!cur || e.cookedAt > cur.cookedAt) latest.set(e.recipeId, e);
+  }
+  const ratings = Lifestyle.latestRatings(state.evaluations);
+  return [...times].filter(([id, n]) => n === 1 && Object.values(ratings.get(id)?.cycles || {}).some((c) => c === "weekly" || c === "tomorrow"))
+    .sort((a, b) => String(latest.get(b[0])?.cookedAt || "").localeCompare(String(latest.get(a[0])?.cookedAt || "")))
+    .slice(0, 4).map(([id, n]) => ({ recipe: recipeOf(latest.get(id)), times: n, last: latest.get(id).cookedAt.slice(0, 10) }));
+}
 function renderStaples(recipeOf) {
   const list = stapleRecipes(recipeOf);
-  if (!list.length) return "";
+  const cands = stapleCandidates(recipeOf);
+  if (!list.length && !cands.length) return "";
   const can = (r) => !isViewer() && allDinnerRecipes().some((x) => x.id === r.id);
-  return `<section class="staple-card"><h3>🏆 わが家の定番 ${tip("2回以上つくって、「また食べたい」がついた料理")}</h3><ul class="staple-list">${list.map(({ recipe, times, last }) => `<li>${dishTile(recipe, "staple-photo")}<div><b>${escapeHtml(recipe.title)}</b><small>${times}回・前回 ${escapeHtml(formatDate(last))}</small></div>${can(recipe) ? `<button type="button" class="secondary-button" data-action="life-replan" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}をもう一度、献立に入れる">🔁 もう一度</button>` : ""}</li>`).join("")}</ul></section>`;
+  const rankBadge = (n) => n >= 5 ? '<span class="staple-rank is-gold">👑 殿堂</span>' : n >= 3 ? '<span class="staple-rank is-silver">⭐ 常連</span>' : '<span class="staple-rank">🏆 定番</span>';
+  const candHtml = cands.length ? `<div class="staple-candidates"><p class="staple-cand-head">🌱 <b>もうすぐ定番</b> <small class="muted">あと1回作ると定番入り！</small></p><ul class="staple-list is-cand">${cands.map(({ recipe, last }) => `<li>${dishTile(recipe, "staple-photo")}<div><b>${escapeHtml(recipe.title)}</b><small>1回（あと1回！）· 前回 ${escapeHtml(formatDate(last))}</small></div></li>`).join("")}</ul></div>` : "";
+  if (!list.length) return `<section class="staple-card is-growing"><h3>🌱 わが家の定番候補 ${tip("2回以上つくって、「また食べたい」がつくと定番図鑑に入ります")}</h3>${candHtml}</section>`;
+  return `<section class="staple-card"><h3>🏆 わが家の定番 <span class="badge">${list.length}品</span> ${tip("2回以上つくって、「また食べたい」がついた料理")}</h3><ul class="staple-list">${list.map(({ recipe, times, last }) => `<li>${dishTile(recipe, "staple-photo")}<div><b>${escapeHtml(recipe.title)}</b><small>${times}回・前回 ${escapeHtml(formatDate(last))} ${rankBadge(times)}</small></div>${can(recipe) ? `<button type="button" class="secondary-button" data-action="life-replan" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}をもう一度、献立に入れる">🔁 もう一度</button>` : ""}</li>`).join("")}</ul>${candHtml}</section>`;
 }
 // 「わたしの食卓」の見せ方：月のカレンダー（既定）か、写真の一覧。端末ごとに覚える（なくても動く）。
 let reflView = (() => { try { return localStorage.getItem("ripigochi-refl-view") === "grid" ? "grid" : "cal"; } catch { return "cal"; } })();
@@ -1697,17 +1740,20 @@ function handleDailyAction(action, data) {
   if (action === "life-rate-ask") { askRating(); return true; }
   if (action === "life-rate") {
     const e = state.evaluations.find(e=>e.id===data.id);
-    if (e?.preferencePending && CYCLE_CHOICES.some(r=>r.cycle===data.cycle) && raterNames().includes(data.member)) {
+    if (e && CYCLE_CHOICES.some(r=>r.cycle===data.cycle) && raterNames().includes(data.member)) {
+      const wasStaple = cookHistory(e.recipeId).length >= 2 && Object.values(recipeRatings({ id: e.recipeId })).some((c) => c === "weekly" || c === "tomorrow");
       if (!state.family.includes(data.member)) state.family.push(data.member);
       e.familyRepeatCycles = {...e.familyRepeatCycles, [data.member]:data.cycle};
       e.updatedAt = nowIso();
       trackDaily("meal_rated");
       const left = raterNames().filter((n) => !e.familyRepeatCycles[n]);
-      if (!left.length && data.batch) { e.personalPreference = true; e.preferencePending = false; if (!reviewPending().length) showToast("🎉 評価しました。次の献立に反映します"); }
+      const nowStaple = cookHistory(e.recipeId).length >= 2 && Object.values(recipeRatings({ id: e.recipeId })).some((c) => c === "weekly" || c === "tomorrow");
+      const stapleMsg = !wasStaple && nowStaple ? `🏆「${e.recipeTitle}」がわが家の定番に入りました！` : "";
+      if (!left.length && data.batch) { e.personalPreference = true; e.preferencePending = false; if (!reviewPending().length) showToast(stapleMsg || "🎉 評価しました。次の献立に反映します"); else if (stapleMsg) showToast(stapleMsg); }
       else if (!left.length) {
         e.personalPreference = true; e.preferencePending = false;
         preferencePromptId = "";
-        showToast(bothLike({id:e.recipeId}) ? "ふたりとも好き！ちょうどいい頃に、また提案します。" : "記録しました。えらんだ頃に、また提案します。");
+        showToast(stapleMsg || (bothLike({id:e.recipeId}) ? "ふたりとも好き！ちょうどいい頃に、また提案します。" : "記録しました。えらんだ頃に、また提案します。"));
       }
     }
   }

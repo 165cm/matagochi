@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v161";
-const APP_VERSION = "20261025-firstview";
+const CACHE_NAME = "ripigochi-v162";
+const APP_VERSION = "20261025-staples";
 const CORE_ASSETS = [
   "./",
   "./index.html",
