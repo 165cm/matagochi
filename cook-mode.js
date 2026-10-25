@@ -5,6 +5,11 @@
    ・🍳 料理モード：左（縦持ちは上）に動画（その手順の場面をくり返す）、右に手順と、その手順で使う材料
    タイマーと料理モードは #app の外に描くので、アプリの描き直しで消えない。 */
 const CookMode = (() => {
+  const _esc = (s) => (s == null ? "" : String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"));
+  const escHtml = typeof escapeHtml === "function" ? escapeHtml : _esc;
+  const escAttr = typeof escapeAttr === "function" ? escapeAttr : _esc;
+  if (typeof escapeHtml === "undefined") globalThis.escapeHtml = escHtml;
+  if (typeof escapeAttr === "undefined") globalThis.escapeAttr = escAttr;
   // 「8分目」「3分の1」は時間ではない。「5〜6分」は短いほう（様子を見て足す）。
   const TIME = /(\d{1,3})\s*(?:[〜~\-－ー]\s*(\d{1,3})\s*)?(時間|分|秒)(半)?(?:\s*(\d{1,2})\s*秒)?(?!目|の|間隔)/g;
   const MAX = 3 * 60 * 60;
@@ -125,21 +130,58 @@ const CookMode = (() => {
     tick(); ensureTicker();
     try { trackDaily("cook_timer", { sec: total }); } catch {}
   }
-  function ensureTicker() { if (!ticker) ticker = setInterval(tick, 500); }
+  function ensureTicker() {
+    if (!ticker) {
+      ticker = setInterval(tick, 500);
+      ticker?.unref?.();
+    }
+  }
+  let lastAlarmBeep = 0;
   function beep() {
     try {
-      if (!audio) return;
-      [0, 0.35, 0.7].forEach((d) => {
+      if (!audio) audio = new (globalThis.AudioContext || globalThis.webkitAudioContext)();
+      audio.resume?.();
+      [0, 0.25, 0.5].forEach((d) => {
         const o = audio.createOscillator(), g = audio.createGain();
-        o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
-        const t0 = audio.currentTime + d; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.3, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
-        o.start(t0); o.stop(t0 + 0.3);
+        o.frequency.value = d === 0.5 ? 1174.66 : 880;
+        o.connect(g); g.connect(audio.destination);
+        const t0 = audio.currentTime + d;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+        o.start(t0); o.stop(t0 + 0.23);
       });
     } catch {}
-    try { navigator.vibrate?.([300, 150, 300, 150, 300]); } catch {}
+    try { navigator.vibrate?.([350, 150, 350, 150, 500]); } catch {}
+  }
+  function notifyTimer(t) {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+      try {
+        new Notification("⏰ タイマーの時間です！", {
+          body: `${t?.label || "タイマー"}（${fmt(t?.total || 0)}）が完了しました`,
+          icon: "icons/icon-192.png",
+          tag: `cook-timer-${t?.id || "alarm"}`,
+        });
+      } catch {}
+    }
   }
   function tick() {
-    for (const t of timers) if (!t.done && t.left == null && leftOf(t) <= 0) { t.done = true; beep(); }
+    let newlyDone = false;
+    for (const t of timers) {
+      if (!t.done && t.left == null && leftOf(t) <= 0) {
+        t.done = true;
+        newlyDone = true;
+      }
+    }
+    const ringing = timers.filter((t) => t.done);
+    if (ringing.length) {
+      const now = Date.now();
+      if (newlyDone || now - lastAlarmBeep >= 2500) {
+        lastAlarmBeep = now;
+        beep();
+        notifyTimer(ringing[0]);
+      }
+    }
     if (!timers.length) { clearInterval(ticker); ticker = null; }
     drawBar();
   }
@@ -191,9 +233,9 @@ const CookMode = (() => {
       const seg = segment(at);
       const origin = globalThis.location?.origin ? `&origin=${encodeURIComponent(location.origin)}` : "";
       el.innerHTML = `<div class="cm-video ${recipe.shorts ? "is-shorts" : ""}">${hasVideo() ? `<iframe src="https://www.youtube.com/embed/${recipe.videoId}?playsinline=1&rel=0&enablejsapi=1&autoplay=1${seg ? `&start=${Math.floor(seg.start)}` : ""}${origin}" title="レシピ動画" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` : `<div class="cm-novideo">${recipe.photoHtml || "🍳"}</div>`}</div>
-        <div class="cm-side"><div class="cm-top"><b class="cm-count"></b><span class="cm-title">${escapeHtml(recipe.title || "")}</span><span class="cm-hand"></span></div>
+        <div class="cm-side"><div class="cm-top"><b class="cm-count"></b><span class="cm-title">${escapeHtml(recipe.title || "")}</span><span class="cm-voice"></span><span class="cm-hand"></span></div>
           <div class="cm-dots" aria-hidden="true"></div><div class="cm-body"></div></div>
-        <div class="cm-foot"><div class="cm-nav"><button type="button" class="secondary-button" data-cook-mode="prev">◀ 前へ<i class="g" data-g="Victory" aria-hidden="true">✌️</i></button><button type="button" class="primary-button" data-cook-mode="next"></button></div></div>
+        <div class="cm-foot"><div class="cm-nav"><button type="button" class="secondary-button cm-nav-btn cm-prev-btn" data-cook-mode="prev">◀ 前へ<i class="g" data-g="Victory" aria-hidden="true">✌️</i></button><button type="button" class="primary-button cm-nav-btn cm-next-btn" data-cook-mode="next"></button></div></div>
         <button type="button" class="cm-exit" data-cook-mode="close" aria-label="料理モードを終わる">✕ 終わる</button>`;
       document.body.append(el);
       document.body.classList.add("cook-mode-open");
@@ -214,6 +256,7 @@ const CookMode = (() => {
       ${showAll ? `<div class="cm-uses is-all"><p class="cm-uses-head">📋 材料ぜんぶ <button type="button" class="link-inline" data-cook-mode="uses">この手順だけ</button></p>${ingredientsHtml(recipe.ingredients, amount, "cm-list")}</div>`
         : `<div class="cm-uses">${usesList ? `<p class="cm-uses-head">🥄 この手順で使う <button type="button" class="link-inline" data-cook-mode="all">ぜんぶ</button></p><ul class="cm-list">${usesList}</ul>` : `<p class="cm-uses-head">🥄 <button type="button" class="link-inline" data-cook-mode="all">材料をぜんぶ見る</button></p>`}</div>`}`;
     el.querySelector('[data-cook-mode="prev"]').disabled = at === 0;
+    drawVoice();
     drawHand();
     el.querySelector('[data-cook-mode="next"]').innerHTML = `${last ? "✓ できた！" : "次へ ▶"}<i class="g" data-g="Open_Palm" aria-hidden="true">✋</i>`;
     if (!first) seekTo(at);
@@ -227,7 +270,7 @@ const CookMode = (() => {
     if (!seenCoach()) drawCoach();
     try { trackDaily("cook_mode_opened"); } catch {}
   }
-  function closeMode() { if (at < 0) return; handStop(); at = -1; drawMode(); }
+  function closeMode() { if (at < 0) return; handStop(); voiceStop(); at = -1; drawMode(); }
   function modeOp(kind) {
     const n = recipe?.steps?.length || 0;
     if (kind === "open") return openMode();
@@ -235,7 +278,14 @@ const CookMode = (() => {
     if (kind === "prev") at = Math.max(0, at - 1);
     if (kind === "next") { if (at >= n - 1) { closeMode(); try { showToast("🎉 おつかれさま！「作った！」で記録"); } catch {} return; } at += 1; }
     if (kind === "hand") { hand.on ? handStop() : handStart(); return; }
-    if (kind === "coach-start" || kind === "coach-later") { markCoach(); document.querySelector("#cook-mode .cm-coach")?.remove(); if (kind === "coach-start") handStart(); return; }
+    if (kind === "voice") { voice.on ? voiceStop() : voiceStart(); return; }
+    if (kind === "coach-start" || kind === "coach-later" || kind === "coach-voice") {
+      markCoach();
+      document.querySelector("#cook-mode .cm-coach")?.remove();
+      if (kind === "coach-start") handStart();
+      if (kind === "coach-voice") voiceStart();
+      return;
+    }
     if (kind === "all") showAll = true;
     if (kind === "uses") showAll = false;
     drawMode();
@@ -250,6 +300,218 @@ const CookMode = (() => {
       if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) modeOp(dx < 0 ? "next" : "prev");
     }, { passive: true });
   }
+  // ---- 🎙️ 声で操作（Web Speech API・ブラウザ標準の音声認識） ----
+  // 「次へ」「戻る」「タイマー」「ストップ」「材料」「もう一回」「終了」
+  const SpeechRec = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
+  const voice = {
+    supported: !!SpeechRec,
+    on: false,
+    listening: false,
+    rec: null,
+    status: "off",
+    msg: "",
+    lastHeard: "",
+  };
+
+  function parseVoice(text) {
+    if (!text) return null;
+    const s = String(text).normalize("NFKC").toLowerCase().replace(/[\s、。！？!?,.]/g, "");
+    if (!s) return null;
+
+    if (/^(料理モード)?(終了|閉じる|終わり|おわり|おしまい|やめる)$/.test(s) || /(料理モード(を|の)?(終了|終わ))/.test(s)) {
+      return { act: "close", label: "終了" };
+    }
+    if (/(ストップ|止めて|止まれ|止める|消して|静かに)/.test(s)) {
+      return { act: "stop", label: "ストップ" };
+    }
+    if (/(もう一回|もう一度|リピート|最初から|頭から)/.test(s)) {
+      return { act: "repeat", label: "もう一回" };
+    }
+    if (/(タイマー|たいまー|スタート|計って|測って|はかって)/.test(s)) {
+      return { act: "timer", label: "タイマー" };
+    }
+    if (/(材料|ざいりょう|分量|調味料)/.test(s)) {
+      return { act: "toggle-uses", label: "材料" };
+    }
+    if (/^(前|前へ|まえ|まえへ|戻る|もどる|戻して|ひとつ前|1つ前)$/.test(s) || /(前へ|戻る|もどして)/.test(s)) {
+      return { act: "prev", label: "前へ" };
+    }
+    if (/^(次|次へ|つぎ|つぎへ|進む|すすむ|進めて|できた|完了|お次|はい|オッケー|ok)$/.test(s) || /(次へ|すすむ|すすめて)/.test(s)) {
+      return { act: "next", label: "次へ" };
+    }
+    return null;
+  }
+
+  function chime() {
+    try {
+      if (!audio) audio = new (globalThis.AudioContext || globalThis.webkitAudioContext)();
+      audio.resume?.();
+      const t0 = audio.currentTime;
+      const o1 = audio.createOscillator(), g1 = audio.createGain();
+      o1.frequency.value = 587.33;
+      o1.connect(g1); g1.connect(audio.destination);
+      g1.gain.setValueAtTime(0.0001, t0);
+      g1.gain.exponentialRampToValueAtTime(0.12, t0 + 0.02);
+      g1.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
+      o1.start(t0); o1.stop(t0 + 0.1);
+
+      const o2 = audio.createOscillator(), g2 = audio.createGain();
+      o2.frequency.value = 880;
+      o2.connect(g2); g2.connect(audio.destination);
+      g2.gain.setValueAtTime(0.0001, t0 + 0.07);
+      g2.gain.exponentialRampToValueAtTime(0.15, t0 + 0.09);
+      g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
+      o2.start(t0 + 0.07); o2.stop(t0 + 0.2);
+    } catch {}
+    try { navigator.vibrate?.(25); } catch {}
+  }
+
+  function doVoiceAction(cmd) {
+    if (!cmd) return;
+    chime();
+    flash(`🎙️ ${cmd.label}`);
+    if (cmd.act === "next") return modeOp("next");
+    if (cmd.act === "prev") return modeOp("prev");
+    if (cmd.act === "close") return modeOp("close");
+    if (cmd.act === "repeat") return seekTo(at);
+    if (cmd.act === "toggle-uses") return modeOp(showAll ? "uses" : "all");
+    if (cmd.act === "timer") {
+      const ringing = timers.filter((t) => t.done);
+      if (ringing.length) { ringing.forEach((t) => op("stop", t.id)); return; }
+      const secs = timesIn(recipe?.steps?.[at]);
+      const label = (stepHtml(recipe.steps[at], String(at + 1)).match(/data-label="([^"]*)"/) || [])[1] || `${at + 1}`;
+      if (secs.length) start(secs[0], label.replace(/&amp;/g, "&"));
+      else flash("⏱ この手順に時間はありません");
+      return;
+    }
+    if (cmd.act === "stop") {
+      const ringing = timers.filter((t) => t.done);
+      if (ringing.length) {
+        ringing.forEach((t) => op("stop", t.id));
+        flash("⏰ タイマーを止めました");
+        return;
+      }
+      if (timers.length) {
+        const active = timers.find((t) => t.left == null && !t.done);
+        if (active) {
+          op("pause", active.id);
+          flash("⏸ タイマーを一時停止");
+          return;
+        }
+      }
+      flash("⏸ 止めるタイマーはありません");
+    }
+  }
+
+  function hearVoice(transcript) {
+    voice.lastHeard = transcript;
+    const cmd = parseVoice(transcript);
+    if (cmd) {
+      doVoiceAction(cmd);
+      return cmd;
+    }
+    return null;
+  }
+
+  function drawVoice() {
+    const el = document.getElementById("cook-mode");
+    const box = el?.querySelector(".cm-voice");
+    if (!box) return;
+    el.classList.toggle("voice-on", voice.on && voice.status === "ready");
+    const privacy = typeof tip === "function" ? tip("🎙️ 声で操作：声を聞き取りやすくするため動画は消音になります。「次へ」「戻る」「タイマー」「ストップ」などと話しかけて操作できます。音声はスマホの外に送りません") : "";
+    box.innerHTML = `<button type="button" class="cm-voice-btn ${voice.on ? "is-active" : ""}" data-cook-mode="voice" aria-pressed="${voice.on}" aria-label="${voice.on ? "声で操作をやめる" : "声で操作する"}" ${voice.status === "loading" ? "disabled" : ""}>${voice.status === "loading" ? "⏳ 準備中" : voice.on ? "🎙️ 操作中" : "🎙️ 声で操作"}</button>${privacy}`;
+  }
+
+  function voiceStart() {
+    if (!SpeechRec) {
+      voice.status = "error";
+      voice.msg = "このブラウザは音声操作に対応していません";
+      flash("🎙️ 音声操作に未対応です");
+      drawVoice();
+      return;
+    }
+    if (voice.on) return;
+    voice.on = true;
+    voice.status = "loading";
+    drawVoice();
+    try { post("mute"); } catch {}
+
+    try {
+      const rec = new SpeechRec();
+      rec.lang = "ja-JP";
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.maxAlternatives = 3;
+
+      rec.onstart = () => {
+        voice.listening = true;
+        voice.status = "ready";
+        voice.msg = "";
+        drawVoice();
+        flash("🎙️ 声で操作できます（「次へ」「戻る」等）");
+      };
+
+      rec.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (!res.isFinal && event.results.length > 1) continue;
+          for (let j = 0; j < res.length; j++) {
+            const transcript = res[j]?.transcript?.trim();
+            if (!transcript) continue;
+            const cmd = hearVoice(transcript);
+            if (cmd) break;
+          }
+        }
+      };
+
+      rec.onerror = (event) => {
+        if (event.error === "no-speech") return;
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          voice.status = "error";
+          voice.msg = "マイクへのアクセスが許可されていません";
+          flash("🎙️ マイクが許可されていません");
+          voiceStop();
+          return;
+        }
+      };
+
+      rec.onend = () => {
+        voice.listening = false;
+        if (voice.on && at >= 0) {
+          setTimeout(() => {
+            if (voice.on && at >= 0) {
+              try { rec.start(); } catch {}
+            }
+          }, 300);
+        } else {
+          voice.status = "off";
+          drawVoice();
+        }
+      };
+
+      rec.start();
+      voice.rec = rec;
+      try { trackDaily("cook_voice_on"); } catch {}
+    } catch (e) {
+      voiceStop();
+      voice.status = "error";
+      voice.msg = "マイクの起動に失敗しました";
+      drawVoice();
+    }
+  }
+
+  function voiceStop() {
+    voice.on = false;
+    voice.listening = false;
+    try { post("unMute"); } catch {}
+    if (voice.rec) {
+      try { voice.rec.stop(); } catch {}
+      voice.rec = null;
+    }
+    if (voice.status !== "error") voice.status = "off";
+    drawVoice();
+  }
+
   // ---- ✋ 手の形で操作（料理モードの中だけ・カメラの映像はスマホの外に送らない） ----
   // ✋ 手のひら＝次へ、✌️ ピース＝戻る、👍 いいね＝この手順のタイマー（鳴っている時は止める）。
   // 同じ形を約0.5秒見せたら1回だけ動く。次は、いったん手を下ろしてから。
@@ -354,12 +616,13 @@ const CookMode = (() => {
     const el = document.getElementById("cook-mode");
     if (!el || el.querySelector(".cm-coach")) return;
     const c = document.createElement("div");
-    c.className = "cm-coach"; c.setAttribute("role", "dialog"); c.setAttribute("aria-label", "手の形で操作");
-    c.innerHTML = `<div class="cc-card">${typeof yohaku === "function" ? yohaku("wave", "cc-yohaku") : ""}<p class="cc-kicker">料理中、手がふさがっていても</p><h3>✋ 手をかざして操作できます</h3>
-      <ul class="cc-signs"><li><b>✋</b><span>次へ</span></li><li><b>✌️</b><span>戻る</span></li><li><b>👍</b><span>タイマー</span></li></ul>
-      <p class="cc-note">スマホから30cm〜1mで、約0.5秒見せると動きます。<br>カメラの映像はスマホの中だけで使い、外には送りません。</p>
-      <button type="button" class="primary-button" data-cook-mode="coach-start">✋ 手で操作をはじめる</button>
-      <button type="button" class="text-button" data-cook-mode="coach-later">あとで（右上の「✋ 手で操作」からいつでも）</button></div>`;
+    c.className = "cm-coach"; c.setAttribute("role", "dialog"); c.setAttribute("aria-label", "声や手で操作");
+    c.innerHTML = `<div class="cc-card">${typeof yohaku === "function" ? yohaku("wave", "cc-yohaku") : ""}<p class="cc-kicker">手がふさがっていても、濡れていても</p><h3>🎙️ 声や ✋ 手で操作できます</h3>
+      <ul class="cc-signs"><li><b>🎙️</b><span>声で</span><small>「次へ」「戻る」</small></li><li><b>✋</b><span>手で</span><small>かざして進める</small></li><li><b>👆</b><span>特大ボタン</span><small>手首でもポン</small></li></ul>
+      <p class="cc-note">マイクやカメラのデータはスマホの中だけで安全に使い、外には送りません。<br>下の特大ボタンなら、濡れた手でも手首や関節で直接ポンと叩けます。</p>
+      <button type="button" class="primary-button" data-cook-mode="coach-voice">🎙️ 声で操作をはじめる</button>
+      <button type="button" class="secondary-button" data-cook-mode="coach-start">✋ 手で操作をはじめる</button>
+      <button type="button" class="text-button" data-cook-mode="coach-later">あとで（右上のボタンからいつでも）</button></div>`;
     el.append(c);
   }
   // いま見えている形のボタンを光らせ、見せ続けた長さをバーで出す。
@@ -399,6 +662,6 @@ const CookMode = (() => {
     else if (ev.key === "Escape") closeMode();
   });
 
-  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, _timers: () => timers, _mode: () => ({ at, loop, showAll }), _hand: () => hand, _see: seeGesture, openMode, closeMode };
+  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
 })();
 if (typeof module !== "undefined") module.exports = CookMode;
