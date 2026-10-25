@@ -1629,6 +1629,84 @@
     if (PERISH_RE.test(name) && !/缶|乾燥|干し|粉|顆粒/.test(name)) return false;
     return item.category === "調味料" || KEEP_RE.test(name);
   }
+  // 週間・数日プランの「ざっくり主菜・野菜・気分バランス」1行サマリー（栄養価の計算ではなく、主菜の偏り・野菜の種類数・味付けの目安）。
+  const BALANCE_VEG = [
+    [/キャベツ|きゃべつ/, "キャベツ"], [/白菜/, "白菜"], [/大根/, "大根"], [/にんじん|人参/, "にんじん"],
+    [/玉ねぎ|たまねぎ|玉葱|オニオン/, "玉ねぎ"], [/長ねぎ|長ネギ|白ねぎ|青ねぎ|万能ねぎ|ねぎ/, "ねぎ"],
+    [/ごぼう|牛蒡/, "ごぼう"], [/れんこん|蓮根/, "れんこん"], [/かぼちゃ|南瓜/, "かぼちゃ"],
+    [/ブロッコリー/, "ブロッコリー"], [/ほうれん草|ほうれんそう/, "ほうれん草"], [/小松菜/, "小松菜"],
+    [/ニラ|にら/, "ニラ"], [/もやし|豆苗/, "もやし"], [/なす|ナス|茄子/, "なす"], [/ピーマン|パプリカ/, "ピーマン"],
+    [/きゅうり|胡瓜/, "きゅうり"], [/トマト(?!ケチャップ|ピューレ|ペースト)/, "トマト"],
+    [/じゃがいも|ジャガイモ/, "じゃがいも"], [/さつまいも/, "さつまいも"],
+    [/しめじ|えのき|しいたけ|椎茸|まいたけ|舞茸|エリンギ|きのこ|マッシュルーム/, "きのこ"],
+    [/レタス|水菜|春菊|大葉|青じそ/, "葉もの"], [/アスパラ|オクラ|ゴーヤ|ズッキーニ|とうもろこし|コーン/, "緑黄色野菜"],
+  ];
+  function planBalance(days = []) {
+    const active = (days || []).filter((d) => d && !d.off && !d.prestart && d.slot?.status !== "off" && (d.slot?.recipe || d.candidate?.recipe));
+    if (active.length < 2) return null;
+    const proteins = { meat: 0, fish: 0, eggtofu: 0, veg: 0 };
+    const cuisines = { japanese: 0, western: 0, chinese: 0 };
+    const moods = { light: 0, rich: 0, spicy: 0 };
+    const vegSet = new Set();
+    let vegDays = 0;
+    for (const d of active) {
+      const r = d.slot?.recipe || d.candidate?.recipe;
+      const t = traits(r);
+      proteins[t.protein] = (proteins[t.protein] || 0) + 1;
+      cuisines[t.cuisine] = (cuisines[t.cuisine] || 0) + 1;
+      const tg = tags(r);
+      if (tg.includes("light")) moods.light += 1;
+      if (tg.includes("rich")) moods.rich += 1;
+      if (tg.includes("spicy")) moods.spicy += 1;
+      const side = d.slot?.side ? sideOf(d.slot.side) : null;
+      const allIngs = [...(r.ingredients || []), ...(side?.ingredients || [])];
+      let hasVegToday = false;
+      for (const ing of allIngs) {
+        const name = String(ing?.name || "").normalize("NFKC");
+        for (const [re, label] of BALANCE_VEG) {
+          if (re.test(name)) {
+            vegSet.add(label);
+            hasVegToday = true;
+            break;
+          }
+        }
+      }
+      if (hasVegToday || t.protein === "veg") vegDays += 1;
+    }
+    const proteinParts = [
+      ["meat", "🍖肉"],
+      ["fish", "🐟魚"],
+      ["eggtofu", "🥚卵・豆腐"],
+      ["veg", "🥗野菜主菜"],
+    ].filter(([k]) => proteins[k] > 0).map(([k, label]) => `${label}${proteins[k]}`);
+    const vegCount = vegSet.size;
+    const vegLabel = vegCount >= 4 ? `🥬 野菜たっぷり${vegCount}種` : vegCount >= 2 ? `🥬 野菜${vegCount}種` : vegCount === 1 ? `🥬 野菜1種（＋添え物でプラスも）` : `🥬 野菜少なめ（＋添え物がおすすめ）`;
+    const cuisineNames = [["japanese", "和"], ["western", "洋"], ["chinese", "中"]].filter(([k]) => cuisines[k] > 0).map(([, l]) => l);
+    let moodNote = "";
+    if (proteins.meat === active.length && active.length >= 3) {
+      moodNote = "お肉中心（魚や豆腐の日を入れると軽やか）";
+    } else if (proteins.meat > 0 && proteins.fish > 0) {
+      moodNote = `肉・魚バランス◎（${cuisineNames.join("・")}）`;
+    } else if (moods.light > 0 && moods.rich > 0) {
+      moodNote = `こってり＆さっぱり（${cuisineNames.join("・")}）`;
+    } else if (cuisineNames.length >= 2) {
+      moodNote = `${cuisineNames.join("・")}の気分バランス`;
+    } else {
+      moodNote = `${cuisineNames[0] || "和"}中心`;
+    }
+    return {
+      total: active.length,
+      proteins,
+      cuisines,
+      moods,
+      vegCount,
+      vegDays,
+      vegKinds: [...vegSet],
+      proteinText: proteinParts.join("・"),
+      vegLabel,
+      moodNote,
+    };
+  }
   const api = {
     profile,
     suggestPlanning,
@@ -1661,6 +1739,7 @@
     fractionGuide,
     QUICK_SIDES,
     sideOf,
+    planBalance,
     curated,
     traits,
     tags,
