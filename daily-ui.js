@@ -872,13 +872,15 @@ function cookSections(recipe, servings) {
   const guide = recipeGuide(recipe);
   const shown = guide ? guide.map((g) => g.text) : steps;
   const guideSlotOf = (g, t) => g.from.find((j) => Number.isFinite(t?.[j])) ?? g.from[0];
+  const isFixed = () => typeof isTimecodeFixed === "function" && isTimecodeFixed(recipe);
   const timesOf = guide ? () => {
     const t = recipeStepTimes(recipe);
     const mapped = guide.map((g) => {
       const j = guideSlotOf(g, t);
       return Number.isFinite(t[j]) ? t[j] : null;
     });
-    return typeof CookMode?.refineTimes === "function" ? CookMode.refineTimes(shown, mapped) : mapped;
+    if (isFixed()) return mapped;
+    return typeof CookMode?.refineTimes === "function" ? CookMode.refineTimes(shown, mapped, { durationSeconds: recipe.durationSeconds }) : mapped;
   } : () => recipeStepTimes(recipe);
   // 埋め込み再生ができない動画は、料理モードでは写真を出す（動画は YouTube で開く）。
   const slot = state.mealSlots?.[cookingDate];
@@ -886,6 +888,8 @@ function cookSections(recipe, servings) {
     title: recipe.title,
     steps: shown,
     timesOf,
+    timesFixed: isFixed,
+    durationSeconds: recipe.durationSeconds,
     onTimeFix: (idx, sec) => {
       if (typeof saveQuickTimeFix !== "function") return;
       const origIdx = guide && guide[idx] ? guideSlotOf(guide[idx], recipeStepTimes(recipe)) : idx;

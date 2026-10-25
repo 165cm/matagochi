@@ -30,6 +30,13 @@ test("CookMode.refineTimes and segment: subdivides coarse chapter duplicates and
   // "MM:SS" 形式の文字列が混ざっていても秒数に変換される
   const fromStrings = CookMode.refineTimes(["a", "b", "c"], ["00:12", "01:25", "02:40"]);
   assert.deepEqual(fromStrings, [12, 85, 160]);
+
+  // review fix (#152): 短尺動画の [0, 5, 10, 14] は密集（cluster）として後ろへ勝手に広げない
+  assert.deepEqual(CookMode.refineTimes(["a", "b", "c", "d"], [0, 5, 10, 14]), [0, 5, 10, 14]);
+  // review fix (#152): 動画の長さが不明な時は、末尾の重複や逆転があっても既存の最大時刻を超えない
+  const cappedDup = CookMode.refineTimes(["a", "b", "c", "d"], [10, 50, 90, 90]);
+  assert.equal(cappedDup[3], 90);
+  assert.ok(cappedDup[2] > 50 && cappedDup[2] < 90);
 });
 
 test("CookMode nudgeTime and voice commands: adjusts loop start by -5s / +5s / here and triggers onTimeFix", () => {
@@ -133,4 +140,19 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   assert.equal(run("saved"), 1);
   assert.equal(puts.length, 1);
   assert.deepEqual(puts[0].body.stepTimes[1], 55);
+
+  // 4. review fix (#152): 人が修正した時刻（source === "fix" / stepTimesFrom === "admin"）は料理モードでも再補正されない
+  run(`globalThis.fixedRecipe = {
+    id: "human-fixed",
+    title: "短尺または手動修正レシピ",
+    videoUrl: "https://www.youtube.com/watch?v=fixfixfix11",
+    ingredients: [{ name: "卵", amount: "2個" }],
+    steps: ["割る", "混ぜる", "焼く", "盛る"],
+    stepTimes: [0, 5, 5, 15],
+    stepTimesFrom: "fix"
+  }`);
+  run("cookSections(fixedRecipe, 2)");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(recipeStepTimes(fixedRecipe))")), [0, 5, 5, 15]);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(0))")), { start: 0, end: 5 });
+  assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(1))")), { start: 5, end: 15 });
 });

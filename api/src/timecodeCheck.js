@@ -83,17 +83,22 @@ export function refineStepTimes(steps = [], times = [], { durationSeconds = null
     }
   }
 
-  // 3. 4手順以上が30秒未満に密集している場合（cluster）、先頭アンカーを残して後ろを広げる
+  // 3. 4手順以上が30秒未満に密集している場合（cluster）、後ろに十分な余地（後続アンカーまたは動画長）がある時だけ先頭アンカーを残して広げる
   const afterOrder = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+  const maxKnown = afterOrder.length ? Math.max(...afterOrder.map((i) => t[i])) : 0;
   for (let k = 0; k + 3 < afterOrder.length; k++) {
     const i0 = afterOrder[k], i3 = afterOrder[k + 3];
     if (t[i0] !== null && t[i3] !== null && t[i3] - t[i0] < CHECK_CLUSTER_SECONDS) {
       let endIdx = k + 3;
       while (endIdx + 1 < afterOrder.length && t[afterOrder[endIdx + 1]] - t[i0] < CHECK_CLUSTER_SECONDS) endIdx += 1;
-      for (let c = k + 1; c <= endIdx; c++) {
-        const idx = afterOrder[c];
-        t[idx] = null;
-        needsFill.add(idx);
+      const hasLaterAnchor = endIdx + 1 < afterOrder.length && t[afterOrder[endIdx + 1]] - t[i0] >= CHECK_CLUSTER_SECONDS;
+      const hasDurationRoom = dur !== null && dur >= t[i0] + CHECK_CLUSTER_SECONDS * 2;
+      if (hasLaterAnchor || hasDurationRoom) {
+        for (let c = k + 1; c <= endIdx; c++) {
+          const idx = afterOrder[c];
+          t[idx] = null;
+          needsFill.add(idx);
+        }
       }
       k = endIdx;
     }
@@ -124,12 +129,30 @@ export function refineStepTimes(steps = [], times = [], { durationSeconds = null
     const expectedFound = t.filter((x) => x !== null).length + needsFill.size;
     if (expectedFound * 2 < nonEmptyCount) {
       for (let i = 0; i < n; i++) {
-        if (list[i] && t[i] === null) needsFill.add(i);
+        if (list[i] && t[i] === null && (dur !== null || i < anchorsNow[anchorsNow.length - 1])) needsFill.add(i);
       }
     }
   }
 
   if (!needsFill.size) return t;
+
+  // 動画の長さ（dur）が不明な時は、既存の最大時刻（maxKnown）を超えて末尾へ広げないよう終端アンカーを固定する
+  if (dur === null && maxKnown >= n) {
+    const curAnchors = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+    const lastA = curAnchors.length ? curAnchors[curAnchors.length - 1] : -1;
+    const trailingFill = [...needsFill].filter((i) => i > lastA && list[i]).sort((a, b) => a - b);
+    if (trailingFill.length) {
+      const endIdx = trailingFill[trailingFill.length - 1];
+      for (const a of curAnchors) {
+        if (t[a] >= maxKnown) {
+          t[a] = null;
+          needsFill.add(a);
+        }
+      }
+      t[endIdx] = maxKnown;
+      needsFill.delete(endIdx);
+    }
+  }
 
   // 6. アンカー（確定している時刻）の間を、手順の重み（stepWeight）で按分して補間する
   const anchors = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);

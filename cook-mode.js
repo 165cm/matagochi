@@ -234,13 +234,19 @@ const CookMode = (() => {
     return 10 + Math.min(60, s.length) + action;
   }
   // 保存済みレシピや大まかな章時刻の自動補正：逆転（order）・重複（same/coarse）・密集（cluster）を按分補間する。
-  function refineTimes(steps = [], rawTimes = []) {
+  function refineTimes(steps = [], rawTimes = [], { durationSeconds = null } = {}) {
     const n = Math.max(Array.isArray(steps) ? steps.length : 0, Array.isArray(rawTimes) ? rawTimes.length : 0);
     if (!n) return [];
+    const dur = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.floor(durationSeconds) : null;
     const list = Array.from({ length: n }, (_, i) => String(steps?.[i] ?? `手順${i + 1}`).trim());
     const t = list.map((s, i) => (!s ? null : parseTime(Array.isArray(rawTimes) ? rawTimes[i] : null)));
     if (!t.some((x) => x !== null)) return t;
     const needsFill = new Set();
+    if (dur !== null) {
+      t.forEach((x, i) => {
+        if (x !== null && x >= dur) { t[i] = null; needsFill.add(i); }
+      });
+    }
     const validIdx = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
     if (validIdx.length >= 2) {
       let inv = false;
@@ -258,12 +264,17 @@ const CookMode = (() => {
       }
     }
     const afterOrder = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+    const maxKnown = afterOrder.length ? Math.max(...afterOrder.map((i) => t[i])) : 0;
     for (let k = 0; k + 3 < afterOrder.length; k++) {
       const i0 = afterOrder[k], i3 = afterOrder[k + 3];
       if (t[i0] !== null && t[i3] !== null && t[i3] - t[i0] < 30) {
         let endIdx = k + 3;
         while (endIdx + 1 < afterOrder.length && t[afterOrder[endIdx + 1]] - t[i0] < 30) endIdx += 1;
-        for (let c = k + 1; c <= endIdx; c++) { t[afterOrder[c]] = null; needsFill.add(afterOrder[c]); }
+        const hasLaterAnchor = endIdx + 1 < afterOrder.length && t[afterOrder[endIdx + 1]] - t[i0] >= 30;
+        const hasDurationRoom = dur !== null && dur >= t[i0] + 60;
+        if (hasLaterAnchor || hasDurationRoom) {
+          for (let c = k + 1; c <= endIdx; c++) { t[afterOrder[c]] = null; needsFill.add(afterOrder[c]); }
+        }
         k = endIdx;
       }
     }
@@ -274,6 +285,18 @@ const CookMode = (() => {
       else lastSeen = t[i];
     }
     if (!needsFill.size) return t;
+    // 動画の長さ（dur）が不明な時は、既存の最大時刻（maxKnown）を超えて末尾へ広げないよう終端アンカーを固定する
+    if (dur === null && maxKnown >= n) {
+      const curAnchors = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
+      const lastA = curAnchors.length ? curAnchors[curAnchors.length - 1] : -1;
+      const trailingFill = [...needsFill].filter((i) => i > lastA && list[i]).sort((a, b) => a - b);
+      if (trailingFill.length) {
+        const endIdx = trailingFill[trailingFill.length - 1];
+        for (const a of curAnchors) if (t[a] >= maxKnown) { t[a] = null; needsFill.add(a); }
+        t[endIdx] = maxKnown;
+        needsFill.delete(endIdx);
+      }
+    }
     const anchors = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
     if (!anchors.length) return t;
     const firstA = anchors[0];
@@ -307,13 +330,16 @@ const CookMode = (() => {
     const lastA = anchors[anchors.length - 1], trailing = [];
     for (let i = lastA + 1; i < n; i++) if (needsFill.has(i) && list[i]) trailing.push(i);
     if (trailing.length) {
-      const startT = t[lastA], span = (trailing.length + 1) * 35;
+      const startT = t[lastA], defaultSpan = (trailing.length + 1) * 35;
+      const endT = dur !== null && dur > startT + 2 ? Math.min(dur - 1, startT + defaultSpan) : Math.min(35_999, startT + defaultSpan);
+      const span = Math.max(trailing.length + 1, endT - startT);
       const group = [lastA, ...trailing], weights = group.map((idx) => stepWeight(list[idx]) || 10), totalW = weights.reduce((a, b) => a + b, 0) || 1;
       let wAcc = weights[0];
       for (let k = 0; k < trailing.length; k++) {
         const rawT = startT + (span * wAcc) / totalW;
         const prevT = k === 0 ? startT + 1 : t[trailing[k - 1]] + 1;
-        t[trailing[k]] = Math.min(35_999, Math.max(prevT, Math.round(rawT)));
+        const clamped = dur !== null ? Math.min(dur - 1, Math.max(prevT, Math.round(rawT))) : Math.max(prevT, Math.round(rawT));
+        t[trailing[k]] = Math.min(35_999, clamped);
         wAcc += weights[k + 1];
       }
     }
@@ -328,8 +354,12 @@ const CookMode = (() => {
   }
   function currentTimes() {
     const raw = recipe?.timesOf?.() || recipe?.times || [];
-    const refined = refineTimes(recipe?.steps || [], raw);
-    return refined.map((v, idx) => (localTimes[idx] !== undefined ? localTimes[idx] : v));
+    const fixed = typeof recipe?.timesFixed === "function" ? !!recipe.timesFixed() : !!recipe?.timesFixed;
+    const hasLocal = Object.keys(localTimes).some((k) => Number.isFinite(localTimes[k]));
+    const base = (fixed || hasLocal)
+      ? (recipe?.steps || []).map((_, i) => parseTime(raw[i]))
+      : refineTimes(recipe?.steps || [], raw, { durationSeconds: recipe?.durationSeconds });
+    return base.map((v, idx) => (localTimes[idx] !== undefined ? localTimes[idx] : v));
   }
   // その手順の場面：始まり＝その手順の時刻、終わり＝次に時刻がある手順の始まり。
   function segment(i) {
