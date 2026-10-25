@@ -504,7 +504,7 @@ function renderDailyPlan() {
     return head + html + foot;
   }).join("");
   const ready = plan.filter((d) => d.candidate && !locks.has(d.date)).length;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${renderTicketNudge("plan")}${renderRhythmInvite()}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}${renderLeftoverPanel()}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderShareInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}${renderLeftoverPanel()}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderRhythmInvite()}${renderTicketNudge("plan")}${renderShareInvite()}`;
 }
 let swapShowAll = false;
 // 好きの度合い（評価）：「明日でも」がいちばん。家族の中でいちばん低い評価で比べる。
@@ -650,11 +650,11 @@ function renderToday() {
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
     ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-skip" data-date="${today()}">🍽 今日は外食・中食にする</button>` : ""}</div>` : ""}</section>
   ${renderSkipPanel(today())}
+  ${renderTodayTodos()}
+  ${tomorrow ? `<button type="button" class="tomorrow-line" data-action="go-view" data-view="plan"><span>明日は</span><b>${tomorrow.prestart ? "いつもどおり（献立の前）" : tomorrowOff ? "お休み 🌙" : tr ? escapeHtml(tr.title) : "未定"}</b><i aria-hidden="true">›</i></button>` : ""}
   ${renderWeeklyStamps()}
   ${renderInstallCard()}
-  ${renderTicketNudge("cook")}
-  ${renderTodayTodos()}
-  ${tomorrow ? `<button type="button" class="tomorrow-line" data-action="go-view" data-view="plan"><span>明日は</span><b>${tomorrow.prestart ? "いつもどおり（献立の前）" : tomorrowOff ? "お休み 🌙" : tr ? escapeHtml(tr.title) : "未定"}</b><i aria-hidden="true">›</i></button>` : ""}`;
+  ${renderTicketNudge("cook")}`;
 }
 // Only things that need doing today; each row is one tap to the place where it gets done.
 function renderTodayTodos() {
@@ -1203,11 +1203,14 @@ function renderLeftoverPanel() {
   const names = [...new Set([...have, ...leftoverCandidates()])];
   if (!names.length && !leftoverOpen) return "";
   const undecided = undecidedPlanDates();
-  return `<section class="leftover-panel" aria-labelledby="leftover-h"><h3 id="leftover-h" class="quick-sub">🧺 家に残っている食材 ${tip("残っているものを選ぶと、その食材を使う料理を先に出します。使ったかどうかは決めつけません（選んでから7日で外れます）")}</h3>
+  const open = have.length > 0 || leftoverOpen;
+  return `<details class="leftover-panel" aria-labelledby="leftover-h"${open ? " open" : ""}><summary class="leftover-summary"><span id="leftover-h" class="quick-sub">🧺 家に残っている食材${have.length ? ` <span class="leftover-badge">${have.length}品選択中</span>` : names.length ? ` <small class="muted">候補${names.length}品</small>` : ""}</span><span class="leftover-toggle">${open ? "閉じる ▴" : "選ぶ ▾"}</span></summary>
+    <div class="leftover-body"><p class="muted small leftover-lead">残っているものを選ぶと、その食材を使う料理を先に出します（選んでから7日で外れます）</p>
     ${names.length ? `<div class="leftover-chips" role="group" aria-label="残っている食材">${names.map((n) => `<button type="button" class="chip-button" data-action="life-leftover" data-name="${escapeAttr(n)}" aria-pressed="${have.includes(n)}">${escapeHtml(n)}</button>`).join("")}</div>` : `<p class="muted small">候補はありません。下から足せます</p>`}
     <div class="shopping-add leftover-add"><input id="leftover-name" class="input" maxlength="30" placeholder="ほかに（例：キャベツ）" aria-label="残っている食材"><button type="button" class="secondary-button" data-action="life-leftover-add">足す</button></div>
     ${have.length && undecided.length ? `${dailyButton("life-leftover-rebuild", "🧺 この食材で組み直す", "", true)}<p class="muted small">まだ決めていない${undecided.length}日だけ。決めた献立はそのまま</p>` : ""}
-  </section>`;
+    </div>
+  </details>`;
 }
 let leftoverOpen = false;
 // まだ決めていない日（確定・作った・お休みの日は入れない）。組み直しても、決めた献立は置き換えない。
@@ -1602,11 +1605,11 @@ function handleDailyAction(action, data) {
   if (action === "life-swap-more") swapShowAll = true;
   if (action === "life-starter-more") starterShowAll = true;
   // 同じ親の作り方を並べて見る（料理名で探す）。
-  if (action === "life-dish-variants" && data.dish) { state.searchText = String(data.dish).slice(0, 20); recipeTab = "all"; state.view = "collection"; }
+  if (action === "life-dish-variants" && data.dish) { state.searchText = String(data.dish).slice(0, 20); recipeTab = "all"; folderOpen = ""; state.view = "collection"; }
   // 食べ比べ：空いている日に、同じ親の別の作り方を入れる（自分で選んだ日として。入れ替えで戻せる）。
   if (action === "life-dish-compare" && data.parent && !isViewer()) {
     const n = dishCompare(data.parent);
-    if (n) { trackDaily("dish_compare"); changedShopping(before); }
+    if (n) { trackDaily("dish_compare"); changedShopping(before); state.view = "plan"; }
     showToast(n ? `「${String(data.dish || "").slice(0, 20)}」の食べ比べ：${n}日分を献立に入れました（入れ替えで戻せます）` : "空いている日がないか、条件に合う作り方がありません。");
   }
   if ((action === "life-dish-hide" || action === "life-dish-unhide") && data.parent && !isViewer()) {
@@ -2596,8 +2599,11 @@ function renderRecipeDetail() {
     <p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>
     <div class="detail-tags">${tagLabels(r).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
     ${renderSkillLine(r)}
-    ${saved || edit ? renderFolderLine(r) : ""}
-    ${renderParentLine(r)}
+    ${(() => {
+      const fLine = saved || edit ? renderFolderLine(r) : "";
+      const pLine = renderParentLine(r);
+      return fLine || pLine ? `<div class="dish-group-box">${pLine}${fLine}</div>` : "";
+    })()}
     <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
     <div class="detail-actions">${requestButton(r)}${edit ? (saved ? dailyButton("edit-recipe", "✏️ 編集する", `data-recipe="${escapeAttr(r.id)}"`) : dailyButton("life-save-starter", "🔖 自分のレシピに保存", `data-recipe="${escapeAttr(r.id)}"`)) : ""}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>
     ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? `🎬 作り方がおかしい？動画から読み直す${ticketPrice()}` : `🎬 動画から読み取る${ticketPrice()}`}</button></div>` : ""}

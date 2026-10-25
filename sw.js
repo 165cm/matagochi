@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v160";
-const APP_VERSION = "20261025-timecodes";
+const CACHE_NAME = "ripigochi-v161";
+const APP_VERSION = "20261025-firstview";
 const CORE_ASSETS = [
   "./",
   "./index.html",

@@ -896,3 +896,15 @@ MVP の間は、読み取りの決まりを変えるたびに、前に集めた�
 - **料理モード（`#cook-mode`）内の1タップ微調整バーと音声調整（cook-mode.js・discover.js `saveQuickTimeFix`）**：
   - 料理モードの動画の下に「`🔁 1:20 〜 1:45` ［`⏪ -5秒`］［`📍ここ`］［`+5秒 ⏩`］」バーを表示。
   - 再生場面がズレていた時に1タップ（または音声コマンド「5秒前」「5秒後」「ここを始まりに」）で開始位置を微調整でき、その場でループ区間が切り替わると同時に、端末の保存レシピとサーバーの共有時刻（`PUT /api/import/youtube/timecodes`）の両方に保存される。
+
+## 53. ファーストビューの整理と「定番フォルダ・親の料理名」の統合（daily-ui.js・folders.js・app.js・styles.css）
+
+献立画面や今日画面を開いた瞬間に補助パネルが重なって肝心の料理カードが画面外へ押し下げられる課題と、「定番フォルダ」と「親の料理名（料理グループ）」の2つの似た仕組みが別々に表示されて迷う課題を解消する。
+
+- **献立・今日タブのファーストビュー整理（daily-ui.js `renderDailyPlan`・`renderToday`・`renderLeftoverPanel`）**：
+  - `renderDailyPlan()` では、週間ボード（`renderWeekBoard`）と各日の料理カード一覧（`.plan-list`）を最優先でファーストビューに表示し、リズム設定の案内（`renderRhythmInvite`）やチケット案内（`renderTicketNudge("plan")`）は料理カード一覧の下へ配置。
+  - 「🧺 家に残っている食材」（`renderLeftoverPanel`）は `<details class="leftover-panel">` による1行の折りたたみバー（「候補N品 · 選ぶ ▾」）とし、食材を選択中（`have.length > 0`）または手動で開いた時だけ自動展開することで、普段の献立確認を邪魔しない段階的開示にする。
+  - `renderToday()` では、「今夜の一品」カードの直下に「今日やること（`renderTodayTodos`）」と「明日は◯◯（`.tomorrow-line`）」を配置し、スタンプカードやホーム画面追加案内はその後ろへ整理。
+- **「定番フォルダ」と「親の料理名（料理グループ）」の概念統合（folders.js `autoDishGroups`・`renderFolders`・`renderFolderLine`・daily-ui.js `renderRecipeDetail`）**：
+  - レシピ詳細画面（`renderRecipeDetail`）で別々に並んでいた `renderParentLine` と `renderFolderLine` を1つの統合枠（`.dish-group-box`）にまとめ、同じ料理の食べ比べ・一覧表示・定番フォルダ登録（ランキング・曜日固定）をひと続きで操作できるように整理。
+  - レシピ一覧の「📁 定番」タブ（`renderFolders`）に、まだ手動でフォルダを作っていなくても同じ料理名でまとまったグループ（`autoDishGroups`）を「🍲 自動でまとまった料理」として自動表示。その場で「食べ比べ」「一覧で見る」「📌 定番に登録」（`life-folder-from-dish`）を1タップで行え、登録時には同じ料理名の保存済みレシピも自動でそのフォルダへ紐付ける。

@@ -113,3 +113,39 @@ test("review fix (#123 r2): a pinned dish of a hidden parent still comes on its 
   assert.equal(ids[0], "nik1", "the pinned day keeps the pinned dish");
   assert.ok(ids.slice(1).every((id) => id !== "nik1"), `not on other days: ${ids}`);
 });
+
+test("Proposal 8: autoDishGroups surfaces dish groups in 定番 tab and life-folder-from-dish promotes them with existing saved recipes", async () => {
+  const run = app(items);
+  await run("loadDiscover({ force: true })");
+  run(`state.recipes.push({ ...clone(discoverRecipes()[0]), id: "hap_saved", curated: undefined, discover: undefined })`);
+  const groups = JSON.parse(run("JSON.stringify(autoDishGroups().map((g)=>({name:g.name,count:g.kids.length,saved:g.savedCount})))"));
+  const hap = groups.find((g) => g.name === "八宝菜");
+  assert.ok(hap, "八宝菜 is surfaced as an automatic dish group");
+  assert.equal(hap.saved, 1);
+  assert.ok(hap.count >= 3);
+  const foldersHtml = run("renderFolders()");
+  assert.match(foldersHtml, /自動でまとまった料理/);
+  assert.match(foldersHtml, /data-action="life-folder-from-dish" data-dish="八宝菜"/);
+  run(`handleFolderAction("life-folder-from-dish", { dish: "八宝菜" })`);
+  const fList = JSON.parse(run("JSON.stringify(folderList())"));
+  assert.equal(fList.length, 1);
+  assert.equal(fList[0].name, "八宝菜");
+  assert.equal(run("recipeById('hap_saved').folder"), fList[0].key, "saved recipe is automatically linked to the new folder");
+  const detailHtml = run("recipeDetailId='hap_saved';renderRecipeDetail()");
+  assert.match(detailHtml, /class="dish-group-box"/);
+});
+
+test("Proposal 8: renderDailyPlan places plan-list before rhythm-invite and collapses leftover-panel until a leftover is selected", () => {
+  const run = app(items);
+  run(`state.shopDone = { [today()]: nowIso() };
+       state.shoppingMarks = { "もやし": { status: "purchased", signature: "x", updatedAt: nowIso() } };`);
+  const html = run("renderDailyPlan()");
+  const planIdx = html.indexOf('class="plan-list"');
+  const inviteIdx = html.indexOf('class="rhythm-invite"');
+  assert.ok(planIdx > 0, "plan-list is rendered");
+  if (inviteIdx >= 0) assert.ok(planIdx < inviteIdx, "plan-list appears in the first view before rhythm-invite");
+  assert.match(html, /<details class="leftover-panel" aria-labelledby="leftover-h">/);
+  run(`setLeftover("もやし", true)`);
+  const openHtml = run("renderDailyPlan()");
+  assert.match(openHtml, /<details class="leftover-panel" aria-labelledby="leftover-h" open>/);
+});
