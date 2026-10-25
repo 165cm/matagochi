@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { importYouTubeRecipe } from "../src/importRecipe.js";
+import { parseTimeValue } from "../src/chapters.js";
+import { refineStepTimes, checkStepTimes } from "../src/timecodeCheck.js";
 import { fetchYouTubeSnippet, parseIsoDuration } from "../src/youtube.js";
 
 const sampleSnippet = {
@@ -91,4 +93,34 @@ test("when the AI misses the servings, the description's 材料（2人分） sti
     analyzeRecipeDescription: async () => ({ title: "豚バラ大根", sourceServings: null, ingredients: [{ name: "豚バラ", amount: "200g" }], steps: ["切る", "煮る"] }),
   });
   assert.equal(result.sourceServings, 2);
+});
+
+test("parseTimeValue and refineStepTimes handle MM:SS strings, coarse chapter duplicates, inversions, and beyond-video times", async () => {
+  assert.equal(parseTimeValue("02:15"), 135);
+  assert.equal(parseTimeValue("2:05"), 125);
+  assert.equal(parseTimeValue("1:02:05"), 3725);
+  assert.equal(parseTimeValue("2分15秒"), 135);
+  assert.equal(parseTimeValue("90s"), 90);
+  assert.equal(parseTimeValue({ time: "01:30", cue: "炒める" }), 90);
+  assert.equal(parseTimeValue("2:99"), null);
+
+  // Coarse chapters where multiple steps point to the same chapter timestamp are subdivided proportionally
+  const st5 = ["野菜を切る", "豚肉を炒める", "野菜を加えてさらに炒める", "調味料を入れる", "盛り付ける"];
+  const refinedCoarse = refineStepTimes(st5, [10, 90, 90, 90, 180], { durationSeconds: 240 });
+  assert.equal(refinedCoarse[0], 10);
+  assert.equal(refinedCoarse[1], 90);
+  assert.ok(refinedCoarse[2] > 90 && refinedCoarse[2] < refinedCoarse[3]);
+  assert.ok(refinedCoarse[3] > refinedCoarse[2] && refinedCoarse[3] < 180);
+  assert.equal(refinedCoarse[4], 180);
+  assert.equal(checkStepTimes(st5, refinedCoarse, { source: "chapters", durationSeconds: 240 }).coarse, undefined);
+
+  // Out-of-order and beyond-duration timestamps are repaired cleanly
+  const st4 = ["手順1", "手順2", "手順3", "手順4"];
+  const refinedOrder = refineStepTimes(st4, [10, 200, 100, 300], { durationSeconds: 350 });
+  assert.deepEqual(refinedOrder, [10, 55, 100, 300]);
+  assert.equal(checkStepTimes(st4, refinedOrder, { durationSeconds: 350 }).status, "ok");
+
+  const refinedBeyond = refineStepTimes(st4, [10, 60, 120, 400], { durationSeconds: 300 });
+  assert.ok(refinedBeyond[3] > 120 && refinedBeyond[3] < 300);
+  assert.equal(checkStepTimes(st4, refinedBeyond, { durationSeconds: 300 }).status, "ok");
 });

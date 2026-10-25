@@ -163,3 +163,28 @@ test('review fix (#137): chapter times packed in 30 seconds without the same tim
   assert.equal(r.coarse, 1);
   assert.equal(checkStepTimes(steps(4), [10, 60, 120, 200], { source: 'chapters' }).coarse, undefined);
 });
+
+test('admin: POST /api/admin/timecodes/repair repairs already-saved past videos at 0 yen while keeping human fixes untouched', async (t) => {
+  const store = createMemorySyncStore();
+  const NOW = Date.now();
+  const st4 = steps(4);
+  const mk = (v, extra) => store.put(`youtube-${v}`, { status: 'ready', result: { title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelTitle: 'ch', channelId: `UC${v}`, ingredients: [{ name: '豚肉' }], steps: st4, planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }, ...extra } }, { ifGeneration: 0 });
+  await mk('coarsechapt', { stepTimes: [10, 90, 90, 180], stepTimesFrom: 'chapters', analyzedFrom: 'description' });
+  await mk('invertedvid', { stepTimes: [10, 200, 100, 300], analyzedFrom: 'video' });
+  await mk('adminfixeda', { stepTimes: [15, 15, 60, 120], stepTimesFrom: 'admin' });
+  await store.put('trends/index', { weeks: [{ week: weekOf(NOW), startedAt: new Date(NOW).toISOString(), candidates: [], tried: [], items: ['coarsechapt', 'invertedvid', 'adminfixeda'].map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [],
+    videoDetails: async (ids) => Object.fromEntries(ids.map((id) => [id, { status: 'public', durationSeconds: 360 }])) });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const admin = { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' };
+  const rep = await (await fetch(`${base}/api/admin/timecodes/repair`, { method: 'POST', headers: admin, body: '{}' })).json();
+  assert.equal(rep.checked, 3);
+  assert.equal(rep.repaired, 2);
+  assert.equal(rep.coarseFixed, 1);
+  const checkAfter = await (await fetch(`${base}/api/admin/timecodes/check`, { headers: admin })).json();
+  assert.equal(checkAfter.warn, 1, 'only adminfixeda (source=fix, kept untouched) has duplicate warning');
+  assert.equal(checkAfter.coarse, 0, 'coarse chapter duplicates were subdivided');
+});

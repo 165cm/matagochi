@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-25（提案7：料理モードの音声操作・特大ボタン・タイマー強化）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-25（手順の動画タイムコード精度改善・保存済みレシピの0円一括補正・料理モードの1タップ微調整）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 料理モードの音声操作・特大ボタン・タイマー強化 | レビュー待ち | claude/cook-voice-controls | 料理モードでのWeb Speech API音声コマンド操作、手首や関節で押せる特大タップゾーン、タイマー完了時ループアラーム強化 | cook-mode.js, styles.css, docs/APP_MAP.md, docs/CURRENT_TASK.md, test/cook-voice.test.cjs |
+| 手順のタイムコード精度改善と保存済みレシピへの反映 | レビュー待ち | fix/timecode-accuracy-and-backfill | MM:SS形式＋根拠出力、短尺動画のFPS自動最適化、重複・逆転・密集タイムコードの0円自動細分化、保存済みレシピの一括0円補正、料理モード内の1タップ微調整（-5秒/ここ/+5秒） | api/src/chapters.js, api/src/timecodeCheck.js, api/src/analyzer.js, api/src/timecodes.js, api/src/importRecipe.js, api/src/recipeCatalog.js, api/src/server.js, cook-mode.js, discover.js, daily-ui.js, admin/catalog.html, styles.css, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
@@ -26,6 +26,8 @@
 7. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 手順の動画タイムコード精度改善・保存済みレシピの0円一括補正・料理モードの1タップ微調整：AI の動画解析で `MM:SS` 形式＋根拠（`stepCues`）を出力させて秒換算の計算ミスを排除・短尺動画（3分以下 0.5fps／6分以下 0.35fps）のコマ密度を自動で引き上げ・同じ章の時刻が並んだ場合や順番逆転・動画尺超過・密集を文字数と調理時間の重みで0円自動細分化（`refineStepTimes` / `CookMode.refineTimes`）・書き直し手順（`guide`）の時刻引き継ぎ改善・保存済みの過去動画もアプリ側で即座に自動補正＋管理画面に「🔧 保存済みの時刻を0円で一括補正」（`POST /api/admin/timecodes/repair`）・料理モード（`#cook-mode`）に「⏪ -5秒」「📍ここ」「+5秒 ⏩」ボタンと音声操作を追加（APP_MAP §52）
 
 - 料理モードの音声操作・特大ボタン・タイマー強化：Web Speech APIによるハンズフリー音声操作（「次へ」「戻る」「タイマー」「ストップ」「材料」「もう一回」「終了」）、手が汚れていても手首や関節で直接押せる画面下部の特大ナビゲーションボタン（64px）、タイマー完了時に止めるまで2.5秒間隔で鳴り続けるループアラームとバックグラウンド通知（cook-mode.js・APP_MAP §51）
 

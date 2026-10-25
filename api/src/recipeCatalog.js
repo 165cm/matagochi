@@ -217,7 +217,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
       return { guide: result.guide || null };
     },
-    async setStepTimes(rawUrl, stepTimes) {
+    async setStepTimes(rawUrl, stepTimes, { from = "admin" } = {}) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
       const current = await store.get(key);
@@ -226,7 +226,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       const count = (result.steps || []).length;
       const raw = Array.isArray(stepTimes) ? stepTimes : [];
       result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : Math.floor(Number(t)); });
-      result.stepTimesFrom = "admin";
+      if (from) result.stepTimesFrom = from;
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
       return { stepTimes: result.stepTimes };
     },

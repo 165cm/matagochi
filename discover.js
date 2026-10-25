@@ -210,9 +210,28 @@ function recipeStepTimes(recipe) {
   const entry = timecodes.get(key);
   // 運営がすべて消した時刻（cleared）は、手元に古い時刻があっても使わない。
   if (entry?.cleared) return entry.times;
-  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.times;
-  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return recipe.stepTimes;
-  return entry?.times || [];
+  const refine = (arr) => (typeof CookMode !== "undefined" && typeof CookMode.refineTimes === "function" && Array.isArray(arr) && arr.some((t) => Number.isFinite(t)) ? CookMode.refineTimes(recipe?.steps || [], arr) : arr);
+  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.source === "fix" ? entry.times : refine(entry.times);
+  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return refine(recipe.stepTimes);
+  return refine(entry?.times || []);
+}
+function saveQuickTimeFix(recipe, stepIndex, newSeconds) {
+  if (!recipe || !Array.isArray(recipe.steps) || stepIndex < 0 || stepIndex >= recipe.steps.length || !Number.isFinite(newSeconds)) return;
+  const key = timecodeKey(recipe);
+  const current = recipeStepTimes(recipe);
+  const times = recipe.steps.map((_, i) => (i === stepIndex ? Math.max(0, Math.floor(newSeconds)) : (Number.isFinite(current[i]) ? Math.floor(current[i]) : null)));
+  timecodes.set(key, { status: "done", at: Date.now(), times, source: "fix" });
+  recipe.stepTimes = times;
+  const own = state.recipes?.find((r) => r.id === recipe.id && timecodeKey(r) === key);
+  if (own) { own.stepTimes = times; saveState(); }
+  if (["recipe", "cooking"].includes(state.view)) patchStepTimes(recipe);
+  if (API_BASE_URL && youtubeVideoId(recipe.videoUrl) && recipe.steps.length >= 2) {
+    globalThis.fetch?.(`${API_BASE_URL}/api/import/youtube/timecodes`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Household": householdKey() },
+      body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, stepTimes: times }),
+    }).catch(() => {});
+  }
 }
 function timecodesLoading(recipe) { return timecodes.get(timecodeKey(recipe))?.status === "loading"; }
 // 見出しの横の小さな案内：探している間と、見つからなかった時（理由つき）。
