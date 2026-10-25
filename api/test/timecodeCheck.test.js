@@ -168,7 +168,7 @@ test('admin: POST /api/admin/timecodes/repair repairs already-saved past videos 
   const store = createMemorySyncStore();
   const NOW = Date.now();
   const st4 = steps(4);
-  const mk = (v, extra) => store.put(`youtube-${v}`, { status: 'ready', result: { title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelTitle: 'ch', channelId: `UC${v}`, ingredients: [{ name: '豚肉' }], steps: st4, planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }, ...extra } }, { ifGeneration: 0 });
+  const mk = (v, extra) => store.put(`youtube-${v}`, { status: 'ready', result: { title: `料理${v}`, videoUrl: `https://www.youtube.com/watch?v=${v}`, channelTitle: 'ch', channelId: `UC${v}`, ingredients: [{ name: '豚肉' }, { name: 'キャベツ' }, { name: '塩' }], steps: st4, planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }, ...extra } }, { ifGeneration: 0 });
   await mk('coarsechapt', { stepTimes: [10, 90, 90, 180], stepTimesFrom: 'chapters', analyzedFrom: 'description' });
   await mk('invertedvid', { stepTimes: [10, 200, 100, 300], analyzedFrom: 'video' });
   await mk('adminfixeda', { stepTimes: [15, 15, 60, 120], stepTimesFrom: 'admin' });
