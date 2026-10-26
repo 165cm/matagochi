@@ -619,7 +619,7 @@ function yohaku(pose, cls = "") {
 }
 function dishTile(recipe, cls = "") {
   const photo = recipe ? recipeThumbnail(recipe) : "";
-  if (photo) return `<img class="dish-tile ${cls}" src="${escapeAttr(photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
+  if (photo) return renderRecipeImage(recipe, `dish-tile ${cls}`);
   // No photo of its own: a generic dish photo by staple, marked as an image only.
   const t = Lifestyle.traits(recipe || {});
   const fallback = { rice: "rice", noodle: "noodle", bread: "bread", other: "okazu" }[t.staple] || "okazu";
