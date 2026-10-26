@@ -376,7 +376,7 @@ function normalizeState(saved) {
     onboardingDraft: saved.onboardingDraft ? Lifestyle.profile(saved.onboardingDraft) : null,
     householdProfile: saved.householdProfile ? {equipment:Lifestyle.profile(saved.householdProfile).equipment,pantry:Lifestyle.profile(saved.householdProfile).pantry,updatedAt:normalizeTimestamp(saved.householdProfile.updatedAt)} : null,
     mealSlots: Lifestyle.normalizeSlots(saved.mealSlots),
-    planDrafts: normalizePlanDrafts(saved.planDrafts),
+    planDrafts: normalizePlanDrafts(saved.planDrafts, saved.tombstones?.recipes),
     shoppingMarks: normalizeShoppingMarks(saved.shoppingMarks),
     manualShopping: normalizeManualShopping(saved.manualShopping),
     planLength: Number(saved.planLength) === 7 ? 7 : 3,
@@ -768,7 +768,7 @@ function applySyncPayload(payload) {
   state.tombstones = normalizeTombstones(payload.tombstones);
   state.planOverrides = normalizePlanOverrides(payload.planOverrides);
   state.mealSlots = Lifestyle.normalizeSlots(payload.mealSlots || state.mealSlots);
-  state.planDrafts = normalizePlanDrafts(payload.planDrafts);
+  state.planDrafts = normalizePlanDrafts(payload.planDrafts, payload.tombstones?.recipes);
   state.shoppingMarks = normalizeShoppingMarks(payload.shoppingMarks || state.shoppingMarks);
   state.manualShopping = normalizeManualShopping(payload.manualShopping || state.manualShopping);
   state.requests = normalizeRequests(payload.requests || state.requests);
@@ -917,8 +917,8 @@ async function jsonRequestBody(value) {
   return { body: await new Response(stream).blob(), headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" } };
 }
 // 献立は端末時計ではなく、最後に共有できた内容との差分でまとめる。
-function normalizePlanDrafts(raw) {
-  return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([date, r]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && r?.id && r?.title).map(([date, r]) => [date, normalizeRecipes([r])[0]]).filter(([, r]) => r));
+function normalizePlanDrafts(raw, deleted = {}) {
+  return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([date, r]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && r?.id && r?.title && (!deleted?.[r.id] || recipeStamp(r) > deleted[r.id])).map(([date, r]) => [date, normalizeRecipes([r])[0]]).filter(([, r]) => r));
 }
 function captureAccountDrafts() {
   if (!state.sync?.accountEmail || !state.onboarded) return;
@@ -935,7 +935,7 @@ function captureAccountDrafts() {
 }
 function planSnapshot(payload) {
   const result = {};
-  const slots = Lifestyle.normalizeSlots(payload.mealSlots || {}), overrides = payload.planOverrides || {}, drafts = normalizePlanDrafts(payload.planDrafts);
+  const slots = Lifestyle.normalizeSlots(payload.mealSlots || {}), overrides = payload.planOverrides || {}, drafts = normalizePlanDrafts(payload.planDrafts, payload.tombstones?.recipes);
   for (const date of new Set([...Object.keys(slots), ...Object.keys(overrides), ...Object.keys(drafts)])) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     result[date] = { slot: slots[date] || null, override: overrides[date] || "", ...(drafts[date] ? { draft: drafts[date] } : {}) };
@@ -1704,6 +1704,7 @@ function removeRecipes(ids) {
   state.recipes = state.recipes.filter((item) => !gone.has(item.id));
   state.evaluations = state.evaluations.filter((item) => !gone.has(item.recipeId));
   Object.keys(state.planOverrides).forEach((date) => { if (gone.has(state.planOverrides[date])) delete state.planOverrides[date]; });
+  Object.keys(state.planDrafts || {}).forEach(date => { if (gone.has(state.planDrafts[date].id)) delete state.planDrafts[date]; });
   if (gone.has(state.editingRecipeId)) state.editingRecipeId = null;
   if (state.view === "recipe" && gone.has(recipeDetailId)) state.view = "collection";
   if (gone.has(state.selectedRecipeId)) state.selectedRecipeId = state.recipes[0]?.id || null;

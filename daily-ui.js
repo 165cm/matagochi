@@ -282,7 +282,7 @@ function allDinnerRecipes() {
   const originals = new Set(personal.map((r) => r.starterId));
   return [...new Map([
     ...personal,
-    ...Object.values(state.planDrafts || {}).filter(r => !personal.some(p => p.id === r.id)),
+    ...Object.values(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(r => !personal.some(p => p.id === r.id)),
     ...(showStarters() ? [...discoverRecipes(), ...Lifestyle.curated.filter((r) => !originals.has(r.id) && !starterHidden().has(r.id))] : []),
   ].map(r => [r.id, r])).values()];
 }
@@ -324,7 +324,7 @@ function dailyPlan({ exclude = [] } = {}) {
     start: today(),
     length: rhythmOn() ? rhythmPlanDays() : state.planLength || p.period,
     addDays,
-    overrides: { ...Object.fromEntries(Object.entries(state.planDrafts || {}).filter(([d, r]) => Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
+    overrides: { ...Object.fromEntries(Object.entries(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(([d, r]) => !hiddenParents().has(parentKeyOf(r)) && !starterHidden().has(r.id) && Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
     // 子の評価がなければ親の評価を引き継ぐ（APP_MAP §48）。
     cyclesOf: plannedCycles(),
     offUntil: prestartUntil(),

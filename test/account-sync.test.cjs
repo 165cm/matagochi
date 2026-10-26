@@ -36,7 +36,8 @@ function server() {
  };
  return {net,requests,get data(){return data},set data(d){data=structuredClone(d);revision++}};
 }
-const day='2026-10-26',next='2026-10-27';
+const dateKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const day=dateKey(new Date()),next=dateKey(new Date(Date.now()+86400000));
 const recipe=id=>({id,title:id,mealType:'dinner',ingredients:[],steps:[]});
 function setDay(a,date,id){a.run(`state.mealSlots['${date}']={date:'${date}',status:'confirmed',recipe:${JSON.stringify(recipe(id))},updatedAt:'2026-10-26T12:00:00Z'}`)}
 function value(a,expr){return JSON.parse(a.run(`JSON.stringify(${expr})`))}
@@ -145,4 +146,27 @@ test('late account reads and link replies cannot restore a signed-out session', 
   const pending=a.run(action);await ready;a.run('signOutLocal()');release();await pending;
   assert.equal(a.run('account'),null);
  }
+});
+
+function seedSharedCandidate(a) {
+ a.run(`state.foodProfile=Lifestyle.profile({completed:true}); const candidate=clone(dailyPlan().find(d=>d.candidate).candidate.recipe); candidate.id='saved-candidate'; state.recipes=[candidate]; state.starterPref={show:false,hidden:[],hiddenDishes:[]};state.planDrafts={[today()]:clone(candidate)};`);
+}
+test('deleting a recipe removes its shared candidate copy and remote tombstones prevent revival',()=>{
+ const a=app(server().net);seedSharedCandidate(a);
+ const payload=value(a,'buildSyncPayload()');
+ a.run(`removeRecipes(['saved-candidate'])`);
+ assert.equal(a.run('Object.keys(state.planDrafts).length'),0);
+ assert.equal(a.run(`allDinnerRecipes().some(r=>r.id==='saved-candidate')`),false);
+ payload.recipes=[];payload.tombstones={recipes:{'saved-candidate':new Date().toISOString()},evaluations:{}};
+ a.ctx.received=payload;a.run('applySyncPayload(received)');
+ assert.equal(a.run('Object.keys(state.planDrafts).length'),0);
+ assert.equal(a.run(`dailyPlan().some(d=>d.candidate?.recipe.id==='saved-candidate')`),false);
+});
+test('hidden dish groups block shared automatic candidates but preserve explicit choices',()=>{
+ const a=app(server().net);seedSharedCandidate(a);
+ assert.equal(a.run(`dailyPlan()[0].candidate?.recipe.id`),'saved-candidate');
+ a.run(`state.starterPref.hiddenDishes=[parentKeyOf(state.recipes[0])]`);
+ assert.equal(a.run(`dailyPlan().some(d=>d.candidate?.recipe.id==='saved-candidate')`),false);
+ a.run(`state.planOverrides[today()]='saved-candidate'`);
+ assert.equal(a.run(`dailyPlan()[0].candidate?.recipe.id`),'saved-candidate');
 });
