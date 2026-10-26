@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v164";
-const APP_VERSION = "20261025-balance";
+const CACHE_NAME = "ripigochi-v165";
+const APP_VERSION = "20261026-review-fixes";
 const CORE_ASSETS = [
   "./",
   "./index.html",

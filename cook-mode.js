@@ -154,14 +154,18 @@ const CookMode = (() => {
     } catch {}
     try { navigator.vibrate?.([350, 150, 350, 150, 500]); } catch {}
   }
-  function notifyTimer(t) {
+  async function notifyTimer(t) {
     if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
       try {
-        new Notification("⏰ タイマーの時間です！", {
+        const title = "⏰ タイマーの時間です！";
+        const options = {
           body: `${t?.label || "タイマー"}（${fmt(t?.total || 0)}）が完了しました`,
           icon: "icons/icon-192.png",
           tag: `cook-timer-${t?.id || "alarm"}`,
-        });
+        };
+        const registration = await globalThis.navigator?.serviceWorker?.getRegistration?.();
+        if (registration?.showNotification) await registration.showNotification(title, options);
+        else new Notification(title, options);
       } catch {}
     }
   }

@@ -469,27 +469,37 @@ export function createApp(env = process.env, deps = {}) {
   });
   // 管理：すでに保存済みの過去動画のタイムコードを0円で一括補正（順番の逆転・同じ章時刻の分割・動画長超過・密集・空白を按分補間。人が直した fix は触らない）。
   const repairTimecodesOne = async (videoId, durationSeconds = null) => {
-    const url = canonicalYouTubeUrl(videoId);
-    const full = await catalog.peek(url).catch(() => null);
-    if (!full || (full.steps || []).filter(Boolean).length < 2) return { videoId, changed: false, skipped: true };
-    const { times, source, seenSeconds } = await timesOf(url, full);
-    if (source === "fix" || !(times || []).some((t) => Number.isFinite(t))) return { videoId, changed: false, skipped: true, source };
-    const beforeCheck = checkStepTimes(full.steps, times, { durationSeconds, source, seenSeconds });
-    const normBefore = full.steps.map((_, i) => (Number.isFinite(Number(times[i])) && times[i] !== null ? Math.floor(Number(times[i])) : null));
-    const refined = refineStepTimes(full.steps, normBefore, { durationSeconds, fillGaps: true });
-    if (JSON.stringify(refined) === JSON.stringify(normBefore)) return { videoId, changed: false, stepTimes: refined, source };
-    await catalog.setStepTimes(url, refined, { from: full.stepTimesFrom || (source === "chapters" ? "chapters" : "") }).catch(() => {});
-    await timecodeBook.repair({ url, steps: full.steps, stepTimes: refined, source, durationSeconds, fillGaps: true }).catch(() => {});
-    return {
-      videoId,
-      title: full.title || "",
-      changed: true,
-      source,
-      before: normBefore,
-      after: refined,
-      issuesBefore: beforeCheck.issues.map((i) => i.code),
-      coarseBefore: beforeCheck.coarse || 0,
-    };
+    let partial = false;
+    try {
+      const url = canonicalYouTubeUrl(videoId);
+      const full = await catalog.peek(url);
+      if (!full || (full.steps || []).filter(Boolean).length < 2) return { videoId, changed: false, skipped: true };
+      const { times, source, seenSeconds } = await timesOf(url, full);
+      if (source === "fix" || !(times || []).some((t) => Number.isFinite(t))) return { videoId, changed: false, skipped: true, source };
+      const beforeCheck = checkStepTimes(full.steps, times, { durationSeconds, source, seenSeconds });
+      const normBefore = full.steps.map((_, i) => (Number.isFinite(Number(times[i])) && times[i] !== null ? Math.floor(Number(times[i])) : null));
+      const refined = refineStepTimes(full.steps, normBefore, { durationSeconds, fillGaps: true });
+      if (JSON.stringify(refined) === JSON.stringify(normBefore) && JSON.stringify(refined) === JSON.stringify(full.stepTimes)) return { videoId, changed: false, stepTimes: refined, source };
+      // 共有時刻を先に保存。カタログ保存に失敗しても元のレシピ時刻から再試行できる。
+      const repaired = await timecodeBook.repair({ url, steps: full.steps, stepTimes: refined, source, durationSeconds, fillGaps: true });
+      if (repaired?.skipped) return { videoId, changed: false, skipped: true, source: "fix" };
+      if (!repaired) throw new Error("timecodes not saved");
+      partial = true;
+      await catalog.setStepTimes(url, refined, { from: full.stepTimesFrom || (source === "chapters" ? "chapters" : "") });
+      return {
+        videoId,
+        title: full.title || "",
+        changed: true,
+        source,
+        before: normBefore,
+        after: refined,
+        issuesBefore: beforeCheck.issues.map((i) => i.code),
+        coarseBefore: beforeCheck.coarse || 0,
+      };
+    } catch {
+      return { videoId, changed: false, failed: true, partial,
+        message: partial ? "共有時刻だけ保存できました。もう一度補正して保存を完了してください。" : "保存できませんでした。少し待ってからもう一度補正してください。" };
+    }
   };
   app.post("/api/admin/timecodes/repair", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -503,20 +513,21 @@ export function createApp(env = process.env, deps = {}) {
       }
       const ids = [...seenIds];
       const lengths = await durationsOf(ids);
-      const rows = [];
+      const rows = [], failures = [];
       let coarseFixed = 0;
       for (const id of ids) {
         const resOne = await repairTimecodesOne(id, lengths[id] ?? null);
+        if (resOne.failed) failures.push(resOne);
         if (resOne.changed) {
           rows.push(resOne);
           if (resOne.coarseBefore) coarseFixed += 1;
         }
       }
-      if (rows.length) {
+      if (rows.length || failures.some((r) => r.partial)) {
         trendBook.clearCache();
         popularBook.clearCache();
       }
-      return { checked: ids.length, repaired: rows.length, coarseFixed, rows };
+      return { checked: ids.length, repaired: rows.length, failed: failures.length, failures, coarseFixed, rows };
     })());
   });
   app.post("/api/admin/recipes/:videoId/timecodes/repair", (req, res) => {
@@ -527,7 +538,7 @@ export function createApp(env = process.env, deps = {}) {
     send(res, (async () => {
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const out = await repairTimecodesOne(videoId, durationSeconds);
-      if (out.changed) { trendBook.clearCache(); popularBook.clearCache(); }
+      if (out.changed || out.partial) { trendBook.clearCache(); popularBook.clearCache(); }
       return out;
     })());
   });

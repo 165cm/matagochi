@@ -136,3 +136,18 @@ test("CookMode._hear: drives cooking mode steps, timer, materials, and exit", ()
   assert.equal(CookMode._mode().at, -1);
   CookMode._clearTimers();
 });
+
+test("review: Android timer notification uses service worker and handles rejection", async () => {
+  const vm=require('node:vm'), fs=require('node:fs');
+  let tick, time=100000, calls=0, reject=false;
+  const bar={innerHTML:'',remove(){}};
+  class D extends Date { static now(){return time;} }
+  class Notification { static permission='granted'; constructor(){throw new Error('Android constructor must not be called');} }
+  const ctx=vm.createContext({Date:D,console,Notification,setInterval(fn){tick=fn;return 1;},clearInterval(){},
+    navigator:{serviceWorker:{async getRegistration(){return {async showNotification(title,opts){calls++;assert.match(title,/タイマー/);assert.match(opts.tag,/cook-timer/);if(reject)throw new Error('unavailable');}}}}},
+    document:{hidden:true,getElementById:()=>bar},escapeHtml:String,escapeAttr:String});
+  vm.runInContext(fs.readFileSync(require.resolve('../cook-mode.js'),'utf8'),ctx);
+  vm.runInContext('CookMode.start(1,"煮る")',ctx);time+=2000;tick();
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,1);
+  reject=true;time+=3000;tick();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
+});

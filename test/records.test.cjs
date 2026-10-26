@@ -277,3 +277,26 @@ test("Proposal 12: Lifestyle.planBalance and renderPlanBalance summarize main pr
   assert.match(planHtml, /class="plan-balance-bar"/);
   assert.match(planHtml, /aria-label="献立のバランス"/);
 });
+
+test("review: widening preserves manual recipe choices", () => {
+  const run = app();
+  run(`state.planOverrides['2026-10-03']='chosen'; handleDailyAction('life-widen',{key:'weekdayMinutes',value:'30'})`);
+  assert.equal(run("state.planOverrides['2026-10-03']"), 'chosen');
+});
+test("review: staple celebration appears once even before all family ratings", () => {
+  const run = app();
+  setup(run, [evalOf('e1','2026-09-30'),evalOf('e2','2026-09-28')]);
+  run(`state.family=['A','B'];raterNames=()=>['A','B'];handleDailyAction('life-rate',{id:'e1',member:'A',cycle:'weekly'})`);
+  assert.equal(J(run,'toasts.filter(x=>x.includes("定番に入りました")).length'),1);
+  run(`handleDailyAction('life-rate',{id:'e1',member:'B',cycle:'weekly'})`);
+  assert.equal(J(run,'toasts.filter(x=>x.includes("定番に入りました")).length'),1);
+});
+test("review: balance counts distinct vegetables, normalizing only aliases", () => {
+  const L=require('../lifestyle.js');
+  const days = names => names.map(name=>({candidate:{recipe:{title:'野菜料理',ingredients:[{name}]}}}));
+  const b=L.planBalance(days(['アスパラ','オクラ','ズッキーニ','とうもろこし','ゴーヤ','コーン']));
+  assert.equal(b.vegCount,5);
+  assert.equal(L.planBalance(days(['豆苗','もやし','レタス','水菜','ピーマン','パプリカ','しめじ','えのき'])).vegCount,8);
+  assert.match(L.planBalance(days(['玉ねぎ','人参'])).vegLabel,/野菜少なめ/);
+  assert.doesNotMatch(L.planBalance(days(['玉ねぎ','人参','レタス','水菜'])).vegLabel,/たっぷり/);
+});

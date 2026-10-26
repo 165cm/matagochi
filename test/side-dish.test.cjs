@@ -203,3 +203,14 @@ test("renderCooking shows staple alert and side dish box when cooking okazu", ()
   assert.match(html, /cooking-side-box/);
   assert.match(html, /今日の添え物：冷奴/);
 });
+
+test("review: quick sides scale with servings and invalidate purchased amounts", () => {
+  const make=n=>({date:'2026-10-01',status:'confirmed',servings:n,side:'冷奴',recipe:{id:'r',title:'主菜',ingredients:[],steps:[]}});
+  const opts={start:'2026-10-01',end:'2026-10-01',scale:(amount,n,base)=>`${0.5*n/base}丁`};
+  const one=L.shopping({...opts,slots:{'2026-10-01':make(1)}})[0];
+  const five=L.shopping({...opts,slots:{'2026-10-01':make(5)},marks:{[one.id]:{signature:one.signature,status:'bought'}}})[0];
+  assert.deepEqual(one.amounts,['0.5丁']);
+  assert.deepEqual(five.amounts,['2.5丁']);
+  assert.notEqual(one.signature,five.signature);
+  assert.notEqual(five.status,'bought');
+});

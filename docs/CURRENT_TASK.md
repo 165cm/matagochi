@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Codex：レビュー指摘2〜9 | 作業中 | codex/review-fixes-148-156 | 手動献立・購入量・通知・補正保存・定番登録・野菜集計・評価通知を修正（音声の説明は対象外） | lifestyle.js, daily-ui.js, cook-mode.js, folders.js, api/src, admin/catalog.html, test, docs, バージョン |
 | 週間プランのざっくり栄養・気分バランス表示 | レビュー待ち | claude/weekly-balance-summary | 献立ボード直下に主菜の偏り・野菜の種類数（添え物連動）・気分バランスの1行サマリーを表示 | lifestyle.js, daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/records.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
