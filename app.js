@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261026-ios-login";
+const APP_VERSION = "20261026-image-recovery";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1764,12 +1764,49 @@ function recipeThumbnail(recipe) {
   return getRecipeEvaluationHistory(recipe.id).find((evaluation) => isDataPhoto(evaluation.photo))?.photo || "";
 }
 
+// 保存済みURLが失効・配信先に接続できない時も、同じ動画の画像を順に試す。
+function recipeImageSources(recipe) {
+  const sources = [recipeThumbnail(recipe)];
+  const id = youtubeVideoId(recipe.videoUrl);
+  if (id) sources.push(`https://img.youtube.com/vi/${id}/hqdefault.jpg`, `https://i.ytimg.com/vi/${id}/hqdefault.jpg`);
+  return [...new Set(sources.filter(Boolean))];
+}
+function recipeImageFallback(recipe) {
+  const staple = Lifestyle.traits(recipe || {}).staple;
+  return `assets/dishes/fallback-${({ rice: "rice", noodle: "noodle", bread: "bread", other: "okazu" })[staple] || "okazu"}.webp`;
+}
+function renderRecipeImage(recipe, cls, alt = "") {
+  const [src, ...remaining] = recipeImageSources(recipe);
+  return `<img class="${escapeAttr(cls)}" src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" loading="lazy" referrerpolicy="no-referrer" data-image-sources="${escapeAttr(JSON.stringify(remaining))}" data-image-fallback="${recipeImageFallback(recipe)}" onerror="recoverRecipeImage(this)">`;
+}
+function recoverRecipeImage(img) {
+  let remaining = [];
+  try { remaining = JSON.parse(img.dataset.imageSources || "[]"); } catch {}
+  if (remaining.length) {
+    const next = remaining.shift();
+    img.dataset.imageSources = JSON.stringify(remaining);
+    img.src = next;
+    return;
+  }
+  // 実際の料理写真ではないと明示。全配信先に失敗しても透明な空欄にしない。
+  img.onerror = null;
+  const tile = document.createElement("span");
+  tile.className = `${img.className} dish-fallback`;
+  tile.setAttribute("role", "img");
+  tile.setAttribute("aria-label", "写真を表示できないため、料理のイメージを表示しています");
+  tile.style.backgroundImage = `url("${img.dataset.imageFallback}")`;
+  const label = document.createElement("small");
+  label.textContent = "イメージ";
+  tile.append(label);
+  img.replaceWith(tile);
+}
+
 function renderRecipeThumb(recipe) {
   const thumb = recipeThumbnail(recipe);
   if (!thumb) return "";
   return `
     <a class="recipe-thumb-link" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer" aria-label="${escapeAttr(recipe.title)}の動画を開く">
-      <img class="recipe-thumb" src="${escapeAttr(thumb)}" alt="" loading="lazy" onerror="this.parentElement.remove()">
+      ${renderRecipeImage(recipe, "recipe-thumb")}
     </a>
   `;
 }
