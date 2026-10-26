@@ -4219,3 +4219,11 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .pb-veg { background: #eef7ed; color: #27671f; border-color: #c2e5bd; }
 .pb-veg.is-low { background: #fff8ee; color: #9a5b00; border-color: #f0d090; }
 .pb-mood { color: var(--muted); font-size: 12px; }
+
+/* 読み込み失敗の案内文字を、正方形・横長・小さい枠でも切り取らない。 */
+.dish-tile.dish-load-failed, .recipe-thumb.dish-load-failed {
+  background-color: #fff7ed;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
