@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261026-voice-privacy";
+const APP_VERSION = "20261026-account-sync";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -45,6 +45,7 @@ const demoState = {
   onboardingDraft: null,
   householdProfile: null,
   mealSlots: {},
+  planDrafts: {},
   shoppingMarks: {},
   manualShopping: {},
   planLength: 3,
@@ -212,9 +213,9 @@ function openDatabase() {
   });
 }
 
-function idbRead() {
+function idbRead(key = "state") {
   return openDatabase().then((db) => new Promise((resolve, reject) => {
-    const request = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get("state");
+    const request = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(key);
     request.onsuccess = () => {
       db.close();
       resolve(request.result || null);
@@ -226,10 +227,10 @@ function idbRead() {
   }));
 }
 
-function idbWrite(serialized) {
+function idbWrite(serialized, key = "state") {
   return openDatabase().then((db) => new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, "readwrite");
-    tx.objectStore(IDB_STORE).put(serialized, "state");
+    tx.objectStore(IDB_STORE).put(serialized, key);
     tx.oncomplete = () => {
       db.close();
       resolve();
@@ -375,6 +376,7 @@ function normalizeState(saved) {
     onboardingDraft: saved.onboardingDraft ? Lifestyle.profile(saved.onboardingDraft) : null,
     householdProfile: saved.householdProfile ? {equipment:Lifestyle.profile(saved.householdProfile).equipment,pantry:Lifestyle.profile(saved.householdProfile).pantry,updatedAt:normalizeTimestamp(saved.householdProfile.updatedAt)} : null,
     mealSlots: Lifestyle.normalizeSlots(saved.mealSlots),
+    planDrafts: normalizePlanDrafts(saved.planDrafts, saved.tombstones?.recipes),
     shoppingMarks: normalizeShoppingMarks(saved.shoppingMarks),
     manualShopping: normalizeManualShopping(saved.manualShopping),
     planLength: Number(saved.planLength) === 7 ? 7 : 3,
@@ -541,6 +543,11 @@ function normalizeSyncSettings(sync) {
     lastSyncAt: roomId ? normalizeTimestamp(sync?.lastSyncAt) : "",
     // 最後にそろえた版と、その時の手元データの指紋。変わっていなければ中身をやりとりしない。
     revision: roomId && typeof sync?.revision === "string" ? sync.revision.slice(0, 80) : "",
+    accountEmail: typeof sync?.accountEmail === "string" ? sync.accountEmail : "",
+    paused: !!sync?.paused,
+    backupKey: typeof sync?.backupKey === "string" ? sync.backupKey : "",
+    planBase: sync?.planBase && typeof sync.planBase === "object" ? sync.planBase : null,
+    conflicts: sync?.conflicts && typeof sync.conflicts === "object" ? sync.conflicts : {},
     sentHash: roomId && typeof sync?.sentHash === "string" ? sync.sentHash.slice(0, 64) : ""
   };
 }
@@ -588,12 +595,14 @@ function repeatCycleFromTiming(value) {
 
 let stateWriteQueue = Promise.resolve();
 function saveState({ scheduleSync = true } = {}) {
+  if (scheduleSync && state.sync?.planBase && syncEnabled()) captureAccountDrafts();
   state.savedAtMs = Math.max(Date.now(), (state.savedAtMs || 0) + 1);
   const serialized = JSON.stringify(state);
   // A synchronous recovery copy protects the last keystroke on reload before IDB commits.
   let recoverySaved = false;
   try { localStorage.setItem(STORAGE_KEY, serialized); recoverySaved = true; } catch {}
   if (scheduleSync) scheduleAutoSync();
+  updateSyncSaveLabel();
   // 通知がオンなら、この先のお知らせを送り直す（中身が同じなら送らない）。
   if (typeof queuePushSync === "function") queuePushSync();
   if (idbAvailable) {
@@ -619,7 +628,7 @@ function generateId(prefix) {
 }
 
 function syncEnabled() {
-  return Boolean(API_BASE_URL && state?.sync?.roomId);
+  return Boolean(API_BASE_URL && state?.sync?.roomId && !state.sync.paused && (!state.sync.accountEmail || (account?.email === state.sync.accountEmail && authToken())));
 }
 
 function normalizeSyncCode(code) {
@@ -636,6 +645,7 @@ async function deriveSyncRoomId(code) {
 function buildSyncPayload() {
   return {
     version: 1,
+    planProtocol: 1,
     settingsUpdatedAt: state.settingsUpdatedAt || "",
     family: state.family,
     servingCount: getServingCount(),
@@ -645,6 +655,7 @@ function buildSyncPayload() {
     planOverrides: state.planOverrides,
     householdProfile: state.householdProfile,
     mealSlots: state.mealSlots,
+    planDrafts: state.planDrafts || {},
     shoppingMarks: state.shoppingMarks,
     manualShopping: state.manualShopping,
     requests: state.requests || {},
@@ -757,6 +768,7 @@ function applySyncPayload(payload) {
   state.tombstones = normalizeTombstones(payload.tombstones);
   state.planOverrides = normalizePlanOverrides(payload.planOverrides);
   state.mealSlots = Lifestyle.normalizeSlots(payload.mealSlots || state.mealSlots);
+  state.planDrafts = normalizePlanDrafts(payload.planDrafts, payload.tombstones?.recipes);
   state.shoppingMarks = normalizeShoppingMarks(payload.shoppingMarks || state.shoppingMarks);
   state.manualShopping = normalizeManualShopping(payload.manualShopping || state.manualShopping);
   state.requests = normalizeRequests(payload.requests || state.requests);
@@ -781,7 +793,7 @@ function applySyncPayload(payload) {
     state.editingRecipeId = null;
   }
   Object.keys(state.planOverrides).forEach((date) => {
-    if (!recipeById(state.planOverrides[date])) delete state.planOverrides[date];
+    if (!allDinnerRecipes().some(r => r.id === state.planOverrides[date])) delete state.planOverrides[date];
   });
 }
 
@@ -794,9 +806,9 @@ function syncRenderBusy() {
 // 家族で見ている間の「相手の変更を取りにいく」を、いま動かしてよいか。
 // 入力の途中・料理モード中などは、取り込みの描き直しで消えないように止める。
 function shouldPollSync() {
-  if (!state || !syncEnabled() || syncInFlight) return false;
+  if (!state || !syncEnabled() || syncInFlight || Object.keys(state.sync.conflicts || {}).length || (authToken() && !account)) return false;
   if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
-  if ((state.family || []).length < 2) return false;
+  if ((state.family || []).length < 2 && !state.sync.accountEmail) return false;
   return !syncRenderBusy();
 }
 // 入力の途中で描き直しを見送った分を、入力が終わったら描く。
@@ -807,7 +819,7 @@ function flushSyncRender() {
   return true;
 }
 function startSyncPolling() {
-  setInterval(() => { if (!flushSyncRender() && shouldPollSync()) syncNow({ silent: true }); }, SYNC_POLL_MS);
+  setInterval(() => { if (!flushSyncRender() && shouldPollSync()) { if (account) ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); }); else syncNow({ silent: true }); } }, SYNC_POLL_MS);
 }
 
 function scheduleAutoSync() {
@@ -816,7 +828,8 @@ function scheduleAutoSync() {
   syncTimer = setTimeout(() => {
     if (!syncEnabled()) return;
     if (JSON.stringify(buildSyncPayload()) === lastSyncedFingerprint) return;
-    syncNow({ silent: true });
+    if (account) ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); });
+    else syncNow({ silent: true });
   }, SYNC_DEBOUNCE_MS);
 }
 
@@ -903,13 +916,150 @@ async function jsonRequestBody(value) {
   const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
   return { body: await new Response(stream).blob(), headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" } };
 }
+// 献立は端末時計ではなく、最後に共有できた内容との差分でまとめる。
+function normalizePlanDrafts(raw, deleted = {}) {
+  return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([date, r]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && r?.id && r?.title && (!deleted?.[r.id] || recipeStamp(r) > deleted[r.id])).map(([date, r]) => [date, normalizeRecipes([r])[0]]).filter(([, r]) => r));
+}
+function captureAccountDrafts() {
+  if (!state.sync?.accountEmail || !state.onboarded) return;
+  const plan = dailyPlan();
+  state.planDrafts ||= {};
+  for (const day of plan) {
+    if (state.mealSlots[day.date]?.status && state.mealSlots[day.date].status !== "removed") delete state.planDrafts[day.date];
+    else if (state.planOverrides[day.date]) {
+      const selected = allDinnerRecipes().find(r => r.id === state.planOverrides[day.date]);
+      if (selected) state.planDrafts[day.date] = clone(selected);
+    }
+    else if (day.candidate?.recipe && !state.planDrafts[day.date]) state.planDrafts[day.date] = clone(day.candidate.recipe);
+  }
+}
+function planSnapshot(payload) {
+  const result = {};
+  const slots = Lifestyle.normalizeSlots(payload.mealSlots || {}), overrides = payload.planOverrides || {}, drafts = normalizePlanDrafts(payload.planDrafts, payload.tombstones?.recipes);
+  for (const date of new Set([...Object.keys(slots), ...Object.keys(overrides), ...Object.keys(drafts)])) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    result[date] = { slot: slots[date] || null, override: overrides[date] || "", ...(drafts[date] ? { draft: drafts[date] } : {}) };
+  }
+  return clone(result);
+}
+function stablePlan(value) {
+  if (Array.isArray(value)) return value.map(stablePlan);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).filter(k => k !== "updatedAt").sort().map(k => [k, stablePlan(value[k])]));
+  return value;
+}
+const samePlan = (a, b) => JSON.stringify(stablePlan(a || null)) === JSON.stringify(stablePlan(b || null));
+function mergePlans(local, remote, base) {
+  const plan = {}, conflicts = {};
+  for (const date of new Set([...Object.keys(local), ...Object.keys(remote), ...Object.keys(base || {})])) {
+    const l = local[date] || null, r = remote[date] || null, b = base?.[date] || null;
+    let value;
+    if (samePlan(l, r)) value = l;
+    else if (base && samePlan(l, b)) value = r;
+    else if (base && samePlan(r, b)) value = l;
+    else if (!base && (!l || !r)) value = l || r;
+    else { conflicts[date] = { local: l, remote: r }; value = l; }
+    if (value) plan[date] = value;
+  }
+  return { plan, conflicts };
+}
+function putPlan(payload, plan) {
+  payload.mealSlots = {}; payload.planOverrides = {}; payload.planDrafts = {};
+  for (const [date, value] of Object.entries(plan || {})) {
+    if (value?.slot) payload.mealSlots[date] = clone(value.slot);
+    if (value?.override) payload.planOverrides[date] = value.override;
+    if (value?.draft) payload.planDrafts[date] = clone(value.draft);
+  }
+  return payload;
+}
+async function saveIntegrationBackup(roomId) {
+  const key = `ripigochi-before-sync:${roomId}`;
+  let exists;
+  try { exists = localStorage.getItem(key); } catch {}
+  if (!exists && idbAvailable) exists = await idbRead(key).catch(() => null);
+  if (!exists) {
+    const value = JSON.stringify({ at: nowIso(), payload: buildSyncPayload(), me: state.me });
+    let saved = false;
+    if (idbAvailable) { try { await idbWrite(value, key); saved = true; } catch {} }
+    if (!saved) { try { localStorage.setItem(key, value); saved = true; } catch {} }
+    if (!saved) throw new Error("統合前の献立を保存できませんでした。端末の空き容量を確かめてください。");
+  }
+  return key;
+}
+async function restoreIntegrationBackup() {
+  if (syncInFlight || accountSyncConnecting) { showToast("保存が終わるまで少しお待ちください。"); return; }
+  const key = state.sync.backupKey;
+  let raw;
+  try { raw = localStorage.getItem(key); } catch {}
+  if (!raw && idbAvailable) raw = await idbRead(key).catch(() => null);
+  if (!raw) { showToast("統合前のデータを読み込めませんでした。"); return; }
+  if (!window.confirm("統合前の献立とレシピをこの端末に戻し、共有を一時停止します。ほかの端末のデータは変更しません。よろしいですか？")) return;
+  const backup = JSON.parse(raw);
+  clearTimeout(syncTimer);
+  state.sync.paused = true; state.sync.conflicts = {};
+  applySyncPayload(backup.payload);
+  state.me = backup.me;
+  saveState({ scheduleSync: false }); render();
+}
+function syncErrorText(error) {
+  if (/統合前|保存先|合言葉|別の端末|ログイン|アプリを最新/.test(error?.message || "")) return error.message;
+  return "つながりませんでした。変更はこの端末に残っています。もう一度お試しください。";
+}
+function syncSaveLabel() {
+  if (state.sync?.paused) return "共有を一時停止中・この端末に保存";
+  if (Object.keys(state.sync?.conflicts || {}).length) return "献立の確認が必要・未送信";
+  if (syncInFlight || accountSyncConnecting) return "保存中…";
+  if (authToken() && (!account || !state.sync?.accountEmail)) return "未送信・アカウントへの接続待ち";
+  if (!syncEnabled()) return "この端末に保存";
+  if (syncRuntimeStatus || JSON.stringify(buildSyncPayload()) !== lastSyncedFingerprint) return "未送信・この端末に保存";
+  return "保存済み";
+}
+function updateSyncSaveLabel() {
+  const el = document.querySelector?.("#sync-save-label");
+  if (el) el.textContent = syncSaveLabel();
+}
+function planChoiceLabel(value) {
+  if (!value) return "献立なし";
+  if (value.slot?.status === "off") return "外食・中食";
+  if (value.slot?.status === "removed") return "献立を取り消し";
+  return value.slot?.recipe?.title || allDinnerRecipes().find(r => r.id === value.override)?.title || value.draft?.title || "未確定の献立";
+}
+function renderSyncSavePanel() {
+  const conflicts = state.sync?.conflicts || {};
+  return `<section class="sync-save-panel" aria-label="献立の保存状態"><p id="sync-save-label" role="status">${escapeHtml(syncSaveLabel())}</p>${Object.keys(conflicts).length ? `<h3>同じ日の献立が変更されています</h3><p>残す献立を選んでください。すべて選ぶまで共有先は書き換えません。</p>${Object.entries(conflicts).map(([date, c]) => `<div class="sync-plan-choice"><b>${escapeHtml(date)}</b><button type="button" class="secondary-button" data-action="sync-plan-local" data-date="${escapeAttr(date)}">この端末：${escapeHtml(planChoiceLabel(planSnapshot(state)[date]))}</button><button type="button" class="secondary-button" data-action="sync-plan-remote" data-date="${escapeAttr(date)}">共有先：${escapeHtml(planChoiceLabel(c.remote))}</button></div>`).join("")}` : ""}${syncRuntimeStatus ? `<p class="small">${escapeHtml(syncRuntimeStatus)}</p>` : ""}${state.sync?.paused ? '<button type="button" class="secondary-button" data-action="sync-resume">共有を再開して献立を確かめる</button>' : authToken() || state.sync?.roomId ? '<button type="button" class="text-button" data-action="sync-retry">保存を確かめる</button>' : ""}${state.view === "settings" && state.sync?.backupKey ? '<button type="button" class="text-button" data-action="sync-restore">統合前の献立に戻す</button>' : ""}</section>`;
+}
+async function handleSyncPlanAction(action, data) {
+  if (action === "sync-restore") { await restoreIntegrationBackup(); return true; }
+  if (action === "sync-retry" || action === "sync-resume") {
+    state.sync.paused = false; saveState({ scheduleSync: false });
+    if (authToken()) { if (!account) await loadAuth(); else await ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); }); }
+    else await syncNow({ silent: true });
+    render(); return true;
+  }
+  if (!["sync-plan-local", "sync-plan-remote"].includes(action)) return false;
+  const c = state.sync.conflicts?.[data.date];
+  if (!c || syncInFlight) return true;
+  const plan = planSnapshot(state);
+  const chosen = action === "sync-plan-local" ? plan[data.date] : c.remote;
+  if (chosen) plan[data.date] = chosen; else delete plan[data.date];
+  putPlan(state, plan);
+  delete state.sync.conflicts[data.date];
+  saveState(); render();
+  if (!Object.keys(state.sync.conflicts).length) await syncNow({ silent: true });
+  return true;
+}
+
 async function syncOnce({ full = false } = {}) {
+  const room = state.sync.roomId;
+  const stillHere = () => { if (state.sync.roomId !== room || !syncEnabled()) throw new Error("保存先が変わりました。もう一度確かめてください。"); };
+  if (!state.sync.backupKey) { const key = await saveIntegrationBackup(room); stillHere(); state.sync.backupKey = key; }
+  stillHere();
   let changedLocal = await resolvePendingPhotos();
-  const since = !full && state.sync.revision ? state.sync.revision : "";
+  const since = !full && state.sync.planBase && state.sync.revision ? state.sync.revision : "";
   const response = await fetchWithTimeout(since ? `${roomUrl()}?since=${encodeURIComponent(since)}` : roomUrl(), {}, 15_000);
   if (!response.ok) throw new Error("sync_fetch_failed");
   const remote = await response.json();
-  let payload = buildSyncPayload();
+  stillHere();
+  let payload = clone(buildSyncPayload());
   let baseRevision = remote.found ? remote.revision : "";
   if (remote.found && remote.unchanged) {
     // 相手は前回から変わっていない：手元も変わっていなければ、何も送らない。
@@ -917,47 +1067,64 @@ async function syncOnce({ full = false } = {}) {
     if (localHash === state.sync.sentHash) { lastSyncedFingerprint = JSON.stringify(payload); return { done: true, changedLocal }; }
   } else if (remote.found) {
     const remoteData = await fromWire(remote.data || {});
+    stillHere();
+    payload = clone(buildSyncPayload());
     const before = JSON.stringify(payload);
-    const merged = mergeSyncPayloads(payload, remoteData);
+    const remotePlan = planSnapshot(remoteData);
+    const plans = mergePlans(planSnapshot(payload), remotePlan, state.sync.planBase);
+    const merged = putPlan(mergeSyncPayloads(payload, remoteData), plans.plan);
+    state.sync.planBase = remotePlan;
+    state.sync.conflicts = plans.conflicts;
     if (JSON.stringify(merged) !== before) {
       if (state.view === "register") captureDraft();
       applySyncPayload(merged);
       changedLocal = true;
     }
-    payload = buildSyncPayload();
+    payload = clone(buildSyncPayload());
+    if (Object.keys(state.sync.conflicts).length) { saveState({ scheduleSync: false }); return { done: false, conflict: true, changedLocal: true }; }
   }
+  captureAccountDrafts();
+  payload = clone(buildSyncPayload());
   const wire = await toWire(payload);
+  stillHere();
   if (remote.found && !remote.unchanged && JSON.stringify(wire) === JSON.stringify(remote.data)) {
     state.sync.revision = remote.revision;
     state.sync.sentHash = await sha256Hex(JSON.stringify(payload));
     lastSyncedFingerprint = JSON.stringify(payload);
+    state.sync.planBase = planSnapshot(payload);
     return { done: true, changedLocal };
   }
   const request = await jsonRequestBody({ baseRevision, data: wire });
+  stillHere();
   const putResponse = await fetchWithTimeout(roomUrl(), { method: "PUT", headers: request.headers, body: request.body }, 15_000);
   // 先に別の端末が保存していたら、次は中身ごと取り直してまとめる。
   if (putResponse.status === 409) { state.sync.revision = ""; return { done: false, changedLocal }; }
   if (!putResponse.ok) throw new Error("sync_push_failed");
   const saved = await putResponse.json().catch(() => ({}));
+  stillHere();
+  state.sync.planBase = planSnapshot(payload);
   state.sync.revision = typeof saved.revision === "string" ? saved.revision : "";
   state.sync.sentHash = await sha256Hex(JSON.stringify(payload));
   lastSyncedFingerprint = JSON.stringify(payload);
   return { done: true, changedLocal };
 }
 
-async function syncNow({ silent = false } = {}) {
-  if (!syncEnabled()) return false;
+async function syncNow({ silent = false, fromAccount = false } = {}) {
+  if (accountSyncConnecting && !fromAccount) { syncQueued = true; return false; }
+  if (!syncEnabled() || Object.keys(state.sync.conflicts || {}).length || (authToken() && !account)) return false;
   if (syncInFlight) {
     syncQueued = true;
     return false;
   }
   syncInFlight = true;
+  updateSyncSaveLabel();
   let changedLocal = false;
   let succeeded = false;
   try {
     for (let attempt = 0; attempt < 3 && !succeeded; attempt += 1) {
       const result = await syncOnce();
       changedLocal = changedLocal || result.changedLocal;
+      if (result.conflict) return false;
       succeeded = result.done;
     }
     if (!succeeded) throw new Error("sync_conflict");
@@ -965,12 +1132,13 @@ async function syncNow({ silent = false } = {}) {
     syncRuntimeStatus = "";
     saveState({ scheduleSync: false });
     if (!silent) showToast("同期しました。");
-  } catch {
-    syncRuntimeStatus = "前回の同期に失敗しました。通信環境を確認してください。";
+  } catch (error) {
+    syncRuntimeStatus = syncErrorText(error);
     if (changedLocal) saveState({ scheduleSync: false });
     if (!silent) showToast("同期に失敗しました。通信環境を確認してください。");
   } finally {
     syncInFlight = false;
+    updateSyncSaveLabel();
     if (changedLocal) {
       // 返事を待っている間に入力が始まっていたら、描き直さない（入力が消えないように。入力が終わったら flushSyncRender が描く。review fix #146）。
       if (silent && syncRenderBusy()) syncRenderPending = true;
@@ -998,25 +1166,19 @@ async function connectSync() {
     showToast("この環境では同期機能を使えません。");
     return;
   }
-  state.sync = { code: rawCode.trim(), roomId: await deriveSyncRoomId(code), lastSyncAt: "" };
-  lastSyncedFingerprint = "";
-  saveState({ scheduleSync: false });
-  const succeeded = await syncNow({ silent: true });
-  if (!succeeded) {
-    state.sync = { code: "", roomId: "", lastSyncAt: "" };
-    saveState({ scheduleSync: false });
-    showToast("同期サーバーに接続できませんでした。時間をおいて試してください。");
-    render();
-    return;
-  }
-  showToast("合言葉でつながりました。同じ合言葉の端末とデータがそろいます。");
+  const succeeded = await connectRoom(rawCode.trim());
+  if (!succeeded && !Object.keys(state.sync.conflicts || {}).length) showToast("つながりませんでした。もう一度お試しください。");
+  else if (succeeded) showToast("合言葉でつながりました。");
   render();
-  refreshTickets();
-  linkAccount();
 }
 
-function disconnectSync() {
-  if (!window.confirm("この端末の共有をやめます。データはこの端末に残り、家族の端末にも残ります。よろしいですか？")) return;
+async function disconnectSync() {
+  if (!window.confirm(account?.syncManaged ? "家族との共有をやめ、同じアカウントの端末だけの保存先に移ります。家族の端末にもデータは残ります。よろしいですか？" : "この端末の共有をやめます。データはこの端末に残り、家族の端末にも残ります。よろしいですか？")) return;
+  if (syncInFlight || accountSyncConnecting) { showToast("保存が終わるまで少しお待ちください。"); return; }
+  if (account?.syncManaged) {
+    try { account = await authPost("sync", { switchRoom: true, expectedCode: account.syncCode }, true); }
+    catch (e) { showToast(e.message); return; }
+  }
   clearTimeout(syncTimer);
   state.sync = { code: "", roomId: "", lastSyncAt: "" };
   lastSyncedFingerprint = "";
@@ -1025,7 +1187,8 @@ function disconnectSync() {
   showToast("共有をやめました。");
   render();
   refreshTickets();
-  linkAccount({ leftRoom: true });
+  if (account) await ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); });
+  else linkAccount({ leftRoom: true });
 }
 
 function formatSyncTime(iso) {
@@ -1192,7 +1355,7 @@ function render() {
     talk: renderTalk
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = views[state.view]() + renderTicketSheet() + renderTicketAsk() + renderMenuViewer() + renderFeedbackSheet() + (paywall ? renderPaywall() : renderTicketParty());
+  document.querySelector("#app").innerHTML = renderSyncSavePanel() + views[state.view]() + renderTicketSheet() + renderTicketAsk() + renderMenuViewer() + renderFeedbackSheet() + (Object.keys(state.sync?.conflicts || {}).length ? "" : paywall ? renderPaywall() : renderTicketParty());
   placePageChrome();
   renderTicketChip();
   bindEvents();
@@ -1541,6 +1704,7 @@ function removeRecipes(ids) {
   state.recipes = state.recipes.filter((item) => !gone.has(item.id));
   state.evaluations = state.evaluations.filter((item) => !gone.has(item.recipeId));
   Object.keys(state.planOverrides).forEach((date) => { if (gone.has(state.planOverrides[date])) delete state.planOverrides[date]; });
+  Object.keys(state.planDrafts || {}).forEach(date => { if (gone.has(state.planDrafts[date].id)) delete state.planDrafts[date]; });
   if (gone.has(state.editingRecipeId)) state.editingRecipeId = null;
   if (state.view === "recipe" && gone.has(recipeDetailId)) state.view = "collection";
   if (gone.has(state.selectedRecipeId)) state.selectedRecipeId = state.recipes[0]?.id || null;
@@ -2617,6 +2781,7 @@ async function handleAction(event) {
   if (action === "life-select-toggle") { const k = event.currentTarget.dataset.key; selectedRecipes.has(k) ? selectedRecipes.delete(k) : selectedRecipes.add(k); render(); return; }
   if (action === "life-select-all") { selectedRecipes = selectable.every((k) => selectedRecipes.has(k)) ? new Set() : new Set(selectable); render(); return; }
   if (action === "life-select-delete") { deleteSelectedRecipes(); return; }
+  if (action.startsWith("sync-") && await handleSyncPlanAction(action, event.currentTarget.dataset)) return;
   if (action.startsWith("auth-") && (await handleAuthAction(action))) return;
   if (handleTicketAction(action, event.currentTarget.dataset)) return;
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
@@ -4391,7 +4556,11 @@ document.querySelector("#ticket-chip")?.addEventListener("click", () => openTick
 
 document.addEventListener("visibilitychange", () => {
   // アプリに戻ってきたら、他の端末の変更を取り込む
-  if (document.visibilityState === "visible" && state && syncEnabled()) syncNow({ silent: true });
+  if (document.visibilityState === "visible" && state) {
+    if (authToken() && !account) loadAuth();
+    else if (account) ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); });
+    else if (syncEnabled()) syncNow({ silent: true });
+  }
 });
 
 (async function init() {
@@ -4440,7 +4609,7 @@ document.addEventListener("visibilitychange", () => {
     showToast("共有されたURLを受け取りました。");
     setTimeout(() => document.querySelector('[data-action="fetch-caption"]:not([disabled])')?.click(), 300);
   }
-  if (syncEnabled()) syncNow({ silent: true });
+  if (!authToken() && syncEnabled()) syncNow({ silent: true });
   startSyncPolling();
   refreshTickets();
   loadAuth();

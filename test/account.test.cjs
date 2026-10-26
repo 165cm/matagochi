@@ -39,5 +39,6 @@ test('Google button state prevents accepting an old popup after timeout',async()
 test('linkAccount uses a bounded request and failures release authBusy',async()=>{
  let timeout;
  const a=app({fetchWithTimeout:async(url,opts,ms)=>{if(url.endsWith('/google'))return {ok:true,json:async()=>({token:'session',account:{email:'me@example.com'}})};timeout=ms;throw Error('timeout');}});
+ a.run("ensureAccountSync=async()=>false");
  await a.run('signInWithGoogle("credential")');assert.equal(timeout,10000);assert.equal(a.run('authBusy'),false);assert.equal(a.run('account.email'),'me@example.com');
 });
