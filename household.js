@@ -43,16 +43,25 @@ function readInviteFromLocation() {
   joinInvite = { code, from: (hash.get("from") || "").slice(0, 20), to: (hash.get("to") || "").slice(0, 20) };
 }
 async function connectRoom(code) {
-  state.sync = { code, roomId: await deriveSyncRoomId(normalizeSyncCode(code)), lastSyncAt: "" };
+  if (syncInFlight || accountSyncConnecting) { showToast("保存が終わるまで少しお待ちください。"); return false; }
+  let backupKey, roomId;
+  try { roomId = await deriveSyncRoomId(normalizeSyncCode(code)); backupKey = await saveIntegrationBackup(roomId); }
+  catch (e) { showToast(syncErrorText(e)); return false; }
+  if (account?.syncManaged) {
+    try { account = await authPost("sync", { preferredCode: code, switchRoom: true, expectedCode: account.syncCode }, true); }
+    catch (e) { showToast(e.message); return false; }
+  }
+  state.sync = { code, roomId, lastSyncAt: "", backupKey, accountEmail: account?.email || "", planBase: null, conflicts: {} };
   lastSyncedFingerprint = "";
   saveState({ scheduleSync: false });
   const ok = await syncNow({ silent: true });
-  if (!ok) {
+  if (!ok && !Object.keys(state.sync.conflicts || {}).length && !account?.syncManaged) {
     state.sync = { code: "", roomId: "", lastSyncAt: "" };
     saveState({ scheduleSync: false });
   }
-  if (ok) { refreshTickets(); linkAccount(); }
-  return ok;
+  const connected = ok || Object.keys(state.sync.conflicts || {}).length > 0;
+  if (connected) { refreshTickets(); linkAccount(); }
+  return connected;
 }
 // Keep the household order; only fill in the placeholder names ("自分" / "いっしょに食べた人").
 function setMembers(mine, partner) {

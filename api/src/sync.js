@@ -48,6 +48,9 @@ export async function putSyncRoom(store, roomId, body) {
   // 古い版のアプリは、知らない項目（家族に見せる方針 sharedPolicies）を書き戻す時に落とす。
   // 項目ごとない時だけ、いまの値を引き継ぐ（新しい版は空でも必ず送るので、新しい版の変更はそのまま入る）。
   const previous = current?.envelope?.data;
+  if (previous?.planProtocol === 1 && data.planProtocol !== 1) {
+    throw new ApiError(409, "sync_upgrade_required", "アプリを最新情報に更新してください。献立は保存されています。");
+  }
   const kept = !Object.hasOwn(data, "sharedPolicies") && previous && typeof previous === "object" && Object.hasOwn(previous, "sharedPolicies")
     ? { ...data, sharedPolicies: previous.sharedPolicies }
     : data;

@@ -4227,3 +4227,8 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
   background-position: center;
   background-repeat: no-repeat;
 }
+
+.sync-save-panel { padding: 8px 12px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.sync-save-panel p { margin: 4px 0; font-size: 13px; }
+.sync-plan-choice { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 12px; background: var(--surface-soft); }
+.sync-plan-choice button { white-space: normal; text-align: left; min-height: 44px; }

@@ -280,10 +280,11 @@ function dailyProfile() {
 function allDinnerRecipes() {
   const personal = state.recipes.filter((r) => r.mealType === "dinner");
   const originals = new Set(personal.map((r) => r.starterId));
-  return [
+  return [...new Map([
     ...personal,
+    ...Object.values(state.planDrafts || {}).filter(r => !personal.some(p => p.id === r.id)),
     ...(showStarters() ? [...discoverRecipes(), ...Lifestyle.curated.filter((r) => !originals.has(r.id) && !starterHidden().has(r.id))] : []),
-  ];
+  ].map(r => [r.id, r])).values()];
 }
 // Meals actually eaten (or confirmed and past) in the last two weeks, newest first.
 function mealHistory(days = 14) {
@@ -315,7 +316,7 @@ function lastEatenLabel(recipe) {
 // exclude：出さない料理のID（わが家のごはん方針の「変えるなら？」で外した料理）。
 function dailyPlan({ exclude = [] } = {}) {
   const p = dailyProfile();
-  return Lifestyle.propose({
+  const plan = Lifestyle.propose({
     history: mealHistory(120),
     recipes: exclude.length ? planRecipes().filter((r) => !exclude.includes(r.id)) : planRecipes(),
     profile: p,
@@ -323,7 +324,7 @@ function dailyPlan({ exclude = [] } = {}) {
     start: today(),
     length: rhythmOn() ? rhythmPlanDays() : state.planLength || p.period,
     addDays,
-    overrides: state.planOverrides,
+    overrides: { ...Object.fromEntries(Object.entries(state.planDrafts || {}).filter(([d, r]) => Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
     // 子の評価がなければ親の評価を引き継ぐ（APP_MAP §48）。
     cyclesOf: plannedCycles(),
     offUntil: prestartUntil(),
@@ -337,6 +338,10 @@ function dailyPlan({ exclude = [] } = {}) {
     // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みと、家族が「見せる」にした好み（✓ だけ）を加点に使う。
     preferenceOf: state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : undefined,
   });
+  for (const day of plan) {
+    if (day.candidate && state.planDrafts?.[day.date] && !state.planOverrides[day.date]) day.candidate.chosen = false;
+  }
+  return plan;
 }
 let calPick = ""; // 献立の週の表（household.js）でタップした日
 // Why this dish on this day, most important first: request, who wants it again (and when), variety, season.
@@ -1564,6 +1569,7 @@ function handleDailyAction(action, data) {
     if (name) { profileDraft()[data.field][name] = "have"; if (data.field === "equipment") equipmentGroupIndex = 2; }
   }
   if (action === "life-finish") {
+    state.planDrafts = {};
     // 最初の提案の画面を出すのは、初めての初回設定を終えた時だけ（詳しい設定の保存・かんたん設定のやり直しでは出さない）。
     const firstRun = !state.onboarded && profileDraft().quickSetupIndex !== null;
     const chosen = [...finishFunnelPicks(), ...(funnelDemo.result ? [funnelDemo.result] : [])];
@@ -1711,6 +1717,7 @@ function handleDailyAction(action, data) {
     if (name) { setLeftover(name, true); leftoverOpen = true; }
   }
   if (action === "life-leftover-rebuild") {
+    state.planDrafts = {};
     const dates = undecidedPlanDates();
     dates.forEach((d) => { delete state.planOverrides[d]; });
     changedShopping(before);

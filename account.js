@@ -24,17 +24,49 @@ if (typeof window !== "undefined") window.addEventListener?.("pageshow", googleW
 const authToken = () => { try { return localStorage.getItem("ripigochi-session") || ""; } catch { return ""; } };
 const authHeaders = () => (authToken() ? { Authorization: `Bearer ${authToken()}` } : {});
 const loginAvailable = () => !!(authConfig?.google || authConfig?.email);
+let accountSyncConnecting = false;
+async function ensureAccountSync() {
+  if (!account || !authToken() || authTransferPage() || state.sync?.paused || accountSyncConnecting) return false;
+  if (syncInFlight) { syncQueued = true; return false; }
+  accountSyncConnecting = true; updateSyncSaveLabel();
+  try {
+    const email = account.email, token = authToken();
+    const preferredCode = !state.sync?.accountEmail || state.sync.accountEmail === email ? state.sync?.code || "" : "";
+    const linked = await authPost("sync", { preferredCode }, true);
+    if (account?.email !== email || authToken() !== token || state.sync?.paused) return false;
+    const roomId = await deriveSyncRoomId(normalizeSyncCode(linked.syncCode));
+    if (syncInFlight) return false;
+    const backupKey = await saveIntegrationBackup(roomId);
+    if (account?.email !== email || authToken() !== token || state.sync?.paused) return false;
+    account = linked;
+    if (state.sync.roomId !== roomId) {
+      clearTimeout(syncTimer);
+      state.sync = { code: linked.syncCode, roomId, lastSyncAt: "", accountEmail: email, backupKey, planBase: null, conflicts: {} };
+      lastSyncedFingerprint = "";
+    } else { state.sync.accountEmail = email; state.sync.backupKey = backupKey; }
+    saveState({ scheduleSync: false });
+    if (linked.me && state.family.includes(linked.me)) state.me = linked.me;
+    const synced = await syncNow({ silent: true, fromAccount: true });
+    if (linked.me && state.family.includes(linked.me)) { state.me = linked.me; saveState({ scheduleSync: false }); }
+    return synced;
+  } finally { accountSyncConnecting = false; updateSyncSaveLabel(); }
+}
 async function loadAuth() {
   if (!API_BASE_URL) return;
   try { authConfig = await (await fetchWithTimeout(`${API_BASE_URL}/api/auth/config`, {}, 10_000)).json(); } catch { authConfig = null; }
-  if (authToken()) {
+  const token = authToken();
+  if (token) {
     try {
       const response = await fetchWithTimeout(`${API_BASE_URL}/api/auth/me`, { headers: authHeaders() }, 10_000);
+      const data = response.ok ? await response.json() : null;
+      if (authToken() !== token) return;
       if (response.status === 401) signOutLocal();
-      else if (response.ok) account = await response.json();
+      else if (response.ok) account = data;
     } catch {}
   }
+  if (account && !authTransferPage()) { try { await ensureAccountSync(); } catch (e) { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); } }
   authLoaded = true;
+  updateSyncSaveLabel();
   // 描き直すのは設定画面を開いている時だけ（入力中の画面や初回設定の自動送りを邪魔しない）。
   if ((state.view === "settings" && state.onboarded) || authTransferPage()) render();
 }
@@ -50,15 +82,14 @@ async function authPost(path, body, signed = false) {
 }
 // ログインできたら：前の端末の識別子（チケット）と家族の合言葉（共有データ）を戻し、この端末の分を覚えさせる。
 async function afterSignIn({ token, account: acct }) {
+  if (!authTransferPage() && state.sync?.accountEmail && state.sync.accountEmail !== acct.email && !window.confirm("別のアカウントです。この端末の献立を新しいアカウントへ統合しますか？統合前の献立は残します。")) return;
   try { localStorage.setItem("ripigochi-session", token); } catch {}
   account = acct;
   if (authTransferPage()) { showToast("ログインしました。引き継ぎコードを発行できます。"); render(); return; }
   if (acct.deviceId && acct.deviceId !== deviceKey()) try { localStorage.setItem("ripigochi-device-id", acct.deviceId); } catch {}
   let restored = false;
-  if (acct.syncCode && !state.sync?.roomId) {
-    restored = await connectRoom(acct.syncCode);
-    if (restored && acct.me && state.family.includes(acct.me)) { state.me = acct.me; saveState({ scheduleSync: false }); }
-  }
+  try { restored = await ensureAccountSync(); }
+  catch (error) { syncRuntimeStatus = syncErrorText(error); }
   await linkAccount();
   loginEmail = ""; loginCodeSent = false;
   showToast(restored ? "ログインしました。家族の共有とチケットを戻しました。" : "ログインしました。");
@@ -68,10 +99,11 @@ async function afterSignIn({ token, account: acct }) {
 // アカウントに、この端末の識別子・合言葉・自分の名前を覚えさせる。合言葉は、共有をやめた時だけ消す。
 async function linkAccount({ leftRoom = false } = {}) {
   if (!authToken() || !API_BASE_URL) return;
-  const body = { deviceId: deviceKey(), me: state.me || "", ...(state.sync?.code ? { syncCode: state.sync.code } : leftRoom ? { syncCode: "" } : {}) };
+  const token = authToken();
+  const body = { deviceId: deviceKey(), me: state.me || "", ...(!account?.syncManaged && state.sync?.code ? { syncCode: state.sync.code } : {}) };
   try {
     const response = await fetchWithTimeout(`${API_BASE_URL}/api/auth/me`, { method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) }, 10_000);
-    if (response.ok) account = await response.json();
+    if (response.ok) { const data = await response.json(); if (authToken() === token) account = data; }
   } catch {}
 }
 async function signInWithGoogle(credential) {
@@ -122,7 +154,7 @@ function renderTransferIssuer() {
 }
 function renderAccountPanel() {
   if (!loginAvailable() && !account) return "";
-  if (account) return `<section class="panel account-panel"><p class="account-in"><span class="account-dot" aria-hidden="true"></span>ログイン中 <b>${escapeHtml(account.email)}</b></p><p class="muted small">機種変更しても、同じ方法でログインすると、チケット・家族の共有・自分の名前が戻ります。</p><button type="button" class="text-button" data-action="auth-signout" ${authBusy ? "disabled" : ""}>ログアウト</button>${renderTransferIssuer()}${authBusy ? '<p role="status">確かめています…</p>' : ""}</section>`;
+  if (account) return `<section class="panel account-panel"><p class="account-in"><span class="account-dot" aria-hidden="true"></span>ログイン中 <b>${escapeHtml(account.email)}</b></p><p class="muted small">同じアカウントでログインすると、献立・レシピ・記録をほかの端末と共有します。変更が重なった日は、残す献立を選べます。</p><button type="button" class="text-button" data-action="auth-signout" ${authBusy ? "disabled" : ""}>ログアウト</button>${renderTransferIssuer()}${authBusy ? '<p role="status">確かめています…</p>' : ""}</section>`;
   const email = authConfig?.email ? (loginCodeSent
     ? `<label class="small" for="login-code">${escapeHtml(loginEmail)} に届いた6桁のコード</label><div class="login-row"><input id="login-code" class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"><button type="button" class="primary-button" data-action="auth-email-verify" ${authBusy ? "disabled" : ""}>ログイン</button></div><button type="button" class="text-button" data-action="auth-email-reset">メールアドレスを変える</button>`
     : `<div class="login-row"><input id="login-email" class="input" type="email" autocomplete="email" placeholder="メールアドレス" value="${escapeAttr(loginEmail)}"><button type="button" class="secondary-button" data-action="auth-email-start" ${authBusy ? "disabled" : ""}>コードを送る</button></div>`) : "";
@@ -171,3 +203,8 @@ async function handleAuthAction(action) {
   }
   return false;
 }
+
+if (typeof window !== "undefined") window.addEventListener?.("online", () => {
+  if (authToken()) loadAuth();
+  else if (syncEnabled()) syncNow({ silent: true });
+});
