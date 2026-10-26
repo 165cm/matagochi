@@ -109,6 +109,30 @@ export function createAuth(store, env = {}, { fetch = globalThis.fetch, now = Da
       await store.put(key, { ...entry, used: true }, { ifGeneration: current.generation });
       return signIn(email, "email");
     },
+    // Safariとホーム画面版の保存領域をまたぐ、5分・1回限りのログイン引継ぎ。
+    async transferStart(uid) {
+      required();
+      if (!(await loadAccount(uid))) throw new ApiError(401, "signed_out", "ログインし直してください。");
+      const code = randomBytes(12).toString("hex");
+      const expires = now() + 5 * 60_000;
+      if (!(await store.put(`auth/transfers/${sha(code)}`, { uid, expires }, { ifGeneration: 0 }))) throw new ApiError(409, "transfer_busy", "もう一度コードを発行してください。");
+      return { code, expiresAt: new Date(expires).toISOString() };
+    },
+    async transferRedeem(raw) {
+      required();
+      const code = String(raw || "").trim().toLowerCase();
+      const invalid = () => new ApiError(401, "transfer_invalid", "コードが違うか、有効期限が切れています。Safariで新しいコードを発行してください。");
+      if (!/^[a-f0-9]{24}$/.test(code)) throw invalid();
+      const key = `auth/transfers/${sha(code)}`;
+      const entry = await store.get(key);
+      if (!entry?.envelope.uid || !(entry.envelope.expires > now())) throw invalid();
+      const acct = await loadAccount(entry.envelope.uid);
+      if (!acct) throw invalid();
+      const token = await sign(entry.envelope.uid);
+      // 同時に2回受け取られても、書き込みに勝った要求だけにセッションを返す。
+      if (!(await store.put(key, { expires: entry.envelope.expires, used: true }, { ifGeneration: entry.generation }))) throw invalid();
+      return { token, account: publicAccount(acct.envelope) };
+    },
     async me(uid) {
       required();
       const entry = await loadAccount(uid);

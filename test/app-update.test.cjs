@@ -86,3 +86,14 @@ test("review fix (#143): pressing the bar while a draft is open does not reload 
   a.run("recordDraft = null; showUpdateBar(); clickUpdate()");
   assert.equal(a.reloads.length, 1);
 });
+
+test("Google login and account restoration defer app updates and preserve the Google frame", async () => {
+  for (const setup of ["authBusy = true", "googleWaitUntil = Date.now() + 60000"]) {
+    const a = app({ version: "29991231-next" });
+    a.run(setup);
+    assert.equal(await a.run("checkAppUpdate({ now: 1e12 })"), "later");
+    assert.equal(a.reloads.length, 0);
+  }
+  const a = app({ version: "29991231-next" });
+  a.run("state.view = 'settings'; googleWaitUntil = Date.now() + 60000; cancelAutoAdvance = () => { throw Error('must preserve frame'); }; render()");
+});

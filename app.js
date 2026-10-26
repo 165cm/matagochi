@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261026-review-fixes";
+const APP_VERSION = "20261026-ios-login";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -293,6 +293,7 @@ let appTouched = false;
 let appUpdatePending = "";
 // 保存していない入力・途中の操作（読み込み直すと消えるもの）があるか。
 function hasUnsavedWork() {
+  if (typeof authBusy !== "undefined" && (authBusy || googleAuthPending())) return true;
   if (document.activeElement?.matches?.("input, textarea, select")) return true;
   if (document.body?.classList?.contains("cook-mode-open")) return true;
   if (typeof recordDraft !== "undefined" && recordDraft) return true; // 記録の編集
@@ -842,12 +843,12 @@ function knownPhotos() {
 function rememberPhotos(set) { try { localStorage.setItem(knownPhotosKey(), JSON.stringify([...set].slice(-2000))); } catch {} }
 const roomUrl = () => `${API_BASE_URL}/api/sync/rooms/${state.sync.roomId}`;
 async function uploadPhoto(hash, data) {
-  try { return (await fetch(`${roomUrl()}/photos/${hash}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) })).ok; } catch { return false; }
+  try { return (await fetchWithTimeout(`${roomUrl()}/photos/${hash}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) }, 15_000)).ok; } catch { return false; }
 }
 async function downloadPhoto(hash) {
   if (photoCache.has(hash)) return photoCache.get(hash);
   try {
-    const response = await fetch(`${roomUrl()}/photos/${hash}`);
+    const response = await fetchWithTimeout(`${roomUrl()}/photos/${hash}`, {}, 15_000);
     if (!response.ok) return "";
     const { data } = await response.json();
     if (!isDataPhoto(data) || (await sha256Hex(data)) !== hash) return "";
@@ -905,7 +906,7 @@ async function jsonRequestBody(value) {
 async function syncOnce({ full = false } = {}) {
   let changedLocal = await resolvePendingPhotos();
   const since = !full && state.sync.revision ? state.sync.revision : "";
-  const response = await fetch(since ? `${roomUrl()}?since=${encodeURIComponent(since)}` : roomUrl());
+  const response = await fetchWithTimeout(since ? `${roomUrl()}?since=${encodeURIComponent(since)}` : roomUrl(), {}, 15_000);
   if (!response.ok) throw new Error("sync_fetch_failed");
   const remote = await response.json();
   let payload = buildSyncPayload();
@@ -933,7 +934,7 @@ async function syncOnce({ full = false } = {}) {
     return { done: true, changedLocal };
   }
   const request = await jsonRequestBody({ baseRevision, data: wire });
-  const putResponse = await fetch(roomUrl(), { method: "PUT", headers: request.headers, body: request.body });
+  const putResponse = await fetchWithTimeout(roomUrl(), { method: "PUT", headers: request.headers, body: request.body }, 15_000);
   // 先に別の端末が保存していたら、次は中身ごと取り直してまとめる。
   if (putResponse.status === 409) { state.sync.revision = ""; return { done: false, changedLocal }; }
   if (!putResponse.ok) throw new Error("sync_push_failed");
@@ -1135,7 +1136,14 @@ function setView(view) {
 }
 
 function render() {
+  // Google側の画面が開いている間は元のiframeを壊さない。
+  if (typeof googleAuthPending === "function" && googleAuthPending() && state.view === "settings") return;
   cancelAutoAdvance();
+  if (typeof authTransferPage === "function" && authTransferPage()) {
+    document.body.classList.remove("is-onboarding");
+    document.querySelector("#app").innerHTML = `<section class="panel"><h2>ホーム画面版へログインを引き継ぐ</h2><p>SafariでGoogleログインした後、使い切りコードをホーム画面版に貼り付けます。</p></section>${renderAccountPanel() || (authLoaded ? '<p>ログインの準備ができませんでした。通信を確かめて、もう一度お試しください。</p><button type="button" class="secondary-button" data-action="auth-load-retry">もう一度読み込む</button>' : '<p>ログインの準備をしています…</p>')}`;
+    bindEvents(); mountGoogleButton(); return;
+  }
   if (skillQuiz) {
     document.body.classList.add("is-onboarding");
     document.querySelector("#app").innerHTML = renderSkillQuiz();
@@ -4357,6 +4365,7 @@ document.addEventListener("visibilitychange", () => {
   state = await loadStateAsync();
   state.view = "today";
   readInviteFromLocation();
+  if (authTransferPage()) state.view = "settings";
   const skillParams = new URLSearchParams(location.search);
   if (skillParams.get("skill") === "1") {
     history.replaceState(null, "", location.pathname);

@@ -41,3 +41,30 @@ test('Google and e-mail code sign in to the same account, which remembers the de
   assert.equal((await call('/me', undefined, e.token)).me, 'はな');
   assert.equal((await call('/me', undefined, 'bogus.token')).status, 401);
 });
+
+test('Safari transfer requires sign-in, preserves the account, and is consumed once', async t=>{
+ const {call}=await server(t);
+ assert.equal((await call('/transfer',{})).status,401);
+ const g=await call('/google',{credential:googleToken({})});
+ await call('/me',{deviceId:'existing-device',syncCode:'family-code',me:'はな'},g.token,'PUT');
+ const issued=await call('/transfer',{},g.token);
+ assert.match(issued.code,/^[a-f0-9]{24}$/);
+ assert.equal((await call('/transfer/redeem',{code:'wrong'})).status,401);
+ const results=await Promise.all([call('/transfer/redeem',{code:issued.code}),call('/transfer/redeem',{code:issued.code})]);
+ assert.deepEqual(results.map(r=>r.status).sort(),[200,401]);
+ const signed=results.find(r=>r.status===200);
+ assert.equal(signed.account.deviceId,'existing-device');assert.equal(signed.account.syncCode,'family-code');
+ assert.equal((await call('/me',undefined,signed.token)).email,'hana@example.com');
+});
+
+test('expired transfer and failed consumption cannot issue a session',async()=>{
+ const {createAuth,accountIdFor}=await import('../src/auth.js');
+ const memory=createMemorySyncStore();let now=1000,fail=false;
+ const store={get:(...a)=>memory.get(...a),put:(...a)=>fail?Promise.resolve(null):memory.put(...a)};
+ const auth=createAuth(store,{}, {now:()=>now});const uid=accountIdFor('test@example.com');
+ await memory.put(`auth/accounts/${uid}`,{email:'test@example.com'},{ifGeneration:0});
+ const first=await auth.transferStart(uid);now+=300001;
+ await assert.rejects(auth.transferRedeem(first.code),e=>e.code==='transfer_invalid');
+ const second=await auth.transferStart(uid);await auth.verifySession('bogus.token');fail=true;
+ await assert.rejects(auth.transferRedeem(second.code),e=>e.code==='transfer_invalid');
+});
