@@ -1,6 +1,7 @@
-const CACHE_NAME = "ripigochi-v167";
-const APP_VERSION = "20261026-image-recovery";
+const CACHE_NAME = "ripigochi-v168";
+const APP_VERSION = "20261026-pot-placeholder";
 const CORE_ASSETS = [
+  "./assets/dishes/photo-unavailable-pot.webp",
   "./",
   "./index.html",
   `./styles.css?v=${APP_VERSION}`,

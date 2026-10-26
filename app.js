@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261026-image-recovery";
+const APP_VERSION = "20261026-pot-placeholder";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1771,9 +1771,8 @@ function recipeImageSources(recipe) {
   if (id) sources.push(`https://img.youtube.com/vi/${id}/hqdefault.jpg`, `https://i.ytimg.com/vi/${id}/hqdefault.jpg`);
   return [...new Set(sources.filter(Boolean))];
 }
-function recipeImageFallback(recipe) {
-  const staple = Lifestyle.traits(recipe || {}).staple;
-  return `assets/dishes/fallback-${({ rice: "rice", noodle: "noodle", bread: "bread", other: "okazu" })[staple] || "okazu"}.webp`;
+function recipeImageFallback() {
+  return "assets/dishes/photo-unavailable-pot.webp";
 }
 function renderRecipeImage(recipe, cls, alt = "") {
   const [src, ...remaining] = recipeImageSources(recipe);
@@ -1791,13 +1790,11 @@ function recoverRecipeImage(img) {
   // 実際の料理写真ではないと明示。全配信先に失敗しても透明な空欄にしない。
   img.onerror = null;
   const tile = document.createElement("span");
-  tile.className = `${img.className} dish-fallback`;
+  tile.className = `${img.className} dish-load-failed`;
   tile.setAttribute("role", "img");
-  tile.setAttribute("aria-label", "写真を表示できないため、料理のイメージを表示しています");
+  tile.setAttribute("aria-label", "料理写真を読み込めませんでした。できたてを、楽しみに。");
   tile.style.backgroundImage = `url("${img.dataset.imageFallback}")`;
-  const label = document.createElement("small");
-  label.textContent = "イメージ";
-  tile.append(label);
+  tile.setAttribute("title", "料理写真を読み込めませんでした");
   img.replaceWith(tile);
 }
 

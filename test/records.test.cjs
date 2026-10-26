@@ -315,10 +315,10 @@ test('recipe images retry the same video on the alternate host and retain saved 
 test('failed image retries are finite and end in a labelled fallback without deleting the video link', () => {
  const run=app();
  run(`document.createElement = () => ({style:{},setAttribute(k,v){this[k]=v},append(x){this.label=x}});
- var replacement=null;var img={dataset:{imageSources:JSON.stringify(['https://img.youtube.com/vi/h0eufSnYIl4/hqdefault.jpg']),imageFallback:'assets/dishes/fallback-rice.webp'},className:'dish-tile hero',replaceWith(x){replacement=x}};
+ var replacement=null;var img={dataset:{imageSources:JSON.stringify(['https://img.youtube.com/vi/h0eufSnYIl4/hqdefault.jpg']),imageFallback:recipeImageFallback()},className:'dish-tile hero',replaceWith(x){replacement=x}};
  recoverRecipeImage(img);`);
  assert.equal(run('img.src'),'https://img.youtube.com/vi/h0eufSnYIl4/hqdefault.jpg');assert.equal(run('replacement'),null);
  run('recoverRecipeImage(img)');
- assert.equal(run('replacement.label.textContent'),'イメージ');assert.equal(run('img.onerror'),null);
- assert.match(run('replacement.className'),/dish-tile hero/);assert.match(run('replacement["aria-label"]'),/写真を表示できない/);
+ assert.match(run('replacement.style.backgroundImage'),/photo-unavailable-pot.webp/);assert.equal(run('img.onerror'),null);
+ assert.match(run('replacement.className'),/dish-tile hero/);assert.match(run('replacement["aria-label"]'),/料理写真を読み込めませんでした/);
 });
