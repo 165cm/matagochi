@@ -151,3 +151,15 @@ test("review: Android timer notification uses service worker and handles rejecti
   await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,1);
   reject=true;time+=3000;tick();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
 });
+
+test("review [P1]: voice recognition privacy text states Lipigochi does not send audio to its server, and sets processLocally when supported", () => {
+  const fs = require("node:fs");
+  const code = fs.readFileSync(require.resolve("../cook-mode.js"), "utf8");
+  // Must not claim blanket on-device guarantee that cannot be enforced across all browsers
+  assert.doesNotMatch(code, /音声はスマホの外に送りません/);
+  // Must accurately inform user about Lipigochi server not collecting audio and using browser speech recognition
+  assert.match(code, /リピごちのサーバーに音声は送信・保存されません/);
+  assert.match(code, /ブラウザ標準の音声認識機能を使用します/);
+  // Enables processLocally when supported by browser
+  assert.match(code, /processLocally/);
+});

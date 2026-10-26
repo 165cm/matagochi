@@ -608,7 +608,7 @@ const CookMode = (() => {
     const box = el?.querySelector(".cm-voice");
     if (!box) return;
     el.classList.toggle("voice-on", voice.on && voice.status === "ready");
-    const privacy = typeof tip === "function" ? tip("🎙️ 声で操作：声を聞き取りやすくするため動画は消音になります。「次へ」「戻る」「タイマー」「ストップ」などと話しかけて操作できます。音声はスマホの外に送りません") : "";
+    const privacy = typeof tip === "function" ? tip("🎙️ 声で操作：声を聞き取りやすくするため動画は消音になります。「次へ」「戻る」「タイマー」「ストップ」などと話しかけて操作できます。リピごちのサーバーに音声は送信・保存されません（ブラウザ標準の音声認識機能を使用します）") : "";
     box.innerHTML = `<button type="button" class="cm-voice-btn ${voice.on ? "is-active" : ""}" data-cook-mode="voice" aria-pressed="${voice.on}" aria-label="${voice.on ? "声で操作をやめる" : "声で操作する"}" ${voice.status === "loading" ? "disabled" : ""}>${voice.status === "loading" ? "⏳ 準備中" : voice.on ? "🎙️ 操作中" : "🎙️ 声で操作"}</button>${privacy}`;
   }
 
@@ -632,6 +632,9 @@ const CookMode = (() => {
       rec.continuous = true;
       rec.interimResults = false;
       rec.maxAlternatives = 3;
+      try {
+        if ("processLocally" in rec) rec.processLocally = true;
+      } catch {}
 
       rec.onstart = () => {
         voice.listening = true;

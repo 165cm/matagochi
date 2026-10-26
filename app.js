@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261026-pot-placeholder";
+const APP_VERSION = "20261026-voice-privacy";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [

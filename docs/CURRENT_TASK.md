@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 週間プランのざっくり栄養・気分バランス表示 | レビュー待ち | claude/weekly-balance-summary | 献立ボード直下に主菜の偏り・野菜の種類数（添え物連動）・気分バランスの1行サマリーを表示 | lifestyle.js, daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/records.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
