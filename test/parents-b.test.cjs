@@ -149,3 +149,21 @@ test("Proposal 8: renderDailyPlan places plan-list before rhythm-invite and coll
   const openHtml = run("renderDailyPlan()");
   assert.match(openHtml, /<details class="leftover-panel" aria-labelledby="leftover-h" open>/);
 });
+
+test("review: registering a discovered group saves its recipes and supports pins", async () => {
+  const run=app(items); await run('loadDiscover({force:true})');
+  run(`handleFolderAction('life-folder-from-dish',{dish:'八宝菜'})`);
+  assert.equal(run('folderMembers(folderOpen).length'),3);
+  assert.ok(run('folderPick(state.folders[folderOpen])'));
+  run(`state.folders[folderOpen].pinDay='1'`);
+  assert.ok(run("folderPins()['1']"));
+  run(`handleFolderAction('life-folder-from-dish',{dish:'八宝菜'})`);
+  assert.equal(run('folderMembers(folderOpen).length'),3);
+});
+
+test("review: group registration reuses a saved copy of a discovered video", async () => {
+  const run=app(items);await run('loadDiscover({force:true})');
+  run('saveOwnRecipe(discoverRecipes()[0])');
+  run(`handleFolderAction('life-folder-from-dish',{dish:'八宝菜'})`);
+  assert.equal(run('folderMembers(folderOpen).length'),3);
+});

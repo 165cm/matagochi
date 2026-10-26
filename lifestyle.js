@@ -1068,7 +1068,7 @@
       rates: { "個": 1, "個分": 1, "パック": 10, "g": 1 / 50 },
       packGuide: (pieces) => {
         const p = Math.ceil(pieces);
-        return p <= 6 ? `${p}個` : "1パック（10個）";
+        return p <= 6 ? `${p}個` : `${Math.ceil(p / 10)}パック（${Math.ceil(p / 10) * 10}個）`;
       }
     }
   ];
@@ -1081,7 +1081,7 @@
     }
     if (unit === "個" && /^(?:卵|たまご|玉子)$/.test(name)) {
       if (isFraction) return `${Math.ceil(value)}個`;
-      if (value > 6) return "1パック（10個）";
+      if (value > 6) return `${Math.ceil(value / 10)}パック（${Math.ceil(value / 10) * 10}個）`;
     }
     if ((unit === "袋" || unit === "パック") && isFraction) {
       return `${Math.ceil(value)}${unit}`;
@@ -1135,6 +1135,7 @@
       name: "冷奴",
       icon: "🥢",
       desc: "豆腐にかつお節・しょうゆをかけるだけ",
+      sourceServings: 1,
       ingredients: [{ name: "絹豆腐", amount: "1/2丁", category: "日配" }],
     },
     {
@@ -1142,6 +1143,7 @@
       name: "わかめスープ",
       icon: "🥣",
       desc: "わかめ・鶏ガラスープの素・ごま油にお湯を注ぐだけ",
+      sourceServings: 1,
       ingredients: [{ name: "乾燥わかめ", amount: "1袋", category: "乾物" }],
     },
     {
@@ -1149,6 +1151,7 @@
       name: "ちぎりキャベツ",
       icon: "🥬",
       desc: "キャベツを手でちぎって塩・ごま油を和えるだけ",
+      sourceServings: 1,
       ingredients: [{ name: "キャベツ", amount: "100g", category: "野菜" }],
     },
     {
@@ -1156,6 +1159,7 @@
       name: "トマトスライス",
       icon: "🍅",
       desc: "切るだけで彩りとビタミンがプラス",
+      sourceServings: 1,
       ingredients: [{ name: "トマト", amount: "1個", category: "野菜" }],
     },
     {
@@ -1163,6 +1167,7 @@
       name: "たたききゅうり",
       icon: "🥒",
       desc: "きゅうりを叩いて塩昆布・ごま油と和えるだけ",
+      sourceServings: 1,
       ingredients: [{ name: "きゅうり", amount: "1本", category: "野菜" }],
     },
     {
@@ -1170,6 +1175,7 @@
       name: "もやしナムル",
       icon: "🥢",
       desc: "レンジで1分半加熱してごま油・塩と和えるだけ",
+      sourceServings: 1,
       ingredients: [{ name: "もやし", amount: "1袋", category: "野菜" }],
     },
   ];
@@ -1221,7 +1227,7 @@
               if (!groups.has(k))
                 groups.set(k, { id: k, name, category: item.category || "その他", amounts: [], parts: [], uses: [] });
               const g = groups.get(k);
-              const amount = item.amount;
+              const amount = scale(item.amount, s.servings, side.sourceServings);
               g.amounts.push(amount);
               g.parts.push(`${s.date}:side:${s.side}:${amount}`);
               const sideUse = `${s.recipe.title}（添え物：${s.side}）`;
@@ -1635,11 +1641,14 @@
     [/玉ねぎ|たまねぎ|玉葱|オニオン/, "玉ねぎ"], [/長ねぎ|長ネギ|白ねぎ|青ねぎ|万能ねぎ|ねぎ/, "ねぎ"],
     [/ごぼう|牛蒡/, "ごぼう"], [/れんこん|蓮根/, "れんこん"], [/かぼちゃ|南瓜/, "かぼちゃ"],
     [/ブロッコリー/, "ブロッコリー"], [/ほうれん草|ほうれんそう/, "ほうれん草"], [/小松菜/, "小松菜"],
-    [/ニラ|にら/, "ニラ"], [/もやし|豆苗/, "もやし"], [/なす|ナス|茄子/, "なす"], [/ピーマン|パプリカ/, "ピーマン"],
+    [/ニラ|にら/, "ニラ"], [/もやし/, "もやし"], [/豆苗/, "豆苗"], [/なす|ナス|茄子/, "なす"], [/ピーマン/, "ピーマン"], [/パプリカ/, "パプリカ"],
     [/きゅうり|胡瓜/, "きゅうり"], [/トマト(?!ケチャップ|ピューレ|ペースト)/, "トマト"],
     [/じゃがいも|ジャガイモ/, "じゃがいも"], [/さつまいも/, "さつまいも"],
-    [/しめじ|えのき|しいたけ|椎茸|まいたけ|舞茸|エリンギ|きのこ|マッシュルーム/, "きのこ"],
-    [/レタス|水菜|春菊|大葉|青じそ/, "葉もの"], [/アスパラ|オクラ|ゴーヤ|ズッキーニ|とうもろこし|コーン/, "緑黄色野菜"],
+    [/しめじ/, "しめじ"], [/えのき/, "えのき"], [/しいたけ|椎茸/, "しいたけ"],
+    [/まいたけ|舞茸/, "まいたけ"], [/エリンギ/, "エリンギ"], [/マッシュルーム/, "マッシュルーム"], [/きのこ/, "きのこ"],
+    [/レタス/, "レタス"], [/水菜/, "水菜"], [/春菊/, "春菊"], [/大葉|青じそ/, "大葉"],
+    [/アスパラ/, "アスパラガス"], [/オクラ/, "オクラ"], [/ゴーヤ/, "ゴーヤ"],
+    [/ズッキーニ/, "ズッキーニ"], [/とうもろこし|コーン/, "とうもろこし"],
   ];
   function planBalance(days = []) {
     const active = (days || []).filter((d) => d && !d.off && !d.prestart && d.slot?.status !== "off" && (d.slot?.recipe || d.candidate?.recipe));
@@ -1680,7 +1689,7 @@
       ["veg", "🥗野菜主菜"],
     ].filter(([k]) => proteins[k] > 0).map(([k, label]) => `${label}${proteins[k]}`);
     const vegCount = vegSet.size;
-    const vegLabel = vegCount >= 4 ? `🥬 野菜たっぷり${vegCount}種` : vegCount >= 2 ? `🥬 野菜${vegCount}種` : vegCount === 1 ? `🥬 野菜1種（＋添え物でプラスも）` : `🥬 野菜少なめ（＋添え物がおすすめ）`;
+    const vegLabel = vegCount >= 5 ? `🥬 野菜たっぷり${vegCount}種` : vegCount >= 3 ? `🥬 野菜${vegCount}種` : `🥬 野菜少なめ${vegCount ? `（${vegCount}種）` : ""}（＋添え物がおすすめ）`;
     const cuisineNames = [["japanese", "和"], ["western", "洋"], ["chinese", "中"]].filter(([k]) => cuisines[k] > 0).map(([, l]) => l);
     let moodNote = "";
     if (proteins.meat === active.length && active.length >= 3) {

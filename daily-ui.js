@@ -459,7 +459,7 @@ function renderPlanBalance(plan, locks = new Set()) {
   const unlocked = (plan || []).filter((d) => !locks.has(d.date));
   const b = Lifestyle.planBalance(unlocked);
   if (!b) return "";
-  return `<div class="plan-balance-bar" role="status" aria-label="献立のバランス"><span class="pb-chip pb-protein">${escapeHtml(b.proteinText)}</span><span class="pb-chip pb-veg ${b.vegCount < 2 ? "is-low" : ""}">${escapeHtml(b.vegLabel)}</span><span class="pb-mood">${escapeHtml(b.moodNote)}</span>${tip(`主菜の内訳と、使う野菜の種類（${b.vegKinds.length ? b.vegKinds.join("・") : "なし"}）のざっくり目安です。栄養価の計算ではありません`)}</div>`;
+  return `<div class="plan-balance-bar" role="status" aria-label="献立のバランス"><span class="pb-chip pb-protein">${escapeHtml(b.proteinText)}</span><span class="pb-chip pb-veg ${b.vegCount < 3 ? "is-low" : ""}">${escapeHtml(b.vegLabel)}</span><span class="pb-mood">${escapeHtml(b.moodNote)}</span>${tip(`主菜の内訳と、使う野菜の種類（${b.vegKinds.length ? b.vegKinds.join("・") : "なし"}）のざっくり目安です。栄養価の計算ではありません`)}</div>`;
 }
 function renderDailyPlan() {
   const plan = dailyPlan();
@@ -1522,7 +1522,7 @@ function handleDailyAction(action, data) {
       if (state.onboardingDraft) state.onboardingDraft.skill = "any";
       showToast("かんたん以外の料理も出すようにしました。");
     }
-    state.planOverrides = {};
+    // 条件変更でも、本人が選んだ日の料理は保持する。
     saveState();
     render();
     return true;
@@ -1760,6 +1760,7 @@ function handleDailyAction(action, data) {
       const left = raterNames().filter((n) => !e.familyRepeatCycles[n]);
       const nowStaple = cookHistory(e.recipeId).length >= 2 && Object.values(recipeRatings({ id: e.recipeId })).some((c) => c === "weekly" || c === "tomorrow");
       const stapleMsg = !wasStaple && nowStaple ? `🏆「${e.recipeTitle}」がわが家の定番に入りました！` : "";
+      if (left.length && stapleMsg) showToast(stapleMsg);
       if (!left.length && data.batch) { e.personalPreference = true; e.preferencePending = false; if (!reviewPending().length) showToast(stapleMsg || "🎉 評価しました。次の献立に反映します"); else if (stapleMsg) showToast(stapleMsg); }
       else if (!left.length) {
         e.personalPreference = true; e.preferencePending = false;

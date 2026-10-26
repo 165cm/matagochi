@@ -737,7 +737,8 @@
     try {
       const d = await api("/api/admin/timecodes/repair", {});
       if (my !== session) return;
-      box.replaceChildren(el("p", `✓ 補正しました：確認 ${d.checked}品のうち ${d.repaired}品を補正（章の重複分割 ${d.coarseFixed || 0}品）。続けて「点検する」で最新の結果を見られます。`, "meta"));
+      box.replaceChildren(el("p", `確認 ${d.checked}品：${d.repaired}品の補正を保存しました（章の重複分割 ${d.coarseFixed || 0}品）。${d.failed ? `保存未完了 ${d.failed}品。もう一度補正してください。` : "続けて「点検する」で最新の結果を見られます。"}`, "meta"));
+      for (const f of d.failures || []) box.append(el("p", `${f.videoId}：${f.message}`));
     } catch (error) {
       box.replaceChildren(el("p", error.message));
     } finally {
@@ -1007,7 +1008,11 @@
       rp.disabled = true; fixNote.textContent = "補正しています…";
       try {
         const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/repair`, {});
-        if (x.changed && Array.isArray(x.after)) {
+        if (x.failed) {
+          fixNote.textContent = x.message;
+        } else if (x.skipped) {
+          fixNote.textContent = "手動修正済み、または補正対象の時刻がありません。";
+        } else if (x.changed && Array.isArray(x.after)) {
           x.after.forEach((t, i) => { if (inputs[i]) { inputs[i].value = sec(t); inputs[i].classList.remove("is-bad"); inputs[i].classList.add("is-new"); } });
           fixNote.textContent = "✓ 順番・重複・空白を0円で補正して保存しました。";
         } else {

@@ -307,9 +307,17 @@ function handleFolderAction(action, data) {
   else if (action === "life-folder-close") { folderOpen = ""; folderPicking = false; }
   else if (action === "life-rank-close") rankPromptId = "";
   else if (action === "life-folder-from-dish") {
+    // createFolderで親キーが変わる前に、新着を含むグループの作り方を確保する。
+    const kids = autoDishGroups().find((g) => folderNorm(g.name) === folderNorm(data.dish))?.kids || [];
     const key = createFolder(data.dish);
     if (!key) return true;
     const norm = folderNorm(state.folders[key].name);
+    for (const recipe of kids) {
+      const saved = recipe.videoUrl && state.recipes.find((r) => r.videoUrl === recipe.videoUrl);
+      const own = saved || saveOwnRecipe(recipe);
+      own.folder = key;
+      own.updatedAt = nowIso();
+    }
     for (const r of state.recipes) {
       if (r.mealType === "dinner" && !r.folder && folderNorm(r.dish || dishNameOf(r.title)) === norm) {
         r.folder = key;

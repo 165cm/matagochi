@@ -142,14 +142,15 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
       if (!found(baseTimes)) return null;
       const refined = refineStepTimes(list, baseTimes, { durationSeconds, fillGaps });
       const effectiveSource = entry?.source || (source === "chapters" ? "chapters" : "video");
-      await store.put(key, {
+      const saved = await store.put(key, {
         ...(entry || {}),
         stepTimes: refined,
         source: effectiveSource,
         chaptersChecked: true,
         repairedAt: new Date(now()).toISOString(),
         at: new Date(now()).toISOString(),
-      }, { ifGeneration: cached?.generation ?? 0 }).catch(() => {});
+      }, { ifGeneration: cached?.generation ?? 0 });
+      if (!saved) throw new ApiError(409, "timecode_conflict", "ほかの更新と重なりました。もう一度補正してください。");
       return { stepTimes: refined, source: effectiveSource };
     },
     // だれかが直した時刻を保存して、同じ動画・同じ手順を見る全員で使う（最後に直したものが使われる）。

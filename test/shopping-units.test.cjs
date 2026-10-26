@@ -127,3 +127,10 @@ test("app integration: dailyShopping combines heterogeneous units across days an
   assert.match(text, /・鶏もも肉 約400g（目安: 2枚）/);
   assert.match(text, /・キャベツ 約450g（目安: 1\/2玉）/);
 });
+
+test("review: egg pack estimates cover all required eggs", () => {
+  const L=require('../lifestyle.js');
+  assert.equal(L.combineAmounts(['6個','6個'],'卵'),'12個（目安: 2パック（20個））');
+  assert.match(L.combineAmounts(['1パック','2個'],'卵'),/2パック（20個）/);
+  assert.match(L.combineAmounts(['21個'],'卵'),/3パック（30個）/);
+});
