@@ -45,6 +45,15 @@ test("first shopping uses the usual shopping time: today if it is still ahead, o
   assert.equal(run("state.rhythm.kickoff.shopAt"), "2026-10-01T19:00", "the chosen time is used");
 });
 
+test("first shopping: when it falls at the same time as the next round's, the two rounds become one shopping trip", () => {
+  const run = app("2026-09-29T23:10:00"); // 火曜の夜・3日＋3日（月火水／木金土）
+  run(`state.rhythm = normalizeRhythm({ preset: "3day", shopTime: "17:00" }); startRhythm(new Date());`);
+  const blocks = JSON.parse(run("JSON.stringify(currentBlocks().map((b) => ({ dates: b.dates, shopAt: b.shopAt })))"));
+  assert.deepEqual(blocks[0], { dates: ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03"], shopAt: "2026-09-30T17:00" });
+  assert.equal(new Set(blocks.map((b) => b.shopAt)).size, blocks.length, "no two rounds share a shopping time");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(normalizeRhythm(JSON.parse(JSON.stringify(state.rhythm))).kickoff.dates)")), blocks[0].dates, "kept after saving");
+});
+
 test("today's to-dos: only one of the extra questions at a time, and one already started comes first", () => {
   const run = app();
   const html = () => run("renderTodayTodos()");

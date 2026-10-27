@@ -809,7 +809,10 @@ function startRhythm(nowDate = new Date()) {
     // 最初の買い物も、いつもの買い物の時間に（今日のその時間を過ぎていたら明日。深夜・早朝にしない）。
     const time = state.rhythm.shopTime || "17:00";
     const day = localStamp(nowDate) < `${today()}T${time}` ? today() : tomorrow;
-    state.rhythm.kickoff = { start: gap[0], dates: gap, shopAt: `${day}T${time}` };
+    const shopAt = `${day}T${time}`;
+    // 次のまとまりの買い物と同じ時刻（かそれより後）になる時は、1回の買い物にまとめる（同じ時刻に2回の買い物・お知らせを出さない）。
+    const dates = full.shopAt <= shopAt ? [...gap, ...full.dates] : gap;
+    state.rhythm.kickoff = { start: gap[0], dates, shopAt };
     state.rhythm.startFrom = gap[0];
   } else state.rhythm.startFrom = full?.start || "";
 }
