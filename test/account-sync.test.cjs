@@ -105,7 +105,7 @@ test('a late response after account logout cannot replace local plans',async()=>
 
 test('same-account reconnection replaces a stale local room and polls even for one person',async()=>{
  const s=server(),a=app(s.net);
- a.run(`account={email:'me@example.com'};localStorage.setItem('ripigochi-session','token');state.onboarded=false;authPost=async()=>({email:'me@example.com',syncCode:'canonical-code',syncManaged:true});deriveSyncRoomId=async()=> '${'b'.repeat(64)}';`);
+ a.run(`account={email:'me@example.com'};localStorage.setItem('ripigochi-session','token');state.onboarded=false;authPost=async(path)=>path==='devices'?({primary:syncClientId(),devices:{[syncClientId()]:{kind:'phone',label:'phone'}},proposals:{}}):({email:'me@example.com',syncCode:'canonical-code',syncManaged:true});deriveSyncRoomId=async()=> '${'b'.repeat(64)}';`);
  assert.equal(await a.run('ensureAccountSync()'),true);
  assert.equal(a.run('state.sync.roomId'),'b'.repeat(64));assert.equal(a.run('state.sync.code'),'canonical-code');assert.equal(a.run('shouldPollSync()'),true);
  a.run('signOutLocal()');assert.equal(a.run('shouldPollSync()'),false);assert.equal(a.run('syncEnabled()'),false);
@@ -169,4 +169,85 @@ test('hidden dish groups block shared automatic candidates but preserve explicit
  assert.equal(a.run(`dailyPlan().some(d=>d.candidate?.recipe.id==='saved-candidate')`),false);
  a.run(`state.planOverrides[today()]='saved-candidate'`);
  assert.equal(a.run(`dailyPlan()[0].candidate?.recipe.id`),'saved-candidate');
+});
+
+async function devicePair() {
+ const {createSyncDevices}=await import('../api/src/syncDevices.js');
+ const {createMemorySyncStore}=await import('../api/src/syncStore.js');
+ const registry=createSyncDevices(createMemorySyncStore()),s=server(),phone=app(s.net),pc=app(s.net);
+ for(const [client,kind] of [[phone,'phone'],[pc,'computer']]){
+  client.ctx.deviceRpc=body=>registry('same-user','test-code',body);
+  client.run(`localStorage.setItem('ripigochi-session','session');localStorage.setItem('ripigochi-sync-client','browser-${kind}-12345678');account={email:'me@example.com'};state.sync.accountEmail=account.email;state.onboarded=false;syncClientKind=()=> '${kind}';authPost=async(path,body)=>path==='devices'?deviceRpc(body):({email:'me@example.com',syncCode:'test-code',syncManaged:true});deriveSyncRoomId=async()=> '${'a'.repeat(64)}';`);
+ }
+ await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ return {phone,pc,s};
+}
+test('PC conflicts arrive on the phone and phone selection returns to PC',async()=>{
+ const {phone,pc,s}=await devicePair();
+ setDay(phone,day,'base');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ setDay(phone,day,'phone-choice');setDay(pc,day,'pc-choice');
+ await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ assert.equal(pc.run('canResolvePlans()'),false);assert.match(pc.run('renderSyncSavePanel()'),/メイン端末で献立/);
+ await pc.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);assert.ok(value(pc,'state.sync.conflicts')[day]);
+ await phone.run('ensureAccountSync()');assert.equal(value(phone,'state.sync.conflicts')[day].remote.slot.recipe.title,'pc-choice');
+ await phone.run(`handleSyncPlanAction('sync-plan-remote',{date:'${day}'})`);
+ assert.equal(s.data.mealSlots[day].recipe.title,'pc-choice');
+ await pc.run('ensureAccountSync()');assert.equal(Object.keys(value(pc,'state.sync.conflicts')).length,0);
+ assert.equal(value(pc,'state.mealSlots')[day].recipe.title,'pc-choice');
+});
+test('PC edits made after submitting are preserved when phone resolves older proposal',async()=>{
+ const {phone,pc}=await devicePair();
+ setDay(phone,day,'base');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ setDay(phone,day,'main');setDay(pc,day,'submitted');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ await phone.run('ensureAccountSync()');setDay(pc,day,'newer-unsent');
+ await phone.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);
+ await pc.run('ensureAccountSync()');assert.equal(value(pc,'state.mealSlots')[day].recipe.title,'newer-unsent');
+});
+test('owner transfers management; viewer cannot promote themselves through legacy or new actions',()=>{
+ const a=app(server().net);
+ a.run(`state.family=['parent','daughter'];state.me='daughter';state.roles={members:{parent:'viewer',daughter:'owner'}};`);
+ assert.match(a.run('renderRoleSettings()'),/この端末のあなた/);
+ a.run(`handleViewerAction('life-set-role',{member:'parent',role:'owner'})`);
+ assert.equal(a.run(`roleOf('parent')`),'owner');assert.equal(a.run(`roleOf('daughter')`),'editor');
+ a.run(`state.me='parent';handleViewerAction('life-set-role',{member:'daughter',role:'viewer'});state.me='daughter'`);
+ a.run(`handleViewerAction('life-set-role',{member:'daughter',role:'owner'});handleHouseholdAction('life-become-owner',{})`);
+ assert.equal(a.run(`roleOf('daughter')`),'viewer');assert.equal(a.run(`roleOf('parent')`),'owner');
+});
+
+test('a sub-device made main can resolve its own pending proposal and late replies stay harmless',async()=>{
+ const {phone,pc}=await devicePair();
+ setDay(phone,day,'base');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ setDay(phone,day,'phone');setDay(pc,day,'pc');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ await pc.run(`deviceRequest({action:'select',expectedPrimary:state.sync.deviceState.primary})`);
+ await pc.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);
+ assert.equal(pc.run('canResolvePlans()'),true);assert.equal(pc.run('state.sync.submittedPlan'),null);
+ await phone.run('ensureAccountSync()');assert.equal(value(phone,'state.mealSlots')[day].recipe.title,'pc');
+});
+test('management transfer can be cancelled and invalid/self changes leave the owner intact',()=>{
+ const a=app(server().net);a.run(`state.family=['parent','child'];state.me='parent';state.roles={members:{parent:'owner',child:'viewer'}};window.confirm=()=>false;`);
+ a.run(`handleViewerAction('life-set-role',{member:'child',role:'owner'});handleViewerAction('life-set-role',{member:'stranger',role:'owner'});handleViewerAction('life-set-role',{member:'parent',role:'viewer'})`);
+ assert.equal(a.run(`roleOf('parent')`),'owner');assert.equal(a.run(`roleOf('child')`),'viewer');assert.equal(a.run(`state.roles.members.stranger`),undefined);
+});
+
+test('invitation saves the chosen identity only after joining instead of linking the old person',async()=>{
+ const a=app(server().net);
+ a.run(`state.family=['parent','child'];state.me='parent';joinInvite={code:'family-code',from:'parent',to:'child'};document.querySelector=()=>({value:'child'});var linkedNames=[],joinOptions;connectRoom=async(code,opts)=>{joinOptions=opts;return true;};linkAccount=()=>linkedNames.push(state.me);syncNow=async()=>true;handleHouseholdAction('life-join',{});`);
+ await new Promise(r=>setImmediate(r));
+ assert.equal(a.run('joinOptions.linkIdentity'),false);
+ assert.deepEqual(value(a,'linkedNames'),['child']);
+});
+
+test('viewer accepts shared plans without gaining authority and then receives role changes',async()=>{
+ const s=server(),owner=app(s.net),viewer=app(s.net);
+ for(const a of [owner,viewer])a.run(`state.family=['owner','child'];state.roles={members:{owner:'owner',child:'viewer'},updatedAt:nowIso()};`);
+ owner.run(`state.me='owner'`);viewer.run(`state.me='child'`);
+ setDay(owner,day,'shared-dinner');setDay(viewer,day,'old-local-dinner');
+ await owner.run('syncNow({silent:true})');await viewer.run('syncNow({silent:true})');
+ assert.ok(value(viewer,'state.sync.conflicts')[day]);assert.match(viewer.run('renderSyncSavePanel()'),/sync-viewer-accept/);
+ await viewer.run(`handleSyncPlanAction('sync-viewer-accept',{})`);
+ assert.equal(Object.keys(value(viewer,'state.sync.conflicts')).length,0);
+ assert.equal(value(viewer,'state.mealSlots')[day].recipe.title,'shared-dinner');assert.equal(viewer.run('isViewer()'),true);
+ owner.run(`state.roles={members:{owner:'owner',child:'editor'},updatedAt:new Date(Date.now()+1000).toISOString()}`);
+ await owner.run('syncNow({silent:true})');await viewer.run('syncNow({silent:true})');
+ assert.equal(viewer.run('isViewer()'),false);assert.equal(viewer.run(`roleOf('child')`),'editor');
 });

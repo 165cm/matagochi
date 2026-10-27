@@ -1,4 +1,5 @@
 import { createHash, createHmac, createPublicKey, randomBytes, randomInt, timingSafeEqual, verify as verifySignature } from "node:crypto";
+import { createSyncDevices } from "./syncDevices.js";
 import { ApiError } from "./errors.js";
 
 // ログイン：Google（ボタン）と、メールに届く6桁のコード。どちらも同じメールアドレスなら同じアカウント。
@@ -12,6 +13,7 @@ const sha = (text) => createHash("sha256").update(text).digest("hex");
 export const accountIdFor = (email) => `u-${sha(String(email).trim().toLowerCase()).slice(0, 40)}`;
 
 export function createAuth(store, env = {}, { fetch = globalThis.fetch, now = Date.now, sendMail = null } = {}) {
+  const syncDevices = createSyncDevices(store);
   const googleClientId = env.GOOGLE_CLIENT_ID || "";
   const mailer = sendMail || (env.RESEND_API_KEY && env.MAIL_FROM ? resendMailer(env, fetch) : null);
   const required = () => { if (!store) throw new ApiError(503, "auth_not_configured", "ログインの保存先が未設定です。"); };
@@ -147,6 +149,13 @@ export function createAuth(store, env = {}, { fetch = globalThis.fetch, now = Da
         return { ...a, syncCode: body.switchRoom === true ? (preferred || generated) : (a.syncCode || preferred || generated), syncManaged: true };
       });
       return publicAccount(acct);
+    },
+    async devices(uid, body) {
+      required();
+      const entry = await loadAccount(uid);
+      if (!entry) throw new ApiError(401, "signed_out", "Sign in again.");
+      if (body.syncCode !== entry.envelope.syncCode) throw new ApiError(409, "account_sync_changed", "保存先が変わりました。開き直してください。");
+      return syncDevices(uid, entry.envelope.syncCode, body);
     },
     async me(uid) {
       required();

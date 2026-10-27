@@ -42,7 +42,7 @@ function readInviteFromLocation() {
   }
   joinInvite = { code, from: (hash.get("from") || "").slice(0, 20), to: (hash.get("to") || "").slice(0, 20) };
 }
-async function connectRoom(code) {
+async function connectRoom(code, { linkIdentity = true } = {}) {
   if (syncInFlight || accountSyncConnecting) { showToast("保存が終わるまで少しお待ちください。"); return false; }
   let backupKey, roomId;
   try { roomId = await deriveSyncRoomId(normalizeSyncCode(code)); backupKey = await saveIntegrationBackup(roomId); }
@@ -60,7 +60,7 @@ async function connectRoom(code) {
     saveState({ scheduleSync: false });
   }
   const connected = ok || Object.keys(state.sync.conflicts || {}).length > 0;
-  if (connected) { refreshTickets(); linkAccount(); }
+  if (connected) { refreshTickets(); if (linkIdentity) linkAccount(); }
   return connected;
 }
 // Keep the household order; only fill in the placeholder names ("自分" / "いっしょに食べた人").
@@ -284,7 +284,7 @@ function renderSharePanel() {
   const link = shareLink || inviteUrl();
   return `<section class="panel share-panel" id="share"><h3>👫 ふたりで使う</h3><p>${state.family.map((n) => `<span class="chip">${escapeHtml(n)}${n === me() ? "（あなた）" : ""}</span>`).join(" ")} でつながっています。</p>
     <p class="muted small">最終同期：${formatSyncTime(state.sync.lastSyncAt)}${syncRuntimeStatus ? `<br>${escapeHtml(syncRuntimeStatus)}` : ""}</p>
-    ${isViewer() ? '<p class="muted small">あなたは閲覧者です。献立を変えるには、管理者に役割の変更をお願いしてください。</p>' : renderRoleSettings()}
+    ${renderRoleSettings()}
     <div class="actions">${dailyButton("life-share-send", "招待リンクを送る", "", true)}${copyButton("invite")}${dailyButton("sync-now", "今すぐ同期")}</div>
     <details class="share-link"><summary>招待リンクを表示</summary><input class="input" readonly value="${escapeAttr(link)}" aria-label="招待リンク"></details>
     <button type="button" class="text-button" data-action="sync-disconnect">この端末の共有をやめる</button></section>`;
@@ -369,11 +369,12 @@ function handleHouseholdAction(action, data) {
   }
   if (action === "life-ask") { askPartner(); return true; }
   if (action === "life-become-owner") {
+    if (Object.values(state.roles?.members || {}).includes("owner")) { showToast("管理者の変更は、現在の管理者にお願いしてください。"); return true; }
     state.roles = { members: Object.fromEntries(state.family.map((n) => [n, n === me() ? "owner" : "viewer"])), updatedAt: nowIso() };
     showToast(`献立を決めるのは${me()}になりました。`);
     saveState(); render(); return true;
   }
-  if (action === "life-role-toggle" && isOwner()) {
+  if (action === "life-role-toggle" && isOwner() && data.member !== me() && state.family.includes(data.member) && roleOf(data.member) !== "owner") {
     const next = roleOf(data.member) === "viewer" ? "editor" : "viewer";
     state.roles = { members: { ...(state.roles?.members || {}), [data.member]: next }, updatedAt: nowIso() };
     showToast(next === "editor" ? `${data.member}も献立を変えられるようにしました。` : `${data.member}を見るだけモードにしました。`);
@@ -399,6 +400,7 @@ function handleHouseholdAction(action, data) {
   }
   if (action === "life-share-send") { shareInvite(); return true; }
   if (action === "life-share-start") {
+    if (isViewer()) { showToast("招待は管理者にお願いしてください。"); return true; }
     const mine = document.querySelector("#share-me")?.value.trim().slice(0, 12);
     const partner = document.querySelector("#share-partner")?.value.trim().slice(0, 12);
     if (!mine || !partner || mine === partner) { showToast("ふたりの呼び名を、ちがう名前で入れてください。"); return true; }
@@ -426,7 +428,7 @@ function handleHouseholdAction(action, data) {
       state.foodProfile = Lifestyle.profile({ servings: 2 });
     }
     if (name !== invite.from) renameRatings("自分", name);
-    connectRoom(invite.code).then((ok) => {
+    connectRoom(invite.code, { linkIdentity: false }).then((ok) => {
       shareBusy = false;
       if (!ok) { showToast("つなげませんでした。通信を確認して、もう一度リンクを開いてください。"); render(); return; }
       joinInvite = null;
@@ -439,6 +441,7 @@ function handleHouseholdAction(action, data) {
       if (state.servingCount < 2) state.servingCount = 2;
       state.view = "today";
       saveState();
+      linkAccount();
       syncNow({ silent: true });
       showToast(sameDevicePerson ? `この端末も${name}としてつながりました！` : `${invite.from || "相手"}とつながりました！`);
       render();
@@ -541,10 +544,11 @@ function renderRoleSettings() {
     const role = n === me() && canEdit ? "owner" : roleOf(n);
     const control = n === me() || !canEdit
       ? `<span class="role-badge role-${role}">${ROLE_LABEL[role]}${n === me() ? "（あなた）" : ""}</span>`
-      : `<div class="segmented role-seg" role="group" aria-label="${escapeAttr(n)}の役割">${["viewer", "editor"].map((r) => `<button type="button" class="choice-button" data-action="life-set-role" data-member="${escapeAttr(n)}" data-role="${r}" aria-pressed="${role === r}">${ROLE_LABEL[r]}</button>`).join("")}</div>`;
+      : `<div class="segmented role-seg" role="group" aria-label="${escapeAttr(n)}の役割">${["viewer", "editor", "owner"].map((r) => `<button type="button" class="choice-button" data-action="life-set-role" data-member="${escapeAttr(n)}" data-role="${r}" aria-pressed="${role === r}">${ROLE_LABEL[r]}</button>`).join("")}</div>`;
     return `<div class="role-row"><strong>${escapeHtml(n)}</strong>${control}</div>`;
   }).join("");
-  return `<div class="role-settings"><h4>メンバーと役割</h4>${rows}
+  return `<div class="role-settings"><h4>メンバーと役割</h4><p>この端末のあなた：<b>${escapeHtml(me())}</b>（${ROLE_LABEL[roleOf(me())]}）</p>${rows}
+    ${!canEdit ? '<p class="small">役割の変更は、現在の管理者の端末から行ってください。家族それぞれのGoogleアカウントでログインすると、本人の取り違えを防げます。</p>' : '<p class="small">ほかの人を管理者にすると、あなたは編集者になります。メイン端末の指定とは別の設定です。</p>'}
     ${!hasOwner ? '<p class="muted small">役割をえらぶと、あなたが管理者になります。</p>' : ""}
     <details class="role-help"><summary>役割でできること</summary><table><thead><tr><th></th><th>管理者</th><th>編集者</th><th>閲覧者</th></tr></thead><tbody>${ROLE_TABLE.map(([what, ...cells]) => `<tr><td>${what}</td>${cells.map((c) => `<td class="${c === "○" ? "ok" : "ng"}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table>
     <p class="muted small">閲覧者は、画面がシンプルになります（今夜のごはん・献立・食べたいもの・買い物だけ）。</p></details></div>`;
@@ -559,8 +563,14 @@ function handleViewerAction(action, data) {
     setMemberPrefs({ likes: list.includes(data.recipe) ? list.filter((x) => x !== data.recipe) : [...list, data.recipe] });
   } else if (action === "life-viewer-done") { setMemberPrefs({ done: true }); viewerStep = 0; state.view = "today"; showToast("ありがとう！ 好きなものが献立に出やすくなります。"); }
   else if (action === "life-viewer-redo") { setMemberPrefs({ done: false }); viewerStep = 0; state.view = "today"; }
-  else if (action === "life-set-role" && (isOwner() || !Object.values(state.roles?.members || {}).includes("owner")) && ["viewer", "editor"].includes(data.role)) {
-    state.roles = { members: { ...(state.roles?.members || {}), [me()]: "owner", [data.member]: data.role }, updatedAt: nowIso() };
+  else if (action === "life-set-role") {
+    if (!(isOwner() || !Object.values(state.roles?.members || {}).includes("owner")) || !["viewer", "editor", "owner"].includes(data.role) || !state.family.includes(data.member) || data.member === me()) return true;
+    if (data.role === "owner" && !window.confirm(`${data.member}へ管理者を引き継ぎます。あなたは編集者になり、役割の変更は新しい管理者が行います。よろしいですか？`)) return true;
+    const members = { ...(state.roles?.members || {}), [me()]: "owner" };
+    if (data.role === "owner") Object.keys(members).forEach(n => { if (members[n] === "owner") members[n] = "editor"; });
+    else if (members[data.member] === "owner") return true;
+    members[data.member] = data.role;
+    state.roles = { members, updatedAt: nowIso() };
     showToast(`${data.member}を${ROLE_LABEL[data.role]}にしました。`);
   } else return false;
   saveState(); render(); return true;

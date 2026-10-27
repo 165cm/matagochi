@@ -103,3 +103,13 @@ test('account sync accepts legacy six-character passphrases', async t => {
  const linked=await call('/sync',{preferredCode:'ABCDEF'},g.token);
  assert.equal(linked.status,200);assert.equal(linked.syncCode,'abcdef');
 });
+
+test('device settings require account sign-in and the current sync room',async t=>{
+ const {call}=await server(t),clientId='browser-auth-123456789';
+ assert.equal((await call('/devices',{clientId})).status,401);
+ const login=await call('/google',{credential:googleToken({})});
+ const account=await call('/sync',{},login.token);
+ assert.equal((await call('/devices',{clientId,syncCode:'old-room'},login.token)).status,409);
+ const devices=await call('/devices',{clientId,syncCode:account.syncCode,kind:'phone'},login.token);
+ assert.equal(devices.status,200);assert.equal(devices.primary,clientId);
+});
