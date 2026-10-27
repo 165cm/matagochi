@@ -13,7 +13,6 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| LPの表面文字量半減・スマホ向けタップ展開化 | レビュー待ち | claude/lp-compact-interactive | 同等の訴求力を維持したまま表面文字量を半減（約3,450字→約1,600字・電車一駅分のスキミング）、スマホファーストビュー凝縮、4ステップのタブ切替化、詳細のタップ展開（<details class="tap-card">） | lp/index.html, lp/styles.css, lp/waitlist.js, test/lp.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
@@ -28,6 +27,8 @@
 8. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- LPの表面文字量を半減・スマホ向けタップ展開と4ステップタブ化（#170、公開済み）：訴求力・詳細情報を維持したまま、表面文字量を約3,450字から約1,600字（全体の約23%）へと半減。都内の電車一駅分（約1.5分）でアプリの全体像が掴めるようファーストビューをスリム化し、詳細情報を `<details class="tap-card">` / `<details class="tap-tile">` / `<details class="more-fold">` に収納。4ステップの使い方（#how）をスマホ1画面のインタラクティブ・タブ切替（`.step-tabs`）へと再構築（APP_MAP §61）。テスト5件全PASS。
 
 - #165・#166 のあとからのレビュー（#169、公開済み）：Codex の上限が戻ってから、公開済みの2つをまとめてレビュー。不具合はなく、テストの不足4つを `test/first-week.test.cjs` に足した（買い物の時刻ちょうどの境界・まとめた回の通知と買い物済み・方針の途中／保存／✕・保存の表示が消えない5つの場合）。アプリのコードは変えていない
 
