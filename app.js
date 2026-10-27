@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261027-main-device";
+const APP_VERSION = "20261027-keep-data";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -596,6 +596,19 @@ function repeatCycleFromTiming(value) {
   return "";
 }
 
+// ブラウザに「このサイトのデータは消さないで」と頼む（iPhoneのSafariは7日使わないサイトのデータを消すことがある）。
+// 初回設定が終わってから、開くたびに1回だけ。Chrome・Safariは画面に何も出さずに判断する。すでに守られていれば頼まない。
+let persistAsked = false;
+function requestPersistentStorage() {
+  if (persistAsked || !state?.onboarded) return;
+  persistAsked = true;
+  const storage = globalThis.navigator?.storage;
+  if (typeof storage?.persist !== "function") return;
+  Promise.resolve(typeof storage.persisted === "function" ? storage.persisted() : false)
+    .then((done) => (done ? true : storage.persist()))
+    .catch(() => {});
+}
+
 let stateWriteQueue = Promise.resolve();
 function saveState({ scheduleSync = true } = {}) {
   if (scheduleSync && state.sync?.planBase && syncEnabled()) captureAccountDrafts();
@@ -613,6 +626,7 @@ function saveState({ scheduleSync = true } = {}) {
       if (localStorage.getItem(STORAGE_KEY) === serialized) localStorage.removeItem(STORAGE_KEY);
     }).catch(()=>showToast("保存容量が上限に達しました。書き出して整理してください。"));
   } else if (!recoverySaved) showToast("保存できませんでした。書き出して整理してください。");
+  requestPersistentStorage();
   // 献立や「作った」が増えたら、チャレンジのチケットを申請する。
   queueTicketClaim();
   if (typeof queueUsage === "function") queueUsage();
