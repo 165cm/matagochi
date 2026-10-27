@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261027-tidy";
+const APP_VERSION = "20261027-phone-backup";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2605,7 +2605,6 @@ function dataProtectionStatus() {
 }
 
 function renderDataProtectionCard() {
-  if (isViewer()) return "";
   const st = dataProtectionStatus();
   const sub = st.cloudSynced
     ? `クラウド共有中（最終同期：${formatSyncTime(state.sync.lastSyncAt)}）· 好み・食材制限はバックアップファイルにも残せます`
@@ -2617,7 +2616,7 @@ function renderDataProtectionCard() {
   const shareBtn = typeof navigator !== "undefined" && typeof navigator.share === "function"
     ? `<button class="secondary-button" type="button" data-action="share-backup">📤 共有・ファイル保存</button>`
     : "";
-  const cloudBtn = !st.cloudSynced && typeof shareAvailable === "function" && shareAvailable()
+  const cloudBtn = !isViewer() && !st.cloudSynced && typeof shareAvailable === "function" && shareAvailable()
     ? `<button class="secondary-button" type="button" data-action="life-share-open">☁️ 家族・別端末と共有</button>`
     : "";
   return `
@@ -2633,6 +2632,7 @@ function renderDataProtectionCard() {
         <span class="dp-pill ${st.hasAccount ? "is-on" : ""}" role="listitem">${st.hasAccount ? "✓" : "○"} アカウント</span>
         <span class="dp-pill ${st.installed ? "is-on" : ""}" role="listitem">${st.installed ? "✓" : "○"} ホーム画面</span>
       </div>
+      <p class="muted small">この端末の献立・保存レシピ・評価・買い物情報をファイルに残します。切り替え前に、保存したファイルと献立の日付・料理をご確認ください。</p>
       <div class="actions dp-actions">
         <button class="primary-button" type="button" data-action="export-data">💾 バックアップを保存</button>
         ${shareBtn}
@@ -2645,6 +2645,7 @@ function renderDataProtectionCard() {
 function renderSettings() {
   if (isViewer()) return `
     ${renderAccountPanel()}
+    ${renderDataProtectionCard()}
     ${renderSharePanel()}
     <section class="panel settings-food"><h2>わたしの設定</h2>
       <p class="muted small">食べられないもの：${escapeHtml(memberPrefs().restrictions.join("・") || "なし")}</p>
@@ -3787,8 +3788,22 @@ function resetAllUserData() {
   render();
 }
 
-function exportData() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+function buildDeviceBackup() {
+  // Keep the raw state intact; derived suggestions are a separate verification copy.
+  const backup = clone(state);
+  backup.backupManifest = {
+    version: 1, appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
+    displayedPlan: dailyPlan().map(day => ({
+      date: day.date, off: Boolean(day.off || day.slot?.status === "off"),
+      slot: day.slot ? clone(day.slot) : null,
+      recipe: day.slot?.recipe ? clone(day.slot.recipe) : day.candidate?.recipe ? clone(day.candidate.recipe) : null,
+    })),
+  };
+  return backup;
+}
+
+function exportData(backup = buildDeviceBackup()) {
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -3798,13 +3813,14 @@ function exportData() {
   link.remove();
   URL.revokeObjectURL(url);
   state.lastBackupAt = today();
-  saveState();
+  saveState({ scheduleSync: false });
   showToast("データを書き出しました。");
   render();
 }
 
 async function shareBackupData() {
-  const json = JSON.stringify(state, null, 2);
+  const backup = buildDeviceBackup();
+  const json = JSON.stringify(backup, null, 2);
   const fileName = `matagochi-backup-${today()}.json`;
   try {
     if (typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof File === "function") {
@@ -3812,7 +3828,7 @@ async function shareBackupData() {
       if (!navigator.canShare || navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: `リピごち バックアップ（${today()}）` });
         state.lastBackupAt = today();
-        saveState();
+        saveState({ scheduleSync: false });
         showToast("バックアップを共有・保存しました。");
         render();
         return;
@@ -3821,7 +3837,7 @@ async function shareBackupData() {
   } catch (error) {
     if (error?.name === "AbortError") return;
   }
-  exportData();
+  exportData(backup);
 }
 
 function backupReminderDue() {

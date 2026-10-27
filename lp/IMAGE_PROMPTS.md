@@ -47,4 +47,15 @@ no watermarks. Any text must be large, correct Japanese.
 - 次に欲しい画像：父と10代の娘が夜ごはんを囲むシーン（はじまりの話）、ふたりが同じ献立画面を見て笑うシーン、「最近食べたもの」を示すアプリ画面のモック。
 
 - 追加（Codex生成）：`assets/scene-parent-child.webp`（よくある夜のおはなし）、`assets/scene-couple.webp`（ちょうどいい「また」）、`assets/screen-recent.webp`（ファーストビューの「最近のごはん」画面。ステータスバーを除去）。
-- ファーストビューを `screen-recent.webp` に変更したため、`assets/screen-today.webp` は現在LPで未使用です。
+- ファーストビューを `screen-today.webp` に戻して「今夜の一品」を前面に出しています。
+
+## 2026-10-28 ベータ版ユーザー獲得LP刷新（Nano Banana 画像生成）
+
+ベータ版ユーザー獲得用LPへの全面刷新にあたり、Nano Banana で以下の4点を新規生成し、`sips` で所定サイズ・JPEG最適化して配置しました。
+
+| ファイル | サイズ | 内容 |
+| --- | --- | --- |
+| `assets/ogp-beta-202610.jpg` | 1200×630 | ベータ版ユーザー募集用OGPバナー（左：温玉照り焼きチキン丼＋冷奴＋わかめスープの一汁二菜、右：「🎁 ベータ版・ぜんぶ無料」「かぶらない、飽きない、また食べたい。」「好みの方針 × YouTube料理モード × 買い物リスト」） |
+| `assets/screen-talk-policy.jpg` | 640×1146 | 深いパーソナライズ「💬 わが家のごはん方針」の聞き返し＆最初の提案画面モックアップ |
+| `assets/scene-cook-mode.jpg` | 1200×900 | 🍳 料理モード（手順ごとの動画くり返し再生＋✋手の形＆🎙️声でハンズフリー操作＋⏰3:00タイマー）のキッチン実演シーン |
+| `assets/scene-shopping-smart.jpg` | 1200×900 | 🛒 パック換算・使い回し買い物リストで迷わず買い出しを終えたふたりのキッチンシーン（無地エコバッグ・無地パック仕様） |
