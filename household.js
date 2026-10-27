@@ -797,6 +797,7 @@ function normalizeRhythm(raw) {
   };
 }
 // 始める時の最初の回：次の丸ごとの回まで間があけば、明日から次の回の前日までのリズムの日を「今週の残り」の回にする。
+// 買い物はいつもの時間（今日のその時間を過ぎていたら明日）。2026-10-27 のユーザーの判断
 function startRhythm(nowDate = new Date()) {
   const full = firstFullBlock();
   const days = rhythmDays();
@@ -805,9 +806,10 @@ function startRhythm(nowDate = new Date()) {
   for (let d = tomorrow; full && d < full.start && gap.length < 7; d = addDays(d, 1)) if (days.includes(String(dow(d)))) gap.push(d);
   delete state.rhythm.kickoff;
   if (gap.length) {
-    const at = new Date(nowDate.getTime() + 60 * 60 * 1000);
-    at.setMinutes(Math.ceil(at.getMinutes() / 30) * 30, 0, 0);
-    state.rhythm.kickoff = { start: gap[0], dates: gap, shopAt: localStamp(at).slice(0, 16) };
+    // 最初の買い物も、いつもの買い物の時間に（今日のその時間を過ぎていたら明日。深夜・早朝にしない）。
+    const time = state.rhythm.shopTime || "17:00";
+    const day = localStamp(nowDate) < `${today()}T${time}` ? today() : tomorrow;
+    state.rhythm.kickoff = { start: gap[0], dates: gap, shopAt: `${day}T${time}` };
     state.rhythm.startFrom = gap[0];
   } else state.rhythm.startFrom = full?.start || "";
 }
@@ -863,7 +865,9 @@ function blockStatus(b) {
   if (state.shopDone?.[b.key]) return "shopped";
   const upcoming = b.dates.filter((d) => d >= today());
   const slots = state.mealSlots || {};
-  if (upcoming.every((d) => slots[d] && slots[d].status !== "removed")) return "decided";
+  // 終わったまとまりは、全部の日が決まっていた時だけ「決定」（使い始める前の週や、決めずに過ぎた週は「過去」）。
+  if ((upcoming.length ? upcoming : b.dates).every((d) => slots[d] && slots[d].status !== "removed")) return "decided";
+  if (!upcoming.length) return "past";
   return localStamp(new Date()) < b.shopAt ? "open" : "late";
 }
 function planningBlock() {
@@ -920,6 +924,7 @@ function renderWeekBoard() {
   const bars = blocks.map((b) => {
     const from = Math.max(0, daysBetween(start, b.start)), to = Math.min(6, daysBetween(start, b.end));
     const st = blockStatus(b);
+    if (st === "past") return "";
     return `<span class="wk-bar is-${st}" style="grid-column:${from + 1} / ${to + 2}">${label[st]}${st === "open" ? ` 〜${WD[dow(b.shopAt.slice(0, 10))]}${b.shopAt.slice(11)}` : st === "shopped" || st === "decided" ? " ✓" : ""}</span>`;
   }).join("");
   const pick = calPick && dates.includes(calPick) ? (plan.get(calPick)?.slot?.recipe || plan.get(calPick)?.candidate?.recipe || eaten.get(calPick)) : null;

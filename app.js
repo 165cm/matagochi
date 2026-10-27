@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261027-keep-data";
+const APP_VERSION = "20261027-first-week";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1048,7 +1048,10 @@ function renderPlanConflictChoices(conflicts) {
 }
 function renderSyncSavePanel() {
   const conflicts = state.sync?.conflicts || {};
-  return `<section class="sync-save-panel" aria-label="献立の保存状態"><p id="sync-save-label" role="status">${escapeHtml(syncSaveLabel())}</p>${renderPlanConflictChoices(conflicts)}${syncRuntimeStatus ? `<p class="small">${escapeHtml(syncRuntimeStatus)}</p>` : ""}${state.sync?.paused ? '<button type="button" class="secondary-button" data-action="sync-resume">共有を再開して献立を確かめる</button>' : authToken() || state.sync?.roomId ? '<button type="button" class="text-button" data-action="sync-retry">保存を確かめる</button>' : ""}${state.view === "settings" && state.sync?.backupKey ? '<button type="button" class="text-button" data-action="sync-restore">統合前の献立に戻す</button>' : ""}</section>`;
+  // 共有もログインもしていない1人の時は、伝えることがないので出さない（2026-10-27 のユーザーの判断。守り方は設定の「データの保護状態」で）。
+  const restore = state.view === "settings" && state.sync?.backupKey;
+  if (syncSaveLabel() === "この端末に保存" && !syncRuntimeStatus && !authToken() && !state.sync?.roomId && !restore) return "";
+  return `<section class="sync-save-panel" aria-label="献立の保存状態"><p id="sync-save-label" role="status">${escapeHtml(syncSaveLabel())}</p>${renderPlanConflictChoices(conflicts)}${syncRuntimeStatus ? `<p class="small">${escapeHtml(syncRuntimeStatus)}</p>` : ""}${state.sync?.paused ? '<button type="button" class="secondary-button" data-action="sync-resume">共有を再開して献立を確かめる</button>' : authToken() || state.sync?.roomId ? '<button type="button" class="text-button" data-action="sync-retry">保存を確かめる</button>' : ""}${restore ? '<button type="button" class="text-button" data-action="sync-restore">統合前の献立に戻す</button>' : ""}</section>`;
 }
 async function handleSyncPlanAction(action, data) {
   if (action === "sync-viewer-accept") {

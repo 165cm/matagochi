@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-27（データを消さない頼み・YouTubeだけの表記を公開 #164）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-27（使い始めの週の見え方の直しをレビュー待ち）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -14,6 +14,7 @@
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
+| 使い始めの週の見え方の直し | レビュー待ち | claude/quirky-feynman-q9dxu7 | 過去の週の「決定 ✓」・最初の買い物の時間・今日やることを1つずつ・1人の時の保存の表示 | household.js, daily-ui.js, app.js, test/first-week.test.cjs, test/profile-talk.test.cjs, sw.js, version.json, index.html, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
@@ -27,6 +28,8 @@
 8. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 使い始めの週の見え方の直し（`claude/quirky-feynman-q9dxu7`、レビュー待ち）：使い始める前の週・決めずに過ぎた週に「決定 ✓」が出ていたのを直す（`blockStatus` の `past`）。最初の買い物を「今から約1時間後」ではなく、いつもの買い物の時間に（過ぎていたら明日）。今日やることの追加の質問（スキル試験・方針・詳しい設定）は一度に1つ、「好みとキッチン」を「好み・常備品まで」に。共有もログインもしていない1人の時は、画面の上の「この端末に保存」を出さない
 
 - 使い続けてもらうための直し（#164、公開済み）：初回設定のあと、保存のたびに（開くごとに1回だけ）ブラウザへ「このサイトのデータは消さないで」と頼む（`app.js` `requestPersistentStorage`）。最初の画面・レシピ保存の案内・URL欄から TikTok・Instagram の文字を消し、YouTube だけに（リンクの保存は今までどおり使える。LP と規約は実態どおりの説明なので変えない）
 
