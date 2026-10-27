@@ -2657,9 +2657,10 @@ body.has-page-title .page-title { display: block; }
 .setting-row > summary { padding: 9px 12px; gap: 8px; }
 /* Today: tonight's dish stays the hero, but leaves room for the to-do list below. */
 .tonight-card { padding: 12px; border-radius: 18px; }
-.tonight-head { align-items: baseline; gap: 8px; margin: 0 2px 8px; }
+.tonight-head { align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin: 0 2px 8px; }
 .tonight-label { margin: 0; font-size: 17px; }
-.tonight-head .today-date { margin: 0; font-size: 12px; }
+/* 長い見出し（献立は◯月◯日から）の時は、日付・人数を次の行へ。言葉の途中では折り返さない。 */
+.tonight-head .today-date { margin: 0; font-size: 12px; white-space: nowrap; }
 .tonight-photo { aspect-ratio: 16 / 9; border-radius: 14px; }
 .tonight-title { font-size: 21px; margin: 8px 0 2px; }
 .tonight-reason { font-size: 13px; margin: 0 0 2px; }
