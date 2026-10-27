@@ -710,11 +710,15 @@ function renderTodayTodos() {
   const toBuy = dailyShopping().filter((i) => i.status === "buy").length;
   const shopToday = rhythmOn() && shoppingBlock() && shoppingBlock().shopAt.slice(0, 10) <= today();
   if (toBuy && (shopToday || !rhythmOn())) rows.push(`<div class="todo-row"><span>🛒</span><p>買うもの <b>あと${toBuy}品</b></p>${dailyButton("go-view", "リストへ", 'data-view="shopping"')}</div>`);
-  if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>スキル試験</b>（10問）→ 作れる料理だけに</p>${dailyButton("life-quiz-start", "受ける")}</div>`);
+  // 自分向けにする追加の質問（スキル試験・ごはん方針・詳しい設定）は、一度に1つだけ。途中のものを先に（2026-10-27 のユーザーの判断）。
+  const more = [];
+  if (!skillProfile() && !isViewer()) more.push([false, `<div class="todo-row"><span>🔪</span><p><b>スキル試験</b>（10問）→ 作れる料理だけに</p>${dailyButton("life-quiz-start", "受ける")}</div>`]);
   else if (examReady()) rows.push(`<div class="todo-row"><span>🎖</span><p><b>★${skillProfile().level + 1}の昇級試験</b>が受けられます（5問）</p>${dailyButton("life-exam-start", "受ける")}</div>`);
   const talk = renderTalkTodo();
-  if (talk) rows.push(talk);
-  if (!state.foodProfile?.completed) rows.push(`<div class="todo-row"><span>✍️</span><p>好みとキッチンを教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`);
+  if (talk) more.push([!!talkProfile().session, talk]);
+  if (!state.foodProfile?.completed) more.push([!!state.onboardingDraft, `<div class="todo-row"><span>✍️</span><p>好み・常備品まで教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`]);
+  const next = more.find(([started]) => started) || more[0];
+  if (next) rows.push(next[1]);
   if (typeof backupReminderDue === "function" && backupReminderDue() && !isViewer()) {
     rows.push(`<div class="todo-row is-backup-row"><span>🛡</span><p><b>レシピ${state.recipes.length}品・記録${state.evaluations.length}回</b>をバックアップして保護</p>${dailyButton("export-data", "保存する")}<button type="button" class="todo-x" data-action="snooze-backup" aria-label="2週間後に再通知">×</button></div>`);
   }
