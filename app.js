@@ -1348,7 +1348,7 @@ function render() {
   document.body.classList.toggle("is-viewer", isViewer());
   if (needsViewerSetup()) {
     document.body.classList.add("is-onboarding");
-    document.querySelector("#app").innerHTML = renderViewerSetup();
+    document.querySelector("#app").innerHTML = renderSyncSavePanel() + renderViewerSetup();
     bindEvents();
     return;
   }
