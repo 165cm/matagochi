@@ -1,7 +1,7 @@
-/* Waitlist: posts to a Google Form so the list lives in the owner's Google account
-   (Japanese UI, free, exports to Google Sheets). Fill in WAITLIST below; see
-   lp/WAITLIST.md for how to get these values. Until then the form stays in
-   "準備中" mode and nothing is sent. */
+/* Waitlist & Interactive LP controls:
+   - Posts waitlist form to Google Forms (see lp/WAITLIST.md).
+   - Switches 4-step interactive tabs (#how) on tap.
+   - Auto-opens folded <details> when navigating to #waitlist or #privacy. */
 const WAITLIST = {
   // 例: "https://docs.google.com/forms/d/e/1FAIpQLS.../formResponse"
   action: "https://docs.google.com/forms/d/e/1FAIpQLSeAodcHygYfzG797YuavmocVRxHb4poXc9Mqzj3PBWaKTvXxw/formResponse",
@@ -78,6 +78,52 @@ const WAITLIST = {
     }),
   );
   if (remembered()) showDone();
+
+  // Interactive 4-Step Tabs (#how)
+  const stepTabs = document.querySelectorAll(".step-tab[data-step-target]");
+  const stepPanels = document.querySelectorAll(".step[data-step-panel]");
+  function activateStep(stepNo, scrollTabs) {
+    const target = String(stepNo);
+    stepTabs.forEach((tab) => {
+      const active = tab.dataset.stepTarget === target;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+    stepPanels.forEach((panel) => {
+      const active = panel.dataset.stepPanel === target;
+      panel.classList.toggle("is-active", active);
+      panel.hidden = !active;
+    });
+    if (scrollTabs) {
+      document.querySelector(".step-tabs")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+  document.querySelectorAll("[data-step-target]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activateStep(btn.dataset.stepTarget, btn.classList.contains("step-next-btn"));
+    });
+  });
+
+  // Auto-open folded <details> when hash targets #waitlist or #privacy
+  function openHashTarget(hash) {
+    if (!hash) return;
+    if (hash === "#waitlist") {
+      const wf = document.querySelector(".waitlist-fold");
+      if (wf) wf.open = true;
+    } else if (hash === "#privacy") {
+      const priv = document.querySelector("#privacy");
+      if (priv) {
+        priv.open = true;
+        const parent = priv.closest(".faq-more");
+        if (parent) parent.open = true;
+      }
+    }
+  }
+  openHashTarget(window.location.hash);
+  window.addEventListener("hashchange", () => openHashTarget(window.location.hash));
+  document.querySelectorAll('a[href="#waitlist"], a[href="#privacy"]').forEach((a) => {
+    a.addEventListener("click", () => openHashTarget(a.getAttribute("href")));
+  });
 
   // Bottom CTA on phones: only while the hero CTA and final CTA are off screen.
   const hero = document.querySelector('[data-cta="hero"], .waitlist-form[data-source="hero"]');
