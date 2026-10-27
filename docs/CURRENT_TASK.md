@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-27（データを消さない頼み・YouTubeだけの表記をレビュー待ち）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-27（データを消さない頼み・YouTubeだけの表記を公開 #164）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -14,7 +14,6 @@
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
-| 使い続けてもらうための直し（データを消さない・YouTubeだけの表記） | レビュー待ち | claude/quirky-feynman-q9dxu7 | ブラウザにデータを消さないよう頼む（`navigator.storage.persist()`）。案内からTikTok・Instagramの文字を消す | app.js, daily-ui.js, test/storage-persist.test.cjs, sw.js, version.json, index.html, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
@@ -29,7 +28,7 @@
 
 ## 最近終わったこと（新しい順）
 
-- 使い続けてもらうための直し（`claude/quirky-feynman-q9dxu7`、レビュー待ち）：初回設定のあと、保存のたびに（開くごとに1回だけ）ブラウザへ「このサイトのデータは消さないで」と頼む（`app.js` `requestPersistentStorage`）。最初の画面・レシピ保存の案内・URL欄から TikTok・Instagram の文字を消し、YouTube だけに（リンクの保存は今までどおり使える。LP と規約は実態どおりの説明なので変えない）
+- 使い続けてもらうための直し（#164、公開済み）：初回設定のあと、保存のたびに（開くごとに1回だけ）ブラウザへ「このサイトのデータは消さないで」と頼む（`app.js` `requestPersistentStorage`）。最初の画面・レシピ保存の案内・URL欄から TikTok・Instagram の文字を消し、YouTube だけに（リンクの保存は今までどおり使える。LP と規約は実態どおりの説明なので変えない）
 
 - メイン端末指定・管理者引き継ぎ（`codex/main-device-and-roles`、公開待ち）：同一アカウントではスマホを優先してメインに選び、明示指定後は固定。PCの献立競合をメインへ送り、選択結果をPCへ戻す。確認待ち中の追加編集も保持。家族の役割は別設定とし、現管理者から別メンバーへ引き継ぐ（元の管理者は編集者）。閲覧者の自己昇格は追加せず旧経路も防止。閲覧者の献立競合は共有先を採用して同期再開できる。本人名・役割を設定に表示し、招待参加前の名前がアカウントへ保存される競合も修正。クライアント342件・API301件PASS。独立したChrome 2台相当と実APIでスマホ既定・PC競合転送・結果反映・管理者引き継ぎ・閲覧者設定を確認。390×844／844×390／1440×900で設定と競合画面を確認。Google署名はテスト用、iPhone実機未確認。版`20261027-main-device`・キャッシュv171。APP_MAP §60。
 
