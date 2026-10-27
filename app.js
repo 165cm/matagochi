@@ -924,7 +924,7 @@ function normalizePlanDrafts(raw, deleted = {}) {
   return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([date, r]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && r?.id && r?.title && (!deleted?.[r.id] || recipeStamp(r) > deleted[r.id])).map(([date, r]) => [date, normalizeRecipes([r])[0]]).filter(([, r]) => r));
 }
 function captureAccountDrafts() {
-  if (!state.sync?.accountEmail || !state.onboarded) return;
+  if (!state.sync?.accountEmail || !state.onboarded || isViewer()) return;
   const plan = dailyPlan();
   state.planDrafts ||= {};
   for (const day of plan) {
@@ -1028,7 +1028,7 @@ function planChoiceLabel(value) {
 }
 function renderPlanConflictChoices(conflicts) {
   if(!Object.keys(conflicts).length)return "";
-  if(isViewer())return '<p>献立の変更が重なっています。管理者または編集者のメイン端末で確認してください。</p>';
+  if(isViewer())return '<p>献立の変更が重なっています。閲覧者は共有先の献立にそろえて再開できます。統合前のデータはこの端末に残ります。</p><button type="button" class="secondary-button" data-action="sync-viewer-accept">共有先の献立にそろえる</button>';
   if(!canResolvePlans())return `<h3>メイン端末で献立を確認してください</h3><p>${escapeHtml(mainDeviceName())}でリピごちを開くと、残す献立を選べます。この端末の変更は保存されています。</p>`;
   return `<h3>同じ日の献立が変更されています</h3><p>残す献立を選んでください。すべて選ぶまで共有先は書き換えません。</p>${Object.entries(conflicts).map(([date,c])=>`<div class="sync-plan-choice"><b>${escapeHtml(date)}</b><button type="button" class="secondary-button" data-action="sync-plan-local" data-date="${escapeAttr(date)}">この端末：${escapeHtml(planChoiceLabel(planSnapshot(state)[date]))}</button><button type="button" class="secondary-button" data-action="sync-plan-remote" data-date="${escapeAttr(date)}">${escapeHtml(c.sourceLabel || '共有先')}：${escapeHtml(planChoiceLabel(c.remote))}</button></div>`).join('')}`;
 }
@@ -1037,6 +1037,15 @@ function renderSyncSavePanel() {
   return `<section class="sync-save-panel" aria-label="献立の保存状態"><p id="sync-save-label" role="status">${escapeHtml(syncSaveLabel())}</p>${renderPlanConflictChoices(conflicts)}${syncRuntimeStatus ? `<p class="small">${escapeHtml(syncRuntimeStatus)}</p>` : ""}${state.sync?.paused ? '<button type="button" class="secondary-button" data-action="sync-resume">共有を再開して献立を確かめる</button>' : authToken() || state.sync?.roomId ? '<button type="button" class="text-button" data-action="sync-retry">保存を確かめる</button>' : ""}${state.view === "settings" && state.sync?.backupKey ? '<button type="button" class="text-button" data-action="sync-restore">統合前の献立に戻す</button>' : ""}</section>`;
 }
 async function handleSyncPlanAction(action, data) {
+  if (action === "sync-viewer-accept") {
+    if (!isViewer() || syncInFlight || accountSyncConnecting) return true;
+    try {
+      if (account && state.sync.deviceState) await deviceRequest({action:'withdraw'});
+      state.sync.submittedPlan=null;state.sync.reviewedProposal=null;
+      await syncNow({silent:true,acceptSharedPlan:true});
+    } catch(e) { syncRuntimeStatus=syncErrorText(e); }
+    render();return true;
+  }
   if (action === "sync-restore") { await restoreIntegrationBackup(); return true; }
   if (action === "sync-retry" || action === "sync-resume") {
     state.sync.paused = false; saveState({ scheduleSync: false });
@@ -1058,17 +1067,18 @@ async function handleSyncPlanAction(action, data) {
   return true;
 }
 
-async function syncOnce({ full = false } = {}) {
+async function syncOnce({ full = false, acceptSharedPlan = false } = {}) {
   const room = state.sync.roomId;
   const stillHere = () => { if (state.sync.roomId !== room || !syncEnabled()) throw new Error("保存先が変わりました。もう一度確かめてください。"); };
   if (!state.sync.backupKey) { const key = await saveIntegrationBackup(room); stillHere(); state.sync.backupKey = key; }
   stillHere();
   let changedLocal = await resolvePendingPhotos();
-  const since = !full && state.sync.planBase && state.sync.revision ? state.sync.revision : "";
+  const since = !acceptSharedPlan && !full && state.sync.planBase && state.sync.revision ? state.sync.revision : "";
   const response = await fetchWithTimeout(since ? `${roomUrl()}?since=${encodeURIComponent(since)}` : roomUrl(), {}, 15_000);
   if (!response.ok) throw new Error("sync_fetch_failed");
   const remote = await response.json();
   stillHere();
+  if (acceptSharedPlan && !remote.found) throw new Error("sync_fetch_failed");
   let payload = clone(buildSyncPayload());
   let baseRevision = remote.found ? remote.revision : "";
   if (remote.found && remote.unchanged) {
@@ -1081,7 +1091,7 @@ async function syncOnce({ full = false } = {}) {
     payload = clone(buildSyncPayload());
     const before = JSON.stringify(payload);
     const remotePlan = planSnapshot(remoteData);
-    const plans = mergePlans(planSnapshot(payload), remotePlan, state.sync.planBase);
+    const plans = acceptSharedPlan ? {plan:remotePlan,conflicts:{}} : mergePlans(planSnapshot(payload), remotePlan, state.sync.planBase);
     const merged = putPlan(mergeSyncPayloads(payload, remoteData), plans.plan);
     state.sync.planBase = remotePlan;
     state.sync.conflicts = plans.conflicts;
@@ -1119,9 +1129,10 @@ async function syncOnce({ full = false } = {}) {
   return { done: true, changedLocal };
 }
 
-async function syncNow({ silent = false, fromAccount = false } = {}) {
+async function syncNow({ silent = false, fromAccount = false, acceptSharedPlan = false } = {}) {
   if (accountSyncConnecting && !fromAccount) { syncQueued = true; return false; }
-  if (!syncEnabled() || Object.keys(state.sync.conflicts || {}).length || (authToken() && !account)) return false;
+  if (acceptSharedPlan && !isViewer()) return false;
+  if (!syncEnabled() || (!acceptSharedPlan && Object.keys(state.sync.conflicts || {}).length) || (authToken() && !account)) return false;
   if (syncInFlight) {
     syncQueued = true;
     return false;
@@ -1132,7 +1143,7 @@ async function syncNow({ silent = false, fromAccount = false } = {}) {
   let succeeded = false;
   try {
     for (let attempt = 0; attempt < 3 && !succeeded; attempt += 1) {
-      const result = await syncOnce();
+      const result = await syncOnce({acceptSharedPlan});
       changedLocal = changedLocal || result.changedLocal;
       if (result.conflict) { if(account && state.sync.deviceState) await submitPlanForMain(); return false; }
       succeeded = result.done;

@@ -236,3 +236,18 @@ test('invitation saves the chosen identity only after joining instead of linking
  assert.equal(a.run('joinOptions.linkIdentity'),false);
  assert.deepEqual(value(a,'linkedNames'),['child']);
 });
+
+test('viewer accepts shared plans without gaining authority and then receives role changes',async()=>{
+ const s=server(),owner=app(s.net),viewer=app(s.net);
+ for(const a of [owner,viewer])a.run(`state.family=['owner','child'];state.roles={members:{owner:'owner',child:'viewer'},updatedAt:nowIso()};`);
+ owner.run(`state.me='owner'`);viewer.run(`state.me='child'`);
+ setDay(owner,day,'shared-dinner');setDay(viewer,day,'old-local-dinner');
+ await owner.run('syncNow({silent:true})');await viewer.run('syncNow({silent:true})');
+ assert.ok(value(viewer,'state.sync.conflicts')[day]);assert.match(viewer.run('renderSyncSavePanel()'),/sync-viewer-accept/);
+ await viewer.run(`handleSyncPlanAction('sync-viewer-accept',{})`);
+ assert.equal(Object.keys(value(viewer,'state.sync.conflicts')).length,0);
+ assert.equal(value(viewer,'state.mealSlots')[day].recipe.title,'shared-dinner');assert.equal(viewer.run('isViewer()'),true);
+ owner.run(`state.roles={members:{owner:'owner',child:'editor'},updatedAt:new Date(Date.now()+1000).toISOString()}`);
+ await owner.run('syncNow({silent:true})');await viewer.run('syncNow({silent:true})');
+ assert.equal(viewer.run('isViewer()'),false);assert.equal(viewer.run(`roleOf('child')`),'editor');
+});

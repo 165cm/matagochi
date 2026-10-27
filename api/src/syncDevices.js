@@ -28,6 +28,8 @@ export function createSyncDevices(store) {
       if (action==='select') {
         if (body.expectedPrimary!==state.primary) fail('primary_changed','別の端末でメイン端末が変わりました。もう一度確かめてください。',409);
         state.primary=id;state.explicit=true;dirty=true;
+      } else if (action==='withdraw') {
+        delete state.proposals[id];dirty=true;
       } else if (action==='submit') {
         if (!validId(body.proposalId)) fail('invalid_proposal','確認の番号が正しくありません。');
         const plan=plans(body.plan), old=state.proposals[id];

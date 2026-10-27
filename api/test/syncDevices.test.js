@@ -23,6 +23,8 @@ test('only main can resolve pending proposals; retries and replacing stale propo
  const resolved=await run({clientId:phone,kind:'phone',action:'resolve',source:pc,proposalId,plan:{'2026-10-27':null}});
  assert.equal(resolved.proposals[pc].status,'resolved');
  assert.equal((await run(body)).proposals[pc].status,'resolved');
+ assert.equal((await run({clientId:phone,action:'withdraw',source:pc})).proposals[pc].status,'resolved');
+ assert.equal((await run({clientId:pc,action:'withdraw'})).proposals[pc],undefined);
  await run({...body,proposalId:'proposal-new-123456789'});
  await assert.rejects(run({clientId:phone,action:'resolve',source:pc,proposalId,plan:{'2026-10-27':null}}),e=>e.code==='proposal_changed');
 });
