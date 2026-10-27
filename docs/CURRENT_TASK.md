@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| LPの表面文字量半減・スマホ向けタップ展開化 | レビュー待ち | claude/lp-compact-interactive | 同等の訴求力を維持したまま表面文字量を半減（約3,450字→約1,600字・電車一駅分のスキミング）、スマホファーストビュー凝縮、4ステップのタブ切替化、詳細のタップ展開（<details class="tap-card">） | lp/index.html, lp/styles.css, lp/waitlist.js, test/lp.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
