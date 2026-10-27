@@ -1299,11 +1299,11 @@ function renderSaveGuide() {
   if (!open) return strip + (pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : "");
   const ios = isIOSDevice();
   const steps = ios
-    ? ["YouTube・TikTok・Instagramで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"]
+    ? ["YouTubeで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"]
     : isInstalledApp()
-      ? ["YouTube・TikTok・Instagramで、動画の<b>「共有」</b>", "一覧から <b>リピごち</b> を選ぶ（「リンクをコピー」→ 📋 でもOK）", "材料と作り方を確かめて保存"]
-      : ["YouTube・TikTok・Instagramで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"];
-  const homeTip = !ios && !isInstalledApp() ? `<p class="save-guide-tip">${tip("ホーム画面に追加すると、SNSの共有メニューにリピごちが出ます")}</p>` : "";
+      ? ["YouTubeで、動画の<b>「共有」</b>", "一覧から <b>リピごち</b> を選ぶ（「リンクをコピー」→ 📋 でもOK）", "材料と作り方を確かめて保存"]
+      : ["YouTubeで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"];
+  const homeTip = !ios && !isInstalledApp() ? `<p class="save-guide-tip">${tip("ホーム画面に追加すると、YouTubeの共有メニューにリピごちが出ます")}</p>` : "";
   return `<section class="save-guide" aria-label="レシピの保存のしかた"><p class="save-guide-title">📋 レシピ動画を保存</p><ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>${homeTip}<div class="save-guide-actions"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button" data-action="save-guide-done">わかった</button></div>${pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : ""}</section>`;
 }
 
@@ -1416,7 +1416,7 @@ function renderRecipeEntry() {
       </div>
       <div ${entryMethod === "url" ? "" : "hidden"}>
       <div class="quick-url-row">
-        <input id="recipe-url" class="input url-input" value="${escapeAttr(state.draft.videoUrl)}" placeholder="動画のURL（YouTube・TikTok・Instagram）" aria-label="動画のURL">
+        <input id="recipe-url" class="input url-input" value="${escapeAttr(state.draft.videoUrl)}" placeholder="動画のURL（YouTube）" aria-label="動画のURL">
         <button class="primary-button fetch-button" type="button" data-action="fetch-caption" ${busy ? "disabled" : ""}>${isCaptionImporting ? "読み取り中…" : "読み取る"}</button>
       </div>
       ${state.draft.videoUrl ? "" : '<button type="button" class="text-button paste-inline" data-action="paste-recipe-url">📋 コピーしたURLを貼る</button>'}
