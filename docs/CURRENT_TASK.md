@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-26（鍋の代替画像を設定・公開待ち）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-28（ベータ版ユーザー獲得用LPへの全面刷新とNano Banana画像生成）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
+| ベータ版ユーザー獲得LPの作成・画像生成 | レビュー待ち | claude/beta-lp-renewal | 最新版リピごち（ベータ版）の全機能・訴求を反映したユーザー獲得LPへの刷新とNano Bananaによる新規ビジュアル生成 | lp/index.html, lp/styles.css, lp/waitlist.js, lp/IMAGE_PROMPTS.md, lp/assets/*, test/lp.test.cjs, docs/CURRENT_TASK.md, docs/APP_MAP.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 

@@ -79,20 +79,20 @@ const WAITLIST = {
   );
   if (remembered()) showDone();
 
-  // Bottom CTA on phones: only while the hero form is off screen.
-  const hero = document.querySelector('.waitlist-form[data-source="hero"]');
+  // Bottom CTA on phones: only while the hero CTA and final CTA are off screen.
+  const hero = document.querySelector('[data-cta="hero"], .waitlist-form[data-source="hero"]');
   const bar = document.querySelector(".sticky-cta");
-  const waitlist = document.querySelector("#waitlist");
+  const finalCta = document.querySelector(".final-cta") || document.querySelector("#waitlist");
   if (hero && bar && "IntersectionObserver" in window) {
     let heroVisible = true;
-    let waitlistVisible = false;
+    let finalVisible = false;
     const update = () => {
-      const show = !heroVisible && !waitlistVisible;
+      const show = !heroVisible && !finalVisible;
       bar.classList.toggle("is-visible", show);
       bar.setAttribute("aria-hidden", String(!show));
       bar.querySelector("a").tabIndex = show ? 0 : -1;
     };
     new IntersectionObserver((entries) => { heroVisible = entries[0].isIntersecting; update(); }).observe(hero);
-    if (waitlist) new IntersectionObserver((entries) => { waitlistVisible = entries[0].isIntersecting; update(); }).observe(waitlist);
+    if (finalCta) new IntersectionObserver((entries) => { finalVisible = entries[0].isIntersecting; update(); }).observe(finalCta);
   }
 })();
