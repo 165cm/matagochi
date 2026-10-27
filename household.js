@@ -42,17 +42,26 @@ function readInviteFromLocation() {
   }
   joinInvite = { code, from: (hash.get("from") || "").slice(0, 20), to: (hash.get("to") || "").slice(0, 20) };
 }
-async function connectRoom(code) {
-  state.sync = { code, roomId: await deriveSyncRoomId(normalizeSyncCode(code)), lastSyncAt: "" };
+async function connectRoom(code, { linkIdentity = true } = {}) {
+  if (syncInFlight || accountSyncConnecting) { showToast("保存が終わるまで少しお待ちください。"); return false; }
+  let backupKey, roomId;
+  try { roomId = await deriveSyncRoomId(normalizeSyncCode(code)); backupKey = await saveIntegrationBackup(roomId); }
+  catch (e) { showToast(syncErrorText(e)); return false; }
+  if (account?.syncManaged) {
+    try { account = await authPost("sync", { preferredCode: code, switchRoom: true, expectedCode: account.syncCode }, true); }
+    catch (e) { showToast(e.message); return false; }
+  }
+  state.sync = { code, roomId, lastSyncAt: "", backupKey, accountEmail: account?.email || "", planBase: null, conflicts: {} };
   lastSyncedFingerprint = "";
   saveState({ scheduleSync: false });
   const ok = await syncNow({ silent: true });
-  if (!ok) {
+  if (!ok && !Object.keys(state.sync.conflicts || {}).length && !account?.syncManaged) {
     state.sync = { code: "", roomId: "", lastSyncAt: "" };
     saveState({ scheduleSync: false });
   }
-  if (ok) { refreshTickets(); linkAccount(); }
-  return ok;
+  const connected = ok || Object.keys(state.sync.conflicts || {}).length > 0;
+  if (connected) { refreshTickets(); if (linkIdentity) linkAccount(); }
+  return connected;
 }
 // Keep the household order; only fill in the placeholder names ("自分" / "いっしょに食べた人").
 function setMembers(mine, partner) {
@@ -275,7 +284,7 @@ function renderSharePanel() {
   const link = shareLink || inviteUrl();
   return `<section class="panel share-panel" id="share"><h3>👫 ふたりで使う</h3><p>${state.family.map((n) => `<span class="chip">${escapeHtml(n)}${n === me() ? "（あなた）" : ""}</span>`).join(" ")} でつながっています。</p>
     <p class="muted small">最終同期：${formatSyncTime(state.sync.lastSyncAt)}${syncRuntimeStatus ? `<br>${escapeHtml(syncRuntimeStatus)}` : ""}</p>
-    ${isViewer() ? '<p class="muted small">あなたは閲覧者です。献立を変えるには、管理者に役割の変更をお願いしてください。</p>' : renderRoleSettings()}
+    ${renderRoleSettings()}
     <div class="actions">${dailyButton("life-share-send", "招待リンクを送る", "", true)}${copyButton("invite")}${dailyButton("sync-now", "今すぐ同期")}</div>
     <details class="share-link"><summary>招待リンクを表示</summary><input class="input" readonly value="${escapeAttr(link)}" aria-label="招待リンク"></details>
     <button type="button" class="text-button" data-action="sync-disconnect">この端末の共有をやめる</button></section>`;
@@ -360,11 +369,12 @@ function handleHouseholdAction(action, data) {
   }
   if (action === "life-ask") { askPartner(); return true; }
   if (action === "life-become-owner") {
+    if (Object.values(state.roles?.members || {}).includes("owner")) { showToast("管理者の変更は、現在の管理者にお願いしてください。"); return true; }
     state.roles = { members: Object.fromEntries(state.family.map((n) => [n, n === me() ? "owner" : "viewer"])), updatedAt: nowIso() };
     showToast(`献立を決めるのは${me()}になりました。`);
     saveState(); render(); return true;
   }
-  if (action === "life-role-toggle" && isOwner()) {
+  if (action === "life-role-toggle" && isOwner() && data.member !== me() && state.family.includes(data.member) && roleOf(data.member) !== "owner") {
     const next = roleOf(data.member) === "viewer" ? "editor" : "viewer";
     state.roles = { members: { ...(state.roles?.members || {}), [data.member]: next }, updatedAt: nowIso() };
     showToast(next === "editor" ? `${data.member}も献立を変えられるようにしました。` : `${data.member}を見るだけモードにしました。`);
@@ -390,6 +400,7 @@ function handleHouseholdAction(action, data) {
   }
   if (action === "life-share-send") { shareInvite(); return true; }
   if (action === "life-share-start") {
+    if (isViewer()) { showToast("招待は管理者にお願いしてください。"); return true; }
     const mine = document.querySelector("#share-me")?.value.trim().slice(0, 12);
     const partner = document.querySelector("#share-partner")?.value.trim().slice(0, 12);
     if (!mine || !partner || mine === partner) { showToast("ふたりの呼び名を、ちがう名前で入れてください。"); return true; }
@@ -417,7 +428,7 @@ function handleHouseholdAction(action, data) {
       state.foodProfile = Lifestyle.profile({ servings: 2 });
     }
     if (name !== invite.from) renameRatings("自分", name);
-    connectRoom(invite.code).then((ok) => {
+    connectRoom(invite.code, { linkIdentity: false }).then((ok) => {
       shareBusy = false;
       if (!ok) { showToast("つなげませんでした。通信を確認して、もう一度リンクを開いてください。"); render(); return; }
       joinInvite = null;
@@ -430,6 +441,7 @@ function handleHouseholdAction(action, data) {
       if (state.servingCount < 2) state.servingCount = 2;
       state.view = "today";
       saveState();
+      linkAccount();
       syncNow({ silent: true });
       showToast(sameDevicePerson ? `この端末も${name}としてつながりました！` : `${invite.from || "相手"}とつながりました！`);
       render();
@@ -532,10 +544,11 @@ function renderRoleSettings() {
     const role = n === me() && canEdit ? "owner" : roleOf(n);
     const control = n === me() || !canEdit
       ? `<span class="role-badge role-${role}">${ROLE_LABEL[role]}${n === me() ? "（あなた）" : ""}</span>`
-      : `<div class="segmented role-seg" role="group" aria-label="${escapeAttr(n)}の役割">${["viewer", "editor"].map((r) => `<button type="button" class="choice-button" data-action="life-set-role" data-member="${escapeAttr(n)}" data-role="${r}" aria-pressed="${role === r}">${ROLE_LABEL[r]}</button>`).join("")}</div>`;
+      : `<div class="segmented role-seg" role="group" aria-label="${escapeAttr(n)}の役割">${["viewer", "editor", "owner"].map((r) => `<button type="button" class="choice-button" data-action="life-set-role" data-member="${escapeAttr(n)}" data-role="${r}" aria-pressed="${role === r}">${ROLE_LABEL[r]}</button>`).join("")}</div>`;
     return `<div class="role-row"><strong>${escapeHtml(n)}</strong>${control}</div>`;
   }).join("");
-  return `<div class="role-settings"><h4>メンバーと役割</h4>${rows}
+  return `<div class="role-settings"><h4>メンバーと役割</h4><p>この端末のあなた：<b>${escapeHtml(me())}</b>（${ROLE_LABEL[roleOf(me())]}）</p>${rows}
+    ${!canEdit ? '<p class="small">役割の変更は、現在の管理者の端末から行ってください。家族それぞれのGoogleアカウントでログインすると、本人の取り違えを防げます。</p>' : '<p class="small">ほかの人を管理者にすると、あなたは編集者になります。メイン端末の指定とは別の設定です。</p>'}
     ${!hasOwner ? '<p class="muted small">役割をえらぶと、あなたが管理者になります。</p>' : ""}
     <details class="role-help"><summary>役割でできること</summary><table><thead><tr><th></th><th>管理者</th><th>編集者</th><th>閲覧者</th></tr></thead><tbody>${ROLE_TABLE.map(([what, ...cells]) => `<tr><td>${what}</td>${cells.map((c) => `<td class="${c === "○" ? "ok" : "ng"}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table>
     <p class="muted small">閲覧者は、画面がシンプルになります（今夜のごはん・献立・食べたいもの・買い物だけ）。</p></details></div>`;
@@ -550,8 +563,14 @@ function handleViewerAction(action, data) {
     setMemberPrefs({ likes: list.includes(data.recipe) ? list.filter((x) => x !== data.recipe) : [...list, data.recipe] });
   } else if (action === "life-viewer-done") { setMemberPrefs({ done: true }); viewerStep = 0; state.view = "today"; showToast("ありがとう！ 好きなものが献立に出やすくなります。"); }
   else if (action === "life-viewer-redo") { setMemberPrefs({ done: false }); viewerStep = 0; state.view = "today"; }
-  else if (action === "life-set-role" && (isOwner() || !Object.values(state.roles?.members || {}).includes("owner")) && ["viewer", "editor"].includes(data.role)) {
-    state.roles = { members: { ...(state.roles?.members || {}), [me()]: "owner", [data.member]: data.role }, updatedAt: nowIso() };
+  else if (action === "life-set-role") {
+    if (!(isOwner() || !Object.values(state.roles?.members || {}).includes("owner")) || !["viewer", "editor", "owner"].includes(data.role) || !state.family.includes(data.member) || data.member === me()) return true;
+    if (data.role === "owner" && !window.confirm(`${data.member}へ管理者を引き継ぎます。あなたは編集者になり、役割の変更は新しい管理者が行います。よろしいですか？`)) return true;
+    const members = { ...(state.roles?.members || {}), [me()]: "owner" };
+    if (data.role === "owner") Object.keys(members).forEach(n => { if (members[n] === "owner") members[n] = "editor"; });
+    else if (members[data.member] === "owner") return true;
+    members[data.member] = data.role;
+    state.roles = { members, updatedAt: nowIso() };
     showToast(`${data.member}を${ROLE_LABEL[data.role]}にしました。`);
   } else return false;
   saveState(); render(); return true;
@@ -778,6 +797,7 @@ function normalizeRhythm(raw) {
   };
 }
 // 始める時の最初の回：次の丸ごとの回まで間があけば、明日から次の回の前日までのリズムの日を「今週の残り」の回にする。
+// 買い物はいつもの時間（今日のその時間を過ぎていたら明日）。2026-10-27 のユーザーの判断
 function startRhythm(nowDate = new Date()) {
   const full = firstFullBlock();
   const days = rhythmDays();
@@ -786,9 +806,13 @@ function startRhythm(nowDate = new Date()) {
   for (let d = tomorrow; full && d < full.start && gap.length < 7; d = addDays(d, 1)) if (days.includes(String(dow(d)))) gap.push(d);
   delete state.rhythm.kickoff;
   if (gap.length) {
-    const at = new Date(nowDate.getTime() + 60 * 60 * 1000);
-    at.setMinutes(Math.ceil(at.getMinutes() / 30) * 30, 0, 0);
-    state.rhythm.kickoff = { start: gap[0], dates: gap, shopAt: localStamp(at).slice(0, 16) };
+    // 最初の買い物も、いつもの買い物の時間に（今日のその時間を過ぎていたら明日。深夜・早朝にしない）。
+    const time = state.rhythm.shopTime || "17:00";
+    const day = localStamp(nowDate) < `${today()}T${time}` ? today() : tomorrow;
+    const shopAt = `${day}T${time}`;
+    // 次のまとまりの買い物と同じ時刻（かそれより後）になる時は、1回の買い物にまとめる（同じ時刻に2回の買い物・お知らせを出さない）。
+    const dates = full.shopAt <= shopAt ? [...gap, ...full.dates] : gap;
+    state.rhythm.kickoff = { start: gap[0], dates, shopAt };
     state.rhythm.startFrom = gap[0];
   } else state.rhythm.startFrom = full?.start || "";
 }
@@ -844,7 +868,9 @@ function blockStatus(b) {
   if (state.shopDone?.[b.key]) return "shopped";
   const upcoming = b.dates.filter((d) => d >= today());
   const slots = state.mealSlots || {};
-  if (upcoming.every((d) => slots[d] && slots[d].status !== "removed")) return "decided";
+  // 終わったまとまりは、全部の日が決まっていた時だけ「決定」（使い始める前の週や、決めずに過ぎた週は「過去」）。
+  if ((upcoming.length ? upcoming : b.dates).every((d) => slots[d] && slots[d].status !== "removed")) return "decided";
+  if (!upcoming.length) return "past";
   return localStamp(new Date()) < b.shopAt ? "open" : "late";
 }
 function planningBlock() {
@@ -901,6 +927,7 @@ function renderWeekBoard() {
   const bars = blocks.map((b) => {
     const from = Math.max(0, daysBetween(start, b.start)), to = Math.min(6, daysBetween(start, b.end));
     const st = blockStatus(b);
+    if (st === "past") return "";
     return `<span class="wk-bar is-${st}" style="grid-column:${from + 1} / ${to + 2}">${label[st]}${st === "open" ? ` 〜${WD[dow(b.shopAt.slice(0, 10))]}${b.shopAt.slice(11)}` : st === "shopped" || st === "decided" ? " ✓" : ""}</span>`;
   }).join("");
   const pick = calPick && dates.includes(calPick) ? (plan.get(calPick)?.slot?.recipe || plan.get(calPick)?.candidate?.recipe || eaten.get(calPick)) : null;

@@ -1,0 +1,288 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const vm = require("node:vm");
+const fs = require("node:fs");
+const path = require("node:path");
+
+// 家族で見ている間の「相手の変更を取りにいく」（shouldPollSync）と、同期の待ち時間。
+function app(net) {
+ const visibility="visible",busy=false; const storage=new Map();
+  const body = { classList: { contains: (c) => busy && c === "cook-mode-open" }, append() {} };
+  const ctx = vm.createContext({ console, URL, URLSearchParams, Date, setTimeout:()=>1,clearTimeout(){}, setInterval: () => 0, MATAGOCHI_API_BASE_URL: "https://api.test",
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    localStorage: { getItem: k => storage.get(k)||null, setItem(k,v) {storage.set(k,v)}, removeItem(k) {storage.delete(k)} },
+    sessionStorage: { getItem: () => null, setItem() {} },
+    location: { reload() {} }, navigator: {}, window: { scrollTo() {},confirm:()=>true },
+    document: { visibilityState: visibility, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ setAttribute() {}, remove() {}, querySelector: () => null }), activeElement: null, body } });
+  for (const f of ["dinner-persona.js", "taste.js", "taste-ui.js", "starter-recipes.js", "skills.js", "aisles.js", "lifestyle.js", "profile-talk.js", "talk-ui.js", "daily-ui.js", "playlist-import.js", "household.js", "skill-quiz.js", "cook-level.js", "weekly.js", "cook-type.js", "plan-moves.js", "plus.js", "cook-mode.js", "folders.js", "install.js", "push.js", "tickets.js", "account.js", "discover.js", "app.js"]) {
+    let s = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    if (f === "app.js") s = s.slice(0, s.lastIndexOf('document.querySelectorAll(".tab")'));
+    vm.runInContext(s, ctx);
+  }
+  ctx.network=net;ctx.hash=s=>require("node:crypto").createHash("sha256").update(s).digest("hex");
+  vm.runInContext(`state = freshState();state.onboarded=true;state.recipes=[];state.evaluations=[];state.family=["me"];state.sync={roomId:"${"a".repeat(64)}",code:"test-code",lastSyncAt:"",planBase:null,conflicts:{}}; showToast=()=>{};render=()=>{};idbAvailable=false;fetchWithTimeout=network;sha256Hex=async s=>hash(s);saveState=()=>{};`, ctx);
+  return { run: (s) => vm.runInContext(s, ctx),ctx,storage };
+}
+function server() {
+ let data=null,revision=0;const requests=[];
+ const net=async(url,opts={})=>{
+  requests.push(opts.method||'GET');
+  if(opts.method==='PUT') {
+   const body=JSON.parse(opts.body);
+   if(body.baseRevision!==(revision?String(revision):''))return {ok:false,status:409,json:async()=>({})};
+   data=structuredClone(body.data);revision++;return {ok:true,status:200,json:async()=>({revision:String(revision)})};
+  }
+  return {ok:true,status:200,json:async()=>!data?{found:false}:new URL(url).searchParams.get('since')===String(revision)?{found:true,unchanged:true,revision:String(revision)}:{found:true,data:structuredClone(data),revision:String(revision)}};
+ };
+ return {net,requests,get data(){return data},set data(d){data=structuredClone(d);revision++}};
+}
+const dateKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const day=dateKey(new Date()),next=dateKey(new Date(Date.now()+86400000));
+const recipe=id=>({id,title:id,mealType:'dinner',ingredients:[],steps:[]});
+function setDay(a,date,id){a.run(`state.mealSlots['${date}']={date:'${date}',status:'confirmed',recipe:${JSON.stringify(recipe(id))},updatedAt:'2026-10-26T12:00:00Z'}`)}
+function value(a,expr){return JSON.parse(a.run(`JSON.stringify(${expr})`))}
+
+test('different dates merge; same-date concurrent edits wait for a choice without changing the server',async()=>{
+ const s=server(),a=app(s.net),b=app(s.net);
+ setDay(a,day,'original');assert.equal(await a.run('syncNow({silent:true})'),true);await b.run('syncNow({silent:true})');
+ setDay(a,day,'curry');setDay(b,next,'fish');await a.run('syncNow({silent:true})');await b.run('syncNow({silent:true})');await a.run('syncNow({silent:true})');
+ assert.equal(value(a,'state.mealSlots')[next].recipe.title,'fish');
+ setDay(a,day,'noodles');setDay(b,day,'rice');await a.run('syncNow({silent:true})');
+ assert.equal(await b.run('syncNow({silent:true})'),false);assert.equal(s.data.mealSlots[day].recipe.title,'noodles');
+ assert.equal(value(b,'state.sync.conflicts')[day].remote.slot.recipe.title,'noodles');
+ await b.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);
+ assert.equal(s.data.mealSlots[day].recipe.title,'rice');await a.run('syncNow({silent:true})');assert.equal(value(a,'state.mealSlots')[day].recipe.title,'rice');
+});
+
+test('first integration retains both choices and a restorable backup',async()=>{
+ const s=server(),a=app(s.net),b=app(s.net);setDay(a,day,'server');await a.run('syncNow({silent:true})');setDay(b,day,'local');
+ await b.run('syncNow({silent:true})');assert.equal(Object.keys(value(b,'state.sync.conflicts')).length,1);
+ const key=b.run('state.sync.backupKey');assert.equal(JSON.parse(b.storage.get(key)).payload.mealSlots[day].recipe.title,'local');
+ await b.run(`handleSyncPlanAction('sync-plan-remote',{date:'${day}'})`);assert.equal(value(b,'state.mealSlots')[day].recipe.title,'server');
+ await b.run('restoreIntegrationBackup()');assert.equal(value(b,'state.mealSlots')[day].recipe.title,'local');assert.equal(b.run('syncEnabled()'),false);assert.equal(s.data.mealSlots[day].recipe.title,'server');
+});
+
+test('draft removal propagates and cannot resurrect from an unchanged device',async()=>{
+ const s=server(),a=app(s.net),b=app(s.net);
+ for(const x of [a,b])x.run(`state.recipes=[${JSON.stringify(recipe('draft'))}];`);
+ a.run(`state.planOverrides['${day}']='draft'`);await a.run('syncNow({silent:true})');await b.run('syncNow({silent:true})');
+ a.run(`delete state.planOverrides['${day}']`);await a.run('syncNow({silent:true})');await b.run('syncNow({silent:true})');
+ assert.equal(b.run(`state.planOverrides['${day}']`),undefined);assert.deepEqual(s.data.planOverrides,{});
+});
+
+test('a local edit during PUT stays pending and is sent on the next sync',async()=>{
+ const s=server();let release,started;const wait=new Promise(r=>started=r);
+ const a=app(async(u,o)=>{if(o?.method==='PUT'&&!release){await new Promise(r=>{release=r;started()})}return s.net(u,o)});
+ setDay(a,day,'first');const work=a.run('syncNow({silent:true})');await wait;setDay(a,day,'later');release();await work;
+ assert.equal(value(a,'state.mealSlots')[day].recipe.title,'later');assert.equal(s.data.mealSlots[day].recipe.title,'first');assert.match(a.run('syncSaveLabel()'),/未送信/);
+ await a.run('syncNow({silent:true})');assert.equal(s.data.mealSlots[day].recipe.title,'later');assert.equal(a.run('syncSaveLabel()'),'保存済み');
+});
+
+test('backup storage failure blocks integration before fetching or writing shared data',async()=>{
+ const s=server(),a=app(s.net);a.run('localStorage.setItem=()=>{throw Error("quota")}');
+ assert.equal(await a.run('syncNow({silent:true})'),false);assert.equal(s.requests.length,0);assert.match(a.run('syncRuntimeStatus'),/空き容量/);
+});
+
+test('conflicts and merge base survive normalization and clock skew does not choose a winner',()=>{
+ const s=server(),a=app(s.net);a.run(`state.sync.planBase={};state.sync.conflicts={'${day}':{local:null,remote:{slot:null,override:'r'}}}`);
+ const restored=value(a,'normalizeSyncSettings(state.sync)');assert.deepEqual(restored.planBase,{});assert.ok(restored.conflicts[day]);
+ const merged=value(a,`mergePlans({'${day}':{slot:{updatedAt:'2099',recipe:{title:'one'}}}},{'${day}':{slot:{updatedAt:'2000',recipe:{title:'two'}}}}, {})`);assert.ok(merged.conflicts[day]);
+});
+
+test('sequential draft edits use content ancestry and deletion-versus-edit asks for confirmation',async()=>{
+ const s=server(),a=app(s.net),b=app(s.net);for(const x of [a,b])x.run(`state.recipes=[${JSON.stringify(recipe('one'))},${JSON.stringify(recipe('two'))}]`);
+ a.run(`state.planOverrides['${day}']='one'`);await a.run('syncNow({silent:true})');await b.run('syncNow({silent:true})');
+ a.run(`state.planOverrides['${day}']='two'`);b.run(`delete state.planOverrides['${day}']`);await a.run('syncNow({silent:true})');await b.run('syncNow({silent:true})');
+ assert.ok(value(b,'state.sync.conflicts')[day]);await b.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);assert.equal(s.data.planOverrides[day],undefined);
+});
+
+test('a late response after account logout cannot replace local plans',async()=>{
+ let release;const s=server(),a=app(async(u,o)=>{await new Promise(r=>release=r);return s.net(u,o)});
+ a.run(`account={email:'me@example.com'};localStorage.setItem('ripigochi-session','token');state.sync.accountEmail=account.email`);
+ setDay(a,day,'mine');const work=a.run('syncNow({silent:true})');for(let i=0;i<20&&!release;i++)await new Promise(r=>setImmediate(r));
+ a.run('signOutLocal()');release();await work;assert.equal(s.data,null);assert.equal(value(a,'state.mealSlots')[day].recipe.title,'mine');
+});
+
+test('same-account reconnection replaces a stale local room and polls even for one person',async()=>{
+ const s=server(),a=app(s.net);
+ a.run(`account={email:'me@example.com'};localStorage.setItem('ripigochi-session','token');state.onboarded=false;authPost=async(path)=>path==='devices'?({primary:syncClientId(),devices:{[syncClientId()]:{kind:'phone',label:'phone'}},proposals:{}}):({email:'me@example.com',syncCode:'canonical-code',syncManaged:true});deriveSyncRoomId=async()=> '${'b'.repeat(64)}';`);
+ assert.equal(await a.run('ensureAccountSync()'),true);
+ assert.equal(a.run('state.sync.roomId'),'b'.repeat(64));assert.equal(a.run('state.sync.code'),'canonical-code');assert.equal(a.run('shouldPollSync()'),true);
+ a.run('signOutLocal()');assert.equal(a.run('shouldPollSync()'),false);assert.equal(a.run('syncEnabled()'),false);
+});
+
+test('account suggestions are stored without turning them into explicit choices',async()=>{
+ const s=server(),a=app(s.net);
+ a.run(`account={email:'me@example.com'};localStorage.setItem('ripigochi-session','token');state.sync.accountEmail=account.email;state.foodProfile=Lifestyle.profile({completed:true});`);
+ await a.run('syncNow({silent:true})');assert.ok(Object.keys(s.data.planDrafts).length);
+ assert.equal(a.run('dailyPlan().find(d=>d.candidate).candidate.chosen'),false);
+});
+
+test('a write race re-fetches and asks instead of overwriting the other device',async()=>{
+ const s=server();let race=false;
+ const a=app(async(u,o)=>{
+  if(race&&o?.method==='PUT') {race=false;const d=structuredClone(s.data);d.mealSlots[day].recipe=recipe('other-device');s.data=d;}
+  return s.net(u,o);
+ });
+ setDay(a,day,'base');await a.run('syncNow({silent:true})');setDay(a,day,'this-device');race=true;
+ assert.equal(await a.run('syncNow({silent:true})'),false);
+ assert.equal(s.data.mealSlots[day].recipe.title,'other-device');assert.equal(value(a,'state.sync.conflicts')[day].local.slot.recipe.title,'this-device');
+});
+
+test('family invitation remains connected when initial plans need a choice',async()=>{
+ const s=server(),a=app(s.net),b=app(s.net);setDay(a,day,'family');await a.run('syncNow({silent:true})');setDay(b,day,'own');
+ b.run(`deriveSyncRoomId=async()=> '${'a'.repeat(64)}';refreshTickets=()=>{};linkAccount=()=>{}`);
+ assert.equal(await b.run('connectRoom("family-code")'),true);assert.ok(value(b,'state.sync.conflicts')[day]);
+});
+
+test('late account reads and link replies cannot restore a signed-out session', async()=>{
+ for (const action of ['loadAuth()', 'linkAccount()']) {
+  let release,started;const ready=new Promise(r=>started=r);
+  const a=app(async url=>{
+   if(url.endsWith('/config'))return {ok:true,json:async()=>({})};
+   started();return new Promise(r=>release=()=>r({ok:true,json:async()=>({email:'me@example.com'})}));
+  });
+  a.storage.set('ripigochi-session','session');a.run('account={email:"me@example.com"}');
+  const pending=a.run(action);await ready;a.run('signOutLocal()');release();await pending;
+  assert.equal(a.run('account'),null);
+ }
+});
+
+function seedSharedCandidate(a) {
+ a.run(`state.foodProfile=Lifestyle.profile({completed:true}); const candidate=clone(dailyPlan().find(d=>d.candidate).candidate.recipe); candidate.id='saved-candidate'; state.recipes=[candidate]; state.starterPref={show:false,hidden:[],hiddenDishes:[]};state.planDrafts={[today()]:clone(candidate)};`);
+}
+test('deleting a recipe removes its shared candidate copy and remote tombstones prevent revival',()=>{
+ const a=app(server().net);seedSharedCandidate(a);
+ const payload=value(a,'buildSyncPayload()');
+ a.run(`removeRecipes(['saved-candidate'])`);
+ assert.equal(a.run('Object.keys(state.planDrafts).length'),0);
+ assert.equal(a.run(`allDinnerRecipes().some(r=>r.id==='saved-candidate')`),false);
+ payload.recipes=[];payload.tombstones={recipes:{'saved-candidate':new Date().toISOString()},evaluations:{}};
+ a.ctx.received=payload;a.run('applySyncPayload(received)');
+ assert.equal(a.run('Object.keys(state.planDrafts).length'),0);
+ assert.equal(a.run(`dailyPlan().some(d=>d.candidate?.recipe.id==='saved-candidate')`),false);
+});
+test('hidden dish groups block shared automatic candidates but preserve explicit choices',()=>{
+ const a=app(server().net);seedSharedCandidate(a);
+ assert.equal(a.run(`dailyPlan()[0].candidate?.recipe.id`),'saved-candidate');
+ a.run(`state.starterPref.hiddenDishes=[parentKeyOf(state.recipes[0])]`);
+ assert.equal(a.run(`dailyPlan().some(d=>d.candidate?.recipe.id==='saved-candidate')`),false);
+ a.run(`state.planOverrides[today()]='saved-candidate'`);
+ assert.equal(a.run(`dailyPlan()[0].candidate?.recipe.id`),'saved-candidate');
+});
+
+async function devicePair() {
+ const {createSyncDevices}=await import('../api/src/syncDevices.js');
+ const {createMemorySyncStore}=await import('../api/src/syncStore.js');
+ const registry=createSyncDevices(createMemorySyncStore()),s=server(),phone=app(s.net),pc=app(s.net);
+ for(const [client,kind] of [[phone,'phone'],[pc,'computer']]){
+  client.ctx.deviceRpc=body=>registry('same-user','test-code',body);
+  client.run(`localStorage.setItem('ripigochi-session','session');localStorage.setItem('ripigochi-sync-client','browser-${kind}-12345678');account={email:'me@example.com'};state.sync.accountEmail=account.email;state.onboarded=false;syncClientKind=()=> '${kind}';authPost=async(path,body)=>path==='devices'?deviceRpc(body):({email:'me@example.com',syncCode:'test-code',syncManaged:true});deriveSyncRoomId=async()=> '${'a'.repeat(64)}';`);
+ }
+ await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ return {phone,pc,s};
+}
+test('PC conflicts arrive on the phone and phone selection returns to PC',async()=>{
+ const {phone,pc,s}=await devicePair();
+ setDay(phone,day,'base');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ setDay(phone,day,'phone-choice');setDay(pc,day,'pc-choice');
+ await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ assert.equal(pc.run('canResolvePlans()'),false);assert.match(pc.run('renderSyncSavePanel()'),/メイン端末で献立/);
+ await pc.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);assert.ok(value(pc,'state.sync.conflicts')[day]);
+ await phone.run('ensureAccountSync()');assert.equal(value(phone,'state.sync.conflicts')[day].remote.slot.recipe.title,'pc-choice');
+ await phone.run(`handleSyncPlanAction('sync-plan-remote',{date:'${day}'})`);
+ assert.equal(s.data.mealSlots[day].recipe.title,'pc-choice');
+ await pc.run('ensureAccountSync()');assert.equal(Object.keys(value(pc,'state.sync.conflicts')).length,0);
+ assert.equal(value(pc,'state.mealSlots')[day].recipe.title,'pc-choice');
+});
+test('PC edits made after submitting are preserved when phone resolves older proposal',async()=>{
+ const {phone,pc}=await devicePair();
+ setDay(phone,day,'base');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ setDay(phone,day,'main');setDay(pc,day,'submitted');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ await phone.run('ensureAccountSync()');setDay(pc,day,'newer-unsent');
+ await phone.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);
+ await pc.run('ensureAccountSync()');assert.equal(value(pc,'state.mealSlots')[day].recipe.title,'newer-unsent');
+});
+test('owner transfers management; viewer cannot promote themselves through legacy or new actions',()=>{
+ const a=app(server().net);
+ a.run(`state.family=['parent','daughter'];state.me='daughter';state.roles={members:{parent:'viewer',daughter:'owner'}};`);
+ assert.match(a.run('renderRoleSettings()'),/この端末のあなた/);
+ a.run(`handleViewerAction('life-set-role',{member:'parent',role:'owner'})`);
+ assert.equal(a.run(`roleOf('parent')`),'owner');assert.equal(a.run(`roleOf('daughter')`),'editor');
+ a.run(`state.me='parent';handleViewerAction('life-set-role',{member:'daughter',role:'viewer'});state.me='daughter'`);
+ a.run(`handleViewerAction('life-set-role',{member:'daughter',role:'owner'});handleHouseholdAction('life-become-owner',{})`);
+ assert.equal(a.run(`roleOf('daughter')`),'viewer');assert.equal(a.run(`roleOf('parent')`),'owner');
+});
+
+test('a sub-device made main can resolve its own pending proposal and late replies stay harmless',async()=>{
+ const {phone,pc}=await devicePair();
+ setDay(phone,day,'base');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ setDay(phone,day,'phone');setDay(pc,day,'pc');await phone.run('ensureAccountSync()');await pc.run('ensureAccountSync()');
+ await pc.run(`deviceRequest({action:'select',expectedPrimary:state.sync.deviceState.primary})`);
+ await pc.run(`handleSyncPlanAction('sync-plan-local',{date:'${day}'})`);
+ assert.equal(pc.run('canResolvePlans()'),true);assert.equal(pc.run('state.sync.submittedPlan'),null);
+ await phone.run('ensureAccountSync()');assert.equal(value(phone,'state.mealSlots')[day].recipe.title,'pc');
+});
+test('management transfer can be cancelled and invalid/self changes leave the owner intact',()=>{
+ const a=app(server().net);a.run(`state.family=['parent','child'];state.me='parent';state.roles={members:{parent:'owner',child:'viewer'}};window.confirm=()=>false;`);
+ a.run(`handleViewerAction('life-set-role',{member:'child',role:'owner'});handleViewerAction('life-set-role',{member:'stranger',role:'owner'});handleViewerAction('life-set-role',{member:'parent',role:'viewer'})`);
+ assert.equal(a.run(`roleOf('parent')`),'owner');assert.equal(a.run(`roleOf('child')`),'viewer');assert.equal(a.run(`state.roles.members.stranger`),undefined);
+});
+
+test('invitation saves the chosen identity only after joining instead of linking the old person',async()=>{
+ const a=app(server().net);
+ a.run(`state.family=['parent','child'];state.me='parent';joinInvite={code:'family-code',from:'parent',to:'child'};document.querySelector=()=>({value:'child'});var linkedNames=[],joinOptions;connectRoom=async(code,opts)=>{joinOptions=opts;return true;};linkAccount=()=>linkedNames.push(state.me);syncNow=async()=>true;handleHouseholdAction('life-join',{});`);
+ await new Promise(r=>setImmediate(r));
+ assert.equal(a.run('joinOptions.linkIdentity'),false);
+ assert.deepEqual(value(a,'linkedNames'),['child']);
+});
+
+test('viewer accepts shared plans without gaining authority and then receives role changes',async()=>{
+ const s=server(),owner=app(s.net),viewer=app(s.net);
+ for(const a of [owner,viewer])a.run(`state.family=['owner','child'];state.roles={members:{owner:'owner',child:'viewer'},updatedAt:nowIso()};`);
+ owner.run(`state.me='owner'`);viewer.run(`state.me='child'`);
+ setDay(owner,day,'shared-dinner');setDay(viewer,day,'old-local-dinner');
+ await owner.run('syncNow({silent:true})');await viewer.run('syncNow({silent:true})');
+ assert.ok(value(viewer,'state.sync.conflicts')[day]);assert.match(viewer.run('renderSyncSavePanel()'),/sync-viewer-accept/);
+ await viewer.run(`handleSyncPlanAction('sync-viewer-accept',{})`);
+ assert.equal(Object.keys(value(viewer,'state.sync.conflicts')).length,0);
+ assert.equal(value(viewer,'state.mealSlots')[day].recipe.title,'shared-dinner');assert.equal(viewer.run('isViewer()'),true);
+ owner.run(`state.roles={members:{owner:'owner',child:'editor'},updatedAt:new Date(Date.now()+1000).toISOString()}`);
+ await owner.run('syncNow({silent:true})');await viewer.run('syncNow({silent:true})');
+ assert.equal(viewer.run('isViewer()'),false);assert.equal(viewer.run(`roleOf('child')`),'editor');
+});
+
+test('viewer can export without gaining role or destructive settings',()=>{
+ const a=app(server().net);
+ a.run(`state.family=['parent','daughter'];state.me='parent';state.roles={members:{parent:'viewer',daughter:'owner'}}`);
+ assert.equal(a.run('isViewer()'),true);
+ const html=a.run('renderSettings()');
+ assert.match(html,/data-action="export-data"/);
+ assert.doesNotMatch(html,/data-action="reset-data"|data-action="life-set-role"|data-action="life-share-start"/);
+});
+
+test('device backup retains six displayed days and raw records without changing local state',()=>{
+ const a=app(server().net);
+ a.run(`state.evaluations=[{id:'rating',recipeId:'saved',rating:5}];state.shoppingMarks={carrot:{checked:true}};state.recipes=[${JSON.stringify(recipe('saved'))}];
+ dailyPlan=()=>Array.from({length:6},(_,i)=>({date:'2026-10-'+(27+i),candidate:{recipe:{id:'dish'+i,title:'dish'+i,ingredients:[]}}}));`);
+ const before=a.run('JSON.stringify(state)');
+ const backup=value(a,'buildDeviceBackup()');
+ assert.equal(backup.backupManifest.displayedPlan.length,6);
+ assert.equal(backup.backupManifest.displayedPlan[5].recipe.id,'dish5');
+ assert.equal(backup.evaluations[0].rating,5);
+ assert.equal(backup.shoppingMarks.carrot.checked,true);
+ assert.equal(backup.recipes[0].id,'saved');
+ assert.equal(a.run('JSON.stringify(state)'),before);
+ a.run(`const copy=buildDeviceBackup();copy.recipes[0].title='changed';copy.shoppingMarks.carrot.checked=false;`);
+ assert.equal(a.run('JSON.stringify(state)'),before);
+});
+
+test('backup share stores bookkeeping locally and cancellation does not mark backup saved',async()=>{
+ const a=app(server().net);a.ctx.File=class {constructor(parts){this.parts=parts}};
+ a.run(`dailyPlan=()=>[];globalThis.saves=[];saveState=opts=>saves.push(opts);navigator.share=async()=>{};`);
+ await a.run('shareBackupData()');
+ assert.deepEqual(value(a,'saves'),[{scheduleSync:false}]);
+ a.run(`state.lastBackupAt='';saves=[];navigator.share=async()=>{throw {name:'AbortError'}};`);
+ await a.run('shareBackupData()');
+ assert.equal(a.run('state.lastBackupAt'),'');assert.deepEqual(value(a,'saves'),[]);
+});

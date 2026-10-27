@@ -6,7 +6,7 @@
 スマホ・PCのブラウザ（PWA）
   index.html + *.js（ビルドなしの vanilla JS、グローバル関数）
   データは端末の localStorage / IndexedDB（キー：matagochi-mvp-v1）
-        │  家族で共有する時だけ同期
+        │  ログインした複数端末・家族共有で同期
         ▼
 API（Cloud Run: matagochi-api / Node + Express）  api/src/
   YouTube 取り込み・AI（Gemini）・同期・通知・チケット・集計
@@ -51,7 +51,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 - `state` 1つにまとめて `localStorage`（`matagochi-mvp-v1`）へ。写真は IndexedDB
 - 主な項目：`recipes`（保存したレシピ）・`mealSlots`（日付ごとの確定した献立）・`planOverrides`（入れ替え・自分で決めた一皿）・`evaluations`（作った記録と「また食べたい」周期 `familyRepeatCycles`）・`shoppingMarks`（買い物のチェック）・`foodProfile` / `householdProfile`（好み・器具・常備品 `pantry`）・`tasteProfile`（わが家のごはん方針。端末ごと・同期しない）・`family`・`requests`・`plus`・`trialFrom`
 - レシピの材料：`{ name, amount, category, group? }`（`group` はタレ・合わせ調味料の印 "A" "☆" "タレ" など）
-- 同期は `mergeMap`（`updatedAt` の新しい方が勝つ）。消す時は削除フラグで残す
+- 献立は日付ごとの3方向比較（前回そろった内容・端末・共有先）で統合し、同日競合は本人が選ぶ。`planDrafts`に候補の本体、端末の`sync.planBase`に比較元、`sync.conflicts`に未解決の両案。その他の共有項目は従来の`mergeMap`（`updatedAt`の新しい方）等で統合。取消は削除フラグ・比較元との差分で伝える（APP_MAP §59）
 
 ## API（api/src/server.js）
 
@@ -59,7 +59,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 |---|---|
 | 取り込み | `POST /api/import/youtube`（説明欄→AI、`mode:"video"` で動画をAIが読む・チケット1枚）・`/api/import/youtube/playlist`・`/api/import/images`・`/api/oembed/tiktok`・`/api/import/youtube/timecodes`（手順の時刻。AI の1日の予算の中で動き、動画の接続先を切り替える時も切り替えの直前ごとに予算を確かめる） |
 | 同期 | `GET/PUT /api/sync/rooms/:roomId`（写真は `/photos/:hash`） |
-| ログイン | `/api/auth/google`・`/api/auth/email/start`・`/api/auth/email/verify`・`/api/auth/me` |
+| ログイン | `/api/auth/google`・`/api/auth/email/start`・`/api/auth/email/verify`・`/api/auth/me`・`POST /api/auth/sync`（保存先確定／明示切替） |
 | 通知 | `/api/push/*` |
 | チケット | `GET /api/tickets`・`POST /api/tickets/claim` |
 | 投稿者 | `POST /api/creators/request`（掲載停止の申し込み）・`/api/creators/verify`（YouTubeでログイン）・`/api/creators/me`（持ち主の操作・動画を一覧に戻す）・`POST /api/creators/corrections`（修正依頼）・管理 `/api/admin/creators*`（承認画面 `admin/creators.html`） |
@@ -74,3 +74,5 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 ## 外部サービス
 
 Google Cloud（Cloud Run・Storage・Gemini）／YouTube Data API／TikTok oEmbed／Resend（メール）／GitHub Pages／jsDelivr と Google（✋手の形の認識の部品 MediaPipe を初回に読み込む。映像は外に送らない）
+
+- `api/src/syncDevices.js`：同一アカウント・共有先ごとのメイン端末と献立の確認待ち。認証付き `/api/auth/devices`、CAS更新。端末IDはチケットIDと独立。仕様はAPP_MAP §60。

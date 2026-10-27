@@ -180,6 +180,10 @@ test("old saved data loads unchanged; the policy is added, kept out of family sy
 test("screen flow: answer → the follow-up is asked back → check → save → first suggestion with reasons → into tonight", () => {
   const run = app();
   run("state.view='today'");
+  // 追加の質問は一度に1つ：スキル試験が済むまでは方針の行は出ない。
+  assert.ok(run("renderTodayTodos()").includes("スキル試験"));
+  assert.ok(!run("renderTodayTodos()").includes("わが家のごはん方針"));
+  run("state.skillProfile = { level: 2 }");
   assert.ok(run("renderTodayTodos()").includes("わが家のごはん方針"));
   run("handleDailyAction('life-talk-open',{})");
   assert.equal(run("state.view"), "talk");

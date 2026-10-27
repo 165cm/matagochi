@@ -144,6 +144,8 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/auth/email/verify", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, auth.emailVerify(req.body?.email, req.body?.code)); });
   app.get("/api/auth/me", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => auth.me(uid))); });
   app.put("/api/auth/me", (req, res) => send(res, signedIn(req).then((uid) => auth.link(uid, req.body))));
+  app.post("/api/auth/devices", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then(uid => auth.devices(uid, req.body))); });
+  app.post("/api/auth/sync", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then(uid => auth.ensureSync(uid, req.body))); });
   app.post("/api/auth/transfer", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => auth.transferStart(uid))); });
   app.post("/api/auth/transfer/redeem", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, auth.transferRedeem(req.body?.code)); });
   // 新着レシピ：集める（GitHubの定期実行が毎日ノックする。1日・1週の上限を超えては動かない）と、見せる（読み出すだけ）。みんなの定番も読み出すだけ。

@@ -150,7 +150,7 @@ function renderWelcome() {
   document.body.classList.add("is-onboarding");
   // 質問の前に、何ができるアプリかを見せる（文脈がわかってから答えてもらう）。
   document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard welcome-card"><p class="eyebrow">リピごち ${betaBadge()}</p><h2 tabindex="-1">保存した料理動画が、<br><span class="marker">来週の献立</span>になる。</h2>
-    <ol class="welcome-flow" aria-label="リピごちでできること"><li><span aria-hidden="true">📱</span><b>動画を貼る</b><small>YouTube・TikTok</small></li><li><span aria-hidden="true">🤖</span><b>AIが読む</b><small>材料・作り方・時間</small></li><li><span aria-hidden="true">🗓</span><b>献立が決まる</b><small>かぶらず自動で</small></li><li><span aria-hidden="true">🛒</span><b>買い物リスト</b><small>まとめて1回</small></li></ol>
+    <ol class="welcome-flow" aria-label="リピごちでできること"><li><span aria-hidden="true">📱</span><b>動画を貼る</b><small>YouTube</small></li><li><span aria-hidden="true">🤖</span><b>AIが読む</b><small>材料・作り方・時間</small></li><li><span aria-hidden="true">🗓</span><b>献立が決まる</b><small>かぶらず自動で</small></li><li><span aria-hidden="true">🛒</span><b>買い物リスト</b><small>まとめて1回</small></li></ol>
     <p class="small">いくつかの質問に答えると、<b>あなたの家族専用</b>の献立を作ります。</p><p class="muted small beta-line">いまは<b>晩ごはん</b>の献立だけ。朝ごはん・お弁当は準備中です。</p><div class="welcome-actions">${dailyButton("life-quick", "はじめる（約3分）", "", true)}${dailyButton("life-preview", "設定せずに見てみる")}</div><button type="button" class="text-button" data-action="life-detailed">好み・器具・常備品まで詳しく設定する</button></section>`;
   document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
 }
@@ -280,10 +280,11 @@ function dailyProfile() {
 function allDinnerRecipes() {
   const personal = state.recipes.filter((r) => r.mealType === "dinner");
   const originals = new Set(personal.map((r) => r.starterId));
-  return [
+  return [...new Map([
     ...personal,
+    ...Object.values(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(r => !personal.some(p => p.id === r.id)),
     ...(showStarters() ? [...discoverRecipes(), ...Lifestyle.curated.filter((r) => !originals.has(r.id) && !starterHidden().has(r.id))] : []),
-  ];
+  ].map(r => [r.id, r])).values()];
 }
 // Meals actually eaten (or confirmed and past) in the last two weeks, newest first.
 function mealHistory(days = 14) {
@@ -315,7 +316,7 @@ function lastEatenLabel(recipe) {
 // exclude：出さない料理のID（わが家のごはん方針の「変えるなら？」で外した料理）。
 function dailyPlan({ exclude = [] } = {}) {
   const p = dailyProfile();
-  return Lifestyle.propose({
+  const plan = Lifestyle.propose({
     history: mealHistory(120),
     recipes: exclude.length ? planRecipes().filter((r) => !exclude.includes(r.id)) : planRecipes(),
     profile: p,
@@ -323,7 +324,7 @@ function dailyPlan({ exclude = [] } = {}) {
     start: today(),
     length: rhythmOn() ? rhythmPlanDays() : state.planLength || p.period,
     addDays,
-    overrides: state.planOverrides,
+    overrides: { ...Object.fromEntries(Object.entries(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(([d, r]) => !hiddenParents().has(parentKeyOf(r)) && !starterHidden().has(r.id) && Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
     // 子の評価がなければ親の評価を引き継ぐ（APP_MAP §48）。
     cyclesOf: plannedCycles(),
     offUntil: prestartUntil(),
@@ -337,6 +338,10 @@ function dailyPlan({ exclude = [] } = {}) {
     // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みと、家族が「見せる」にした好み（✓ だけ）を加点に使う。
     preferenceOf: state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : undefined,
   });
+  for (const day of plan) {
+    if (day.candidate && state.planDrafts?.[day.date] && !state.planOverrides[day.date]) day.candidate.chosen = false;
+  }
+  return plan;
 }
 let calPick = ""; // 献立の週の表（household.js）でタップした日
 // Why this dish on this day, most important first: request, who wants it again (and when), variety, season.
@@ -647,7 +652,7 @@ function renderToday() {
   const pre = !slot && day?.prestart ? prestartUntil() : "";
   const firstBlock = pre ? currentBlocks()[0] : null;
   if (pre) actions = dailyButton("go-view", "最初の献立を見る", 'data-view="plan"', true);
-  const label = pre ? `献立は${formatDate(pre)}（${weekdayLabel(pre)}）から` : off ? (SKIP_OF[slot?.kind] ? `今日は${SKIP_OF[slot.kind].label}` : "今日はお休み") : slot?.status === "cooked" ? "ごちそうさま！" : slot ? "今夜の一品" : "今夜のおすすめ";
+  const label = pre ? `献立は<span class="nobr">${formatDate(pre)}（${weekdayLabel(pre)}）から</span>` : off ? (SKIP_OF[slot?.kind] ? `今日は${SKIP_OF[slot.kind].label}` : "今日はお休み") : slot?.status === "cooked" ? "ごちそうさま！" : slot ? "今夜の一品" : "今夜のおすすめ";
   const tomorrow = plan[1];
   const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
@@ -705,11 +710,15 @@ function renderTodayTodos() {
   const toBuy = dailyShopping().filter((i) => i.status === "buy").length;
   const shopToday = rhythmOn() && shoppingBlock() && shoppingBlock().shopAt.slice(0, 10) <= today();
   if (toBuy && (shopToday || !rhythmOn())) rows.push(`<div class="todo-row"><span>🛒</span><p>買うもの <b>あと${toBuy}品</b></p>${dailyButton("go-view", "リストへ", 'data-view="shopping"')}</div>`);
-  if (!skillProfile() && !isViewer()) rows.push(`<div class="todo-row"><span>🔪</span><p><b>スキル試験</b>（10問）→ 作れる料理だけに</p>${dailyButton("life-quiz-start", "受ける")}</div>`);
+  // 自分向けにする追加の質問（スキル試験・ごはん方針・詳しい設定）は、一度に1つだけ。途中のものを先に（2026-10-27 のユーザーの判断）。
+  const more = [];
+  if (!skillProfile() && !isViewer()) more.push([false, `<div class="todo-row"><span>🔪</span><p><b>スキル試験</b>（10問）→ 作れる料理だけに</p>${dailyButton("life-quiz-start", "受ける")}</div>`]);
   else if (examReady()) rows.push(`<div class="todo-row"><span>🎖</span><p><b>★${skillProfile().level + 1}の昇級試験</b>が受けられます（5問）</p>${dailyButton("life-exam-start", "受ける")}</div>`);
   const talk = renderTalkTodo();
-  if (talk) rows.push(talk);
-  if (!state.foodProfile?.completed) rows.push(`<div class="todo-row"><span>✍️</span><p>好みとキッチンを教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`);
+  if (talk) more.push([!!talkProfile().session, talk]);
+  if (!state.foodProfile?.completed) more.push([!!state.onboardingDraft, `<div class="todo-row"><span>✍️</span><p>好み・常備品まで教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`]);
+  const next = more.find(([started]) => started) || more[0];
+  if (next) rows.push(next[1]);
   if (typeof backupReminderDue === "function" && backupReminderDue() && !isViewer()) {
     rows.push(`<div class="todo-row is-backup-row"><span>🛡</span><p><b>レシピ${state.recipes.length}品・記録${state.evaluations.length}回</b>をバックアップして保護</p>${dailyButton("export-data", "保存する")}<button type="button" class="todo-x" data-action="snooze-backup" aria-label="2週間後に再通知">×</button></div>`);
   }
@@ -1564,6 +1573,7 @@ function handleDailyAction(action, data) {
     if (name) { profileDraft()[data.field][name] = "have"; if (data.field === "equipment") equipmentGroupIndex = 2; }
   }
   if (action === "life-finish") {
+    state.planDrafts = {};
     // 最初の提案の画面を出すのは、初めての初回設定を終えた時だけ（詳しい設定の保存・かんたん設定のやり直しでは出さない）。
     const firstRun = !state.onboarded && profileDraft().quickSetupIndex !== null;
     const chosen = [...finishFunnelPicks(), ...(funnelDemo.result ? [funnelDemo.result] : [])];
@@ -1711,6 +1721,7 @@ function handleDailyAction(action, data) {
     if (name) { setLeftover(name, true); leftoverOpen = true; }
   }
   if (action === "life-leftover-rebuild") {
+    state.planDrafts = {};
     const dates = undecidedPlanDates();
     dates.forEach((d) => { delete state.planOverrides[d]; });
     changedShopping(before);

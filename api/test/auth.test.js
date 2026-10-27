@@ -68,3 +68,48 @@ test('expired transfer and failed consumption cannot issue a session',async()=>{
  const second=await auth.transferStart(uid);await auth.verifySession('bogus.token');fail=true;
  await assert.rejects(auth.transferRedeem(second.code),e=>e.code==='transfer_invalid');
 });
+
+test('account sync creates one canonical room under concurrent sign-ins and rejects stale moves', async t => {
+ const {call}=await server(t);
+ assert.equal((await call('/sync',{})).status,401);
+ const g=await call('/google',{credential:googleToken({})});
+ const rooms=await Promise.all([call('/sync',{preferredCode:'first-device-code'},g.token),call('/sync',{preferredCode:'second-device-code'},g.token)]);
+ assert.equal(rooms[0].syncCode,rooms[1].syncCode);assert.equal(rooms[0].syncManaged,true);
+ const room=rooms[0].syncCode;
+ const stale=await call('/me',{syncCode:'stale-device-room',deviceId:'device-stale'},g.token,'PUT');
+ assert.equal(stale.syncCode,room);
+ assert.equal((await call('/sync',{switchRoom:true,expectedCode:'stale'},g.token)).status,409);
+ const moved=await call('/sync',{switchRoom:true,expectedCode:room},g.token);
+ assert.match(moved.syncCode,/^[a-f0-9]{48}$/);
+ assert.equal((await call('/sync',{},g.token)).syncCode,moved.syncCode);
+});
+
+test('account sync adopts existing family code and separates different accounts', async t => {
+ const {call}=await server(t);
+ const first=await call('/google',{credential:googleToken({})});
+ await call('/me',{syncCode:'existing-family-code'},first.token,'PUT');
+ assert.equal((await call('/sync',{preferredCode:'different-local'},first.token)).syncCode,'existing-family-code');
+ const other=await call('/google',{credential:googleToken({email:'another@example.com'})});
+ const second=await call('/sync',{},other.token);
+ assert.notEqual(second.syncCode,'existing-family-code');
+ assert.equal((await call('/me',undefined,other.token)).email,'another@example.com');
+});
+
+
+test('account sync accepts legacy six-character passphrases', async t => {
+ const {call}=await server(t);
+ const g=await call('/google',{credential:googleToken({})});
+ assert.equal((await call('/sync',{preferredCode:'abcde'},g.token)).status,400);
+ const linked=await call('/sync',{preferredCode:'ABCDEF'},g.token);
+ assert.equal(linked.status,200);assert.equal(linked.syncCode,'abcdef');
+});
+
+test('device settings require account sign-in and the current sync room',async t=>{
+ const {call}=await server(t),clientId='browser-auth-123456789';
+ assert.equal((await call('/devices',{clientId})).status,401);
+ const login=await call('/google',{credential:googleToken({})});
+ const account=await call('/sync',{},login.token);
+ assert.equal((await call('/devices',{clientId,syncCode:'old-room'},login.token)).status,409);
+ const devices=await call('/devices',{clientId,syncCode:account.syncCode,kind:'phone'},login.token);
+ assert.equal(devices.status,200);assert.equal(devices.primary,clientId);
+});

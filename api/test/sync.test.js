@@ -120,3 +120,10 @@ test("an old app that does not know sharedPolicies keeps the room's value; a new
   await putSyncRoom(store, ROOM_ID, { data: payload({ sharedPolicies: {} }), baseRevision: old.revision });
   assert.deepEqual((await getSyncRoom(store, ROOM_ID)).data.sharedPolicies, {});
 });
+
+test('older clients cannot drop conflict-aware plan data after a room upgrades', async () => {
+ const store=createMemorySyncStore();
+ const first=await putSyncRoom(store,ROOM_ID,{data:payload({planProtocol:1,planDrafts:{}})});
+ await assert.rejects(putSyncRoom(store,ROOM_ID,{baseRevision:first.revision,data:payload()}),e=>e.code==='sync_upgrade_required');
+ assert.equal((await getSyncRoom(store,ROOM_ID)).revision,first.revision);
+});

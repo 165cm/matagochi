@@ -1,4 +1,5 @@
 import { createHash, createHmac, createPublicKey, randomBytes, randomInt, timingSafeEqual, verify as verifySignature } from "node:crypto";
+import { createSyncDevices } from "./syncDevices.js";
 import { ApiError } from "./errors.js";
 
 // ログイン：Google（ボタン）と、メールに届く6桁のコード。どちらも同じメールアドレスなら同じアカウント。
@@ -12,6 +13,7 @@ const sha = (text) => createHash("sha256").update(text).digest("hex");
 export const accountIdFor = (email) => `u-${sha(String(email).trim().toLowerCase()).slice(0, 40)}`;
 
 export function createAuth(store, env = {}, { fetch = globalThis.fetch, now = Date.now, sendMail = null } = {}) {
+  const syncDevices = createSyncDevices(store);
   const googleClientId = env.GOOGLE_CLIENT_ID || "";
   const mailer = sendMail || (env.RESEND_API_KEY && env.MAIL_FROM ? resendMailer(env, fetch) : null);
   const required = () => { if (!store) throw new ApiError(503, "auth_not_configured", "ログインの保存先が未設定です。"); };
@@ -133,6 +135,28 @@ export function createAuth(store, env = {}, { fetch = globalThis.fetch, now = Da
       if (!(await store.put(key, { expires: entry.envelope.expires, used: true }, { ifGeneration: entry.generation }))) throw invalid();
       return { token, account: publicAccount(acct.envelope) };
     },
+    // 最初の1台が保存先を決める。同時ログインでもCASで全端末に同じ値を返す。
+    async ensureSync(uid, body = {}) {
+      required();
+      const preferred = typeof body.preferredCode === "string" ? body.preferredCode.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase() : "";
+      if (preferred && (preferred.length < 6 || preferred.length > 200)) throw new ApiError(400, "invalid_sync_code", "合言葉を確かめてください。");
+      const current = await loadAccount(uid);
+      if (body.switchRoom !== true && current?.envelope.syncManaged && current.envelope.syncCode) return publicAccount(current.envelope);
+      const generated = randomBytes(24).toString("hex");
+      const acct = await saveAccount(uid, a => {
+        if (!a) throw new ApiError(401, "signed_out", "ログインし直してください。");
+        if (body.switchRoom === true && body.expectedCode !== (a.syncCode || "")) throw new ApiError(409, "account_sync_changed", "別の端末で共有先が変わりました。開き直して確かめてください。");
+        return { ...a, syncCode: body.switchRoom === true ? (preferred || generated) : (a.syncCode || preferred || generated), syncManaged: true };
+      });
+      return publicAccount(acct);
+    },
+    async devices(uid, body) {
+      required();
+      const entry = await loadAccount(uid);
+      if (!entry) throw new ApiError(401, "signed_out", "Sign in again.");
+      if (body.syncCode !== entry.envelope.syncCode) throw new ApiError(409, "account_sync_changed", "保存先が変わりました。開き直してください。");
+      return syncDevices(uid, entry.envelope.syncCode, body);
+    },
     async me(uid) {
       required();
       const entry = await loadAccount(uid);
@@ -147,7 +171,7 @@ export function createAuth(store, env = {}, { fetch = globalThis.fetch, now = Da
       const me = typeof body.me === "string" ? body.me.slice(0, 20) : undefined;
       const account = await saveAccount(uid, (a) => {
         if (!a) throw new ApiError(401, "signed_out", "ログインし直してください。");
-        return { ...a, ...(deviceId ? { deviceId } : {}), ...(syncCode !== undefined ? { syncCode } : {}), ...(me !== undefined ? { me } : {}), updatedAt: new Date(now()).toISOString() };
+        return { ...a, ...(deviceId ? { deviceId } : {}), ...(!a.syncManaged && syncCode !== undefined ? { syncCode } : {}), ...(me !== undefined ? { me } : {}), updatedAt: new Date(now()).toISOString() };
       });
       return publicAccount(account);
     }
@@ -155,7 +179,7 @@ export function createAuth(store, env = {}, { fetch = globalThis.fetch, now = Da
 }
 
 function publicAccount(a) {
-  return { email: a.email, methods: a.methods || [], deviceId: a.deviceId || "", syncCode: a.syncCode || "", me: a.me || "" };
+  return { email: a.email, syncManaged: !!a.syncManaged, methods: a.methods || [], deviceId: a.deviceId || "", syncCode: a.syncCode || "", me: a.me || "" };
 }
 
 // メールは Resend で送る（独自ドメインを入れたら RESEND_API_KEY と MAIL_FROM を設定すると有効になる）。
