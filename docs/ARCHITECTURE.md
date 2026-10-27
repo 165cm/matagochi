@@ -74,3 +74,5 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 ## 外部サービス
 
 Google Cloud（Cloud Run・Storage・Gemini）／YouTube Data API／TikTok oEmbed／Resend（メール）／GitHub Pages／jsDelivr と Google（✋手の形の認識の部品 MediaPipe を初回に読み込む。映像は外に送らない）
+
+- `api/src/syncDevices.js`：同一アカウント・共有先ごとのメイン端末と献立の確認待ち。認証付き `/api/auth/devices`、CAS更新。端末IDはチケットIDと独立。仕様はAPP_MAP §60。

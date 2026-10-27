@@ -46,7 +46,10 @@ async function ensureAccountSync() {
     } else { state.sync.accountEmail = email; state.sync.backupKey = backupKey; }
     saveState({ scheduleSync: false });
     if (linked.me && state.family.includes(linked.me)) state.me = linked.me;
+    await refreshSyncDevice({review:false});
     const synced = await syncNow({ silent: true, fromAccount: true });
+    if (synced) { await completeMainProposal(); await refreshSyncDevice({review:true}); }
+    else await submitPlanForMain();
     if (linked.me && state.family.includes(linked.me)) { state.me = linked.me; saveState({ scheduleSync: false }); }
     return synced;
   } finally { accountSyncConnecting = false; updateSyncSaveLabel(); }
@@ -154,7 +157,7 @@ function renderTransferIssuer() {
 }
 function renderAccountPanel() {
   if (!loginAvailable() && !account) return "";
-  if (account) return `<section class="panel account-panel"><p class="account-in"><span class="account-dot" aria-hidden="true"></span>ログイン中 <b>${escapeHtml(account.email)}</b></p><p class="muted small">同じアカウントでログインすると、献立・レシピ・記録をほかの端末と共有します。変更が重なった日は、残す献立を選べます。</p><button type="button" class="text-button" data-action="auth-signout" ${authBusy ? "disabled" : ""}>ログアウト</button>${renderTransferIssuer()}${authBusy ? '<p role="status">確かめています…</p>' : ""}</section>`;
+  if (account) return `<section class="panel account-panel"><p class="account-in"><span class="account-dot" aria-hidden="true"></span>ログイン中 <b>${escapeHtml(account.email)}</b></p><p class="muted small">同じアカウントでログインすると、献立・レシピ・記録をほかの端末と共有します。変更が重なった日は、残す献立を選べます。</p><button type="button" class="text-button" data-action="auth-signout" ${authBusy ? "disabled" : ""}>ログアウト</button>${renderTransferIssuer()}${renderMainDeviceSettings()}${authBusy ? '<p role="status">確かめています…</p>' : ""}</section>`;
   const email = authConfig?.email ? (loginCodeSent
     ? `<label class="small" for="login-code">${escapeHtml(loginEmail)} に届いた6桁のコード</label><div class="login-row"><input id="login-code" class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"><button type="button" class="primary-button" data-action="auth-email-verify" ${authBusy ? "disabled" : ""}>ログイン</button></div><button type="button" class="text-button" data-action="auth-email-reset">メールアドレスを変える</button>`
     : `<div class="login-row"><input id="login-email" class="input" type="email" autocomplete="email" placeholder="メールアドレス" value="${escapeAttr(loginEmail)}"><button type="button" class="secondary-button" data-action="auth-email-start" ${authBusy ? "disabled" : ""}>コードを送る</button></div>`) : "";
@@ -162,6 +165,14 @@ function renderAccountPanel() {
 }
 async function handleAuthAction(action) {
   if (authBusy && action.startsWith("auth-")) return true;
+  if (action === "auth-main-device") {
+    if (syncInFlight || accountSyncConnecting) { showToast("保存が終わってからお試しください。"); return true; }
+    if (!window.confirm("この端末をメインにします。献立がぶつかった時は、この端末で選びます。家族の役割は変わりません。")) return true;
+    authBusy=true;
+    try { await deviceRequest({action:'select',expectedPrimary:state.sync.deviceState?.primary});await ensureAccountSync();showToast("この端末をメインにしました。"); }
+    catch(e){showToast(e.message);}
+    finally{authBusy=false;render();}return true;
+  }
   if (action === "auth-load-retry") { authLoaded = false; render(); await loadAuth(); return true; }
   if (action === "auth-google-retry") { finishGoogleWait(); authMessage = ""; render(); return true; }
   if (action === "auth-transfer-copy") {
@@ -208,3 +219,77 @@ if (typeof window !== "undefined") window.addEventListener?.("online", () => {
   if (authToken()) loadAuth();
   else if (syncEnabled()) syncNow({ silent: true });
 });
+
+// Browser-local ID: deviceKey() belongs to the account's tickets and is shared across devices.
+function syncClientId() {
+  let id=localStorage.getItem('ripigochi-sync-client');
+  if (!id) { id=generateId('browser-');localStorage.setItem('ripigochi-sync-client',id); }
+  return id;
+}
+function syncClientKind() { return /iPhone|iPod|Android.*Mobile/i.test(navigator.userAgent || '') ? 'phone' : 'computer'; }
+function mainDeviceName() {
+  const d=state.sync?.deviceState;
+  return d?.devices?.[d.primary]?.label || 'スマホ';
+}
+function canResolvePlans() {
+  return !state.sync?.accountEmail || !state.sync?.deviceState?.primary || state.sync.deviceState.primary===syncClientId();
+}
+async function deviceRequest(body={}) {
+  const token=authToken(), room=state.sync.roomId;
+  const result=await authPost('devices',{clientId:syncClientId(),kind:syncClientKind(),syncCode:normalizeSyncCode(state.sync.code),...body},true);
+  if (authToken()!==token || state.sync.roomId!==room) throw new Error('保存先が変わりました。もう一度確かめてください。');
+  if (!result.primary || !result.devices || !result.proposals) throw new Error('端末の設定を取得できませんでした。');
+  state.sync.deviceState={primary:result.primary,explicit:result.explicit,devices:result.devices};
+  return result;
+}
+async function refreshSyncDevice({review=false}={}) {
+  const registry=await deviceRequest();
+  const own=registry.proposals[syncClientId()], submitted=state.sync.submittedPlan;
+  let changed=false;
+  if (own?.status==='resolved' && submitted?.id===own.id) {
+    const plan=planSnapshot(state);state.sync.planBase ||= {};
+    for (const date of Object.keys(own.plan)) {
+      const result=own.result[date];
+      if (samePlan(plan[date],submitted.plan[date])) {if(result)plan[date]=result;else delete plan[date];}
+      if(result)state.sync.planBase[date]=result;else delete state.sync.planBase[date];
+      delete state.sync.conflicts[date];
+    }
+    putPlan(state,plan);state.sync.submittedPlan=null;state.sync.revision='';changed=true;
+  }
+  const reviewing=state.sync.reviewedProposal;
+  if(reviewing && (registry.proposals[reviewing.source]?.id!==reviewing.id || registry.proposals[reviewing.source]?.status==='resolved')) {
+    for(const date of reviewing.dates) if(state.sync.conflicts[date]?.proposalId===reviewing.id) delete state.sync.conflicts[date];
+    state.sync.reviewedProposal=null;changed=true;
+  }
+  // One proposal at a time, preserving unresolved choices across reloads.
+  if (review && canResolvePlans() && !isViewer() && !state.sync.reviewedProposal && !Object.keys(state.sync.conflicts || {}).length) {
+    const next=Object.entries(registry.proposals).find(([id,p])=>id!==syncClientId() && p.status==='pending');
+    if(next) {
+      const [source,p]=next, plan=planSnapshot(state);
+      state.sync.reviewedProposal={source,id:p.id,dates:Object.keys(p.plan)};
+      for(const [date,proposed] of Object.entries(p.plan)) if(!samePlan(plan[date],proposed)) state.sync.conflicts[date]={local:plan[date]||null,remote:proposed,sourceLabel:registry.devices[source]?.label || 'サブ端末',proposalId:p.id};
+      changed=true;
+    }
+  }
+  saveState({scheduleSync:false});
+  if(changed) { if(syncRenderBusy())syncRenderPending=true;else render(); }
+}
+async function submitPlanForMain() {
+  if(canResolvePlans() || !Object.keys(state.sync.conflicts || {}).length)return;
+  const current=planSnapshot(state),plan=Object.fromEntries(Object.keys(state.sync.conflicts).map(date=>[date,current[date]||null]));
+  let pending=state.sync.submittedPlan;
+  if(!pending || !samePlan(pending.plan,plan)) {pending={id:generateId('proposal-'),plan};state.sync.submittedPlan=pending;saveState({scheduleSync:false});}
+  await deviceRequest({action:'submit',proposalId:pending.id,plan:pending.plan});
+}
+async function completeMainProposal() {
+  const p=state.sync.reviewedProposal || (state.sync.submittedPlan ? {source:syncClientId(),id:state.sync.submittedPlan.id,dates:Object.keys(state.sync.submittedPlan.plan)} : null);
+  if(!p || !canResolvePlans() || Object.keys(state.sync.conflicts || {}).length)return;
+  const plan=Object.fromEntries(p.dates.map(d=>[d,state.sync.planBase?.[d]||null]));
+  await deviceRequest({action:'resolve',source:p.source,proposalId:p.id,plan});
+  state.sync.reviewedProposal=null;saveState({scheduleSync:false});
+}
+function renderMainDeviceSettings() {
+  if(!account || authTransferPage())return '';
+  const d=state.sync?.deviceState, mine=d?.primary===syncClientId();
+  return `<div class="main-device-settings"><h3>メイン端末</h3><p>${d ? `現在：<b>${escapeHtml(mainDeviceName())}</b>${mine?'（この端末）':''}` : '接続後にスマホを優先して設定します。'}</p><p class="small">PCでも編集できます。同じ日の献立がぶつかった時は、メイン端末で残す献立を選びます。家族の管理者とは別の設定です。</p>${d ? `<button type="button" class="secondary-button" data-action="auth-main-device" ${authBusy?'disabled':''}>${mine?'この端末をメインに固定する':'この端末をメインにする'}</button>`:''}<p class="muted small">初期設定はスマホ優先。PCで先に使い始めた場合は、スマホでログインすると切り替わります。手動で指定した後は自動変更しません。</p></div>`;
+}

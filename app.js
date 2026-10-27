@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261026-account-sync";
+const APP_VERSION = "20261027-main-device";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -548,6 +548,9 @@ function normalizeSyncSettings(sync) {
     backupKey: typeof sync?.backupKey === "string" ? sync.backupKey : "",
     planBase: sync?.planBase && typeof sync.planBase === "object" ? sync.planBase : null,
     conflicts: sync?.conflicts && typeof sync.conflicts === "object" ? sync.conflicts : {},
+    deviceState: sync?.deviceState && typeof sync.deviceState === "object" ? sync.deviceState : null,
+    submittedPlan: sync?.submittedPlan || null,
+    reviewedProposal: sync?.reviewedProposal || null,
     sentHash: roomId && typeof sync?.sentHash === "string" ? sync.sentHash.slice(0, 64) : ""
   };
 }
@@ -806,7 +809,7 @@ function syncRenderBusy() {
 // 家族で見ている間の「相手の変更を取りにいく」を、いま動かしてよいか。
 // 入力の途中・料理モード中などは、取り込みの描き直しで消えないように止める。
 function shouldPollSync() {
-  if (!state || !syncEnabled() || syncInFlight || Object.keys(state.sync.conflicts || {}).length || (authToken() && !account)) return false;
+  if (!state || !syncEnabled() || syncInFlight || (!state.sync.accountEmail && Object.keys(state.sync.conflicts || {}).length) || (authToken() && !account)) return false;
   if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
   if ((state.family || []).length < 2 && !state.sync.accountEmail) return false;
   return !syncRenderBusy();
@@ -1023,9 +1026,15 @@ function planChoiceLabel(value) {
   if (value.slot?.status === "removed") return "献立を取り消し";
   return value.slot?.recipe?.title || allDinnerRecipes().find(r => r.id === value.override)?.title || value.draft?.title || "未確定の献立";
 }
+function renderPlanConflictChoices(conflicts) {
+  if(!Object.keys(conflicts).length)return "";
+  if(isViewer())return '<p>献立の変更が重なっています。管理者または編集者のメイン端末で確認してください。</p>';
+  if(!canResolvePlans())return `<h3>メイン端末で献立を確認してください</h3><p>${escapeHtml(mainDeviceName())}でリピごちを開くと、残す献立を選べます。この端末の変更は保存されています。</p>`;
+  return `<h3>同じ日の献立が変更されています</h3><p>残す献立を選んでください。すべて選ぶまで共有先は書き換えません。</p>${Object.entries(conflicts).map(([date,c])=>`<div class="sync-plan-choice"><b>${escapeHtml(date)}</b><button type="button" class="secondary-button" data-action="sync-plan-local" data-date="${escapeAttr(date)}">この端末：${escapeHtml(planChoiceLabel(planSnapshot(state)[date]))}</button><button type="button" class="secondary-button" data-action="sync-plan-remote" data-date="${escapeAttr(date)}">${escapeHtml(c.sourceLabel || '共有先')}：${escapeHtml(planChoiceLabel(c.remote))}</button></div>`).join('')}`;
+}
 function renderSyncSavePanel() {
   const conflicts = state.sync?.conflicts || {};
-  return `<section class="sync-save-panel" aria-label="献立の保存状態"><p id="sync-save-label" role="status">${escapeHtml(syncSaveLabel())}</p>${Object.keys(conflicts).length ? `<h3>同じ日の献立が変更されています</h3><p>残す献立を選んでください。すべて選ぶまで共有先は書き換えません。</p>${Object.entries(conflicts).map(([date, c]) => `<div class="sync-plan-choice"><b>${escapeHtml(date)}</b><button type="button" class="secondary-button" data-action="sync-plan-local" data-date="${escapeAttr(date)}">この端末：${escapeHtml(planChoiceLabel(planSnapshot(state)[date]))}</button><button type="button" class="secondary-button" data-action="sync-plan-remote" data-date="${escapeAttr(date)}">共有先：${escapeHtml(planChoiceLabel(c.remote))}</button></div>`).join("")}` : ""}${syncRuntimeStatus ? `<p class="small">${escapeHtml(syncRuntimeStatus)}</p>` : ""}${state.sync?.paused ? '<button type="button" class="secondary-button" data-action="sync-resume">共有を再開して献立を確かめる</button>' : authToken() || state.sync?.roomId ? '<button type="button" class="text-button" data-action="sync-retry">保存を確かめる</button>' : ""}${state.view === "settings" && state.sync?.backupKey ? '<button type="button" class="text-button" data-action="sync-restore">統合前の献立に戻す</button>' : ""}</section>`;
+  return `<section class="sync-save-panel" aria-label="献立の保存状態"><p id="sync-save-label" role="status">${escapeHtml(syncSaveLabel())}</p>${renderPlanConflictChoices(conflicts)}${syncRuntimeStatus ? `<p class="small">${escapeHtml(syncRuntimeStatus)}</p>` : ""}${state.sync?.paused ? '<button type="button" class="secondary-button" data-action="sync-resume">共有を再開して献立を確かめる</button>' : authToken() || state.sync?.roomId ? '<button type="button" class="text-button" data-action="sync-retry">保存を確かめる</button>' : ""}${state.view === "settings" && state.sync?.backupKey ? '<button type="button" class="text-button" data-action="sync-restore">統合前の献立に戻す</button>' : ""}</section>`;
 }
 async function handleSyncPlanAction(action, data) {
   if (action === "sync-restore") { await restoreIntegrationBackup(); return true; }
@@ -1036,15 +1045,16 @@ async function handleSyncPlanAction(action, data) {
     render(); return true;
   }
   if (!["sync-plan-local", "sync-plan-remote"].includes(action)) return false;
+  if(account && state.sync.deviceState) { try { await deviceRequest(); } catch(e) { showToast(syncErrorText(e)); return true; } }
   const c = state.sync.conflicts?.[data.date];
-  if (!c || syncInFlight) return true;
+  if (!c || syncInFlight || !canResolvePlans() || isViewer()) return true;
   const plan = planSnapshot(state);
   const chosen = action === "sync-plan-local" ? plan[data.date] : c.remote;
   if (chosen) plan[data.date] = chosen; else delete plan[data.date];
   putPlan(state, plan);
   delete state.sync.conflicts[data.date];
   saveState(); render();
-  if (!Object.keys(state.sync.conflicts).length) await syncNow({ silent: true });
+  if (!Object.keys(state.sync.conflicts).length) { if(account) await ensureAccountSync().catch(e=>{syncRuntimeStatus=syncErrorText(e);}); else await syncNow({ silent: true }); }
   return true;
 }
 
@@ -1124,7 +1134,7 @@ async function syncNow({ silent = false, fromAccount = false } = {}) {
     for (let attempt = 0; attempt < 3 && !succeeded; attempt += 1) {
       const result = await syncOnce();
       changedLocal = changedLocal || result.changedLocal;
-      if (result.conflict) return false;
+      if (result.conflict) { if(account && state.sync.deviceState) await submitPlanForMain(); return false; }
       succeeded = result.done;
     }
     if (!succeeded) throw new Error("sync_conflict");
@@ -2684,6 +2694,7 @@ function bindEvents() {
   }
   bindFolderForms();
   document.querySelectorAll("details.setting-row").forEach((el) => el.addEventListener("toggle", () => {
+    if (!el.isConnected) return;
     const id = el.id.replace("setting-", "");
     if (el.open) {
       settingsOpen = id;
