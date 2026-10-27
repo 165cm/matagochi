@@ -251,3 +251,38 @@ test('viewer accepts shared plans without gaining authority and then receives ro
  await owner.run('syncNow({silent:true})');await viewer.run('syncNow({silent:true})');
  assert.equal(viewer.run('isViewer()'),false);assert.equal(viewer.run(`roleOf('child')`),'editor');
 });
+
+test('viewer can export without gaining role or destructive settings',()=>{
+ const a=app(server().net);
+ a.run(`state.family=['parent','daughter'];state.me='parent';state.roles={members:{parent:'viewer',daughter:'owner'}}`);
+ assert.equal(a.run('isViewer()'),true);
+ const html=a.run('renderSettings()');
+ assert.match(html,/data-action="export-data"/);
+ assert.doesNotMatch(html,/data-action="reset-data"|data-action="life-set-role"|data-action="life-share-start"/);
+});
+
+test('device backup retains six displayed days and raw records without changing local state',()=>{
+ const a=app(server().net);
+ a.run(`state.evaluations=[{id:'rating',recipeId:'saved',rating:5}];state.shoppingMarks={carrot:{checked:true}};state.recipes=[${JSON.stringify(recipe('saved'))}];
+ dailyPlan=()=>Array.from({length:6},(_,i)=>({date:'2026-10-'+(27+i),candidate:{recipe:{id:'dish'+i,title:'dish'+i,ingredients:[]}}}));`);
+ const before=a.run('JSON.stringify(state)');
+ const backup=value(a,'buildDeviceBackup()');
+ assert.equal(backup.backupManifest.displayedPlan.length,6);
+ assert.equal(backup.backupManifest.displayedPlan[5].recipe.id,'dish5');
+ assert.equal(backup.evaluations[0].rating,5);
+ assert.equal(backup.shoppingMarks.carrot.checked,true);
+ assert.equal(backup.recipes[0].id,'saved');
+ assert.equal(a.run('JSON.stringify(state)'),before);
+ a.run(`const copy=buildDeviceBackup();copy.recipes[0].title='changed';copy.shoppingMarks.carrot.checked=false;`);
+ assert.equal(a.run('JSON.stringify(state)'),before);
+});
+
+test('backup share stores bookkeeping locally and cancellation does not mark backup saved',async()=>{
+ const a=app(server().net);a.ctx.File=class {constructor(parts){this.parts=parts}};
+ a.run(`dailyPlan=()=>[];globalThis.saves=[];saveState=opts=>saves.push(opts);navigator.share=async()=>{};`);
+ await a.run('shareBackupData()');
+ assert.deepEqual(value(a,'saves'),[{scheduleSync:false}]);
+ a.run(`state.lastBackupAt='';saves=[];navigator.share=async()=>{throw {name:'AbortError'}};`);
+ await a.run('shareBackupData()');
+ assert.equal(a.run('state.lastBackupAt'),'');assert.deepEqual(value(a,'saves'),[]);
+});
