@@ -2,13 +2,15 @@
    集めた結果（POST /api/trends/refresh・/refill の最後の返事）と、いま見えている新着（GET /api/trends。読み出すだけで AI は使わない）から、
    「今日は集められたか」「見えている品数は足りているか」を判定し、GitHub の実行の要約（Job Summary）に日本語で書く。
    問題があれば終了コード1で実行を「失敗（赤）」にする＝GitHub からメールが届く（以前は止まっていても毎回「成功（緑）」だった）。
-   使い方：node scripts/trends-health.cjs refresh.json refill.json trends.json
+   使い方：node scripts/trends-health.cjs refresh.json refill.jsonl trends.json
+           （refill.jsonl は補充の返事を1行ずつ。最後の行で状態を見て、各回の ran.ai を月の費用に足す）
            （どれも無い・読めない時は「返事なし」として扱う。要約の書き先は環境変数 GITHUB_STEP_SUMMARY） */
 const fs = require("node:fs");
 
 const MIN_VISIBLE = 200; // 見えている新着がこれより少なければ赤（目標は400品＝親料理80×子5品。docs/APP_MAP.md §46-7）
 const SOON_DAYS = 7; // この日数のうちに見えなくなる（28日を過ぎる）品数も出す
 const DAY = 86_400_000;
+const YEN_PER_AI = 1; // api/src/trends.js の TREND_YEN_PER_AI（月の費用の目安の単価）と同じ
 
 // 止まった理由（refresh の paused・limited）を、初めての人にも分かる言葉に。
 const STOPPED = {
@@ -22,7 +24,15 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
 }
 
-function judge({ refresh, refill, list, now = Date.now(), minVisible = MIN_VISIBLE }) {
+// 補充の返事（1行に1回）。最後の行と、この実行で補充が使った AI の回数の合計を返す。
+function readRefill(file) {
+  let lines = [];
+  try { lines = fs.readFileSync(file, "utf8").split("\n").filter((l) => l.trim()); } catch {}
+  const all = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } });
+  return { refill: all.length ? all[all.length - 1] : null, refillAi: all.reduce((n, r) => n + (Number(r?.ran?.ai) || 0), 0) };
+}
+
+function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisible = MIN_VISIBLE }) {
   const problems = [];
   const notes = [];
   const empty = (x) => !x || typeof x !== "object" || !Object.keys(x).length;
@@ -56,7 +66,8 @@ function judge({ refresh, refill, list, now = Date.now(), minVisible = MIN_VISIB
       visible: items ? items.length : null,
       soon,
       added,
-      monthYen: Number.isFinite(ai.yen) ? ai.yen : null,
+      // 新着集めの返事は補充の前の月の費用なので、この実行で補充が使った分を足す（review fix #171）
+      monthYen: Number.isFinite(ai.yen) ? ai.yen + Math.round(refillAi * YEN_PER_AI) : null,
       monthYenCap: Number.isFinite(ai.yenCap) ? ai.yenCap : null,
     },
   };
@@ -83,7 +94,7 @@ function markdown(result, { minVisible = MIN_VISIBLE } = {}) {
 
 if (require.main === module) {
   const [refreshFile, refillFile, listFile] = process.argv.slice(2);
-  const result = judge({ refresh: readJson(refreshFile), refill: readJson(refillFile), list: readJson(listFile) });
+  const result = judge({ refresh: readJson(refreshFile), ...readRefill(refillFile), list: readJson(listFile) });
   const text = markdown(result);
   console.log(text);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
@@ -92,4 +103,4 @@ if (require.main === module) {
   process.exit(result.ok ? 0 : 1);
 }
 
-module.exports = { judge, markdown, MIN_VISIBLE };
+module.exports = { judge, markdown, readRefill, MIN_VISIBLE };

@@ -1,6 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { judge, markdown } = require("../scripts/trends-health.cjs");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { judge, markdown, readRefill } = require("../scripts/trends-health.cjs");
 
 // 毎朝の新着集めの健康診断（scripts/trends-health.cjs）。返事は本番の実行記録（2026-10）の形のまま。
 const NOW = Date.parse("2026-10-28T00:00:00Z");
@@ -84,4 +87,21 @@ test("サーバーのエラーの返事・補充の返事なし・補充の設�
     assert.equal(r.ok, false, reason);
     assert.match(r.problems.join(), /親料理の補充：/);
   }
+});
+
+test("月の費用に、この実行で補充が使った AI の分を足す（review fix #171）", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "trends-health-"));
+  const file = path.join(dir, "refill.jsonl");
+  fs.writeFileSync(file, [
+    JSON.stringify({ added: 2, reason: "wait", done: false, ran: { ai: 10, added: 2 } }),
+    "壊れた行",
+    JSON.stringify({ added: 5, done: true, ran: { ai: 8, added: 3 } }),
+  ].join("\n") + "\n");
+  const { refill, refillAi } = readRefill(file);
+  assert.equal(refillAi, 18);
+  assert.equal(refill.added, 5);
+  const r = judge({ refresh: { today: 2, done: true, ai: { ...AI, yen: 300 } }, refill, refillAi, list: { items: items(300) }, now: NOW });
+  assert.equal(r.ok, true);
+  assert.equal(r.numbers.monthYen, 318);
+  assert.deepEqual(readRefill(path.join(dir, "ない.jsonl")), { refill: null, refillAi: 0 });
 });

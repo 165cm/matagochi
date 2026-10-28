@@ -50,7 +50,7 @@ jobs:
             out=$(curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \
               https://matagochi-api-292190013809.us-central1.run.app/api/trends/refill || echo '{}')
             echo "Refill $i: $out"
-            echo "$out" > refill.json
+            echo "$out" >> refill.jsonl  # 1行に1回の返事（健康診断が、この実行で補充に使った AI の回数を足す）
             echo "$out" | grep -q '"done":true' && exit 0
             echo "$out" | grep -q '"reason":"wait"' && sleep 65
             sleep 5
@@ -61,4 +61,4 @@ jobs:
         if: always()
         run: |
           curl -sS --max-time 120 https://matagochi-api-292190013809.us-central1.run.app/api/trends -o trends.json || echo '{}' > trends.json
-          node scripts/trends-health.cjs refresh.json refill.json trends.json
+          node scripts/trends-health.cjs refresh.json refill.jsonl trends.json
