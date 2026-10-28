@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 決めた料理を変える（買った材料を使う／気にしない） | レビュー待ち | claude/nice-shannon-6g1g5m | 今夜の一品（決定済み）に「⇄ ほかの一皿に変える」。買った材料がある時だけ1問 | daily-ui.js, styles.css, test/profile-talk.test.cjs, sw.js, version.json, index.html, app.js, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| 献立をかたまりごとのページに・保存の表示を必要な時だけ | レビュー待ち | claude/nice-shannon-6g1g5m | ひとかたまりを1画面・横スライド・食べた日は評価つきで残す／1行は写真16:9＋文字少なめ・「⇄ 変更」／「保存済み」を普段は出さない | daily-ui.js, app.js, styles.css, test/first-week.test.cjs, sw.js, version.json, index.html, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
@@ -30,6 +30,8 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 決めた料理も変えられるように（#177、公開済み）：今夜の一品（決定済み）に「⇄ 変更」。その料理の材料を買っている時だけ1問「買った◯◯は？」→ 使う料理から選ぶ（肉・魚・豆腐3／野菜1／調味料・米0 の重みで並べる）／気にせず選ぶ（APP_MAP §37）
 
 - ごはん方針の見直し A〜D（#176、公開済み）：選んだ答えはそのまま ✓・聞き返すのは読み取った推測だけ／質問を4問＋理由に（版1の答えは移す）／合う料理の範囲をはじめのレシピの約15〜45%に／「⇄ ほかの一皿」で変えたい理由を1タップ・記録からの提案を今日の画面に（APP_MAP §37）
 

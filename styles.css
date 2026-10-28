@@ -4241,3 +4241,35 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .sync-save-panel p { margin: 4px 0; font-size: 13px; }
 .sync-plan-choice { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 12px; background: var(--surface-soft); }
 .sync-plan-choice button { white-space: normal; text-align: left; min-height: 44px; }
+
+/* 献立のリスト（2026-10-28 のユーザーの判断）：1行＝写真（動画のサムネイルと同じ16:9・黒い帯は切り落とす）＋日付の1行・料理名・ボタン。
+   買い物のひとかたまり（3日など）が1画面に入る高さに。リズムの時は、ひとかたまりを1ページにして横にスライド。 */
+.plan-list .plan-card.is-dish, .plan-list .plan-card.is-past { display: grid; grid-template-columns: 42% minmax(0, 1fr); align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-radius: 14px; box-shadow: 0 3px 10px rgba(90, 60, 30, 0.05); }
+.plan-list .plan-card.is-dish .plan-photo, .plan-list .plan-card.is-past .plan-photo { position: relative; display: block; width: 100%; min-height: 0; align-self: start; }
+.plan-list .plan-card.is-dish .plan-photo .dish-tile, .plan-list .plan-card.is-past .plan-photo .dish-tile { width: 100%; height: auto; min-height: 0; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 0; }
+.plan-list .plan-card.is-dish .plan-body, .plan-list .plan-card.is-past .plan-body { position: static; gap: 1px; padding: 6px 8px 6px 10px; }
+.plan-list .plan-card .plan-date { font-size: 11px; }
+.plan-list .plan-card.is-dish .plan-title, .plan-list .plan-card.is-past .plan-title { font-size: 14px; line-height: 1.3; padding-right: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.plan-list .plan-card.is-dish .plan-note { padding-right: 0; font-size: 11px; }
+.plan-list .plan-card.is-dish .plan-controls, .plan-list .plan-card.is-past .plan-controls { position: static; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin: 3px 0 0; }
+.plan-list .plan-card.is-dish .plan-controls .plan-staple-note { flex: 1 1 auto; margin: 0; gap: 4px; font-size: 11px; }
+.plan-list .plan-card.is-dish .plan-icon, .plan-list .plan-card.is-past .plan-icon { min-height: 32px; padding: 0 10px; font-size: 12px; }
+.plan-list .plan-card.is-dish .plan-controls .plan-more-btn { width: 32px; height: 32px; }
+.plan-list .plan-card.is-dish .plan-icon-label { display: inline; }
+.plan-list .plan-card.is-dish .plan-swap { display: inline-flex; align-items: center; gap: 3px; }
+/* 食べた日：✓ と評価 */
+.plan-list .plan-card.is-past { background: var(--surface-soft); }
+.plan-list .plan-card.is-past .plan-photo .dish-tile { filter: saturate(0.85); }
+.past-check { position: absolute; left: 6px; top: 6px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--tomato); color: #fff; font-style: normal; font-size: 12px; font-weight: 900; }
+.plan-rating { margin: 2px 0 0; font-size: 12px; font-weight: 700; }
+.plan-list .plan-card.is-off-row { grid-template-columns: 42% minmax(0, 1fr); }
+.plan-list .plan-card.is-off-row .plan-photo .dish-tile { aspect-ratio: 16 / 9; min-height: 0; font-size: 22px; }
+/* ページ（横スライド） */
+.plan-pages { display: grid; grid-auto-flow: column; grid-auto-columns: 100%; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -2px; padding: 0 2px; }
+.plan-pages::-webkit-scrollbar { display: none; }
+.plan-page { display: grid; align-content: start; gap: 8px; scroll-snap-align: start; min-width: 0; }
+.plan-page .block-head { margin: 0; }
+.plan-page .block-foot { margin-top: 2px; }
+.plan-dots { display: flex; justify-content: center; gap: 6px; margin: 0 0 8px; }
+.plan-dot { min-height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
+.plan-dot[aria-pressed="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }

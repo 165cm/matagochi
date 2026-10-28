@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261028-swap-bought";
+const APP_VERSION = "20261028-plan-pages";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1051,6 +1051,9 @@ function renderSyncSavePanel() {
   // 共有もログインもしていない1人の時は、伝えることがないので出さない（2026-10-27 のユーザーの判断。守り方は設定の「データの保護状態」で）。
   const restore = state.view === "settings" && state.sync?.backupKey;
   if (syncSaveLabel() === "この端末に保存" && !syncRuntimeStatus && !authToken() && !state.sync?.roomId && !restore) return "";
+  // 「保存済み」「保存中…」「未送信」のように、押すことがない時は出さない（2026-10-28 のユーザーの判断：常に出ていると邪魔）。
+  // 出すのは、保存の失敗・献立の重なり・共有の一時停止の時だけ。設定の画面では、いつでも確かめられるように出す。
+  if (state.view !== "settings" && !syncRuntimeStatus && !Object.keys(conflicts).length && !state.sync?.paused) return "";
   return `<section class="sync-save-panel" aria-label="献立の保存状態"><p id="sync-save-label" role="status">${escapeHtml(syncSaveLabel())}</p>${renderPlanConflictChoices(conflicts)}${syncRuntimeStatus ? `<p class="small">${escapeHtml(syncRuntimeStatus)}</p>` : ""}${state.sync?.paused ? '<button type="button" class="secondary-button" data-action="sync-resume">共有を再開して献立を確かめる</button>' : authToken() || state.sync?.roomId ? '<button type="button" class="text-button" data-action="sync-retry">保存を確かめる</button>' : ""}${restore ? '<button type="button" class="text-button" data-action="sync-restore">統合前の献立に戻す</button>' : ""}</section>`;
 }
 async function handleSyncPlanAction(action, data) {
@@ -1397,6 +1400,7 @@ function render() {
   placePageChrome();
   renderTicketChip();
   bindEvents();
+  if (state.view === "plan" && typeof placePlanPages === "function") placePlanPages();
   if (state.view === "settings") mountGoogleButton();
 }
 

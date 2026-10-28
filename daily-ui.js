@@ -500,33 +500,85 @@ function renderDailyPlan() {
       if (!recipe)
         return `<article class="plan-card"><div class="plan-photo yohaku-tile">${yohaku("normal")}${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">条件に合う候補がありません</strong><p class="plan-time">時間・食材・器具をゆるめるか、レシピを追加してください。</p><div class="plan-controls">${widenButtons([day.date])}${dailyButton("life-profile", "条件を確認")}</div></div></article>`;
       const status = day.slot?.status === "cooked" ? "作った" : day.slot ? "確定" : "";
-      const note = carryNote(day.slot) || planReason(day) || (bothLike(recipe) ? "ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe));
+      // 文字は少なく（2026-10-28 のユーザーの判断）：前の買い物の食材を使う時だけ添える（ほかの理由は今日の画面で）。
+      const note = carryNote(day.slot) || "";
       const minutes = recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
       // 「⋯」はカードの下にメニューを開く（カードの外にはみ出すと、スマホでは押せない）。
       const more = day.slot?.status === "cooked" || isViewer() ? "" : `<button type="button" class="plan-icon plan-more-btn" data-action="life-more" data-date="${day.date}" aria-expanded="${moreDate === day.date}" aria-label="${dateLabel}のその他の操作">${moreDate === day.date ? "×" : "⋯"}</button>`;
-      const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">☰</span><span class="plan-icon-label">選択</span>'}</button>`;
-      return `<article class="plan-card ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${recipeTitleHtml(recipe)}</button>${minutes ? `<p class="plan-time"><span class="marker">${minutes}</span></p>` : ""}${renderPlanStapleNote(recipe, day.slot, day.date)}<p class="hand plan-note">${escapeHtml(note)}</p>${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : `🎬 動画で作り方をそろえる${ticketPrice()}`}</button>` : ""}<div class="plan-controls">${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}${renderPlanMenu(plan, day)}${renderSkipPanel(day.date)}`;
+      const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">変更</span>'}</button>`;
+      // 写真を上に大きく（動画のサムネイルと同じ16:9）。日付・状態・時間は1行に、料理名、ボタンの行（ごはん準備・添え物も同じ行）。
+      return `<article class="plan-card is-dish ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}${minutes ? ` · ${minutes}` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${recipeTitleHtml(recipe)}</button>${note ? `<p class="hand plan-note">${escapeHtml(note)}</p>` : ""}${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : `🎬 動画で作り方をそろえる${ticketPrice()}`}</button>` : ""}<div class="plan-controls">${renderPlanStapleNote(recipe, day.slot, day.date)}${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}${renderPlanMenu(plan, day)}${renderSkipPanel(day.date)}`;
     })
     ;
   // 条件に合う料理が足りず、同じ料理が2回出ている時は、条件をゆるめずにそう伝える（PR 4a・docs/PERSONALIZE_PLAN.md §7.2）。
   const repeats = plan.filter((d) => d.candidate?.repeated && !locks.has(d.date)).length;
   const shortNote = repeats && !isViewer() ? `<p class="plan-short small" role="status"><span>🔁 合う料理が少なく、同じ料理が${repeats}回出ています ${tip("食べられないもの・時間などの条件はゆるめません。レシピを足すと、ちがう料理が出せます")}</span>${widenButtons(plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart && !d.slot).map((d) => d.date))}${dailyButton("go-view", "レシピを足す", 'data-view="collection"')}</p>` : "";
-  const cards = shortNote + cardList.map((html, i) => {
-    if (!rhythmOn()) return html;
-    const date = plan[i].date;
-    const b = currentBlocks().find((x) => x.dates.includes(date));
-    if (!b) return html;
-    const first = date === b.dates.find((d) => d >= today());
-    const last = date === b.end;
-    const st = blockStatus(b);
-    const label = { open: `受付中・${deadlineLabel(b.shopAt)}に買い物`, late: "買い物の予定を過ぎました", decided: "決定 ✓", shopped: "買い物済み ✓" }[st];
-    const head = first ? `<h3 class="block-head is-${st}"><span>${blockRange(b)}</span><small>${label}</small></h3>` : "";
-    const needs = plan.some((d) => b.dates.includes(d.date) && d.candidate && !locks.has(d.date));
-    const foot = last && needs && !isViewer() ? `<div class="block-foot">${dailyButton("life-confirm", `${blockRange(b)}をこれで決定`, `data-block="${b.key}"`, true)}</div>` : "";
-    return head + html + foot;
-  }).join("");
+  // リズムの時は、買い物のひとかたまり（例：木〜土）を1ページにして横に並べる（2026-10-28 のユーザーの判断：
+  // ひとかたまりを1画面で完結・次のかたまりは横スライド・食べた日は評価といっしょに残す）。
+  const cards = shortNote + (rhythmOn() ? renderPlanPages(plan, cardList, locks) : cardList.join(""));
   const ready = plan.filter((d) => d.candidate && !locks.has(d.date)).length;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderFreeUsedCard(plan)}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}${renderLeftoverPanel()}<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>${renderRhythmInvite()}${renderTicketNudge("plan")}${renderShareInvite()}`;
+  // リズムの時は、ひとかたまりのページをいちばん上に（1画面で完結。週のボード・バランスはその下）。
+  const list = `<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}<p class="plan-foot">${tip("食材制限がある時は、作り方と市販品の表示も確認してください")}</p></section>`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${rhythmOn() ? list : ""}${renderFreeUsedCard(plan)}${plan.some((d) => d.candidate && !d.slot) ? renderRoundReview({ where: "plan" }) : ""}${renderRoundCard()}${renderWeekBoard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${!isViewer() && !state.foodProfile?.completedAt ? `<p class="muted small plan-trial">お試しの提案 ${tip("食材制限・調理時間・器具は、作る前に確認してください")}</p>` : ""}${renderLeftoverPanel()}${rhythmOn() ? "" : list}${renderRhythmInvite()}${renderTicketNudge("plan")}${renderShareInvite()}`;
+}
+// ---- 献立のページ（買い物のひとかたまりごと・横スライド） ----
+let planPage = ""; // 見ているページ（ひとかたまりの key）。描き直しても同じページのまま
+function planPageBlocks() {
+  const from = state.rhythm?.startFrom || "";
+  const prev = blocksFrom(addDays(today(), -14), 28).filter((b) => b.end < today() && (!from || b.start >= from)).pop();
+  return [...(prev ? [prev] : []), ...currentBlocks()];
+}
+// 食べた日（今日より前）：写真・料理名と、評価（なければ「評価する」）。
+function renderPastPlanRow(date) {
+  const slot = state.mealSlots?.[date];
+  const dateLabel = `${formatDate(date)}（${weekdayLabel(date)}）`;
+  if (slot?.status === "off") return `<article class="plan-card is-past is-off-row"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>${SKIP_OF[slot.kind]?.icon || "🌙"}</span></span></div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">${escapeHtml(skipLabel(slot))}</strong></div></article>`;
+  const e = (state.evaluations || []).find((x) => x.id === `meal-${date}` || (String(x.cookedAt || "").slice(0, 10) === date && (!slot?.recipe || x.recipeId === slot.recipe.id)));
+  const recipe = slot?.recipe || (e && (recipeById(e.recipeId) || allDinnerRecipes().find((r) => r.id === e.recipeId))) || null;
+  if (!recipe) return `<article class="plan-card is-past is-off-row"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>・</span></span></div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">記録なし</strong></div></article>`;
+  const rated = Object.entries(e?.familyRepeatCycles || {}).filter(([, c]) => c);
+  const rating = rated.length ? rated.map(([n, c]) => { const ch = REVIEW_CHOICES.find((x) => x[0] === c); return ch ? `${ch[1]} ${rated.length > 1 ? `${escapeHtml(n)} ` : ""}${ch[2]}` : ""; }).filter(Boolean).join("・") : "";
+  const action = isViewer() ? "" : e ? `<button type="button" class="plan-icon" data-action="life-edit-record" data-id="${escapeAttr(e.id)}">${rating ? "記録" : "⭐ 評価する"}</button>` : slot?.status === "confirmed" && canRecordDate(date) ? dailyButton("life-record-past", "作った", `data-date="${date}"`) : "";
+  return `<article class="plan-card is-past"><div class="plan-photo">${dishTile(recipe)}<i class="past-check" aria-hidden="true">✓</i></div><div class="plan-body"><p class="plan-date">${dateLabel} · ${e ? "食べた" : "予定だった"}</p><strong class="plan-title">${recipeTitleHtml(recipe)}</strong>${rating ? `<p class="plan-rating">${rating}</p>` : ""}<div class="plan-controls">${action}</div></div></article>`;
+}
+function renderPlanPages(plan, cardList, locks) {
+  const blocks = planPageBlocks();
+  if (!blocks.length) return cardList.join("");
+  const at = new Map(plan.map((d, i) => [d.date, i]));
+  const label = { open: (b) => `受付中・${deadlineLabel(b.shopAt)}に買い物`, late: () => "買い物の予定を過ぎました", decided: () => "決定 ✓", shopped: () => "買い物済み ✓", past: () => "おわり" };
+  // 初めて開いた時は、今日をふくむ（なければ次の）ページから。
+  const current = blocks.find((b) => b.end >= today())?.key || blocks[0].key;
+  if (!blocks.some((b) => b.key === planPage)) planPage = current;
+  const pages = blocks.map((b) => {
+    const st = blockStatus(b);
+    const rows = b.dates.map((d) => (d < today() ? renderPastPlanRow(d) : at.has(d) ? cardList[at.get(d)] : "")).join("");
+    const needs = plan.some((d) => b.dates.includes(d.date) && d.candidate && !locks.has(d.date));
+    const foot = needs && !isViewer() ? `<div class="block-foot">${dailyButton("life-confirm", `${blockRange(b)}をこれで決定`, `data-block="${b.key}"`, true)}</div>` : "";
+    return `<section class="plan-page" data-page="${b.key}" aria-label="${escapeAttr(blockRange(b))}の献立"><h3 class="block-head is-${st}"><span>${blockRange(b)}</span><small>${(label[st] || label.past)(b)}</small></h3>${rows}${foot}</section>`;
+  }).join("");
+  // 同じ曜日のかたまり（木〜土が2つ）でも見分けられるように、タブは「前回・今回・次回」。
+  const ci = blocks.findIndex((b) => b.key === current);
+  const name = (i) => ({ "-1": "前回", 0: "今回", 1: "次回" })[i - ci] || (i < ci ? `${ci - i}回前` : `${i - ci}回先`);
+  const dots = blocks.length > 1 ? `<div class="plan-dots" role="group" aria-label="献立のページ">${blocks.map((b, i) => `<button type="button" class="plan-dot" data-action="life-plan-page" data-page="${b.key}" aria-pressed="${b.key === planPage}" aria-label="${escapeAttr(`${name(i)}（${blockRange(b)}）`)}">${name(i)}</button>`).join("")}</div>` : "";
+  return `${dots}<div class="plan-pages" data-plan-pages>${pages}</div>`;
+}
+// 描いたあと、見ていたページへ（横の位置だけ。縦は動かさない）。指で動かしたら、そのページを覚える。
+function placePlanPages({ smooth = false } = {}) {
+  const box = document.querySelector?.("[data-plan-pages]");
+  if (!box) return;
+  const page = [...box.children].find((el) => el.dataset.page === planPage);
+  if (page) box.scrollTo?.({ left: page.offsetLeft - box.offsetLeft, behavior: smooth ? "smooth" : "instant" });
+  let t = null;
+  box.addEventListener?.("scroll", () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const near = [...box.children].reduce((a, el) => (Math.abs(el.offsetLeft - box.offsetLeft - box.scrollLeft) < Math.abs(a.offsetLeft - box.offsetLeft - box.scrollLeft) ? el : a));
+      if (near?.dataset.page && near.dataset.page !== planPage) {
+        planPage = near.dataset.page;
+        document.querySelectorAll(".plan-dot").forEach((d) => d.setAttribute("aria-pressed", String(d.dataset.page === planPage)));
+      }
+    }, 120);
+  }, { passive: true });
 }
 let swapShowAll = false;
 // 好きの度合い（評価）：「明日でも」がいちばん。家族の中でいちばん低い評価で比べる。
@@ -1717,7 +1769,10 @@ function handleDailyAction(action, data) {
     };
     state.view = "plan";
   }
+  if (action === "life-plan-page" && data.page) { planPage = data.page; render(); placePlanPages({ smooth: true }); return true; }
   if (action === "life-swap") {
+    const b = rhythmOn() && planPageBlocks().find((x) => x.dates.includes(data.date));
+    if (b) planPage = b.key;
     swapShowAll = false;
     swapWhy = "";
     swapBought = "";
