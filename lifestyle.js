@@ -224,6 +224,8 @@
     if (minutes && meta.minutes > minutes || p.skill === "easy" && meta.easy === false) return false;
     return !meta.minutes || !meta.ingredientsVerified || !meta.conditionsConfirmed;
   }
+  // 腕前（★）より難しい料理の、上回る★ひとつごとに下げる点数（好きな味 8・使い切り 20 と同じくらいの重さ）。
+  const SKILL_PENALTY = 15;
   function fit(recipe, p, date) {
     const meta = recipe.planning;
     const names = (recipe.ingredients || []).map((x) => x.name);
@@ -258,14 +260,11 @@
     if (p.avoidTasks.length && !meta?.tasks)
       return { ok: false, reason: "調理作業が未確認です" };
     if (!meta?.ingredientsVerified || !meta.minutes || meta.easy == null || !meta.tasks || (!meta.noEquipment && !meta.equipment?.length) || meta.conditionsConfirmed === false) return {ok:false, needsReview:true, reason:"調理条件の確認が必要です"};
-    // Cooking skill: never above the cook's level; one step above only as a "challenge" when they want to grow.
+    // 料理の腕前（★）：難しい料理も外さず、並べる順を下げるだけ（2026-10-28 のユーザーの判断「並べ替えに」。候補を減らさない）。
+    // ★がひとつ上の料理には「ちょっと挑戦」の印。下げる幅は、上回る★ひとつごとに SKILL_PENALTY 点。
     const need = SkillDB()?.rate(recipe).level || 1;
-    let challenge = false;
-    if (p.skillLevel) {
-      if (need > p.skillLevel + 1 || (need === p.skillLevel + 1 && p.skillGrowth !== "grow"))
-        return { ok: false, reason: "料理スキルの設定より難しい料理です" };
-      challenge = need === p.skillLevel + 1;
-    }
+    const over = p.skillLevel ? Math.max(0, need - p.skillLevel) : 0;
+    const challenge = over > 0;
     const knownEquipment =
       meta?.noEquipment === true || !!meta?.equipment?.length &&
       meta.equipment.every((x) => p.equipment[x] === "have");
@@ -293,7 +292,7 @@
     return {
       ok: true,
       reasons,
-      score: priorities.score + (useUp || leftover ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
+      score: priorities.score + (useUp || leftover ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2 - over * SKILL_PENALTY,
       needsReview: !knownEquipment || !meta?.ingredientsVerified,
       challenge,
       skillNeed: need,
@@ -361,25 +360,7 @@
       }
     }
 
-    // 3. 料理スキル (skillLevel)
-    if (p.skillLevel && p.skillLevel < 5) {
-      const next = p.skillLevel + 1;
-      const p2 = { ...p, skillLevel: next };
-      const refDate = hasWd ? wdDate : weDate;
-      const okPlain = (r, prof, d) => {
-        const f = fit(r, prof, d);
-        return f.ok && !f.challenge;
-      };
-      const gain = dinners.filter((r) => !okPlain(r, p, refDate) && okPlain(r, p2, refDate)).length;
-      if (gain > 0) {
-        hints.push({
-          key: "skillLevel",
-          value: next,
-          gain,
-          label: `レベル★${next}まで（＋${gain}品）`,
-        });
-      }
-    }
+    // 3. 料理の腕前は献立から外さない（並べる順だけ）ので、広げる案は出さない（2026-10-28）。
 
     // 4. かんたん優先 (skill === "easy")
     if (p.skill === "easy") {
@@ -720,7 +701,7 @@
       const candidates = recipes
         .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity && (!autoBlocked(r) || overrides[date] === r.id || pins[String(new Date(date + "T12:00:00").getDay())] === r.id))
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
-        .filter((x) => x.ok && (!x.challenge || challenges < 1))
+        .filter((x) => x.ok)
         .map((x) => ({
           ...x,
           rotation: rotation(x.recipe, date, timeline, between),
@@ -744,7 +725,9 @@
             freshScore(x.fresh, dayInRound(date, i)) +
             x.season.score +
             x.useUp.score +
-            (x.pref?.score || 0) +
+            (x.pref?.score || 0) -
+            // 直近6日に挑戦の料理があれば、次の挑戦はもう少し後ろへ（外さない）。
+            (x.challenge && challenges >= 1 ? SKILL_PENALTY : 0) +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
                   ingredients.has(key(n.name)),

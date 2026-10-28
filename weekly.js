@@ -151,7 +151,6 @@ async function makeWeeklyMenu(start, choice = {}) {
       if (data.error?.code === "no_tickets") openTicketSheet();
       throw new Error(data.error?.message || "メニューにできませんでした。チケットは戻しました。");
     }
-    const before = cookStats();
     const entry = { id: start, style: MENU_STYLES[data.style] ? data.style : pick.style, lang: data.lang === "ja" ? "ja" : "en", info: data.info || pick.info, model: data.model === "lite" ? "lite" : "standard", total: r.target, prompt: pick.prompt, checked: typeof data.checked === "boolean" ? data.checked : null,
       days: days.map((s, i) => ({ date: s.date, dish: s.dish, kcal: num(data.notes?.[i]?.kcal, 30, 3000), yen: num(data.notes?.[i]?.yen, 10, 5000), copy: String(data.notes?.[i]?.copy || "").slice(0, 24) })),
       art: [`data:${data.image.mimeType};base64,${data.image.data}`], at: nowIso() };
@@ -159,7 +158,6 @@ async function makeWeeklyMenu(start, choice = {}) {
     saveMenuOpts({ style: entry.style, lang: pick.lang, info: pick.info });
     trackDaily("weekly_menu", { style: entry.style, lang: entry.lang, info: entry.info, model: entry.model, days: days.length, wish: !!pick.prompt, checked: entry.checked });
     saveState({ scheduleSync: false });
-    celebrateCook(before);
     menuView = { key: menuKey(entry), size: "feed", url: "" };
   } catch (error) {
     weeklyError = error.message || "メニューにできませんでした。";

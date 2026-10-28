@@ -1,6 +1,5 @@
-/* 経験値（XP）・Lv・バッジ・スキル一覧。晩ごはんの記録（state.evaluations）から毎回計算する（保存しないので、家族の端末でも同じ値）。
-   1皿：10XP ＋ 料理の★ひとつごとに5XP ＋ はじめての料理10XP ＋ 写真5XP ＋ 前の日も作った5XP（1日2皿まで）。
-   Lvが上がると、ひとつ上の★の昇級試験が受けられる。 */
+/* 作った回数の集計（cookStats）と、設定の「料理の腕前」。晩ごはんの記録（state.evaluations）から毎回計算する。
+   2026-10-28：経験値・Lv・バッジ・昇級試験は画面に出さない（ゲームの要素を外した）。cookStats は止めている献立表の機能（weekly.js）だけが使う。 */
 const LV_FOR_STAR = { 2: 2, 3: 4, 4: 7, 5: 11 };
 const xpToNext = (lv) => 40 + 20 * (lv - 1);
 const xpAtLv = (lv) => { let sum = 0; for (let l = 1; l < lv; l += 1) sum += xpToNext(l); return sum; };
@@ -41,90 +40,15 @@ function cookStats() {
   return { xp, ...levelOfXp(xp), count, kinds: Object.keys(kinds).length, maxRepeat: Math.max(0, ...Object.values(kinds)), photos, skills, streak, week, days: sorted,
     avgXp: count >= 3 ? Math.round(xp / count) : 20, tested: !!state.skillProfile?.quizLevel, promoted: (state.skillProfile?.promoted || 0) > 0, comp: typeof menuCompDone === "function" && menuCompDone() };
 }
-const BADGES = [
-  { id: "first", icon: "🍳", name: "はじめの一皿", hint: "晩ごはんを1回作る", ok: (s) => s.count >= 1 },
-  { id: "test", icon: "📝", name: "腕試し", hint: "料理スキル試験を受ける", ok: (s) => s.tested },
-  { id: "photo", icon: "📸", name: "写真デビュー", hint: "作った料理の写真を残す", ok: (s) => s.photos >= 1 },
-  { id: "streak3", icon: "🔥", name: "3日連続", hint: "3日続けて作る", ok: (s) => s.streak >= 3 },
-  { id: "week", icon: "🗓", name: "1週間達成", hint: "7日のうち5日作る", ok: (s) => s.week },
-  { id: "d10", icon: "🍽", name: "10皿", hint: "10回作る", ok: (s) => s.count >= 10 },
-  { id: "regular", icon: "🔁", name: "定番誕生", hint: "同じ料理を3回作る", ok: (s) => s.maxRepeat >= 3 },
-  { id: "variety", icon: "🌈", name: "レパートリー10", hint: "10種類の料理を作る", ok: (s) => s.kinds >= 10 },
-  { id: "streak7", icon: "⚡", name: "7日連続", hint: "7日続けて作る", ok: (s) => s.streak >= 7 },
-  { id: "shape", icon: "🥟", name: "成形デビュー", hint: "練る・包む料理を作る", ok: (s) => !!s.skills.shape },
-  { id: "fry", icon: "🍤", name: "揚げ物デビュー", hint: "揚げ物を作る", ok: (s) => !!s.skills.deepfry },
-  { id: "promote", icon: "🎖", name: "昇級", hint: "昇級試験に合格する", ok: (s) => s.promoted },
-  { id: "comp", icon: "🎨", name: "1週間コンプ", hint: "1週間の献立を写真でコンプする", ok: (s) => s.comp },
-  { id: "d30", icon: "🏅", name: "30皿", hint: "30回作る", ok: (s) => s.count >= 30 },
-  { id: "d100", icon: "👑", name: "100皿", hint: "100回作る", ok: (s) => s.count >= 100 },
-];
-const earnedBadges = (s = cookStats()) => BADGES.filter((b) => b.ok(s));
-// 自炊の回数（初回設定の「いまの1週間」）。なければ週4回。
-function cooksPerWeek() {
-  const p = state.foodProfile?.ratio ? state.foodProfile : state.onboardingDraft || {};
-  return Math.max(2, Math.min(7, ratioOf(p).self || 4));
-}
-// ★nの次へ：身につけるスキル・あと何皿・何週で昇級試験か。
-function skillNextPlan(star, s = cookStats()) {
-  const target = star + 1;
-  const needLv = LV_FOR_STAR[target];
-  const leftXp = Math.max(0, xpAtLv(needLv) - s.xp);
-  const dishes = Math.ceil(leftXp / s.avgXp), perWeek = cooksPerWeek();
-  const skills = Skills.SKILLS.filter((x) => x.level === target).map((x) => x.label.replace(/（.*）/, "")).slice(0, 3).join("、");
-  return { target, needLv, dishes, perWeek, weeks: Math.max(1, Math.ceil(dishes / perWeek)), skills, ready: s.lv >= needLv };
-}
-// 昇級試験を受けられるか（不合格の日は、次の日から）。
-function examReady(s = cookStats()) {
-  const sp = skillProfile();
-  if (!sp || sp.level >= 5 || isViewer() || sp.examFailedOn === today()) return false;
-  return s.lv >= LV_FOR_STAR[sp.level + 1];
-}
-// 作った！のあとに、もらったXP・Lvアップ・新しいバッジを小さく出す。
-function celebrateCook(before) {
-  const after = cookStats();
-  const gained = after.xp - before.xp;
-  const lines = gained > 0 ? [`<b class="xp-gain">+${gained} XP</b>`] : [];
-  if (after.lv > before.lv) lines.push(`<span class="xp-lv">Lv ${after.lv} にアップ！</span>`);
-  const had = new Set(earnedBadges(before).map((b) => b.id));
-  for (const b of earnedBadges(after).filter((x) => !had.has(x.id))) lines.push(`<span class="xp-badge">${b.icon} バッジ「${b.name}」</span>`);
-  if (examReady(after) && !examReady(before)) lines.push(`<span class="xp-lv">🎖 昇級試験が受けられます</span>`);
-  if (!lines.length) return;
-  try {
-    document.querySelector(".xp-pop")?.remove();
-    const el = document.createElement("div");
-    el.className = "xp-pop";
-    el.setAttribute("role", "status");
-    el.innerHTML = `${typeof yohaku === "function" ? yohaku("happy", "xp-yohaku") : ""}${lines.join("")}`;
-    document.body.append(el);
-    setTimeout(() => el.remove(), 3600);
-  } catch {}
-}
-// 診断に使った写真（この端末だけ）。
-function renderSkillPhoto() {
-  const p = state.skillPhoto;
-  if (!p?.photo) return "";
-  return `<figure class="skill-photo"><img src="${p.photo}" alt="診断に使った料理の写真"><figcaption><b>${escapeHtml(p.dish)}</b>診断に使った写真（この端末だけに保存）</figcaption></figure>`;
-}
+// 料理の腕前（設定）：★を自分で選ぶだけ（2026-10-28 のユーザーの判断「ゲームの要素は外して、できる限りシンプルに」）。
+// 経験値・Lv・バッジ・昇級試験・写真の判定は出さない。豆知識クイズ（10問）は遊べる診断として、ここから開ける。
 function renderSkillSettings() {
   if (isViewer()) return "";
-  const sp = skillProfile(), s = cookStats();
-  const earned = new Set(earnedBadges(s).map((b) => b.id));
-  const lvCard = `<div class="lv-card"><div class="lv-badge"><small>Lv</small><b>${s.lv}</b></div><div class="lv-main">
-    <p class="lv-title">${sp ? `<span class="skill-stars">${Skills.stars(sp.level)}</span> ${SKILL_TYPES[sp.level].name}${sp.score !== undefined ? `<small>${kyuOfScore(sp.score)}・${sp.score}点</small>` : ""}` : "料理スキル 未診断"}</p>
-    <div class="xp-bar" role="progressbar" aria-label="次のLvまで" aria-valuemin="0" aria-valuemax="${s.need}" aria-valuenow="${s.into}"><i style="width:${Math.round((s.into / s.need) * 100)}%"></i></div>
-    <p class="small muted">次のLvまで ${s.need - s.into} XP・これまで${s.count}皿・${s.xp} XP</p></div></div>`;
-  let next = "";
-  if (sp && sp.level < 5) {
-    const n = skillNextPlan(sp.level, s);
-    next = examReady(s)
-      ? `<div class="next-star is-ready"><p>🎖 <b>★${n.target}「${SKILL_TYPES[n.target].name}」の昇級試験</b>が受けられます（5問・4問正解で合格）</p>${dailyButton("life-exam-start", "昇級試験を受ける", "", true)}</div>`
-      : `<div class="next-star"><p>🎯 ★${n.target}へ：Lv${n.needLv}で昇級試験。あと<b>約${n.dishes}皿</b>（週${n.perWeek}回で約${n.weeks}週）${sp.examFailedOn === today() ? "・今日の試験はおしまい" : ""}</p><small>身につけるスキル：${escapeHtml(n.skills)}</small></div>`;
-  }
-  const learned = Skills.SKILLS.filter((x) => s.skills[x.id]).sort((a, b) => b.level - a.level || s.skills[b.id] - s.skills[a.id]);
-  const nextSkills = sp ? Skills.SKILLS.filter((x) => !s.skills[x.id] && x.level <= Math.min(5, sp.level + 1)).slice(0, 4) : [];
-  const skillList = `<h4 class="skill-h">身についたスキル <small>${learned.length}/${Skills.SKILLS.length}</small></h4><div class="skill-chips">${learned.map((x) => `<span class="skill-chip lv${x.level}">${escapeHtml(x.label.replace(/（.*）/, ""))}<small>×${s.skills[x.id]}</small></span>`).join("")}${nextSkills.map((x) => `<span class="skill-chip is-locked">${escapeHtml(x.label.replace(/（.*）/, ""))}</span>`).join("")}${learned.length ? "" : '<span class="muted small">作った料理から、身についたスキルがここに並びます。</span>'}</div>`;
-  const shelf = `<h4 class="skill-h">バッジ <small>${earned.size}/${BADGES.length}</small></h4><ul class="badge-shelf">${BADGES.map((b) => `<li class="${earned.has(b.id) ? "is-earned" : ""}" title="${escapeAttr(b.hint)}"><span aria-hidden="true">${earned.has(b.id) ? b.icon : "？"}</span><b>${earned.has(b.id) ? b.name : b.hint}</b></li>`).join("")}</ul>`;
-  const growth = sp ? `<div class="segmented" role="group" aria-label="献立の方針">${[["steady", "今のレパートリーで"], ["grow", "少しずつレベルアップ"]].map(([v, l]) => `<button type="button" class="choice-button" data-action="life-skill-growth" data-value="${v}" aria-pressed="${sp.growth === v}">${l}</button>`).join("")}</div>` : "";
-  return `<section class="panel skill-settings">${lvCard}${next}${skillList}${shelf}${renderSkillPhoto()}${growth}
-    ${sp ? '<button type="button" class="text-button" data-action="life-quiz-start">料理スキル試験をもう一度受ける</button>' : `<p class="muted small">10問の試験で、作れる料理だけの献立になります。</p>${dailyButton("life-quiz-start", "料理スキル試験を受ける", "", true)}`}</section>`;
+  const sp = skillProfile();
+  const picks = [1, 2, 3, 4, 5].map((l) => `<button type="button" class="rhythm-option" data-action="life-quick-skill" data-level="${l}" aria-pressed="${sp?.level === l}"><strong><span class="skill-stars">${Skills.stars(l)}</span></strong><small>${escapeHtml(SKILL_TYPES[l].name)}</small></button>`).join("");
+  return `<section class="panel skill-settings">
+    <p class="small">いちばん近いものを選んでください。★より難しい料理も外さず、後ろのほうに並べます（「ちょっと挑戦」の印）。</p>
+    <div class="skill-picks">${picks}</div>
+    ${sp ? '<button type="button" class="text-button" data-action="life-skill-clear">腕前を使わない（並べ方を元に戻す）</button>' : ""}
+    <p class="muted small">🧠 遊びで：${dailyButton("life-quiz-start", "料理の豆知識クイズ（10問）")}</p></section>`;
 }

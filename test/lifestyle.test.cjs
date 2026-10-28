@@ -862,34 +862,38 @@ test("skills: every starter gets a 1–5 skill level from its steps; titles and 
   assert.ok(!L.tags(byId("13")).includes("easy"));
 });
 
-test("skill quiz: answers give a level; the plan stays at that level, or adds one challenge when growing", () => {
+test("trivia quiz (2026-10-28): fun facts first, a ★ hint only — the plan uses it only when the person says so; harder dishes are ranked lower, never removed", () => {
   const run = app();
   const bank = JSON.parse(run("JSON.stringify(SKILL_BANK)"));
-  assert.ok(bank.length >= 50, "a bank of about 50 questions");
+  assert.ok(bank.length >= 40, "about 45 questions");
   assert.equal(new Set(bank.map((q) => q.id)).size, bank.length, "unique ids");
   for (const q of bank) { assert.equal(q.c.length, 4, q.id); assert.equal(new Set(q.c).size, 4, q.id); assert.ok(q.why && q.a >= 0 && q.a < 4, q.id); assert.ok(run(`!!SKILL_CATS["${q.cat}"]`), q.id); }
   for (const l of [1, 2, 3, 4, 5]) assert.ok(bank.filter((q) => q.level === l).length >= 7, `enough at ★${l}`);
-  const take = (rightWhen) => run(`startSkillQuiz();for(let i=0;i<10;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction("life-quiz-answer",{value:String((${rightWhen})(i,q)?q.a:(q.a+1)%4)});handleDailyAction("life-quiz-next",{})};JSON.stringify({...cbtResult(skillQuiz),done:skillQuiz.done,levels:skillQuiz.answers.map(a=>SKILL_BANK.find(q=>q.id===a.id).level),ids:new Set(skillQuiz.answers.map(a=>a.id)).size})`);
+  assert.ok(bank.filter((q) => q.cat === "food").length >= 8, "plenty of food trivia");
+  const take = (rightWhen) => run(`startSkillQuiz();for(let i=0;i<10;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction("life-quiz-answer",{value:String((${rightWhen})(i,q)?q.a:(q.a+1)%4)});handleDailyAction("life-quiz-next",{})};JSON.stringify({...cbtResult(skillQuiz),done:skillQuiz.done,ids:new Set(skillQuiz.answers.map(a=>a.id)).size})`);
   const top = JSON.parse(take("() => true"));
-  assert.deepEqual([top.score, top.star, top.kyu, top.done, top.ids], [1000, 5, "初段", true, 10], "all right: the top, no repeats");
-  assert.ok(JSON.parse(take("() => true")).levels.slice(-3).every((l) => l === 5), "right answers climb to ★5 questions");
+  assert.deepEqual([top.correct, top.star, top.done, top.ids], [10, 5, true, 10]);
   const low = JSON.parse(take("() => false"));
-  assert.deepEqual([low.score, low.star, low.kyu], [0, 1, "10級"]);
-  const mid = JSON.parse(take("(i) => i % 2 === 0"));
-  assert.ok(mid.score > 200 && mid.score < 700 && mid.star >= 2 && mid.star <= 4, `alternating lands in the middle: ${mid.score}`);
-  assert.deepEqual(JSON.parse(run("JSON.stringify([starOfScore(239),starOfScore(240),starOfScore(840),kyuOfScore(612),kyuOfScore(99)])")), [1, 2, 5, "4級", "10級"]);
+  assert.deepEqual([low.correct, low.star], [0, 1]);
+  // 結果：正解の数と★の目安だけ（点数・級・タイプの段々はない）。押さなければ献立は変わらない
+  run('state.onboarded=true;startSkillQuiz();skillQuiz.theta=3.4;skillQuiz.answers=Array(10).fill({id:"f1",ok:true});skillQuiz.done=true');
+  const html = run("renderSkillQuiz()");
+  assert.match(html, /10<\/b><small>\/ 10問 正解[\s\S]*★★★☆☆[\s\S]*この★3で献立を並べる/);
+  assert.ok(!/1000点|級|初段|昇級|いまここ/.test(html), "no score, rank or ladder");
+  run('handleDailyAction("life-quiz-close",{})');
+  assert.equal(run("state.skillProfile"), null, "closing does not change the plan");
+  run('startSkillQuiz();skillQuiz.theta=3.4;skillQuiz.answers=Array(10).fill({id:"f1",ok:true});skillQuiz.done=true;handleDailyAction("life-quiz-save",{})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.quizLevel,dailyProfile().skillLevel,skillQuiz])")), [3, 3, 3, null]);
+  // 献立：★より難しい料理も外さない（候補は同じ数）。並ぶ順は下がり、選ばれたら「ちょっと挑戦」
   const S = require("../skills.js");
-  const steady = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
-  assert.ok(steady.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 2), "routine keeps to ★2");
-  const grow = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2, skillGrowth: "grow" }), start, length: 7, addDays });
-  const hard = grow.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2);
-  assert.ok(hard.length <= 1, "at most one challenge per plan");
-  assert.ok(grow.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 3));
-  if (hard.length) assert.match(hard[0].candidate.reasons[0], /^ちょっと挑戦/);
-  run('state.onboarded=true;startSkillQuiz();skillQuiz.theta=3.4;skillQuiz.answers=Array(10).fill({id:"m1",ok:true});skillQuiz.done=true');
-  assert.match(run("renderSkillQuiz()"), /580<\/b><small>\/ 1000点[\s\S]*5級[\s\S]*いまここ[\s\S]*★4「おうちシェフ」<\/b>へ[\s\S]*約\d+皿[\s\S]*life-quiz-save" data-value="grow"/, "score, rank, ladder, the way to the next star, then growth");
-  run('handleDailyAction("life-quiz-save",{value:"steady"})');
-  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.score,state.skillProfile.growth,dailyProfile().skillLevel,skillQuiz])")), [3, 580, "steady", 3, null]);
+  const fitAll = (lv) => L.curated.filter((r) => L.fit(r, L.profile({ skillLevel: lv }), start).ok).length;
+  assert.equal(fitAll(1), fitAll(0), "the same dishes stay in");
+  const hard = L.curated.find((r) => S.rate(r).level >= 3);
+  const easy = L.fit(hard, L.profile({}), start), ranked = L.fit(hard, L.profile({ skillLevel: 1 }), start);
+  assert.ok(ranked.ok && ranked.challenge && ranked.score < easy.score, "a harder dish is kept but ranked lower");
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
+  assert.ok(plan.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2).length <= 1, "with plenty of easier dishes, harder ones rarely come first");
+  for (const d of plan.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2)) assert.match(d.candidate.reasons[0], /^ちょっと挑戦/);
 });
 
 test("freshness: perishable, hard-to-freeze food goes first after shopping", () => {
@@ -1069,28 +1073,20 @@ test("選択: new recipes first, then the best three by rating", () => {
   assert.match(html, /ほかの候補を見る/);
 });
 
-test("cooking XP, levels, badges, the skill list and the promotion exam", () => {
+test("cooking skill (2026-10-28): just pick a ★ — no XP, levels, badges or exams; clearing goes back to the plain order", () => {
   const run = app();
-  const S = require("../skills.js");
-  run('state.onboarded=true;state.skillProfile={level:2,quizLevel:2,growth:"steady",diagnosed:true,updatedAt:nowIso()}');
-  assert.deepEqual(JSON.parse(run("JSON.stringify([cookStats().xp,cookStats().lv,earnedBadges().length])")), [0, 1, 1], "nothing cooked yet: only the test badge");
-  run(`const r=Lifestyle.curated[0]; for (let i=11;i>=0;i--) state.evaluations.unshift({id:"meal-"+addDays(today(),-i),recipeId:r.id,recipeTitle:r.title,cookedAt:addDays(today(),-i),mealType:"dinner",photo:i===0?"data:image/jpeg;base64,xx":"",familyRepeatCycles:{},memo:"",updatedAt:nowIso()})`);
-  const L = S.rate(require("../lifestyle.js").curated[0]).level;
-  const s = JSON.parse(run("JSON.stringify(cookStats())"));
-  assert.equal(s.xp, 12 * (10 + 5 * (L - 1)) + 10 + 5 + 11 * 5, "base + ★ + first time + photo + days in a row");
-  assert.deepEqual([s.count, s.kinds, s.streak, s.week, s.photos], [12, 1, 12, true, 1]);
-  assert.deepEqual(JSON.parse(run("JSON.stringify(earnedBadges().map(b=>b.id))")), ["first", "test", "photo", "streak3", "week", "d10", "regular", "streak7"]);
-  assert.equal(run("levelOfXp(39).lv+','+levelOfXp(40).lv+','+levelOfXp(100).lv+','+xpAtLv(4)"), "1,2,3,180");
-  assert.ok(s.lv >= 4 && run("examReady()"), "Lv4 opens the ★3 exam");
-  assert.match(run("renderSkillSettings()"), /lv-badge[\s\S]*昇級試験を受ける[\s\S]*身についたスキル[\s\S]*バッジ <small>8\/15/);
-  run("startSkillExam()");
-  const levels = JSON.parse(run('const out=[];for(let i=0;i<5;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);out.push(q.level);handleDailyAction("life-quiz-answer",{value:String(i===0?(q.a+1)%4:q.a)});handleDailyAction("life-quiz-next",{})};JSON.stringify(out)'));
-  assert.deepEqual(levels, [3, 3, 3, 3, 3], "the exam asks ★3 questions");
-  assert.match(run("renderSkillQuiz()"), /4<\/b> \/ 5 問正解[\s\S]*合格/);
-  run('handleDailyAction("life-exam-done",{})');
-  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.promoted,earnedBadges().some(b=>b.id==='promote'),examReady()])")), [3, 1, true, false], "★3 now; the ★4 exam waits for Lv7");
-  run("startSkillExam();for(let i=0;i<5;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction('life-quiz-answer',{value:String((q.a+1)%4)});handleDailyAction('life-quiz-next',{})};handleDailyAction('life-exam-done',{})");
-  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.examFailedOn===today()])")), [3, true], "a failed exam keeps the star; try again tomorrow");
+  run('state.onboarded=true');
+  let html = run("renderSkillSettings()");
+  assert.ok(!/lv-badge|バッジ|昇級|XP|経験値/.test(html), "no game parts");
+  assert.ok(html.includes("life-quick-skill") && html.includes("豆知識クイズ"), "pick a ★, or play the quiz");
+  run('handleDailyAction("life-quick-skill",{level:"2"})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.diagnosed,dailyProfile().skillLevel])")), [2, false, 2]);
+  assert.match(run("renderSkillSettings()"), /data-level="2" aria-pressed="true"/);
+  run('handleDailyAction("life-skill-clear",{})');
+  assert.equal(run("state.skillProfile"), null);
+  assert.equal(run("dailyProfile().skillLevel"), 0);
+  // 「作った」のあとに経験値の表示はない
+  assert.equal(run("typeof celebrateCook"), "undefined");
 });
 
 test("rhythm: starting mid-block begins at the next whole block; days before it are 'いつもどおり'", () => {
@@ -1156,7 +1152,7 @@ test("the first-run funnel (2026-10-28): seven screens — people, who eats, foo
   assert.equal(run("state.onboarded"), true);
   assert.equal(run("state.servingCount"), 4);
   assert.equal(run("state.view"), "plan", "no saved policy: the plan");
-  assert.ok(/スキル試験|ごはん方針/.test(run("renderTodayTodos()")), "skill and policy are asked later, from today, one at a time");
+  assert.ok(/料理の腕前|ごはん方針/.test(run("renderTodayTodos()")), "skill and policy are asked later, from today, one at a time");
 });
 
 test("first-run funnel: people part-way through an older order continue on the same (or next remaining) screen, once", () => {

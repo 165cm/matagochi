@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261028-first-run";
+const APP_VERSION = "20261028-skill-simple";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2664,7 +2664,7 @@ function renderSettings() {
       <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><button class="secondary-button full-button" data-action="life-pantry-open">🫙 常備品だけ変える</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p>`)}
     ${(() => { const t = renderTalkSetting(); return settingRow("talk", "💬", "わが家のごはん方針", t.summary, t.body); })()}
     ${settingRow("rhythm", "🗓", "献立のリズム", rhythmOn() ? `${RHYTHMS[state.rhythm.preset].label}（${rhythmShape(rhythmBlocks())}）・買い物${state.rhythm.shopBefore === 0 ? "初日" : "前日"}${state.rhythm.shopTime}` : "未設定", renderRhythmSettings())}
-    ${isViewer() ? "" : settingRow("skill", "🔪", "料理スキル・バッジ", `Lv${cookStats().lv}・${sp ? `${Skills.stars(sp.level)} ${SKILL_TYPES[sp.level].name}` : "未診断"}${examReady() ? "・🎖昇級試験OK" : ""}`, renderSkillSettings())}
+    ${isViewer() ? "" : settingRow("skill", "🔪", "料理の腕前", sp ? `${Skills.stars(sp.level)} ${SKILL_TYPES[sp.level].name}` : "未設定（すべての料理を同じように並べる）", renderSkillSettings())}
     ${isViewer() ? "" : settingRow("starters", "🍳", "おすすめレシピ", showStarters() ? "使う" : "使わない（自分のレシピだけ）", renderStarterSettings())}
     ${settingRow("share", "👫", "ふたりで使う", syncEnabled() ? `${state.family.join("・")}でつながっています` : "まだつながっていません", renderSharePanel() + (syncEnabled() ? "" : renderSyncPanel()))}
     ${settingRow("family", "👪", "家族メンバー", `${state.family.join("・")}（${state.family.length}人）`, `<div class="member-list">
