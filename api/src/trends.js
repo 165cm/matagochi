@@ -6,7 +6,8 @@ import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./
 import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 
-// 新着レシピ：YouTubeから選んで読み取り、28日で消す（YouTube APIのデータは30日を超えて持たない）。
+// 新着レシピ：YouTubeから選んで読み取り、28日見せる。28日を過ぎた料理は休ませ、決まりを満たす間は0円でもう一度並べる（§46-8）。
+// （YouTube APIのデータは30日を超えて持たない：説明文などは後片付けで取り直す。）
 // 集める処理と、見せる枠を分ける（docs/PERSONALIZE_PLAN.md §7.3・§12-7）：
 //   集める … GitHubの定期実行が毎日ノックする。1日に集めるのは TREND_PER_DAY 品まで、1週で TREND_WEEK_MAX 品まで。
 //            毎日、登録チャンネルの新着を見直す（週の初めに10品そろっても、その週の新しい動画を拾える）。毎日必ず新着があるとは限らない。
@@ -21,6 +22,16 @@ export const TREND_PER_WEEK = 10; // 以前の見せる枠（1週あたり）。
 // 月の費用の上限（β版の間、2026-10-01 のユーザーの判断で月1,000円）と、AI を1回呼ぶ費用の目安（円。実測で直す）。
 export const TREND_YEN_PER_MONTH = 1000;
 export const TREND_YEN_PER_AI = 1; // 2026-10-01 の実測（説明欄の読み取り1回 約0.86円）から。考える部分を使わない読み取りならもっと安い
+// 月の予算を月末まで均等に使う（2026-10-28 のユーザーの判断。§46-8 ②）：自動の新着集め・補充は、その日までに使ってよい分（上限 × 日 ÷ その月の日数）まで。
+// 使わなかった日の分は次の日へ持ち越す。手動の一括収集（運営が押す）は均等にしない。
+export function paceCap(cap, day) {
+  const [y, m, d] = String(day).split("-").map(Number);
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return Math.min(cap, Math.ceil((cap * d) / days));
+}
+// 利用者の読み取りの分を残す（§46-8 ②）：アプリ全体の AI の月の回数（AI_MONTHLY_LIMIT。利用者の取り込みと新着集めの合計）のうち、
+// この割合は利用者のために残し、新着集めは使わない。
+export const TREND_USER_SHARE = 0.3;
 // 手動の一括収集で、同時に読む本数（AI 1回に10秒ほどかかるので、1回押して集められる量を増やす）。
 export const SEED_PARALLEL = 3;
 // 説明欄にレシピが書いてありそうか（AI を呼ぶ前のふるい）：分量の書き方が3つ以上と、作り方の書き出しがある。
@@ -188,6 +199,14 @@ export const REFILL_TARGET = REFILL_PARENTS_MAX * REFILL_CHILDREN;
 export const REFILL_AI_PER_DAY = 25;
 export const REFILL_DISH_PER_DAY = 15;
 export const PARENT_REUSE_DAYS = 28;
+// 一度読んだ料理を、0円でもう一度並べる（2026-10-28 のユーザーの判断。docs/APP_MAP.md §46-8）。
+// 28日を過ぎた新着（と、以前に集める側が試した動画）を「休んでいる料理」（trends/index の retired）に残し、
+// 見えている新着が REVIVE_TARGET 品より少ない間、古く休んでいる順に新着へ戻す（AI も YouTube API も呼ばない。保存済みの読み取り結果だけ）。
+// 戻す料理も、ふだんの決まり（掲載停止・投稿者3%・親料理の子6品と30分以上1品・説明文が30日以内に取り直されている）を通す。
+export const REVIVE_TARGET = REFILL_TARGET;
+export const REVIVE_PER_DAY = 80; // 1日に戻す数（10月はじめにまとめて集めた分が同じ週に消えるので、1週間ほどで戻せる量）
+export const REVIVE_SCAN = 300; // 1回の実行で確かめる数（保存済みの結果の読み出しだけ）
+export const RETIRED_MAX = 5000;
 export const PARENT_FLAVORS = { quick: ["時短", "簡単", "10分", "レンジ", "フライパンひとつ", "人気"], long: ["本格", "人気"] };
 // ふつう30分以上かかる親料理（時短にしやすい料理を先に選ぶため、後ろへ回す）。
 export const LONG_PARENTS = new Set(["肉じゃが", "さばの味噌煮", "ぶり大根", "唐揚げ", "ロールキャベツ", "厚揚げの煮物", "ハンバーグ", "筑前煮", "かれいの煮付け", "豚汁", "豚の角煮", "ポトフ", "餃子", "酢豚", "カレー", "クリームシチュー",
@@ -341,7 +360,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, monthlyLimit = 1000, userShare = TREND_USER_SHARE, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const catches = { at: 0 };
@@ -428,8 +447,73 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     return { ...stage, added, ...(yenMeasured !== undefined ? { yenMeasured } : {}) };
   }
   const monthCapCalls = () => Math.max(0, Math.floor(yenPerMonth / Math.max(0.01, yenPerAi)));
+  // 新着集めが今月まだ使ってよい AI の回数（アプリ全体の月の回数から、利用者の分を残した残り。usage/YYYY-MM は UTC の月）。
+  async function trendRoom() {
+    const used = (await store.get(`usage/${new Date(now()).toISOString().slice(0, 7)}`))?.envelope.used || 0;
+    return Math.max(0, Math.floor(monthlyLimit * (1 - userShare)) - used);
+  }
   async function aiUsedToday() { return (await store.get(`usage/${new Date(now()).toISOString().slice(0, 10)}`))?.envelope.used || 0; }
   const fresh = (w) => now() - Date.parse(w.startedAt) < TREND_KEEP_DAYS * DAY;
+  // 保存されている一覧から、28日以内の週だけを持つ一覧を作る。28日を過ぎた週の料理は「休んでいる料理」（retired・古い順）へ移す（§46-8）。
+  const openIndex = (env = {}) => {
+    const weeks = (env.weeks || []).filter(fresh);
+    const live = new Set(weeks.flatMap((w) => w.items.map((i) => i.videoId)));
+    const gone = (env.weeks || []).filter((w) => !fresh(w)).flatMap((w) => w.items.map((i) => i.videoId));
+    const retired = [...new Set([...(env.retired || []), ...gone])].filter((v) => !live.has(v)).slice(-RETIRED_MAX);
+    return { weeks, retired, ...(env.retiredSeeded ? { retiredSeeded: true } : {}), ...(env.revive ? { revive: env.revive } : {}), ...(env.refreshedOn ? { refreshedOn: env.refreshedOn } : {}) };
+  };
+  // 休んでいる料理を、0円で新着に戻す（§46-8）。戻した数と確かめた数を返す。index は呼んだ側が保存する。
+  async function revive(index, { excluded, port, list }) {
+    const today = dayOf(now());
+    // 初めての時だけ：以前に集める側（一括収集・補充）が試した動画も候補に入れる（この仕組みより前に28日を過ぎた料理を拾う）。
+    // 読み出しに失敗した時は移行済みにしない（次の実行でやり直す。記録がない＝null は、移行するものがないので済み。review fix #172）。
+    if (!index.retiredSeeded) {
+      let seedDoc, ok = true;
+      try { seedDoc = await store.get("trends/seed"); } catch { ok = false; }
+      if (ok) {
+        index.retired = [...new Set([...(seedDoc?.envelope?.tried || []), ...index.retired])].slice(-RETIRED_MAX);
+        index.retiredSeeded = true;
+      }
+    }
+    const day = index.revive?.on === today ? index.revive : { on: today, n: 0 };
+    index.revive = day;
+    const live = new Set(index.weeks.flatMap((w) => w.items.map((i) => i.videoId)));
+    index.retired = index.retired.filter((v) => !live.has(v));
+    const room = Math.min(REVIVE_PER_DAY - day.n, REVIVE_TARGET - (port?.total || 0));
+    if (room <= 0 || !index.retired.length) return { revived: 0, scanned: 0 };
+    const items = (await list().catch(() => ({ items: [] }))).items || [];
+    const stock = stockOf(items);
+    const dbook = await (dishBook || createDishBook(store, { now })).book().catch(() => ({}));
+    let week = index.weeks.find((w) => w.revived && w.day === today);
+    if (!week) { week = { week: weekOf(now()), revived: true, day: today, startedAt: new Date(now()).toISOString(), items: [] }; index.weeks.push(week); }
+    const drop = new Set(), later = [];
+    let scanned = 0, revived = 0;
+    for (const v of index.retired) {
+      if (revived >= room || scanned >= REVIVE_SCAN) break;
+      scanned += 1;
+      let r;
+      try { r = await peek(v); } catch { later.push(v); continue; } // 読み出せない時は、あとで
+      // 読めない（削除・非公開・まだ読んでいない）・晩ごはんでない・日本語でない料理は、休みの列から外す。
+      if (!r || !isDinnerRecipe(r) || (r.caption && !TREND_MARKET.titleLooksLocal(r.caption))) { drop.add(v); continue; }
+      // 次のどれかの時は戻さず、列の最後へ（あとで条件が変われば戻せる）：
+      //   掲載停止／説明文が30日以内に取り直されていない（caption が空）／投稿者が3%に届いている／親料理の子がそろっている・30分以上がもうある／親のない30分以上
+      const quick = isQuickDish(r.planning?.minutes);
+      const pr = parentOf(r.title, dbook, r.dishName);
+      const st = pr ? (stock[pr.key] ||= { quick: 0, long: 0, total: 0 }) : null;
+      if (excluded.has(v) || (r.channelId && excluded.has(r.channelId)) || !r.caption || !portfolioRoom(port, r.channelId) || (st ? !parentRoom(st, quick) : !quick)) { later.push(v); continue; }
+      if (st) { if (quick) st.quick += 1; else st.long += 1; st.total += 1; }
+      portAdd(port, r.channelId);
+      week.items.push({ videoId: v, day: today });
+      drop.add(v);
+      revived += 1;
+    }
+    day.n += revived;
+    if (!week.items.length) index.weeks = index.weeks.filter((w) => w !== week);
+    const moved = new Set(later);
+    index.retired = [...index.retired.filter((v) => !drop.has(v) && !moved.has(v)), ...later];
+    if (revived) cache = null;
+    return { revived, scanned };
+  }
   async function lock() {
     const entry = await store.get("trends/lock");
     if (entry && entry.envelope.until > now()) return false;
@@ -498,12 +582,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const started = now();
       try {
         const entry = await readIndex();
-        const index = { weeks: (entry?.envelope.weeks || []).filter(fresh), ...(entry?.envelope.refreshedOn ? { refreshedOn: entry.envelope.refreshedOn } : {}) };
+        const index = openIndex(entry?.envelope);
         let stepPort = null;
         const stepExcluded = await optedOut();
         const getStepPort = async () => (stepPort ||= await countPortfolio(index.weeks, { generation: entry?.generation ?? 0, excluded: stepExcluded }));
         const week = weekOf(now()), today = dayOf(now());
-        let current = index.weeks.find((w) => w.week === week && !w.seed); // 手動の一括収集の分（seed）は別に持つ
+        let current = index.weeks.find((w) => w.week === week && !w.seed && !w.revived); // 手動の一括収集の分（seed）・戻した料理の分（revived）は別に持つ
         if (!current) {
           current = { week, startedAt: new Date(now()).toISOString(), candidates: [], tried: [], items: [], skipped: {} };
           index.weeks.unshift(current);
@@ -537,6 +621,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const skip = (reason) => { current.skipped[reason] = (current.skipped[reason] || 0) + 1; };
         const excluded = await optedOut();
         for (const id of excluded) delete channels.channels[id];
+        // 休んでいる料理を0円で新着に戻す（AI の枠・予算に関係なく、毎日。§46-8）。
+        const revived = await revive(index, { excluded, port: await getStepPort(), list: () => this.list({ promote: false }) }).catch(() => ({ revived: 0, scanned: 0, failed: true }));
         const quota = () => Math.min(perDay - (current.byDay[today] || 0), weekMax - current.items.length);
         const aiWeek = () => Object.values(current.aiByDay).reduce((a, b) => a + b, 0);
         // 月の費用：上限の回数＝月の上限（円）÷ 1回の目安（円）。AI を呼ぶ前に、この実行で使ってよい回数を trends/cost に**先に書いて予約**する
@@ -546,14 +632,16 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const writeCost = (change) => writeMonthCost(month, change);
         let reserved = 0, spent = 0, monthUsed = 0;
         const wanted = Math.max(0, Math.min(aiPerDay - (current.aiByDay[today] || 0), aiPerWeek - aiWeek()));
-        const after = await writeCost((used) => { monthUsed = used; reserved = Math.max(0, Math.min(wanted, monthCap - used)); return reserved ? used + reserved : null; });
+        // 月末まで均等に（pace）・利用者の分を残す（room）。§46-8 ②
+        const pace = paceCap(monthCap, today), room = await trendRoom();
+        const after = await writeCost((used) => { monthUsed = used; reserved = Math.max(0, Math.min(wanted, monthCap - used, pace - used, room)); return reserved ? used + reserved : null; });
         // 予約を書けなかった（保存先の失敗・競合）：この実行では AI を呼ばず、失敗として次の実行でやり直す（done にしない）。
         const reserveFailed = after === null && reserved > 0;
         if (after === null) reserved = 0;
         const canSpend = () => (current.aiByDay[today] || 0) < aiPerDay && aiWeek() < aiPerWeek && spent < reserved;
         const spend = () => { current.aiByDay[today] = (current.aiByDay[today] || 0) + 1; spent += 1; };
         const saveCost = async () => { if (reserved > spent) await writeCost((used) => Math.max(0, used - (reserved - spent))); };
-        const budgetReason = () => (monthUsed + spent >= monthCap ? "trend_month_budget" : "trend_ai_budget");
+        const budgetReason = () => (monthUsed + spent >= monthCap ? "trend_month_budget" : monthUsed + spent >= pace ? "trend_pace" : spent >= room ? "trend_user_reserve" : "trend_ai_budget");
         // 検索は1つずつ。失敗したものがあれば、その組は「済み」にしない（次の実行でやり直す。既出の動画は重ねない）。
         const fetchAll = async (calls) => { const out = []; let failed = 0; for (const c of calls) { try { out.push(...(await c())); } catch { failed += 1; } } return { out, failed }; };
         const addCandidates = (found, seen) => {
@@ -600,6 +688,14 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           current.tried.push(videoId);
           // 候補に入った後で外された動画・チャンネル（掲載停止・確認待ち・動画単位）は、読まずに飛ばす（AI も採用の枠も使わない）。
           if (excluded.has(videoId) || excluded.has(current.channelOf[videoId])) { skip("opted_out"); continue; }
+          // AI の前に、説明欄に作り方が書いてあるかを YouTube の情報で確かめる（AI の費用はかからない。§46-8 ③）。
+          // もう読んだ動画（0円）は確かめない。確かめられない時（通信）は、今までどおり読む。
+          if (videoDetails && !(await peek(videoId).catch(() => null))) {
+            let d;
+            try { d = (await videoDetails([videoId]))?.[videoId]; } catch { d = undefined; }
+            if (d && d.status !== "public") { learn(videoId, false); skip("not_public"); continue; }
+            if (d && !looksLikeRecipe(d.snippet?.description)) { learn(videoId, false); skip("description_not_recipe"); continue; }
+          }
           try {
             const r = await analyze(videoId, { allow: canSpend, used: spend });
             // 読んでみて分かったチャンネルが外されていたら、採用しない。
@@ -639,7 +735,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const exhausted = current.tried.length >= current.candidates.length && current.channelScan && current.kw >= SEARCH_ROUNDS.length;
         // done：今日はもう集めなくてよい（今日の分・今週の分がそろった／新着集めの AI の枠を使い切った／候補がもうない）。
         // 失敗（通信・一時的な失敗・AI全体の枠・設定の不足）で止めた時は done にしない（paused を見て、次の実行でやり直す）。
-        return { week, day: today, items: current.items.length, today: current.byDay[today] || 0, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds, skipped: current.skipped || {}, catches: catchesWritten,
+        return { week, day: today, items: current.items.length, today: current.byDay[today] || 0,
+          revived: { run: revived.revived, today: index.revive?.n || 0, scanned: revived.scanned, resting: (index.retired || []).length, ...(revived.failed ? { failed: true } : {}) }, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds, skipped: current.skipped || {}, catches: catchesWritten,
           ai: { today: current.aiByDay[today] || 0, week: aiWeek(), perDay: aiPerDay, perWeek: aiPerWeek, month: monthUsed + spent, monthCap, yen: Math.round((monthUsed + spent) * yenPerAi), yenCap: yenPerMonth }, ...(paused ? { paused } : {}), ...(limited ? { limited } : {}),
           done: !paused && (quota() <= 0 || !!limited || exhausted) };
       } finally { await unlock(); }
@@ -650,7 +747,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // 晩ごはんでない題名は読まない／同じ投稿者は1回の検索で2本まで／動画そのものは読まない（費用が大きい）。
     // 集めた料理は、その段階の日から28日の新着（seed の週）。実際のトークン数から料金の目安も出す（usageYen）。
     // maxAi・maxAdd・timeMs：自動の補充（refill）で、1回の実行の AI の回数・増やす品数・時間を小さくする。
-    async seed({ yen = 100, axis = "both", maxAi = Infinity, maxAdd = Infinity, timeMs = budgetMs } = {}) {
+    async seed({ yen = 100, axis = "both", maxAi = Infinity, maxAdd = Infinity, timeMs = budgetMs, paced = false } = {}) {
       if (!WAVE_AXES.includes(axis)) axis = "both";
       required();
       if (!(await lock())) return { busy: true };
@@ -684,8 +781,10 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const skip = (why) => { stage.skipped[why] = (stage.skipped[why] || 0) + 1; };
         const allowed = Math.max(0, Math.min(Number(maxAi) >= 0 ? Number(maxAi) : Infinity, Math.floor(stage.yen / Math.max(0.01, yenPerAi)) - stage.ai));
         const monthCap = monthCapCalls();
+        // 自動の補充（paced）は月末まで均等に。手動の一括収集も含めて、利用者の分は残す（§46-8 ②）。
+        const pace = paced ? paceCap(monthCap, today) : monthCap, room = await trendRoom();
         let reserved = 0, spent = 0, monthUsed = 0;
-        const after = await writeMonthCost(month, (used) => { monthUsed = used; reserved = Math.max(0, Math.min(allowed, monthCap - used)); return reserved ? used + reserved : null; });
+        const after = await writeMonthCost(month, (used) => { monthUsed = used; reserved = Math.max(0, Math.min(allowed, monthCap - used, pace - used, room)); return reserved ? used + reserved : null; });
         let reserveFailed = after === null && reserved > 0;
         if (after === null) reserved = 0;
         // 段階の側も、AI を呼ぶ前に予約した回数を「使った」として先に保存する（保存できなければ AI を呼ばない）。
@@ -702,9 +801,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // 3本を同時に読むので、AI を呼んでよいかの確認（allow）の時点で1回分を確保する（確保したら、呼べなかった時も使った扱い＝多めに数える）。
         let claimed = 0;
         const gate = { allow: () => (claimed < reserved ? ((claimed += 1), true) : false), used: () => { spent += 1; } };
-        const why = () => (reserveFailed ? "cost_not_saved" : committed + claimed >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : "month_budget");
+        const why = () => (reserveFailed ? "cost_not_saved" : committed + claimed >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : monthUsed + claimed >= monthCap ? "month_budget" : monthUsed + claimed >= pace ? "pace_budget" : claimed >= room ? "user_reserve" : "month_budget");
         const ixEntry = await readIndex();
-        const index = { weeks: (ixEntry?.envelope.weeks || []).filter(fresh), ...(ixEntry?.envelope.refreshedOn ? { refreshedOn: ixEntry.envelope.refreshedOn } : {}) };
+        const index = openIndex(ixEntry?.envelope);
         let week = index.weeks.find((w) => w.seed && w.stage === stage.n);
         if (!week) { week = { week: weekOf(now()), seed: true, stage: stage.n, startedAt: stage.startedAt, candidates: [], tried: [], items: [], skipped: {} }; index.weeks.push(week); }
         const seen = new Set([...index.weeks.flatMap((w) => w.items.map((i) => i.videoId)), ...doc.tried]);
@@ -1025,7 +1124,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       try { ok = !!(await store.put("trends/refill", reservedDoc, { ifGeneration: cur?.generation ?? 0 })); } catch { ok = false; }
       if (!ok) return { skipped: "busy", done: false, ...today };
       // seed が例外（記録の保存の失敗など）の時は、AI を使った・料理を足したかが分からないので、予約は返さない（多めに数えたまま。review fix #135 r2）。
-      const r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs });
+      const r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs, paced: true });
       const usedAi = r?.busy ? 0 : Math.min(aiLeft, r.ran?.ai || 0), usedAdd = r?.busy ? 0 : Math.min(addLeft, r.ran?.added || 0);
       // 予約のうち使わなかった分を返す（その間にほかの呼び出しが書いていても、差だけを返す）。
       let back = null;
