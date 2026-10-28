@@ -460,7 +460,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     const live = new Set(weeks.flatMap((w) => w.items.map((i) => i.videoId)));
     const gone = (env.weeks || []).filter((w) => !fresh(w)).flatMap((w) => w.items.map((i) => i.videoId));
     const retired = [...new Set([...(env.retired || []), ...gone])].filter((v) => !live.has(v)).slice(-RETIRED_MAX);
-    return { weeks, retired, ...(env.retiredSeeded ? { retiredSeeded: true } : {}), ...(env.revive ? { revive: env.revive } : {}), ...(env.refreshedOn ? { refreshedOn: env.refreshedOn } : {}) };
+    return { weeks, retired, ...(env.retiredSeeded ? { retiredSeeded: true } : {}), ...(env.retiredOk ? { retiredOk: env.retiredOk } : {}), ...(env.revive ? { revive: env.revive } : {}), ...(env.refreshedOn ? { refreshedOn: env.refreshedOn } : {}) };
   };
   // 休んでいる料理を、0円で新着に戻す（§46-8）。戻した数と確かめた数を返す。index は呼んだ側が保存する。
   async function revive(index, { excluded, port, list }) {
@@ -479,28 +479,54 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     index.revive = day;
     const live = new Set(index.weeks.flatMap((w) => w.items.map((i) => i.videoId)));
     index.retired = index.retired.filter((v) => !live.has(v));
+    // 確かめ済みで使える料理（retiredOk）：読み出せて、晩ごはんの料理。決まり（3%・親の子の数・説明文の取り直しなど）で今は戻せないものも含む。
+    const okSet = new Set((index.retiredOk || []).filter((v) => !live.has(v)));
+    const dead = (r) => !r || !isDinnerRecipe(r) || (r.caption && !TREND_MARKET.titleLooksLocal(r.caption));
+    const finish = (drop, scanned, revived) => {
+      index.retired = index.retired.filter((v) => !drop.has(v));
+      const inLine = new Set(index.retired);
+      index.retiredOk = [...okSet].filter((v) => inLine.has(v));
+      return { revived, scanned, usable: index.retiredOk.length, unchecked: index.retired.length - index.retiredOk.length };
+    };
     const room = Math.min(REVIVE_PER_DAY - day.n, REVIVE_TARGET - (port?.total || 0));
-    if (room <= 0 || !index.retired.length) return { revived: 0, scanned: 0 };
+    if (!index.retired.length) return finish(new Set(), 0, 0);
+    if (room <= 0) {
+      // 戻す枠がない日：0円で、まだ確かめていない料理から古い順に確かめる（使えない料理を列から外し、使える数を数える）。
+      const drop = new Set();
+      let scanned = 0;
+      for (const v of index.retired) {
+        if (scanned >= REVIVE_SCAN) break;
+        if (okSet.has(v)) continue;
+        scanned += 1;
+        let r;
+        try { r = await peek(v); } catch { continue; } // 読み出せない時は、あとで
+        if (dead(r)) drop.add(v); else okSet.add(v);
+      }
+      return finish(drop, scanned, 0);
+    }
     const items = (await list().catch(() => ({ items: [] }))).items || [];
     const stock = stockOf(items);
     const dbook = await (dishBook || createDishBook(store, { now })).book().catch(() => ({}));
     let week = index.weeks.find((w) => w.revived && w.day === today);
     if (!week) { week = { week: weekOf(now()), revived: true, day: today, startedAt: new Date(now()).toISOString(), items: [] }; index.weeks.push(week); }
-    const drop = new Set(), later = [];
+    const drop = new Set();
     let scanned = 0, revived = 0;
-    for (const v of index.retired) {
+    // 戻す順は、日ごとに決まるランダムな順（2026-10-28 のユーザーの判断。同じ日は同じ順）。
+    const order = [...index.retired].sort((a, b) => dailyRank(today, a) - dailyRank(today, b));
+    for (const v of order) {
       if (revived >= room || scanned >= REVIVE_SCAN) break;
       scanned += 1;
       let r;
-      try { r = await peek(v); } catch { later.push(v); continue; } // 読み出せない時は、あとで
+      try { r = await peek(v); } catch { continue; } // 読み出せない時は、あとで
       // 読めない（削除・非公開・まだ読んでいない）・晩ごはんでない・日本語でない料理は、休みの列から外す。
-      if (!r || !isDinnerRecipe(r) || (r.caption && !TREND_MARKET.titleLooksLocal(r.caption))) { drop.add(v); continue; }
-      // 次のどれかの時は戻さず、列の最後へ（あとで条件が変われば戻せる）：
+      if (dead(r)) { drop.add(v); continue; }
+      okSet.add(v);
+      // 次のどれかの時は、今日は戻さない（あとで条件が変われば戻せる）：
       //   掲載停止／説明文が30日以内に取り直されていない（caption が空）／投稿者が3%に届いている／親料理の子がそろっている・30分以上がもうある／親のない30分以上
       const quick = isQuickDish(r.planning?.minutes);
       const pr = parentOf(r.title, dbook, r.dishName);
       const st = pr ? (stock[pr.key] ||= { quick: 0, long: 0, total: 0 }) : null;
-      if (excluded.has(v) || (r.channelId && excluded.has(r.channelId)) || !r.caption || !portfolioRoom(port, r.channelId) || (st ? !parentRoom(st, quick) : !quick)) { later.push(v); continue; }
+      if (excluded.has(v) || (r.channelId && excluded.has(r.channelId)) || !r.caption || !portfolioRoom(port, r.channelId) || (st ? !parentRoom(st, quick) : !quick)) continue;
       if (st) { if (quick) st.quick += 1; else st.long += 1; st.total += 1; }
       portAdd(port, r.channelId);
       week.items.push({ videoId: v, day: today });
@@ -509,10 +535,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     }
     day.n += revived;
     if (!week.items.length) index.weeks = index.weeks.filter((w) => w !== week);
-    const moved = new Set(later);
-    index.retired = [...index.retired.filter((v) => !drop.has(v) && !moved.has(v)), ...later];
     if (revived) cache = null;
-    return { revived, scanned };
+    return finish(drop, scanned, revived);
   }
   async function lock() {
     const entry = await store.get("trends/lock");
@@ -736,7 +760,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // done：今日はもう集めなくてよい（今日の分・今週の分がそろった／新着集めの AI の枠を使い切った／候補がもうない）。
         // 失敗（通信・一時的な失敗・AI全体の枠・設定の不足）で止めた時は done にしない（paused を見て、次の実行でやり直す）。
         return { week, day: today, items: current.items.length, today: current.byDay[today] || 0,
-          revived: { run: revived.revived, today: index.revive?.n || 0, scanned: revived.scanned, resting: (index.retired || []).length, ...(revived.failed ? { failed: true } : {}) }, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds, skipped: current.skipped || {}, catches: catchesWritten,
+          revived: { run: revived.revived, today: index.revive?.n || 0, scanned: revived.scanned, resting: (index.retired || []).length, usable: (index.retiredOk || []).length, ...(revived.failed ? { failed: true } : {}) }, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds, skipped: current.skipped || {}, catches: catchesWritten,
           ai: { today: current.aiByDay[today] || 0, week: aiWeek(), perDay: aiPerDay, perWeek: aiPerWeek, month: monthUsed + spent, monthCap, yen: Math.round((monthUsed + spent) * yenPerAi), yenCap: yenPerMonth }, ...(paused ? { paused } : {}), ...(limited ? { limited } : {}),
           done: !paused && (quota() <= 0 || !!limited || exhausted) };
       } finally { await unlock(); }
