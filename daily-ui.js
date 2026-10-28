@@ -716,10 +716,10 @@ function renderTodayTodos() {
   const toBuy = dailyShopping().filter((i) => i.status === "buy").length;
   const shopToday = rhythmOn() && shoppingBlock() && shoppingBlock().shopAt.slice(0, 10) <= today();
   if (toBuy && (shopToday || !rhythmOn())) rows.push(`<div class="todo-row"><span>🛒</span><p>買うもの <b>あと${toBuy}品</b></p>${dailyButton("go-view", "リストへ", 'data-view="shopping"')}</div>`);
-  // 自分向けにする追加の質問（スキル試験・ごはん方針・詳しい設定）は、一度に1つだけ。途中のものを先に（2026-10-27 のユーザーの判断）。
+  // 自分向けにする追加の質問（料理の腕前・ごはん方針・詳しい設定）は、一度に1つだけ。途中のものを先に（2026-10-27 のユーザーの判断）。
   const more = [];
-  if (!skillProfile() && !isViewer()) more.push([false, `<div class="todo-row"><span>🔪</span><p><b>スキル試験</b>（10問）→ 作れる料理だけに</p>${dailyButton("life-quiz-start", "受ける")}</div>`]);
-  else if (examReady()) rows.push(`<div class="todo-row"><span>🎖</span><p><b>★${skillProfile().level + 1}の昇級試験</b>が受けられます（5問）</p>${dailyButton("life-exam-start", "受ける")}</div>`);
+  // 料理の腕前は★を選ぶだけ（10秒）。献立から外さず、難しい料理を後ろに並べるのに使う（2026-10-28）。
+  if (!skillProfile() && !isViewer()) more.push([false, `<div class="todo-row"><span>🔪</span><p><b>料理の腕前</b>を★で選ぶ（10秒）→ 作りやすい料理から並べます</p>${dailyButton("life-skill-open", "選ぶ")}</div>`]);
   const talk = renderTalkTodo();
   if (talk) more.push([!!talkProfile().session, talk]);
   if (!state.foodProfile?.completed) more.push([!!state.onboardingDraft, `<div class="todo-row"><span>✍️</span><p>好み・常備品まで教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`]);
@@ -1302,7 +1302,6 @@ function dailyRecord(slot) {
   const own = saveOwnRecipe(slot.recipe);
   const id = `meal-${slot.date}`;
   if (!state.evaluations.some((e) => e.id === id)) {
-    const before = cookStats();
     state.evaluations.unshift({
       id,
       recipeId: own.id,
@@ -1315,7 +1314,6 @@ function dailyRecord(slot) {
       photo: "",
       updatedAt: nowIso(),
     });
-    celebrateCook(before);
     noteInstallCook();
     // 定番フォルダの作り方なら、ランキングの何位かを聞く。
     if (folderOfRecipe(own)) rankPromptId = own.id;
@@ -1445,8 +1443,11 @@ function handleDailyAction(action, data) {
     }
     profileDraft().quickSetupIndex = Math.min(QUICK_STEPS - 1, profileDraft().quickSetupIndex + 1);
   }
+  if (action === "life-skill-clear") { state.skillProfile = null; state.planOverrides = {}; showToast("腕前を使わない並べ方に戻しました。"); }
+  if (action === "life-skill-open") { state.view = "settings"; saveState(); openSetting("skill"); return true; }
   if (action === "life-quick-skill") {
-    state.skillProfile = { level: Number(data.level), growth: state.skillProfile?.growth || "steady", diagnosed: false, updatedAt: nowIso() };
+    setSkillLevel(data.level);
+    if (state.onboarded) showToast(`腕前を★${data.level}にしました。難しい料理は後ろのほうに並べます。`);
     // スキルの画面が初回設定にある時だけ、次の画面へ（2026-10-28 から初回にはない）。
     if (FUNNEL.includes(2) && FUNNEL[profileDraft().quickSetupIndex] === 2) profileDraft().quickSetupIndex = FUNNEL.indexOf(2) + 1;
   }
@@ -1893,7 +1894,6 @@ function handleDailyAction(action, data) {
   if (action === "life-share-stats") { try { localStorage.setItem("ripigochi-share-stats", shareStatsOn() ? "off" : "on"); } catch {} }
   if (action === "life-starters-unhide" && !isViewer()) { state.starterPref = { ...normalizeStarterPref(state.starterPref), hidden: [], hiddenDishes: [], updatedAt: nowIso() }; showToast("非表示にしたおすすめを戻しました。"); }
   if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
-  if (action === "life-skill-growth" && state.skillProfile) { state.skillProfile = { ...state.skillProfile, growth: data.value === "grow" ? "grow" : "steady", updatedAt: nowIso() }; state.planOverrides = {}; }
   // The first-plan welcome stays until the next real action on the plan.
   if (!["life-finish", "life-cal-pick", "life-week", "life-rhythm"].includes(action)) firstPlanReveal = false;
   if (action === "life-reveal-close") firstPlanReveal = false;
@@ -2092,7 +2092,7 @@ const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", 
 //  ・方針の会話（talk）を、食べられないもの・器具・時間・スキルのあとに入れた（聞き返し・確認・保存まで）
 // 2026-10-28 の見直し（ユーザーの判断「少ない質問で魅力的な献立を出し、あとから段階的に聞く」）：初回は7画面だけ
 // （人数 → 一緒に食べる人 → 食べられないもの → 平日の時間 → リズム → 気になる料理 → 確認といつから始めるか）。
-// 器具（基本の道具のまま）・スキル・ごはん方針は「今日やること」から1つずつ（スキル試験・方針・詳しい設定）。
+// 器具（基本の道具のまま）・腕前・ごはん方針は「今日やること」から1つずつ（料理の腕前・方針・詳しい設定）。
 // 動画の習慣・読み取りのお試し・1年の損・目標・カレンダーの登録は初回から外した（画面の関数は残す）。
 const FUNNEL = [0, "eaters", 4, 3, 1, "picks", "result"];
 // 2026-09-30〜10-27 の順番（途中まで進んだ人の移し替えだけに使う）。
@@ -2485,21 +2485,6 @@ function funnelProgress(i) {
   const block = (k) => `<li class="${k < i ? "is-done" : k === i ? "is-current" : ""}"></li>`;
   return `<div class="funnel-parts" role="progressbar" aria-label="初回設定の進み具合" aria-valuemin="1" aria-valuemax="${QUICK_STEPS}" aria-valuenow="${i + 1}" aria-valuetext="${i + 1} / ${QUICK_STEPS}"><div class="fs-part is-active"><span class="fs-label">はじめの設定（${i + 1} / ${QUICK_STEPS}）</span><ol class="funnel-steps" style="--n:${QUICK_STEPS}">${FUNNEL.map((_, k) => block(k)).join("")}</ol></div></div>`;
 }
-// 自分で選ぶ時のスキル（診断しない人向け）。
-const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒める・煮るならOK", 3: "照り焼きやガパオも作れる", 4: "ハンバーグや揚げ焼きも", 5: "揚げ物も魚をおろすのも" };
-// 料理スキル：写真のAI判定と10問の試験の両方で、総合的に判断する（片方だけでも進める）。
-function renderSkillStep() {
-  const sp = state.skillProfile;
-  const levels = [1, 2, 3, 4, 5].map((l) => `<button type="button" class="rhythm-option" data-action="life-quick-skill" data-level="${l}" aria-pressed="${sp?.level === l && !sp?.diagnosed}"><strong><span class="skill-stars">${Skills.stars(l)}</span> ${SKILL_TYPES[l].name}</strong><small>${SKILL_PICK_HINT[l]}</small></button>`).join("");
-  const quiz = sp?.quizLevel
-    ? `<div class="skill-part is-done"><p class="sp-head">📝 テスト <b>${Skills.stars(sp.quizLevel)}</b></p><p class="small">${sp.score !== undefined ? `${sp.score}点・${kyuOfScore(sp.score)}` : "受験ずみ"}</p><button type="button" class="link-inline" data-action="life-quiz-start">もう一度</button></div>`
-    : `<button type="button" class="skill-part quiz-start" data-action="life-quiz-start"><span aria-hidden="true">📝</span><b>スキル試験</b><small>10問・4択の知識問題</small></button>`;
-  const both = sp?.quizLevel && sp?.photoLevel;
-  const total = sp?.diagnosed ? `<div class="skill-total"><p class="st-label">${both ? "写真 ＋ テストの総合" : "いまの判定（もう片方もやると、より正確に）"}</p><p class="quiz-stars">${Skills.stars(sp.level)}</p><p class="st-name">${SKILL_TYPES[sp.level].name}</p>${both ? '<p class="cc-badge">✓ 写真とテストで診断ずみ・ぴったり度 高</p>' : ""}</div>` : "";
-  return `<p class="small">作れる料理だけ出します ${tip("写真とテスト、両方やると精度が上がります")}</p>
-    <div class="skill-parts">${renderPhotoJudge()}${quiz}</div>${total}
-    <details class="skill-self" ${sp && !sp.diagnosed ? "open" : ""}><summary>どちらもしないで、自分で選ぶ</summary><div class="skill-picks">${levels}</div></details>`;
-}
 function renderQuickSetup() {
   const p = profileDraft(), i = p.quickSetupIndex;
   const key = FUNNEL[i];
@@ -2537,7 +2522,7 @@ function renderQuickSetup() {
   const content = [
     `<div class="funnel-picks is-servings">${SERVINGS.map(([n, label]) => `<button type="button" class="funnel-pick" data-action="life-servings" data-count="${n}" aria-pressed="${Number(p.servings) === n}"><span class="fp-icon" aria-hidden="true">${"🧑".repeat(Math.min(n, 4))}${n >= 5 ? "＋" : ""}</span>${label}</button>`).join("")}</div>`,
     `<div class="rhythm-options">${Object.entries(RHYTHMS).map(([id, r]) => `<button type="button" class="rhythm-option" data-action="life-rhythm" data-preset="${id}" aria-pressed="${rhythmNow === id}"><strong>${r.label}${id === "weekday" ? " ⭐おすすめ" : ""}</strong><small>${r.note}</small></button>`).join("")}</div><label class="rhythm-time">買い物の時間（まとまりの前日）<select id="rhythm-time" class="input">${SHOP_TIMES.map((t) => `<option ${(state.rhythm?.shopTime || "17:00") === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>`,
-    renderSkillStep(),
+    "", // 2：料理の腕前は初回設定から外した（2026-10-28。設定の「料理の腕前」で★を選ぶ）
     `${renderTimeDial(p.weekdayMinutes)}<p class="muted small">炊飯の時間は別</p>`,
     `<h3 class="quick-sub">アレルギー・食べられないもの</h3><div class="profile-options">${Lifestyle.restrictionOptions.map((n) => optionInput("restrictions", n, n, true)).join("")}</div>
      <h3 class="quick-sub">苦手なもの・一覧にない食材</h3><div class="profile-options">${COMMON_DISLIKES.map((n) => optionInput("dislikes", n, n, true)).join("")}</div>${chipField("dislikes", "ほかにあれば入力（例：キウイ）")}

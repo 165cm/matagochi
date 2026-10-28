@@ -87,9 +87,9 @@ test("joined first round: one shopping reminder, 「買い物済み」 covers al
 test("today's to-dos: only one of the extra questions at a time, and one already started comes first", () => {
   const run = app();
   const html = () => run("renderTodayTodos()");
-  const count = (h) => ["スキル試験", "わが家のごはん方針", "好み・常備品まで教えると"].filter((w) => h.includes(w)).length;
+  const count = (h) => ["料理の腕前", "わが家のごはん方針", "好み・常備品まで教えると"].filter((w) => h.includes(w)).length;
   assert.equal(count(html()), 1);
-  assert.ok(html().includes("スキル試験"));
+  assert.ok(html().includes("料理の腕前"));
   assert.ok(!html().includes("好みとキッチン"), "the kitchen was already asked in the first setup");
   run("state.skillProfile = { level: 2 }");
   assert.equal(count(html()), 1);
@@ -102,14 +102,14 @@ test("today's to-dos: only one of the extra questions at a time, and one already
 test("today's to-dos: a policy talk in progress comes first; once saved or closed, the next question shows", () => {
   const run = app();
   const html = () => run("renderTodayTodos()");
-  const count = (h) => ["スキル試験", "わが家のごはん方針", "好み・常備品まで教えると"].filter((w) => h.includes(w)).length;
+  const count = (h) => ["料理の腕前", "わが家のごはん方針", "好み・常備品まで教えると"].filter((w) => h.includes(w)).length;
   run("talkProfile().session = { member: talkWho(), stage: 'ask', q: '', startedAt: '', updatedAt: '' }");
   assert.equal(count(html()), 1);
   assert.ok(html().includes("わが家のごはん方針") && html().includes("続きから"), "the talk already started wins over the skill quiz");
-  // 方針を保存し終えたら、方針の行は消えて次（スキル試験）へ。
+  // 方針を保存し終えたら、方針の行は消えて次（料理の腕前）へ。
   run("talkProfile().session = null; talkProfile().snapshots.push({ v: 1, at: '2026-10-01T00:00:00Z', member: talkWho(), reason: 'first', items: [] })");
   assert.equal(count(html()), 1);
-  assert.ok(html().includes("スキル試験") && !html().includes("わが家のごはん方針"));
+  assert.ok(html().includes("料理の腕前") && !html().includes("わが家のごはん方針"));
   // 試験も済み、方針を ✕ で閉じた人には、詳しい設定が出る。
   run("state.skillProfile = { level: 2 }; talkProfile().snapshots = []; talkProfile().dismissedAt = '2026-10-01T00:00:00Z'");
   assert.equal(count(html()), 1);
