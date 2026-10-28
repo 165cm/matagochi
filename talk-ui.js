@@ -76,9 +76,11 @@ function renderTalk() {
   const a = ProfileTalk.answersOf(p, s.member);
   const list = ProfileTalk.asked(p, s.member);
   const n = list.findIndex((x) => x.id === q.id) + 1;
-  const current = a[q.id];
+  // 写真12枚（好きな料理）：まだ答えていなければ、以前の答えから選んでおいたものを見せる。
+  const suggested = q.photo && a[q.id] === undefined ? dishPickSuggest(dailyProfile()) : [];
+  const current = suggested.length ? suggested : a[q.id];
   const picked = (v) => (Array.isArray(current) ? current.includes(v) : current === v);
-  const picks = q.choices(a).map(([v, icon, label]) => `<button type="button" class="funnel-pick" data-action="${q.multi ? "life-talk-toggle" : "life-talk-pick"}" data-q="${q.id}" data-value="${v}" aria-pressed="${picked(v)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${escapeHtml(label)}</button>`).join("");
+  const picks = q.photo ? "" : q.choices(a).map(([v, icon, label]) => `<button type="button" class="funnel-pick" data-action="${q.multi ? "life-talk-toggle" : "life-talk-pick"}" data-q="${q.id}" data-value="${v}" aria-pressed="${picked(v)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${escapeHtml(label)}</button>`).join("");
   const note = ProfileTalk.draftOf(p, s.member, q.id) ?? (p.answers.find((x) => x.member === s.member && x.q === q.id)?.text || "");
   const answered = Object.keys(a).length;
   const keep = s.q && current !== undefined && current !== ProfileTalk.LATER;
@@ -86,7 +88,7 @@ function renderTalk() {
     ${talkHeader(`<span>質問 ${n} / ${list.length}</span>`)}
     ${talkEcho ? `<p class="funnel-echo" role="status">💬 ${escapeHtml(talkEcho)}</p>` : ""}
     <h2 id="talk-q" tabindex="-1">${escapeHtml(q.ask(a))}</h2>
-    <div class="funnel-picks talk-picks" role="group" aria-label="${escapeAttr(q.ask(a))}">${picks}</div>
+    ${q.photo ? `${suggested.length && !dailyProfile().dishPicksAt ? `<p class="muted small">以前の答えから選んでおきました。変えられます</p>` : ""}${renderDishPickGrid(Array.isArray(current) ? current : [], (d) => `data-action="life-talk-toggle" data-q="${q.id}" data-value="${d.id}"`)}` : `<div class="funnel-picks talk-picks" role="group" aria-label="${escapeAttr(q.ask(a))}">${picks}</div>`}
     ${q.multi ? `<button type="button" class="primary-button full-button" data-action="life-talk-multi-done" data-q="${q.id}" ${Array.isArray(current) && current.length ? "" : "disabled"}>これで決定</button>` : ""}
     <details class="talk-note" ${note ? "open" : ""}><summary>✍️ ひとこと書く（任意）</summary><label class="sr-only" for="talk-text">ひとこと</label><textarea id="talk-text" class="input" data-q="${q.id}" maxlength="200" rows="2" placeholder="例：骨がこわくて、子どもに出しにくい">${escapeHtml(note)}</textarea><p class="muted small">端末の中だけに保存します</p></details>
     <div class="talk-skip">${keep ? `<button type="button" class="text-button" data-action="life-talk-keep">このままでいい</button>` : ""}<button type="button" class="text-button" data-action="life-talk-pick" data-q="${q.id}" data-value="${ProfileTalk.IDK}">わからない</button><button type="button" class="text-button" data-action="life-talk-pick" data-q="${q.id}" data-value="${ProfileTalk.LATER}">あとで</button></div>
@@ -362,15 +364,20 @@ function handleTalkAction(action, data) {
     }
     if (action === "life-talk-toggle") {
       const cur = ProfileTalk.answersOf(talkProfile(), s.member)[data.q];
-      const list = Array.isArray(cur) ? cur : [];
+      // 写真12枚：まだ答えていない時は、先に選んでおいたもの（以前の答えから）に足し引きする。
+      const list = Array.isArray(cur) ? cur : cur === undefined && ProfileTalk.QUESTION[data.q]?.photo ? dishPickSuggest(dailyProfile()) : [];
       const next = list.includes(data.value) ? list.filter((x) => x !== data.value) : [...list, data.value];
       // 何も選んでいない時は、答えを消して「まだ」に戻す。
       talkSet(next.length ? ProfileTalk.answer(talkProfile(), { member: s.member, q: data.q, value: next, text, at }) : { ...talkProfile(), answers: talkProfile().answers.filter((x) => !(x.member === s.member && x.q === data.q)) });
+      if (ProfileTalk.QUESTION[data.q]?.photo) saveDishPicks(next, { talk: false });
       s.q = data.q;
     }
     if (action === "life-talk-multi-done") {
-      const value = ProfileTalk.answersOf(talkProfile(), s.member)[data.q];
-      if (value !== undefined) talkSet(ProfileTalk.answer(talkProfile(), { member: s.member, q: data.q, value, text, at }));
+      const photo = !!ProfileTalk.QUESTION[data.q]?.photo;
+      const answered = ProfileTalk.answersOf(talkProfile(), s.member)[data.q];
+      const value = answered === undefined && photo ? dishPickSuggest(dailyProfile()) : answered;
+      if (value !== undefined && (!Array.isArray(value) || value.length)) talkSet(ProfileTalk.answer(talkProfile(), { member: s.member, q: data.q, value, text, at }));
+      if (photo && Array.isArray(value) && value.length) saveDishPicks(value, { talk: false });
       talkAfterAnswer(data.q);
     }
     if (action === "life-talk-keep") { s.q = ""; s.stage = ProfileTalk.nextQuestion(talkProfile(), s.member) ? "ask" : "check"; }

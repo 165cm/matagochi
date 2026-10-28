@@ -25,15 +25,15 @@ function app() {
 
 test("questions branch on the reason, and an answered question is never asked again", () => {
   let p = T.empty();
-  // 4問（＋理由）に絞った（2026-10-28）：好きなのに作らないもの → 理由 → 味 → 平日 → 休日。
-  assert.deepEqual(T.QUESTIONS.map((q) => q.id), ["want", "why", "taste", "weeknight", "weekend"]);
+  // 4問（＋理由）に絞った（2026-10-28）：好きなのに作らないもの → 理由 → 食べたい料理（写真12枚） → 平日 → 休日。
+  assert.deepEqual(T.QUESTIONS.map((q) => q.id), ["want", "why", "dishes", "weeknight", "weekend"]);
   assert.equal(T.nextQuestion(p, "わたし").id, "want");
   p = say(p, "want", "fish");
   const why = T.nextQuestion(p, "わたし");
   assert.equal(why.id, "why");
   assert.deepEqual(why.choices(T.answersOf(p, "わたし")).map((c) => c[0]), ["bones", "clean", "doneness", "price"]);
   p = say(p, "why", "clean");
-  p = say(p, "taste", ["light"]);
+  p = say(p, "dishes", ["mabo", "reishabu"]);
   assert.equal(T.nextQuestion(p, "わたし").id, "weeknight");
   // 平日の「早くできる」は、設定の「平日の時間」と重なるので選ばせない。
   assert.deepEqual(T.QUESTION.weeknight.choices({}).map((c) => c[0]), ["onepan", "knife", "any"]);
@@ -41,9 +41,9 @@ test("questions branch on the reason, and an answered question is never asked ag
   assert.equal(T.nextQuestion(p, "わたし"), null);
   // 「特にない」なら理由は聞かない。
   let q = say(T.empty(), "want", "none");
-  assert.equal(T.nextQuestion(q, "わたし").id, "taste");
+  assert.equal(T.nextQuestion(q, "わたし").id, "dishes");
   // わからない・あとでも答え（同じ質問をくり返さない）。
-  q = say(q, "taste", T.IDK);
+  q = say(q, "dishes", T.IDK);
   assert.equal(T.nextQuestion(q, "わたし").id, "weeknight");
 });
 
@@ -205,7 +205,7 @@ test("screen flow: answer → the follow-up is asked back → check → save →
   run("state=normalizeState(JSON.parse(JSON.stringify(state)));saveState=()=>{};render=()=>{};");
   assert.ok(run("renderTodayTodos()").includes("続きから"));
   run("handleDailyAction('life-talk-open',{})");
-  assert.ok(run("renderTalk()").includes("よく食べたい味は？"));
+  assert.ok(run("renderTalk()").includes("食べたい料理は？"));
   run("handleDailyAction('life-talk-check',{})");
   html = run("renderTalk()");
   assert.ok(html.includes('data-id="fish-easy" data-status="confirmed" aria-pressed="true"') && !html.includes("<small>推測</small>"), "the asked-back guess is now confirmed");
@@ -289,18 +289,18 @@ const reload = (run) => run("state=normalizeState(JSON.parse(JSON.stringify(stat
 test("review fix 2: a note typed before closing is kept and comes back (close, keep as is, back, 'later')", () => {
   const run = app();
   run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-pick',{q:'want',value:'none'});");
-  // 味を選ぶ → ひとことを書く → 保存して閉じる
-  run("handleDailyAction('life-talk-toggle',{q:'taste',value:'spicy'})");
-  withNote(run, "taste", "辛さは控えめがいい");
+  // 料理を選ぶ → ひとことを書く → 保存して閉じる
+  run("handleDailyAction('life-talk-toggle',{q:'dishes',value:'mabo'})");
+  withNote(run, "dishes", "辛さは控えめがいい");
   run("handleDailyAction('life-talk-close',{})");
   reload(run);
-  assert.equal(JSON.parse(run("JSON.stringify(ProfileTalk.answersOf(state.tasteProfile, me()))")).taste[0], "spicy");
-  assert.equal(run("state.tasteProfile.answers.find(a=>a.q==='taste').text"), "辛さは控えめがいい", "the note is saved with the answer");
-  run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-edit',{q:'taste'})");
+  assert.equal(JSON.parse(run("JSON.stringify(ProfileTalk.answersOf(state.tasteProfile, me()))")).dishes[0], "mabo");
+  assert.equal(run("state.tasteProfile.answers.find(a=>a.q==='dishes').text"), "辛さは控えめがいい", "the note is saved with the answer");
+  run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-edit',{q:'dishes'})");
   assert.ok(run("renderTalk()").includes("辛さは控えめがいい"), "and shown again on that question");
   // まだ答えていない質問で書いて閉じた時も、書きかけとして戻る。
-  withNote(run, "taste", "辛さは控えめがいい");
-  run("handleDailyAction('life-talk-multi-done',{q:'taste'})");
+  withNote(run, "dishes", "辛さは控えめがいい");
+  run("handleDailyAction('life-talk-multi-done',{q:'dishes'})");
   assert.ok(run("renderTalk()").includes("平日の夜、ゆずれないのは？"));
   withNote(run, "weeknight", "子どもが寝る前に");
   run("handleDailyAction('life-talk-close',{})");
@@ -385,24 +385,24 @@ test("review fix 5: after saving the policy, reopening asks the 'later' question
   const run = app();
   // 1. 特にない → 2. 味の質問で「あとで」 → 3. この方針で保存 → 閉じる → 設定から開き直す
   run("handleDailyAction('life-talk-open',{});handleDailyAction('life-talk-pick',{q:'want',value:'none'})");
-  assert.ok(run("renderTalk()").includes("よく食べたい味は？"));
-  run("handleDailyAction('life-talk-pick',{q:'taste',value:'later'});handleDailyAction('life-talk-pick',{q:'weeknight',value:'any'});handleDailyAction('life-talk-pick',{q:'weekend',value:'same'})");
+  assert.ok(run("renderTalk()").includes("食べたい料理は？"));
+  run("handleDailyAction('life-talk-pick',{q:'dishes',value:'later'});handleDailyAction('life-talk-pick',{q:'weeknight',value:'any'});handleDailyAction('life-talk-pick',{q:'weekend',value:'same'})");
   assert.equal(run("state.tasteProfile.session.stage"), "check", "nothing else to ask in this talk");
   run("handleDailyAction('life-talk-save',{});handleDailyAction('life-talk-close',{})");
   assert.equal(run("state.tasteProfile.session"), null);
   reload(run);
   run("handleDailyAction('life-talk-open',{})");
   assert.equal(run("state.tasteProfile.session.stage"), "ask");
-  assert.ok(run("renderTalk()").includes("よく食べたい味は？"), "the 'later' question is on screen");
+  assert.ok(run("renderTalk()").includes("食べたい料理は？"), "the 'later' question is on screen");
   // 「あとで」がなく、聞くことが残っていない時は、これまでどおり確認の画面から。
-  run("handleDailyAction('life-talk-toggle',{q:'taste',value:'light'});handleDailyAction('life-talk-multi-done',{q:'taste'});handleDailyAction('life-talk-save',{});handleDailyAction('life-talk-close',{})");
+  run("handleDailyAction('life-talk-toggle',{q:'dishes',value:'reishabu'});handleDailyAction('life-talk-multi-done',{q:'dishes'});handleDailyAction('life-talk-save',{});handleDailyAction('life-talk-close',{})");
   reload(run);
   run("handleDailyAction('life-talk-open',{})");
   assert.equal(run("state.tasteProfile.session.stage"), "check");
 });
 
 test("PR 2b: the weekend question; weekend-only preferences apply on Saturday and Sunday only", () => {
-  let p = say(say(say(T.empty(), "want", "none"), "taste", T.IDK), "weeknight", "any");
+  let p = say(say(say(T.empty(), "want", "none"), "dishes", T.IDK), "weeknight", "any");
   assert.equal(T.nextQuestion(p, "わたし").id, "weekend");
   p = say(p, "weekend", "cook");
   assert.equal(T.nextQuestion(p, "わたし"), null);

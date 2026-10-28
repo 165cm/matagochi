@@ -35,7 +35,7 @@ const profileTitles = [
   "自炊する曜日は？",
   "食べられないもの",
   "苦手な食材",
-  "ごはんの好み診断",
+  "好きな料理と、ごはんタイプ",
   "料理に使える時間",
   "どんな作り方がいい？",
   "キッチンの持ちもの",
@@ -134,6 +134,7 @@ function profileSummary(p) {
     ],
     ["食べられない食材", p.restrictions.join("、") || "未指定"],
     ["苦手な食材", p.dislikes.join("、") || "未指定"],
+    ["好きな料理", p.dishPicksAt ? p.dishPicks.map((id) => FoodTaste.IDEAL_OF[id].label).join("、") || "なし" : "写真から選ぶ"],
     ["夜ごはんタイプ", p.dinnerPriorities.length ? DinnerPersona.result(p.dinnerPriorities).title : "診断で見つける"],
     [
       "調理時間",
@@ -151,7 +152,7 @@ function profileSummary(p) {
     ],
     ["使い切りたい", p.useUp.join("、") || "なし"],
   ];
-  return `<dl class="profile-summary">${rows.map(([k, v], i) => `<div><dt>${k}</dt><dd>${escapeHtml(v)}</dd>${dailyButton("life-section", "変更", `data-step="${[0, 1, 2, 3, 4, 5, 6, 7, 8, 13, 14][i]}"`)}</div>`).join("")}</dl>`;
+  return `<dl class="profile-summary">${rows.map(([k, v], i) => `<div><dt>${k}</dt><dd>${escapeHtml(v)}</dd>${dailyButton("life-section", "変更", `data-step="${[0, 1, 2, 3, 4, 4, 5, 6, 7, 8, 13, 14][i]}"`)}</div>`).join("")}</dl>`;
 }
 // ベータ版の目印：いまは晩ごはんだけ（朝ごはん・お弁当はこれから）。
 const betaBadge = () => `<span class="beta-badge">ベータ版 <i>for 晩ごはん</i></span>`;
@@ -1668,6 +1669,9 @@ function handleDailyAction(action, data) {
     const p = profileDraft();
     if (action === "life-next")
       trackDaily("profile_step_completed", { step: p.step });
+    // 写真12枚で選んだまま「次へ」：決定を押した時と同じに保存する。
+    if (p.step === 4 && action === "life-next" && dishPickDraft?.length) saveDishPicks(dishPickDraft);
+    if (p.step === 4) dishPickDraft = null;
     if (p.step === 4 && p.tasteReturnStep !== null) {
       p.step = p.tasteReturnStep;
       p.tasteReturnStep = null;
@@ -1696,9 +1700,6 @@ function handleDailyAction(action, data) {
     const chosen = [...finishFunnelPicks(), ...(funnelDemo.result ? [funnelDemo.result] : [])];
     trackDaily("profile_completed");
     const p = Lifestyle.profile(profileDraft());
-    // 外食で選んだお店の味（和風・洋風・中華風）を、献立の好みに入れる。
-    const liked = chainTastes(p);
-    if (liked.length) p.tastes = [...new Set([...liked, ...(p.tastes || [])])];
     p.completed = p.quickSetupIndex === null || p.completed;
     p.quickSetupIndex = null;
     p.completedAt = nowIso();
