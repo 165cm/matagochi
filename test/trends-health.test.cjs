@@ -108,11 +108,12 @@ test("月の費用に、この実行で補充が使った AI の分を足す（r
 
 test("月末まで均等・利用者の分を残すための止まり方は赤にせずメモ。戻した料理と休んでいる料理を出す（§46-8）", () => {
   const list = { items: items(300) };
-  const paced = judge({ refresh: { today: 0, limited: "trend_pace", done: true, revived: { run: 40, today: 40, scanned: 120, resting: 300 } }, refill: { added: 0, done: true, reason: "pace_budget" }, list, now: NOW });
+  const paced = judge({ refresh: { today: 0, limited: "trend_pace", done: true, revived: { run: 40, today: 40, scanned: 120, resting: 300, usable: 120 } }, refill: { added: 0, done: true, reason: "pace_budget" }, list, now: NOW });
   assert.equal(paced.ok, true);
   assert.equal(paced.notes.length, 2);
   assert.deepEqual([paced.numbers.revived, paced.numbers.resting], [40, 300]);
   assert.match(markdown(paced), /今日もう一度並べた料理.*\| 40品 \|/);
+  assert.match(markdown(paced), /確かめ済みで使える料理.*\| 120品 \|/);
   const reserve = judge({ refresh: { today: 0, limited: "trend_user_reserve", done: true }, refill: { added: 0, done: true, reason: "user_reserve" }, list, now: NOW });
   assert.equal(reserve.ok, true);
   assert.match(reserve.notes.join(), /利用者の分/);

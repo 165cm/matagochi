@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>管理画面のヘルプ｜リピごち 管理</title>
+<link rel="icon" href="../icons/favicon-32.png">
+<style>
+  /* 管理画面（admin/catalog.html）の見方。運営だけが読む。数字はここには載せない（本物の数字は合言葉で読み込む。見え方はデモで）。 */
+  :root { --bg: #fff8ee; --surface: #fffdf8; --ink: #2a2420; --muted: #7a6e64; --line: #efe4d6; --tomato: #ee6a4c; --soft: #fff6dc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.75 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 28px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; margin: 16px 0 4px; }
+  p, li { margin: 6px 0; }
+  ul { padding-left: 1.3em; }
+  a { color: #b5442a; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 10px 0; }
+  .demo { display: inline-block; margin-top: 6px; padding: 10px 16px; border-radius: 999px; background: var(--tomato); color: #fff; font-weight: 700; text-decoration: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { white-space: nowrap; }
+  nav ol { padding-left: 1.3em; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <p class="meta"><a href="catalog.html">← 管理画面に戻る</a></p>
+  <h1>管理画面のヘルプ</h1>
+  <p>品ぞろえ（管理）の画面で、何が見られて、数字をどう読めばよいかをまとめました。本物の数字を見るには管理用の合言葉が必要です。<b>見え方だけなら、合言葉なしのデモで確かめられます。</b></p>
+  <div class="card">
+    <b>🧪 デモを見る</b>
+    <p class="meta">サンプルの数字で「📈 採用率」「🤝 投稿者」のタブを表示します。サーバーには何も送りません。</p>
+    <a class="demo" href="catalog.html?demo=1">デモを開く</a>
+  </div>
+
+  <nav class="card" aria-label="目次">
+    <b>目次</b>
+    <ol>
+      <li><a href="#adopt">📈 採用率（どの料理が献立に選ばれているか）</a></li>
+      <li><a href="#seed">📥 集める（新着の料理を集める）</a></li>
+      <li><a href="#rest">休んでいる料理と、毎朝の健康診断</a></li>
+      <li><a href="#creators">🤝 投稿者</a></li>
+      <li><a href="#recipes">📚 レシピ一覧・🍲 親の料理名</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="adopt">1. 📈 採用率</h2>
+  <p>集めた料理が、利用者の献立に<b>どれくらい選ばれているか</b>を料理ごとに見る表です。この月と前の月（日本時間の暦）を数えます。</p>
+  <table>
+    <tr><th>列</th><th>意味</th></tr>
+    <tr><td>候補に出た</td><td>献立の候補として、利用者の画面に出た回数（同じ端末・同じ料理は1日1回）</td></tr>
+    <tr><td>献立に入った</td><td>その料理が献立に入った回数</td></tr>
+    <tr><td>作った</td><td>利用者が「作った」を押した回数</td></tr>
+    <tr><td>採用率</td><td>献立に入った ÷ 候補に出た。候補に出た回数が少ないうちは「—」</td></tr>
+    <tr><td>残す</td><td>✓＝新着から献立に入ったので「みんなの定番」に残している（28日を過ぎても一覧に出る）</td></tr>
+    <tr><td>同意</td><td>✓＝投稿者が「みんなが見る一覧に載せる」に同意している</td></tr>
+  </table>
+  <h3>読み方のヒント</h3>
+  <ul>
+    <li><b>採用率が高く、候補に出た回数も多い</b>料理は「当たり」です。同じ親の料理（例：しょうが焼き）や同じ投稿者の料理を増やす手がかりになります。</li>
+    <li><b>候補に何度も出たのに採用率が低い</b>料理は、利用者に選ばれていません。題名・写真・時間が合っていない可能性があります。</li>
+    <li><b>作った</b>が多い料理は、実際に作られた＝満足度の高い料理です。献立に入った回数より重く見ます。</li>
+    <li>回数はすべて<b>匿名</b>です（端末ごとのランダムな番号と回数だけ。誰が選んだか・料理名は送っていません）。</li>
+  </ul>
+  <p>下の「月の費用（新着集め）」は、新着集めで AI を使った回数と目安の費用です（AI 1回＝1円で数える。上限は月1,000円）。</p>
+  <p class="meta">まだないもの：採用率をもとに「残す・外す」を決める基準（データがたまってから決める予定）。</p>
+
+  <h2 id="seed">2. 📥 集める</h2>
+  <p>YouTube からレシピ動画を探して AI で読み、新着として28日間見せる仕組みの状態です。ふだんは<b>毎朝の自動実行</b>（GitHub の「Weekly trend recipes」）が集めるので、ここで押す必要はありません。「100円分集める」は、まとめて増やしたい時の手動の操作です（費用がかかります）。</p>
+  <ul>
+    <li><b>目標</b>：見えている新着 約400品（親料理80 × 子5品）。</li>
+    <li><b>予算</b>：月1,000円。毎日の自動の分は「月の上限 × 今日の日 ÷ その月の日数」まで（月の前半で使い切らないように）。</li>
+    <li><b>利用者の分を残す</b>：アプリ全体の AI の月の回数のうち3割は、利用者の YouTube 読み取りのために残し、新着集めは使いません。</li>
+    <li><b>0円のふるい</b>：説明欄に作り方が書いていない動画は、AI で読む前に外します。</li>
+  </ul>
+
+  <h2 id="rest">3. 休んでいる料理と、毎朝の健康診断</h2>
+  <p>28日を過ぎた新着は消さずに<b>「休んでいる料理」</b>になります。見えている新着が400品より少ない日は、毎朝、休んでいる料理から<b>1日80品まで0円で</b>新着に戻します（日ごとのランダムな順。AI も YouTube の検索も使いません）。</p>
+  <p>戻す時も、ふだんの決まりは守ります：掲載停止の投稿者は出さない／説明文を30日以内に取り直していること（YouTube の決まり）／1人の投稿者は新着全体の3%まで／同じ親料理は6品まで など。</p>
+  <p>毎朝の自動実行の最後に<b>健康診断</b>が動き、GitHub の実行の画面（Actions → Weekly trend recipes → 実行を開く → Summary）に表が出ます。</p>
+  <table>
+    <tr><th>項目</th><th>意味</th></tr>
+    <tr><td>今日増えた料理</td><td>AI で新しく読んで新着に入れた数</td></tr>
+    <tr><td>今日もう一度並べた料理</td><td>休んでいる料理から0円で戻した数</td></tr>
+    <tr><td>休んでいる料理</td><td>もう一度並べられるのを待っている数（まだ確かめていないものも含む）</td></tr>
+    <tr><td>うち、確かめ済みで使える料理</td><td>読み出せて、晩ごはんの料理だと確かめた数。残りは毎日0円で確かめ、使えないものは列から外します</td></tr>
+    <tr><td>いま見えている新着</td><td>アプリに出ている新着の数（目安200品・目標400品）</td></tr>
+    <tr><td>7日以内に見えなくなる料理</td><td>もうすぐ28日を過ぎて休みに入る数</td></tr>
+  </table>
+  <p><b>赤（失敗）になって GitHub からメールが届く時</b>：AI の利用枠や今月の予算が切れて集められなかった／サーバーから返事がない／見えている新着が200品より少ない。<br>
+  <b>赤にならない（メモだけ）</b>：今日の分の予算を使った（月末まで均等）・利用者の分を残すために止めた、など決まりどおりの止まり方。</p>
+
+  <h2 id="creators">4. 🤝 投稿者</h2>
+  <p>献立によく入るのに「みんなが見る一覧に載せる」の同意がない投稿者です。同意をお願いするかは運営が判断して連絡します。</p>
+
+  <h2 id="recipes">5. 📚 レシピ一覧・🍲 親の料理名</h2>
+  <ul>
+    <li><b>📚 レシピ一覧</b>：新着と、献立に入った・残した料理。行を押すと材料・手順・動画が開き、手順ごとの再生位置（▶ の時刻）を直せます。「手順の時刻の点検（0円）」で、時刻のおかしいレシピを探せます。</li>
+    <li><b>🍲 親の料理名</b>：集めた料理を料理名（親）ごとにまとめます（例：塩こんぶ肉じゃが → 肉じゃが）。まちがったまとめ方は「外す」、表記ゆれは「まとめる」で直せます。</li>
+  </ul>
+  <p class="meta">くわしい仕様は docs/APP_MAP.md の §45・§46 にあります。</p>
+</main>
+</body>
+</html>

@@ -152,3 +152,31 @@ test('④ review fix (#172): if reading the old tried list fails, the one-time p
   assert.equal((await book.step()).revived.run, 1, 'picked up on the next run');
   assert.equal((await get('trends/index')).envelope.retiredSeeded, true);
 });
+
+test('④ the order is a random one fixed for the day (not simply the oldest first)', async () => {
+  const store = createMemorySyncStore(), catalog = fakeCatalog();
+  const ids = await oldWeek(store, catalog, REVIVE_PER_DAY + 40);
+  const book = make(store, catalog);
+  await book.step();
+  const revived = (await store.get('trends/index')).envelope.weeks.find((w) => w.revived).items.map((i) => i.videoId);
+  assert.equal(revived.length, REVIVE_PER_DAY);
+  assert.notDeepEqual(revived, ids.slice(0, REVIVE_PER_DAY), 'not the oldest first');
+});
+
+test('④ on a day with no room, resting dishes are checked for free: dead ones leave the line, usable ones are counted', async () => {
+  const store = createMemorySyncStore(), catalog = fakeCatalog();
+  let i = 0;
+  const ids = await oldWeek(store, catalog, REVIVE_PER_DAY + 4, () => (i++ === REVIVE_PER_DAY + 3 ? { title: '簡単プリン' } : {}));
+  const book = make(store, catalog);
+  const first = await book.step();
+  assert.equal(first.revived.run, REVIVE_PER_DAY);
+  // 同じ日の2回目：枠がない → 残りを確かめるだけ（戻さない・AI なし）
+  const again = await book.step();
+  assert.equal(again.revived.run, 0);
+  const ix = (await store.get('trends/index')).envelope;
+  const dessert = ids[REVIVE_PER_DAY + 3];
+  assert.equal(again.revived.resting, ix.retired.length);
+  assert.equal(again.revived.usable, ix.retired.filter((v) => v !== dessert).length, 'every remaining dinner dish is counted as usable');
+  assert.ok(!ix.retired.includes(dessert), 'a non-dinner dish leaves the line once checked');
+  assert.equal(catalog.ai, 0);
+});

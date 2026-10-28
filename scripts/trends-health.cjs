@@ -79,6 +79,7 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
       added,
       revived: Number.isFinite(refresh?.revived?.today) ? refresh.revived.today : null,
       resting: Number.isFinite(refresh?.revived?.resting) ? refresh.revived.resting : null,
+      usable: Number.isFinite(refresh?.revived?.usable) ? refresh.revived.usable : null,
       // 新着集めの返事は補充の前の月の費用なので、この実行で補充が使った分を足す（review fix #171）
       monthYen: Number.isFinite(ai.yen) ? ai.yen + Math.round(refillAi * YEN_PER_AI) : null,
       monthYenCap: Number.isFinite(ai.yenCap) ? ai.yenCap : null,
@@ -97,6 +98,7 @@ function markdown(result, { minVisible = MIN_VISIBLE } = {}) {
     `| 今日増えた料理（新着＋親料理の補充） | ${show(n.added, "品")} |`,
     `| 今日もう一度並べた料理（0円・28日を過ぎて休んでいた料理） | ${show(n.revived, "品")} |`,
     `| 休んでいる料理（もう一度並べられるのを待っている） | ${show(n.resting, "品")} |`,
+    `| 　うち、確かめ済みで使える料理（残りは毎日0円で確かめる） | ${show(n.usable, "品")} |`,
     `| いま見えている新着（目安 ${minVisible}品・目標 400品） | ${show(n.visible, "品")} |`,
     `| ${SOON_DAYS}日以内に見えなくなる料理 | ${show(n.soon, "品")} |`,
     `| 今月の新着集めの費用（目安） | ${n.monthYen === null ? "不明" : `${n.monthYen}円 / ${show(n.monthYenCap, "円")}`} |`,
