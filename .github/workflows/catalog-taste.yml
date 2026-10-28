@@ -18,3 +18,5 @@ jobs:
         run: curl -sS --max-time 120 https://matagochi-api-292190013809.us-central1.run.app/api/trends -o trends.json || echo '{}' > trends.json
       - name: Count by dish name, main ingredient, cuisine and flavour
         run: node scripts/catalog-taste.cjs trends.json
+      - name: Progress toward the ideal recipe set
+        run: node scripts/catalog-taste.cjs trends.json --ideal

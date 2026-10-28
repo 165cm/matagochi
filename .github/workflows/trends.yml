@@ -62,3 +62,7 @@ jobs:
         run: |
           curl -sS --max-time 120 https://matagochi-api-292190013809.us-central1.run.app/api/trends -o trends.json || echo '{}' > trends.json
           node scripts/trends-health.cjs refresh.json refill.jsonl trends.json
+      - name: Progress toward the ideal recipe set
+        # 理想の12品・主役と味の割合の目安までの進み具合（api/src/ideal.js）。健康診断が赤の日も出す。AI は使わない。
+        if: always()
+        run: node scripts/catalog-taste.cjs trends.json --ideal || true
