@@ -1,6 +1,8 @@
 /* Daily experience. Existing recipe importing/editing remains in app.js. */
 let profileEditing = false;
 let swapDate = "";
+// 「⇄ ほかの一皿」で答えた理由（その日の候補を開いている間だけ）。time・many はごはん方針にも入る（ProfileTalk.react）。
+let swapWhy = "";
 let cookingDate = "";
 let analyzingDate = "";
 let editingEvaluationId = "";
@@ -583,6 +585,14 @@ function renderUrlInsert() {
   if (u.status === "loading") return `<div class="swap-url is-busy" aria-live="polite">🤖 動画を読んでいます…</div>`;
   return `<div class="swap-url"><input id="swap-url" class="input" type="url" inputmode="url" placeholder="🔗 動画のURLを貼って入れる" aria-label="動画のURL"><button type="button" class="primary-button" data-action="life-url-insert" data-date="${swapDate}">入れる</button></div>${u.status === "error" ? `<p class="form-error small">${escapeHtml(u.message)}</p>` : ""}`;
 }
+// 「⇄ ほかの一皿」の理由。答えると、その理由に合う料理を先に並べる。
+const SWAP_WHY = [["time", "⏱ 時間がかかる"], ["many", "🧺 材料が多い"], ["mood", "🤔 気分じゃない"]];
+const SWAP_WHY_ECHO = { time: "早くできる料理を先に並べました。この先の献立でも先に出します", many: "材料が少ない料理を先に並べました。この先の献立でも先に出します", mood: "わかりました。ほかの候補から選んでください" };
+function renderSwapWhy() {
+  if (isViewer()) return "";
+  if (swapWhy) return `<p class="swap-why-echo" role="status">💬 ${escapeHtml(SWAP_WHY_ECHO[swapWhy])}${ProfileTalk.REACTIONS[swapWhy] ? ` <button type="button" class="link-inline" data-action="life-talk-view">ごはん方針</button>` : ""}</p>`;
+  return `<div class="swap-why" role="group" aria-label="変えたい理由（任意）"><span>変えたい理由は？</span>${SWAP_WHY.map(([kind, label]) => `<button type="button" class="chip-button" data-action="life-swap-why" data-kind="${kind}">${label}</button>`).join("")}</div>`;
+}
 function renderSwapChoices() {
   const p = dailyProfile();
   const current = dailyPlan().find((d) => d.date === swapDate);
@@ -598,6 +608,9 @@ function renderSwapChoices() {
     .map((r) => ({ r, fit: Lifestyle.fit(r, p, swapDate) }))
     .filter(({ r, fit }) => fit.ok || (!r.curated && Lifestyle.reviewable(r, p, swapDate)))
     .sort((a, b) => Number(!!a.r.curated) - Number(!!b.r.curated) || Number(used.has(a.r.id)) - Number(used.has(b.r.id)) || Number(!a.fit.ok) - Number(!b.fit.ok) || (b.fit.score || 0) - (a.fit.score || 0));
+  // 理由に合う料理（早くできる・材料が少ない）を先に。並びはそのまま（sort は安定）。
+  const why = ProfileTalk.REACTIONS[swapWhy] && ProfileTalk.LEANS[ProfileTalk.REACTIONS[swapWhy]].match;
+  if (why) all.sort((a, b) => Number(!(a.fit.ok && why(a.r))) - Number(!(b.fit.ok && why(b.r))));
   const option = ({ r, fit }, medal = "") => isViewer()
     ? (fit.ok ? `<button type="button" class="swap-option" data-action="life-request-swap" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>${escapeHtml(lastEatenLabel(r))}</small></span><b aria-hidden="true">送る</b></button>` : "")
     : fit.ok
@@ -620,7 +633,7 @@ function renderSwapChoices() {
   // 確認が必要な自分のレシピは、畳まずに見せる（確認すれば選べるので）。
   const shown = swapShowAll || !head ? rest.slice(0, swapShowAll ? 12 : 4) : rest.filter((x) => !x.fit.ok).slice(0, 2);
   const more = rest.length > shown.length ? `<button type="button" class="text-button" data-action="life-swap-more">${folder ? "別の料理にする" : "ほかの候補を見る"}（${rest.length - shown.length}品）</button>` : "";
-  return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ">${renderUrlInsert()}${head}${shown.length ? `${head ? '<p class="swap-group">ほかの候補</p>' : ""}${shown.map((x) => option(x)).join("")}` : ""}${!head && !shown.length ? "<p>別の候補がありません。条件をゆるめるかレシピを追加してください。</p>" : ""}${more}</section>`;
+  return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ">${renderSwapWhy()}${renderUrlInsert()}${head}${shown.length ? `${head ? '<p class="swap-group">ほかの候補</p>' : ""}${shown.map((x) => option(x)).join("")}` : ""}${!head && !shown.length ? "<p>別の候補がありません。条件をゆるめるかレシピを追加してください。</p>" : ""}${more}</section>`;
 }
 // Photo when we have one, otherwise a warm tile with a staple emoji (clearly labelled as an image).
 // よはく：画面の余白にこっそり住んでいるキャラクター。1画面に1匹まで、文字やボタンには重ねない。
@@ -723,7 +736,9 @@ function renderTodayTodos() {
   const talk = renderTalkTodo();
   if (talk) more.push([!!talkProfile().session, talk]);
   if (!state.foodProfile?.completed) more.push([!!state.onboardingDraft, `<div class="todo-row"><span>✍️</span><p>好み・常備品まで教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`]);
-  const next = more.find(([started]) => started) || more[0];
+  // 記録からの提案（「また食べたい」とごはん方針の差）を、追加の質問より先に1件だけ（2026-10-28：行動から学ぶのを主に）。
+  const ev = isViewer() ? [] : talkEvidence(1);
+  const next = ev.length ? [false, `<div class="today-evidence">${renderTalkEvidence(ev)}</div>`] : more.find(([started]) => started) || more[0];
   if (next) rows.push(next[1]);
   if (typeof backupReminderDue === "function" && backupReminderDue() && !isViewer()) {
     rows.push(`<div class="todo-row is-backup-row"><span>🛡</span><p><b>レシピ${state.recipes.length}品・記録${state.evaluations.length}回</b>をバックアップして保護</p>${dailyButton("export-data", "保存する")}<button type="button" class="todo-x" data-action="snooze-backup" aria-label="2週間後に再通知">×</button></div>`);
@@ -1673,10 +1688,23 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-swap") {
     swapShowAll = false;
+    swapWhy = "";
     swapDate = data.date;
     state.view = "plan";
   }
   if (action === "life-close-swap") swapDate = "";
+  // 変えたい理由（任意・1タップ）。⏱ 時間・🧺 材料は、ごはん方針の ✓ になり、この先の献立にも効く（2026-10-28：行動から学ぶのを主に）。
+  if (action === "life-swap-why" && swapDate && SWAP_WHY.some(([k]) => k === data.kind)) {
+    swapWhy = data.kind;
+    if (ProfileTalk.REACTIONS[data.kind]) {
+      const who = talkWho(), lean = ProfileTalk.REACTIONS[data.kind];
+      const before = ProfileTalk.interpret(talkProfile(), who).some((x) => x.id === lean && x.status === "confirmed");
+      talkSet(ProfileTalk.react(talkProfile(), { member: who, kind: data.kind, at: nowIso() }));
+      if (!before) trackDaily("talk_fixed", { via: "swap" });
+      publishTalkPolicy();
+    }
+    trackDaily("swap_why", { kind: data.kind });
+  }
   if (action === "life-swap-more") swapShowAll = true;
   if (action === "life-starter-more") starterShowAll = true;
   // 同じ親の作り方を並べて見る（料理名で探す）。

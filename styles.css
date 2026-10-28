@@ -2139,6 +2139,7 @@ span.tile-photo { cursor: default; }
 .evidence-ask { font-size: 14px; }
 .evidence-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 6px; }
 .evidence-reflect .evidence-card { margin-top: 0; }
+.today-evidence .evidence-card { margin: 0; }
 .refl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
 .refl-stats p { margin: 0; padding: 12px 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
 .refl-stats strong { display: block; font-size: 24px; color: var(--tomato); }
@@ -3475,6 +3476,10 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .child-name .src-mark, .folder-row .src-mark, .rank-prompt .src-mark { margin-right: 2px; }
 .tonight-title .child-name { font-size: 14px; }
 .swap-group { margin: 6px 0 0; font-size: 12px; font-weight: 800; color: var(--muted); }
+/* 「⇄ ほかの一皿」の理由（任意・1タップ） */
+.swap-why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.swap-why > span { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: 2px; }
+.swap-why-echo { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }
 .swap-folder { margin: 0; font-size: 14px; }
 .swap-medal { margin-right: 4px; font-style: normal; }
 .rank-prompt { display: grid; gap: 8px; }
