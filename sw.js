@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v179";
-const APP_VERSION = "20261028-swap-bought";
+const CACHE_NAME = "ripigochi-v180";
+const APP_VERSION = "20261028-plan-photo";
 const CORE_ASSETS = [
   "./assets/dishes/photo-unavailable-pot.webp",
   "./",
