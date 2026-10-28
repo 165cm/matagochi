@@ -32,6 +32,8 @@ test("the first-run start: before 17:00 the default is tonight, later it is tomo
   assert.ok(html.includes("いつから始める？") && html.includes("今夜から") && html.includes("明日から"));
   run(`handleDailyAction("life-start-when",{when:"tomorrow"})`);
   assert.equal(run("startTonight(state.onboardingDraft)"), false, "the person's choice wins");
+  run(`state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
+  assert.equal(run("startTonight(profileDraft())"), false, "and survives a reload");
   run = app("2026-10-01T18:00:00");
   toResult(run);
   assert.equal(run("startTonight(state.onboardingDraft)"), false, "after 17:00 the default is tomorrow");

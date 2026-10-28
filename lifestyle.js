@@ -95,8 +95,10 @@
   function profile(raw = {}) {
     return {
       detailedSetup: raw.detailedSetup === true,
-      // 初回設定の順番の版（2＝2026-09-30 の整理後）。途中の人の移し替えに使う（daily-ui.js migrateFunnel）。
+      // 初回設定の順番の版（2＝2026-09-30 の整理後・3＝2026-10-28 の7画面）。途中の人の移し替えに使う（daily-ui.js migrateFunnel）。
       ...([2, 3].includes(raw.funnelV) ? { funnelV: raw.funnelV } : {}),
+      // 初回設定の確認の画面で選んだ「今夜から（true）／明日から（false）」。選んでいなければ持たない（時刻で決める）。
+      ...(typeof raw.startTonight === "boolean" ? { startTonight: raw.startTonight } : {}),
       quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 20 ? raw.quickSetupIndex : null,
       picks: Array.isArray(raw.picks) ? raw.picks.filter((x) => typeof x === "string" && x.length < 40).slice(0, 12) : [],
       // はじめの質問（悩み・保存した動画・食費）。献立には使わず、案内の言葉と目安に使う。
