@@ -591,27 +591,38 @@ function renderUrlInsert() {
 const SWAP_WHY = [["time", "⏱ 時間がかかる"], ["many", "🧺 材料が多い"], ["mood", "🤔 気分じゃない"]];
 const SWAP_WHY_ECHO = { time: "早くできる料理を先に並べました。この先の献立でも先に出します", many: "材料が少ない料理を先に並べました。この先の献立でも先に出します", mood: "わかりました。ほかの候補から選んでください" };
 function renderSwapBoughtEcho(reuse) {
-  return `<p class="swap-why-echo" role="status">${reuse.length ? `🧺 ${escapeHtml(reuse.slice(0, 3).join("・"))}を使う料理を先に並べました` : "買った材料は気にせず並べています（使わなくなった材料は、選んだあとに知らせます）"}</p>`;
+  return `<p class="swap-why-echo" role="status">${reuse.length ? `🧺 ${escapeHtml(namesOf(reuse))}を使う料理を先に並べました` : "買った材料は気にせず並べています（使わなくなった材料は、選んだあとに知らせます）"}</p>`;
 }
 function renderSwapWhy() {
   if (isViewer()) return "";
   if (swapWhy) return `<p class="swap-why-echo" role="status">💬 ${escapeHtml(SWAP_WHY_ECHO[swapWhy])}${ProfileTalk.REACTIONS[swapWhy] ? ` <button type="button" class="link-inline" data-action="life-talk-view">ごはん方針</button>` : ""}</p>`;
   return `<div class="swap-why" role="group" aria-label="変えたい理由（任意）"><span>変えたい理由は？</span>${SWAP_WHY.map(([kind, label]) => `<button type="button" class="chip-button" data-action="life-swap-why" data-kind="${kind}">${label}</button>`).join("")}</div>`;
 }
-// その日の決めた料理の材料のうち、もう買ったもの（買い物の名前）。
-function swapBoughtNames(date) {
+// 買った材料を使い切る時の重み（売り場で決める）：主役で傷みやすい肉・魚・豆腐など3、野菜・卵など1。
+// 調味料・乾物・缶詰・米や麺は買い置きできるので0（聞かない・数えない。ごはんはほとんどの料理で使うので手がかりにもならない）。
+const REUSE_WEIGHT = { meat: 3, fish: 3, daily: 3, veg: 1, chilled: 1, frozen: 1, other: 1, staple: 0, dry: 0, seasoning: 0 };
+// その日の決めた料理の材料のうち、もう買ったもの [{ name, weight }]（重い順）。
+function swapBoughtItems(date) {
   const slot = state.mealSlots?.[date];
   if (slot?.status !== "confirmed" || !slot.recipe) return [];
-  const planned = plannedIngredients();
-  // ごはんはほとんどの料理で使うので、選ぶ手がかりにならない（聞かない・数えない）。
-  return [...new Set((slot.recipe.ingredients || []).map((i) => Lifestyle.shoppingName(i.name)).filter((n) => n && planned.get(n) === true && !/^(ごはん|ご飯|白ごはん|米|お米|白米)$/.test(n)))];
+  const planned = plannedIngredients(), seen = new Set(), out = [];
+  for (const i of slot.recipe.ingredients || []) {
+    const name = Lifestyle.shoppingName(i.name);
+    if (!name || seen.has(name) || planned.get(name) !== true) continue;
+    seen.add(name);
+    const weight = REUSE_WEIGHT[Aisles.aisleOf(name, i.category, state.aisleOverrides || {})] ?? 1;
+    if (weight > 0) out.push({ name, weight });
+  }
+  return out.sort((a, b) => b.weight - a.weight);
 }
-const usesNames = (r, names) => names.filter((n) => (r.ingredients || []).some((i) => Lifestyle.shoppingName(i.name) === n));
+const usesNames = (r, items) => items.filter((x) => (r.ingredients || []).some((i) => Lifestyle.shoppingName(i.name) === x.name));
+const reuseScore = (r, items) => usesNames(r, items).reduce((n, x) => n + x.weight, 0);
+const namesOf = (items, n = 3) => items.slice(0, n).map((x) => x.name).join("・");
 function renderSwapChoices() {
   const p = dailyProfile();
   // 買った材料がある決めた料理を変える時は、まず1つだけ聞く（2026-10-28 のユーザーの判断。理由の質問は出さない）。
-  const bought = isViewer() ? [] : swapBoughtNames(swapDate);
-  if (bought.length && !swapBought) return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ"><div class="swap-bought"><p>🧺 買った<b>${escapeHtml(bought.slice(0, 3).join("・"))}${bought.length > 3 ? ` ほか${bought.length - 3}品` : ""}</b>は？</p><div class="swap-bought-actions">${dailyButton("life-swap-bought", "使う料理から選ぶ", 'data-use="use"', true)}${dailyButton("life-swap-bought", "気にせず選ぶ", 'data-use="skip"')}</div></div></section>`;
+  const bought = isViewer() ? [] : swapBoughtItems(swapDate);
+  if (bought.length && !swapBought) return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ"><div class="swap-bought"><p>🧺 買った<b>${escapeHtml(namesOf(bought))}${bought.length > 3 ? ` ほか${bought.length - 3}品` : ""}</b>は？</p><div class="swap-bought-actions">${dailyButton("life-swap-bought", "使う料理から選ぶ", 'data-use="use"', true)}${dailyButton("life-swap-bought", "気にせず選ぶ", 'data-use="skip"')}</div></div></section>`;
   const current = dailyPlan().find((d) => d.date === swapDate);
   const currentRecipe = current?.slot?.recipe || current?.candidate?.recipe;
   const id = currentRecipe?.id;
@@ -628,13 +639,13 @@ function renderSwapChoices() {
   // 理由に合う料理（早くできる・材料が少ない）を先に。並びはそのまま（sort は安定）。
   const why = ProfileTalk.REACTIONS[swapWhy] && ProfileTalk.LEANS[ProfileTalk.REACTIONS[swapWhy]].match;
   if (why) all.sort((a, b) => Number(!(a.fit.ok && why(a.r))) - Number(!(b.fit.ok && why(b.r))));
-  // 買った材料を使う料理を先に（使う品数の多い順）。
+  // 買った材料を使う料理を先に（重みの合計が大きい順＝主役の食材を使う料理が先、その中で野菜も使う料理が先）。
   const reuse = bought.length && swapBought === "use" ? bought : [];
-  if (reuse.length) all.sort((a, b) => (b.fit.ok ? usesNames(b.r, reuse).length : 0) - (a.fit.ok ? usesNames(a.r, reuse).length : 0));
+  if (reuse.length) all.sort((a, b) => (b.fit.ok ? reuseScore(b.r, reuse) : 0) - (a.fit.ok ? reuseScore(a.r, reuse) : 0));
   const option = ({ r, fit }, medal = "") => isViewer()
     ? (fit.ok ? `<button type="button" class="swap-option" data-action="life-request-swap" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>${escapeHtml(lastEatenLabel(r))}</small></span><b aria-hidden="true">送る</b></button>` : "")
     : fit.ok
-    ? `<button type="button" class="swap-option" data-action="life-choose" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${medal ? `<i class="swap-medal">${medal}</i>` : ""}${recipeTitleHtml(r)}</strong><small>${reuse.length && usesNames(r, reuse).length ? `🧺 ${escapeHtml(usesNames(r, reuse).slice(0, 2).join("・"))}を使う · ` : ""}${escapeHtml(planMeta(r, fit.reasons) || "保存したレシピ")}${used.has(r.id) ? " · ほかの日と同じ" : ""}</small></span><b aria-hidden="true">選ぶ</b></button>`
+    ? `<button type="button" class="swap-option" data-action="life-choose" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${medal ? `<i class="swap-medal">${medal}</i>` : ""}${recipeTitleHtml(r)}</strong><small>${reuse.length && usesNames(r, reuse).length ? `🧺 ${escapeHtml(namesOf(usesNames(r, reuse), 2))}を使う · ` : ""}${escapeHtml(planMeta(r, fit.reasons) || "保存したレシピ")}${used.has(r.id) ? " · ほかの日と同じ" : ""}</small></span><b aria-hidden="true">選ぶ</b></button>`
     : `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`;
   const group = (title, items, medals = false) => items.length ? `<p class="swap-group">${title}</p>${items.map((x, i) => option(x, medals ? MEDALS[i] : "")).join("")}` : "";
   const folder = currentRecipe && folderOfRecipe(currentRecipe);
