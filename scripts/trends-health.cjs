@@ -20,6 +20,14 @@ const STOPPED = {
   trend_month_budget: "今月の新着集めの予算（月1,000円）を使い切りました。来月まで集められません",
 };
 
+// 決まりどおりの止まり方（月末まで均等に・利用者の分を残す。docs/APP_MAP.md §46-8 ②）は赤にしない。
+const PACED = {
+  trend_pace: "今日までに使ってよい予算（月末まで均等）を使ったので、続きは明日",
+  pace_budget: "今日までに使ってよい予算（月末まで均等）を使ったので、続きは明日",
+  trend_user_reserve: "アプリ全体の AI の月の回数のうち、利用者の分を残すために止めました",
+  user_reserve: "アプリ全体の AI の月の回数のうち、利用者の分を残すために止めました",
+};
+
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
 }
@@ -44,6 +52,7 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
     const reason = refresh.paused || refresh.limited || "";
     if (STOPPED[reason]) problems.push(STOPPED[reason]);
     else if (reason === "trend_ai_budget") notes.push("新着集めの1日・1週の AI の回数に届いたので、今日はここまで（決まりどおり）");
+    else if (PACED[reason]) notes.push(`新着集め：${PACED[reason]}`);
     else if (refresh.done !== true) notes.push(`今日の分はまだ集め終わっていません${reason ? `（${reason}）` : ""}。次の実行で続けます`);
   }
   // 補充（refill）の reason：month_budget＝今月の予算・ai_budget＝AI の利用枠。どちらも止まっているので問題に。
@@ -51,6 +60,7 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
   // 補充は、新着集めがその日の分を終えた（done: true）時だけ動く。その時に返事がない・エラーなら止まっている（review fix #171）。
   if (refresh?.done === true && !failed(refresh) && (empty(refill) || failed(refill))) problems.push(`親料理の補充：${failed(refill) || "サーバーから返事がありませんでした（通信の失敗・時間切れ）"}`);
   else if (refillStop && !problems.includes(refillStop)) problems.push(`親料理の補充：${refillStop}`);
+  else if (PACED[refill?.reason]) notes.push(`親料理の補充：${PACED[refill.reason]}`);
   else if (refill && !refillStop && refill.done !== true && refill.reason !== "stocked") notes.push(`親料理の補充は途中です${refill.reason ? `（${refill.reason}）` : ""}`);
   const items = Array.isArray(list?.items) ? list.items : null;
   if (!items) problems.push("いま見えている新着の一覧を読めませんでした");
@@ -58,6 +68,7 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
   const soon = items ? items.filter((i) => Date.parse(i.expiresAt) - now < SOON_DAYS * DAY).length : null;
   const added = (Number(refresh?.today) || 0) + (Number(refill?.added ?? refill?.ran?.added) || 0);
   const ai = refresh?.ai || {};
+  if (refresh?.revived?.failed) notes.push("休んでいる料理を新着に戻す処理が、途中で失敗しました（次の実行でやり直します）");
   return {
     ok: problems.length === 0,
     problems,
@@ -66,6 +77,8 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
       visible: items ? items.length : null,
       soon,
       added,
+      revived: Number.isFinite(refresh?.revived?.today) ? refresh.revived.today : null,
+      resting: Number.isFinite(refresh?.revived?.resting) ? refresh.revived.resting : null,
       // 新着集めの返事は補充の前の月の費用なので、この実行で補充が使った分を足す（review fix #171）
       monthYen: Number.isFinite(ai.yen) ? ai.yen + Math.round(refillAi * YEN_PER_AI) : null,
       monthYenCap: Number.isFinite(ai.yenCap) ? ai.yenCap : null,
@@ -82,6 +95,8 @@ function markdown(result, { minVisible = MIN_VISIBLE } = {}) {
     "| 項目 | 数 |",
     "|---|---:|",
     `| 今日増えた料理（新着＋親料理の補充） | ${show(n.added, "品")} |`,
+    `| 今日もう一度並べた料理（0円・28日を過ぎて休んでいた料理） | ${show(n.revived, "品")} |`,
+    `| 休んでいる料理（もう一度並べられるのを待っている） | ${show(n.resting, "品")} |`,
     `| いま見えている新着（目安 ${minVisible}品・目標 400品） | ${show(n.visible, "品")} |`,
     `| ${SOON_DAYS}日以内に見えなくなる料理 | ${show(n.soon, "品")} |`,
     `| 今月の新着集めの費用（目安） | ${n.monthYen === null ? "不明" : `${n.monthYen}円 / ${show(n.monthYenCap, "円")}`} |`,

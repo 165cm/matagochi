@@ -25,7 +25,7 @@ function fakeCatalog() {
 }
 
 test('PR 4b: trend collection stops for the month when the estimated cost reaches the monthly cap (yen ÷ yen per AI call)', async () => {
-  let now = Date.parse('2026-10-05T01:00:00Z');
+  let now = Date.parse('2026-10-24T01:00:00Z'); // 月末まで均等（§46-8 ②）でも、この日までに上限の4回すべてを使える日
   const store = createMemorySyncStore();
   const catalog = fakeCatalog();
   const make = () => createTrendBook(store, { catalog, now: () => now, perDay: 10, weekMax: 20, aiPerDay: 99, aiPerWeek: 99, yenPerMonth: 20, yenPerAi: 5,
@@ -38,7 +38,7 @@ test('PR 4b: trend collection stops for the month when the estimated cost reache
   now += DAY;
   assert.equal((await make().step()).limited, 'trend_month_budget', 'the next day in the same month stays stopped');
   assert.equal(catalog.ai, 4);
-  now = Date.parse('2026-11-02T01:00:00Z');
+  now = Date.parse('2026-11-30T01:00:00Z'); // 新しい月（月末まで均等なので、月の最後の日には上限の4回すべてを使える）
   await make().step();
   assert.equal(catalog.ai, 8, 'a new month starts again');
   const cost = await make().cost();
@@ -93,7 +93,7 @@ test('PR 4b: GET /api/admin/catalog needs the admin token and lists adoption, co
 });
 
 test('review fix (#116): the AI calls are reserved in trends/cost before calling; if that cannot be saved, no AI is called and the run is not "done"', async () => {
-  let now = Date.parse('2026-10-05T01:00:00Z');
+  let now = Date.parse('2026-10-24T01:00:00Z'); // 月末まで均等（§46-8 ②）でも、この日までに上限の4回すべてを使える日
   const store = createMemorySyncStore();
   const put = store.put.bind(store);
   let failCost = true;
@@ -154,7 +154,7 @@ test('review fix (#116): the cached trend list is not reused across midnight in 
 });
 
 test('review fix (#116 r2): if returning the unused calls is saved but the reply is lost, it is not applied twice (never counted low)', async () => {
-  let now = Date.parse('2026-10-05T01:00:00Z');
+  let now = Date.parse('2026-10-24T01:00:00Z'); // 月末まで均等（§46-8 ②）でも、この日までに上限の4回すべてを使える日
   const store = createMemorySyncStore();
   const put = store.put.bind(store);
   let costWrites = 0;

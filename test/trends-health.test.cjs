@@ -105,3 +105,17 @@ test("月の費用に、この実行で補充が使った AI の分を足す（r
   assert.equal(r.numbers.monthYen, 318);
   assert.deepEqual(readRefill(path.join(dir, "ない.jsonl")), { refill: null, refillAi: 0 });
 });
+
+test("月末まで均等・利用者の分を残すための止まり方は赤にせずメモ。戻した料理と休んでいる料理を出す（§46-8）", () => {
+  const list = { items: items(300) };
+  const paced = judge({ refresh: { today: 0, limited: "trend_pace", done: true, revived: { run: 40, today: 40, scanned: 120, resting: 300 } }, refill: { added: 0, done: true, reason: "pace_budget" }, list, now: NOW });
+  assert.equal(paced.ok, true);
+  assert.equal(paced.notes.length, 2);
+  assert.deepEqual([paced.numbers.revived, paced.numbers.resting], [40, 300]);
+  assert.match(markdown(paced), /今日もう一度並べた料理.*\| 40品 \|/);
+  const reserve = judge({ refresh: { today: 0, limited: "trend_user_reserve", done: true }, refill: { added: 0, done: true, reason: "user_reserve" }, list, now: NOW });
+  assert.equal(reserve.ok, true);
+  assert.match(reserve.notes.join(), /利用者の分/);
+  const failed = judge({ refresh: { today: 2, done: true, revived: { run: 0, today: 0, failed: true } }, refill: { added: 1, done: true }, list, now: NOW });
+  assert.match(failed.notes.join(), /途中で失敗/);
+});
