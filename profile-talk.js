@@ -7,7 +7,7 @@
      失敗した時にルールへ戻る道（interpretWithAi）だけ先に用意する。 */
 (function (root) {
   const L = typeof module !== "undefined" && module.exports ? require("./lifestyle.js") : root.Lifestyle;
-  const VERSION = 1;
+  const VERSION = 2;
   const MAX_ANSWERS = 120, MAX_SNAPSHOTS = 30, MAX_TEXT = 200;
   // 「わからない」と「あとで」も答えのひとつ（同じ質問をくり返さない）。「あとで」は次に開いた時にまた聞く。
   const IDK = "idk", LATER = "later";
@@ -20,17 +20,18 @@
     veg: [["prep", "🔪", "切るのが面倒"], ["bland", "🧂", "味が決まらない"]],
   };
   // 質問。when(a) が真の時だけ聞く（a = { 質問ID: 値 }）。multi は複数選べる。
+  // 2026-10-28 のユーザーの判断で4問（＋魚などの理由）に絞った：「いちばん大変なのは？」「一緒に食べる人と好みはちがう？」は、
+  // 献立の加点にほとんどつながらないので聞かない。平日の「早くできる」は、設定の「平日の時間」と重なるので選択肢から外した。
   const QUESTIONS = [
-    { id: "hard", ask: () => "夜ごはんで、いちばん大変なのは？", choices: () => [["think", "🤔", "何を作るか考える"], ["shop", "🛒", "買い物"], ["clean", "🧽", "片付け・洗い物"], ["time", "⏰", "作る時間がない"]] },
     { id: "want", ask: () => "好きなのに、あまり作らないものは？", choices: () => [["fish", "🐟", "魚"], ["fried", "🍤", "揚げもの"], ["stew", "🍲", "煮込み"], ["veg", "🥬", "野菜のおかず"], ["none", "🙆", "特にない"]] },
     { id: "why", ask: (a) => `${WANT_OF[a.want]}を作らないのは、どれが気になるから？`, when: (a) => own(WHY, a.want), choices: (a) => WHY[a.want] },
     { id: "taste", multi: true, ask: () => "よく食べたい味は？（いくつでも）", choices: () => [["sweet", "🍯", "甘辛"], ["light", "🍋", "さっぱり"], ["spicy", "🌶", "ピリ辛"], ["rich", "🧈", "こってり"], ["gentle", "🍵", "やさしい味"]] },
-    // 「片付けが大変」と答えた人には、洗い物のことはもう聞かない（同じことを2度聞かない）。
-    { id: "weeknight", ask: () => "平日の夜、ゆずれないのは？", when: (a) => a.hard !== "clean", choices: () => [["quick", "⚡", "早くできる"], ["onepan", "🍳", "洗い物が少ない"], ["knife", "🔪", "包丁をあまり使わない"], ["any", "🙆", "こだわらない"]] },
-    // 深掘り（PR 2b）：平日と休日の違い・一緒に食べる人との違い。相手の好みは、相手が自分の端末で答える（ここで決めない）。
+    { id: "weeknight", ask: () => "平日の夜、ゆずれないのは？", choices: () => [["onepan", "🍳", "洗い物が少ない"], ["knife", "🔪", "包丁をあまり使わない"], ["any", "🙆", "こだわらない"]] },
     { id: "weekend", ask: () => "休日の夜は、平日とちがう？", choices: () => [["same", "🙆", "同じでいい"], ["cook", "🍳", "休日はじっくり作りたい"], ["relax", "🛋", "休日も手早くすませたい"], ["out", "🍽", "休日は外食が多い"]] },
-    { id: "together", ask: () => "一緒に食べる人と、好みはちがう？", choices: () => [["alone", "🧑", "ひとりで食べる"], ["same", "🤝", "だいたい同じ"], ["some", "🔀", "ときどきちがう"], ["diff", "↔️", "けっこうちがう"]] },
   ];
+  // 本人がそのまま選んだ答え（味・平日・休日）から生まれる項目は、聞き返さずに最初から ✓（献立に使う）。違えば方針の画面で ✕。
+  // 「魚 × 片付け → 蒸し魚」のように、こちらが読み取った項目（want と why から）だけ、推測として聞き返す。
+  const DIRECT = ["taste", "weeknight", "weekend"];
   const QUESTION = Object.fromEntries(QUESTIONS.map((q) => [q.id, q]));
   // 一覧に自分で書いた項目だけを認める（"constructor" "toString" "__proto__" など、継承した名前を通さない）。
   const own = (obj, key) => typeof key === "string" && Object.prototype.hasOwnProperty.call(obj, key);
@@ -41,33 +42,33 @@
   const tagSet = (r) => new Set(L.tags(r));
   const eq = (r) => r?.planning?.equipment || [];
   const fish = (r) => L.traits(r).protein === "fish" || tagSet(r).has("fish");
+  // 洗うもの（コンロ・レンジ・計量スプーンなどは数えない）。
+  const NO_WASH = ["コンロ", "電子レンジ", "計量スプーン", "トースター", "オーブン"];
+  const washes = (r) => eq(r).filter((e) => !NO_WASH.includes(e)).length;
   const LEANS = {
     "fish-easy": { kind: "taste", label: "🐟 魚は好き。片付けがラクな蒸し・レンジの魚料理を候補に", short: "💬 魚をラクに", ask: "魚を減らすより、蒸し焼きやレンジの魚料理を候補に入れてみます。合っていますか？", match: (r) => fish(r) && (tagSet(r).has("light") || tagSet(r).has("micro") || has(r, /蒸し|ホイル|レンジ/)) },
     "fish-noprep": { kind: "taste", label: "🐟 骨のない切り身や缶詰の魚料理を候補に", short: "💬 骨なしの魚", ask: "骨のない切り身や、さば缶・ツナ缶の料理を候補に入れてみます。合っていますか？", match: (r) => fish(r) && has(r, /切り身|鮭|さけ|ツナ|缶|たら/) },
     "fish-pan": { kind: "taste", label: "🐟 フライパン・レンジで失敗しにくい魚料理を候補に", short: "💬 失敗しにくい魚", ask: "焼き加減を気にしなくていい、ふたをして蒸す・レンジの魚料理を候補に入れてみます。合っていますか？", match: (r) => fish(r) && (tagSet(r).has("micro") || has(r, /蒸し|ふた|缶/)) },
     "fish-cheap": { kind: "taste", label: "🐟 手ごろな缶詰の魚料理を候補に", short: "💬 缶詰の魚", ask: "さば缶・ツナ缶など、手ごろな魚の料理を候補に入れてみます。合っていますか？", match: (r) => fish(r) && has(r, /缶|ツナ/) },
-    "fried-pan": { kind: "taste", label: "🍤 揚げずに、少ない油で焼く料理を候補に", short: "💬 揚げずに", ask: "たっぷりの油で揚げずに、フライパンの揚げ焼きを候補に入れてみます。合っていますか？", match: (r) => has(r, /揚げ焼き|衣なし|照り焼き/) },
+    "fried-pan": { kind: "taste", label: "🍤 揚げずに、少ない油で焼く料理を候補に", short: "💬 揚げずに", ask: "たっぷりの油で揚げずに、フライパンの揚げ焼きを候補に入れてみます。合っていますか？", match: (r) => tagSet(r).has("pan") && ["meat", "fish"].includes(L.traits(r).protein) && has(r, /揚げ焼き|衣なし|照り焼き|焼き|ソテー|ムニエル|竜田|から揚げ|唐揚げ|つくね|ハンバーグ/) && !has(r, /揚げ油|たっぷりの油/) },
     "stew-quick": { kind: "taste", label: "🍲 20分以内でできる汁もの・煮もの", short: "💬 短い煮込み", ask: "長く煮込まずに、20分以内でできる汁もの・煮ものを候補に入れてみます。合っていますか？", match: (r) => (tagSet(r).has("soup") || tagSet(r).has("pot")) && (r?.planning?.minutes || 99) <= 20 },
     "veg-easy": { kind: "taste", label: "🥬 切る手間の少ない野菜のおかず", short: "💬 野菜をラクに", ask: "切る手間の少ない（レンジ・キッチンばさみ）野菜の料理を候補に入れてみます。合っていますか？", match: (r) => tagSet(r).has("veg") && (tagSet(r).has("micro") || !eq(r).includes("包丁")) },
-    "veg-flavor": { kind: "taste", label: "🥬 味が決まりやすい、しっかり味の野菜料理", short: "💬 野菜をしっかり味", ask: "みそ・バター・甘辛など、味が決まりやすい野菜料理を候補に入れてみます。合っていますか？", match: (r) => tagSet(r).has("veg") && (tagSet(r).has("rich") || tagSet(r).has("spicy") || has(r, /みそ|バター|甘辛/)) },
+    "veg-flavor": { kind: "taste", label: "🥬 味が決まりやすい、しっかり味の野菜料理", short: "💬 野菜をしっかり味", ask: "みそ・バター・甘辛など、味が決まりやすい野菜料理を候補に入れてみます。合っていますか？", match: (r) => tagSet(r).has("veg") && (tagSet(r).has("rich") || tagSet(r).has("spicy") || has(r, /みそ|バター|甘辛|ごま|チーズ|キムチ|オイスター|コンソメ/)) },
     "taste-sweet": { kind: "taste", label: "🍯 甘辛い味が好き", short: "💬 甘辛好き", match: (r) => has(r, /甘辛|照り焼き|しょうが焼き|そぼろ|すき焼き|ヤンニョム/) },
     "taste-light": { kind: "taste", label: "🍋 さっぱりした味が好き", short: "💬 さっぱり好き", match: (r) => tagSet(r).has("light") },
     "taste-spicy": { kind: "taste", label: "🌶 ピリ辛が好き", short: "💬 ピリ辛好き", match: (r) => tagSet(r).has("spicy") },
-    "taste-rich": { kind: "taste", label: "🧈 こってりした味が好き", short: "💬 こってり好き", match: (r) => tagSet(r).has("rich") },
-    "taste-gentle": { kind: "taste", label: "🍵 やさしい味が好き", short: "💬 やさしい味", match: (r) => !tagSet(r).has("spicy") && has(r, /やさしい|豆腐|卵|みそ|塩|だし/) },
+    "taste-rich": { kind: "taste", label: "🧈 こってりした味が好き", short: "💬 こってり好き", match: (r) => tagSet(r).has("rich") && !tagSet(r).has("light") },
+    "taste-gentle": { kind: "taste", label: "🍵 やさしい味が好き", short: "💬 やさしい味", match: (r) => !["spicy", "rich", "ethnic"].some((t) => tagSet(r).has(t)) && has(r, /やさしい|だし|塩|豆腐|卵/) },
     "life-quick": { kind: "life", label: "⚡ 平日は早くできる料理", short: "💬 早くできる", match: (r) => (r?.planning?.minutes || 99) <= 15 },
-    "life-onepan": { kind: "life", label: "🍳 洗い物が少ない料理（フライパンかレンジひとつ）", short: "💬 洗い物少なめ", match: (r) => { const e = eq(r); return e.length > 0 && !(e.includes("鍋") && e.includes("フライパン")) && !(e.includes("包丁") && e.includes("フライパン") && e.includes("ふた")); } },
+    "life-onepan": { kind: "life", label: "🍳 洗い物が少ない料理（フライパンかレンジひとつ）", short: "💬 洗い物少なめ", match: (r) => eq(r).length > 0 && washes(r) <= 1 },
     "life-knife": { kind: "life", label: "🔪 包丁をあまり使わない料理", short: "💬 包丁なし", match: (r) => eq(r).length > 0 && !eq(r).includes("包丁") },
     // days: "weekend" は、土日の献立にだけ加点する。
-    "weekend-cook": { kind: "life", days: "weekend", label: "🍳 休日は、少し手間のかかる料理も候補に", short: "💬 休日はじっくり", ask: "休日は、少し手間のかかる料理（煮込み・焼きもの）も候補に入れます。合っていますか？", match: (r) => (r?.planning?.minutes || 0) >= 20 && (tagSet(r).has("rich") || tagSet(r).has("pot") || has(r, /煮|焼/)) },
-    "weekend-quick": { kind: "life", days: "weekend", label: "🛋 休日も、手早く作れる料理", short: "💬 休日も手早く", ask: "休日も、15分くらいで作れる料理を先に出します。合っていますか？", match: (r) => (r?.planning?.minutes || 99) <= 15 },
-    // 「変えるなら？」（最初の提案への反応）から決まるもの。
-    "life-few": { kind: "life", label: "🧺 材料が少ない料理", short: "💬 材料少なめ", match: (r) => (r?.ingredients || []).length > 0 && (r?.ingredients || []).length <= 6 },
-    // 献立の加点はしない、生活の理解（買い物のペースなどは PR 5 で使う）。
+    "weekend-cook": { kind: "life", days: "weekend", label: "🍳 休日は、少し手間のかかる料理も候補に", short: "💬 休日はじっくり", match: (r) => (r?.planning?.minutes || 0) >= 20 && (tagSet(r).has("rich") || tagSet(r).has("pot") || has(r, /煮|焼/)) },
+    "weekend-quick": { kind: "life", days: "weekend", label: "🛋 休日も、手早く作れる料理", short: "💬 休日も手早く", match: (r) => (r?.planning?.minutes || 99) <= 15 },
+    // 「変えるなら？」（最初の提案・「⇄ ほかの一皿」の理由）から決まるもの。life-quick もここから（平日の質問からは外した）。
+    "life-few": { kind: "life", label: "🧺 材料が少ない料理", short: "💬 材料少なめ", match: (r) => (r?.ingredients || []).length > 0 && (r?.ingredients || []).length <= 5 },
+    // 献立の加点はしない、生活の理解。
     "life-weekend-out": { kind: "life", label: "🍽 休日は外食が多い（休日の献立は、設定の「作る曜日」で減らせます）" },
-    "together-diff": { kind: "life", label: "👥 一緒に食べる人と好みがちがう → 相手の好みは、相手が自分の端末で答えます" },
-    "life-think": { kind: "life", label: "🤔 何を作るか考えるのが大変 → 献立はリピごちが先に出します" },
-    "life-shop": { kind: "life", label: "🛒 買い物が大変 → 買う回数と品数を減らしたい" },
   };
   const LEAN_SCORE = 6, LEAN_MAX = 12;
   // 本人が決めた道（答えから生まれたものでなくても残る）：react＝「変えるなら？」、evidence＝記録からの提案。
@@ -105,8 +106,11 @@
     const out = empty();
     if (!raw || typeof raw !== "object") return out;
     const seen = new Set();
+    // 版1の「いちばん大変なのは？」で「片付け」と答えた人は、平日の質問を聞かれていなかった → 「洗い物が少ない」と答えたことにする。
+    const old = Array.isArray(raw.answers) ? raw.answers : [];
+    const moved = old.filter((a) => a && a.q === "hard" && a.value === "clean" && !old.some((b) => b && b.q === "weeknight" && b.member === a.member)).map((a) => ({ ...a, q: "weeknight", value: "onepan" }));
     // 新しい順。同じ人・同じ質問は最新だけ。
-    (Array.isArray(raw.answers) ? raw.answers : [])
+    [...old, ...moved]
       .filter((a) => a && isQuestion(a.q) && validValue(QUESTION[a.q], a.value))
       .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
       .forEach((a) => {
@@ -187,13 +191,8 @@
     if (a.want === "stew" && WHY.stew.some((c) => c[0] === a.why)) add("stew-quick", ["want", "why"]);
     if (a.want === "veg") add({ prep: "veg-easy", bland: "veg-flavor" }[a.why] || "", ["want", "why"]);
     (Array.isArray(a.taste) ? a.taste : []).forEach((t) => add(`taste-${t}`, ["taste"]));
-    if (a.hard === "clean") add("life-onepan", ["hard"]);
-    if (a.hard === "time") add("life-quick", ["hard"]);
-    if (a.hard === "think") add("life-think", ["hard"]);
-    if (a.hard === "shop") add("life-shop", ["hard"]);
-    add({ quick: "life-quick", onepan: "life-onepan", knife: "life-knife" }[a.weeknight] || "", ["weeknight"]);
+    add({ onepan: "life-onepan", knife: "life-knife" }[a.weeknight] || "", ["weeknight"]);
     add({ cook: "weekend-cook", relax: "weekend-quick", out: "life-weekend-out" }[a.weekend] || "", ["weekend"]);
-    if (["some", "diff"].includes(a.together)) add("together-diff", ["together"]);
     // 「変えるなら？」で本人が決めたもの（答えから生まれたものではないので、答えを直しても消えない）。
     for (const [k, d] of Object.entries(p.decisions)) {
       const [who, id] = k.split("\u0000");
@@ -201,7 +200,8 @@
     }
     const items = ids.map(({ id, from }) => {
       const d = p.decisions[`${member}\u0000${id}`];
-      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || "guess", source: d?.via === "react" ? "reaction" : d?.via === "evidence" ? "records" : "rules" };
+      const direct = from.length > 0 && from.every((q) => DIRECT.includes(q));
+      return { id, kind: LEANS[id].kind, label: LEANS[id].label, short: LEANS[id].short || "", ask: LEANS[id].ask || "", from, status: d?.status || (direct ? "confirmed" : "guess"), ...(direct && !d ? { auto: true } : {}), source: d?.via === "react" ? "reaction" : d?.via === "evidence" ? "records" : "rules" };
     });
     // 食べられないもの・苦手は、設定（foodProfile）のまま。ここで変えない。アレルギーと苦手は分けて見せる。
     const fp = foodProfile || {};
@@ -236,12 +236,14 @@
     const v = (mine[mine.length - 1]?.v || 0) + 1;
     return { ...p, snapshots: [...p.snapshots, { v, at, member, reason: reason === "reaction" || reason === "evidence" ? reason : mine.length ? "edit" : "first", ...(reason === "evidence" && str(note, MAX_NOTE) ? { note: str(note, MAX_NOTE) } : {}), items }].slice(-MAX_SNAPSHOTS), session: null, updatedAt: at };
   }
-  // 最初の提案への「変えるなら？」。time＝時間が長い → 早くできる料理を、many＝材料が多い → 材料が少ない料理を「合ってる」に。
+  // 最初の提案への「変えるなら？」と、献立の「⇄ ほかの一皿」で聞く理由（daily-ui.js）。time＝時間が長い → 早くできる料理を、many＝材料が多い → 材料が少ない料理を「合ってる」に。
   // 本人が押したことなので確かめ済み。方針の版も1つ残す（理由：reaction）。
   const REACTIONS = { time: "life-quick", many: "life-few" };
   function react(p, { member, kind, at }) {
     const id = own(REACTIONS, kind) ? REACTIONS[kind] : "";
     if (!id) return p;
+    // もう ✓ のもの（何度押しても）は、版を増やさない。
+    if (interpret(p, member).some((x) => x.id === id && x.status === "confirmed")) return p;
     const next = decide(p, { member, id, status: "confirmed", at, via: "react" });
     const session = next.session;
     return { ...snapshot(next, { member, at, reason: "reaction" }), session };
@@ -398,7 +400,7 @@
       return { items: rules, fallback: true, error: error?.message === "timeout" ? "timeout" : "network" };
     } finally { clearTimeout(timer); }
   }
-  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, shareOf, setShare, familyItems, normalizeShared, mergeShared, othersFrom, aiPayload, fromAi, interpretWithAi, THEMES, evidence, adoptEvidence, skipEvidence };
+  const api = { VERSION, IDK, LATER, QUESTIONS, QUESTION, LEANS, WHY, DIRECT, isLean, isQuestion, draftOf, setDraft, empty, normalize, answersOf, asked, nextQuestion, answer, interpret, decide, snapshot, react, history, REACTIONS, leaner, leanFor, shareOf, setShare, familyItems, normalizeShared, mergeShared, othersFrom, aiPayload, fromAi, interpretWithAi, THEMES, evidence, adoptEvidence, skipEvidence };
   root.ProfileTalk = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

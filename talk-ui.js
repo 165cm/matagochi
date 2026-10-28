@@ -127,7 +127,7 @@ function renderTalkCheck() {
   return `<section class="hero-card talk-card" data-stage="check" aria-labelledby="talk-h">
     ${talkHeader(last ? `<span>前回の保存：版${last.v}</span>` : "")}
     <h2 id="talk-h" tabindex="-1">わが家のごはん方針（案）</h2>
-    ${open.length ? `<ul class="talk-items">${open.map(row).join("")}</ul><p class="muted small">✓ にしたものだけを献立に使います</p>` : `<p class="muted">まだ読み取れたことがありません。質問に答えると、ここに出ます。</p>`}
+    ${open.length ? `<ul class="talk-items">${open.map(row).join("")}</ul><p class="muted small">✓ のものを献立に使います。選んだ答えは最初から ✓（違えば ✕）。「推測」は ✓ にした時だけ使います</p>` : `<p class="muted">まだ読み取れたことがありません。質問に答えると、ここに出ます。</p>`}
     <h3 class="quick-sub">🔒 設定のまま ${tip("食べられないもの・苦手は、ここでは変わりません。献立からは必ず外します")}</h3>
     ${locked.length ? `<ul class="talk-locked">${locked.map((x) => `<li>${escapeHtml(x.label)}</li>`).join("")}</ul>` : `<p class="muted small">食べられないもの・苦手：なし</p>`}
     ${answers.length ? `<details class="talk-answers"><summary>💬 答えたこと（${answers.length}）</summary><ul>${answers.map((q) => `<li><span>${escapeHtml(q.ask(a))}</span><b>${escapeHtml(talkAnswerLabel(q, a[q.id], a))}</b><button type="button" class="link-inline" data-action="life-talk-edit" data-q="${q.id}">直す</button></li>`).join("")}</ul></details>` : ""}
@@ -490,13 +490,14 @@ globalThis.document?.addEventListener?.("input", (ev) => {
   clearTimeout(talkNoteTimer);
   talkNoteTimer = setTimeout(() => { keepTalkNote(ev.target); saveState({ scheduleSync: false }); }, 500);
 });
-// 今日の「やること」の1行。保存した方針がなく、閉じていない時だけ。途中なら「続きから」。
+// 今日の「やること」の1行。質問に答えて保存した方針がなく、閉じていない時だけ。途中なら「続きから」。
+// 「⇄ ほかの一皿」の理由・記録からの提案だけでできた版（reaction・evidence）では消さない（質問にはまだ答えていない）。
 function renderTalkTodo() {
   if (typeof isViewer === "function" && isViewer()) return "";
   const p = talkProfile();
   const who = talkWho();
-  if (p.snapshots.some((x) => x.member === who) || (p.dismissedAt && !p.session)) return "";
-  return `<div class="todo-row${p.session ? "" : " has-x"}"><span>💬</span><p><b>わが家のごはん方針</b>をいっしょに（6問ほど）</p>${dailyButton("life-talk-open", p.session ? "続きから" : "話す")}${p.session ? "" : `<button type="button" class="todo-x" data-action="life-talk-dismiss" aria-label="わが家のごはん方針の案内を閉じる">×</button>`}</div>`;
+  if (p.snapshots.some((x) => x.member === who && !["reaction", "evidence"].includes(x.reason)) || (p.dismissedAt && !p.session)) return "";
+  return `<div class="todo-row${p.session ? "" : " has-x"}"><span>💬</span><p><b>わが家のごはん方針</b>をいっしょに（5問ほど）</p>${dailyButton("life-talk-open", p.session ? "続きから" : "話す")}${p.session ? "" : `<button type="button" class="todo-x" data-action="life-talk-dismiss" aria-label="わが家のごはん方針の案内を閉じる">×</button>`}</div>`;
 }
 // 設定の1行。
 function renderTalkSetting() {
