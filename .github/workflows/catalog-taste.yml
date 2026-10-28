@@ -1,0 +1,20 @@
+name: Catalog taste inventory
+
+# 集まったレシピの棚卸し（好きな味の質問を作るため）。手で動かした時だけ。
+# 見えている新着の一覧を読むだけ（GET /api/trends）。AI も YouTube の検索も使わないので、費用はかからない。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the new arrivals (no AI)
+        run: curl -sS --max-time 120 https://matagochi-api-292190013809.us-central1.run.app/api/trends -o trends.json || echo '{}' > trends.json
+      - name: Count by dish name, main ingredient, cuisine and flavour
+        run: node scripts/catalog-taste.cjs trends.json
