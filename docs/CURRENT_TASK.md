@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | レビュー待ち（主役・味の見分け方の修正） | claude/nice-shannon-6g1g5m | 棚卸し（#180 公開済み）で見つかった見分け方の間違いを直す → 写真12枚の一覧をユーザーに見せる → 写真の画面・加点・行動から学ぶ・移し替え | lifestyle.js, test/*, docs/CATALOG_COVERAGE.md, docs/APP_MAP.md, docs/CURRENT_TASK.md, sw.js, version.json, index.html, app.js | daily-ui.js, household.js, app.js, tickets.js, plus.js, weekly.js, account.js, styles.css, index.html, lp/index.html, legal/*.html, api/src/tickets.js ほか, test/*, docs/* |
+| 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | レビュー待ち（理想の品ぞろえへ優先して補充） | claude/nice-shannon-6g1g5m | 理想の12品（作り方8品）・割合の目安（魚25・卵豆腐15・野菜15・さっぱり25%）を決め、足りないものから補充・毎朝の進み具合 → 写真の画面・加点・行動から学ぶ・移し替え → そろったら需要に合わせて集める | api/src/ideal.js, api/src/trends.js, api/src/dishes.js, api/test/refill.test.js, scripts/catalog-taste.cjs, .github/workflows/*.yml, test/catalog-taste.test.cjs, docs/* | daily-ui.js, household.js, app.js, tickets.js, plus.js, weekly.js, account.js, styles.css, index.html, lp/index.html, legal/*.html, api/src/tickets.js ほか, test/*, docs/* |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
@@ -30,6 +30,9 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 主役・味の見分け方の修正（#181、公開済み）：カタカナ・漢字の魚・だしは主役にしない・甘辛と仕上げの七味はピリ辛にしない。新着で魚 53→102品
+- 集まったレシピの棚卸し（#180、公開済み）：料理名・主役・系統・味で数える（0円・手動）
 
 - 献立画面の絞り込み・チケットをやめて1日の上限に（#179、公開済み）：献立の下は押すことがある時だけ／家庭ごとに1日10回・半分と残り1回で知らせる／LP・規約・プライバシー・特商法からチケットを外した
 

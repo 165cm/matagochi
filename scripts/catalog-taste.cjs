@@ -91,12 +91,48 @@ function markdown(r) {
   ].join("\n") + "\n";
 }
 
-if (require.main === module) {
-  let list = null;
-  try { list = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); } catch {}
-  const text = markdown(analyze(list));
-  console.log(text);
-  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
+// 理想までの進み具合（2026-10-28 のユーザーの判断：理想の12品と、主役・味の割合の目安。api/src/ideal.js）。
+// 毎朝の新着集めの最後に出す（.github/workflows/trends.yml）。
+const GROUP_OF_PROTEIN = { meat: "肉", fish: "魚", eggtofu: "卵・豆腐", veg: "野菜が主役" };
+function idealProgress(list, ideal) {
+  const items = (Array.isArray(list?.items) ? list.items : []).filter((i) => i && i.videoId);
+  const dishes = ideal.IDEAL_DISHES.map((d) => ({ ...d, n: items.filter((i) => parentName(i) === d.name).length, need: ideal.IDEAL_CHILDREN }));
+  const ax = items.map(axesOf);
+  const share = (pred) => (items.length ? ax.filter(pred).length / items.length : 0);
+  const shares = Object.entries(ideal.TARGET_SHARES).map(([g, target]) => ({ group: g, target, share: g === "さっぱり" ? share((a) => a.mood === "light") : share((a) => GROUP_OF_PROTEIN[a.protein] === g) }));
+  const short = dishes.reduce((s, d) => s + Math.max(0, d.need - d.n), 0) + shares.reduce((s, x) => s + Math.max(0, Math.ceil((x.target - x.share) * items.length)), 0);
+  return { total: items.length, dishes, shares, short, done: dishes.every((d) => d.n >= d.need) && shares.every((x) => x.share >= x.target) };
+}
+function idealMarkdown(p) {
+  const pc = (x) => `${Math.round(x * 100)}%`;
+  return [
+    `## 理想の品ぞろえまで：${p.done ? "✅ そろいました" : `あと約${p.short}品`}`,
+    "",
+    "| 理想の12品 | 作り方 | 目標 |",
+    "|---|---:|---:|",
+    ...p.dishes.map((d) => `| ${d.label} | ${d.n >= d.need ? `✅ ${d.n}` : d.n} | ${d.need} |`),
+    "",
+    "| 分野 | いま | 目安 |",
+    "|---|---:|---:|",
+    ...p.shares.map((x) => `| ${x.group} | ${x.share >= x.target ? "✅ " : ""}${pc(x.share)} | ${pc(x.target)} |`),
+    "",
+    `見えている新着 ${p.total}品から数えています（AI は使いません）。足りないものから先に補充します。`,
+    "",
+  ].join("\n") + "\n";
 }
 
-module.exports = { analyze, markdown, pick, axesOf, PICKS };
+if (require.main === module) {
+  (async () => {
+    let list = null;
+    try { list = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); } catch {}
+    let text;
+    if (process.argv.includes("--ideal")) {
+      const ideal = await import(require("node:url").pathToFileURL(path.join(__dirname, "..", "api", "src", "ideal.js")).href);
+      text = idealMarkdown(idealProgress(list, ideal));
+    } else text = markdown(analyze(list));
+    console.log(text);
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
+  })();
+}
+
+module.exports = { analyze, markdown, pick, axesOf, idealProgress, idealMarkdown, PICKS };

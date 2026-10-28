@@ -47,3 +47,20 @@ test("main ingredient and flavour: katakana and kanji fish, stock is not the mai
   assert.equal(L.traits(r("八宝菜", ["豚こま", "白菜", "オイスターソース"])).cuisine, "chinese", "seasonings still tell the cuisine");
   assert.ok(!L.tags({ title: "鶏むね肉のソテー", ingredients: [{ name: "鶏むね肉" }], steps: ["ふたをして蒸し焼きにする"] }).includes("light"), "a step does not make it light");
 });
+
+test("ideal progress: counts each ideal dish (target 8) and the shares against the targets, with how many are short", async () => {
+  const ideal = await import(require("node:url").pathToFileURL(require("node:path").join(__dirname, "..", "api", "src", "ideal.js")).href);
+  const items = [
+    ...Array.from({ length: 8 }, (_, i) => ({ videoId: `a${i}`, title: "豚の生姜焼き", ingredients: [{ name: "豚ロース" }], dish: { name: "生姜焼き" } })),
+    ...Array.from({ length: 3 }, (_, i) => ({ videoId: `b${i}`, title: "さばの味噌煮", ingredients: [{ name: "さば" }], dish: { name: "さばの味噌煮" } })),
+  ];
+  const p = C.idealProgress({ items }, ideal);
+  assert.equal(p.dishes.find((d) => d.name === "生姜焼き").n, 8);
+  assert.equal(p.dishes.find((d) => d.name === "さばの味噌煮").n, 3);
+  assert.equal(p.done, false);
+  assert.ok(p.short > 0);
+  const md = C.idealMarkdown(p);
+  assert.match(md, /理想の品ぞろえまで：あと約\d+品/);
+  assert.match(md, /✅ 8 \| 8/);
+  assert.match(md, /\| 魚 \|/);
+});

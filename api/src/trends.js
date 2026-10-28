@@ -3,6 +3,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./dishes.js";
+import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH } from "./ideal.js";
 import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 
@@ -234,20 +235,66 @@ export function stockOf(items = []) {
   }
   return by;
 }
-const QUICK_PER_PARENT = REFILL_CHILDREN - REFILL_LONG_PER_PARENT;
-const need = (st = {}) => ({ quick: Math.max(0, QUICK_PER_PARENT - (st.quick || 0)), long: Math.max(0, REFILL_LONG_PER_PARENT - (st.long || 0)) });
-// 子を入れてよいか（親1つで6品まで・30分以上は1品まで・20分以内は5品まで＝30分以上の1品の席を残す）。
-export const parentRoom = (st = {}, quick) => (st.total || 0) < REFILL_CHILDREN_MAX && (quick ? (st.quick || 0) < REFILL_CHILDREN_MAX - REFILL_LONG_PER_PARENT : (st.long || 0) < REFILL_LONG_PER_PARENT);
+// 理想の12品（ideal.js）は、子を IDEAL_CHILDREN 品まで（30分以上は IDEAL_LONG 品まで）。ほかの親は今までどおり6品まで（30分以上1品）。
+const IDEAL_KEYS = new Set(IDEAL_DISHES.map((d) => parentKeyOf(d.name)));
+export const isIdealParent = (key) => IDEAL_KEYS.has(key);
+export const limitsFor = (key) => (IDEAL_KEYS.has(key)
+  ? { quick: IDEAL_CHILDREN - IDEAL_LONG, long: IDEAL_LONG, max: IDEAL_CHILDREN }
+  : { quick: REFILL_CHILDREN - REFILL_LONG_PER_PARENT, long: REFILL_LONG_PER_PARENT, max: REFILL_CHILDREN_MAX });
+const need = (st = {}, key = "") => { const l = limitsFor(key); return { quick: Math.max(0, l.quick - (st.quick || 0)), long: Math.max(0, l.long - (st.long || 0)) }; };
+// 子を入れてよいか（親1つで6品まで・30分以上は1品まで・20分以内は5品まで＝30分以上の1品の席を残す。理想の12品は8品・30分以上2品）。
+export const parentRoom = (st = {}, quick, key = "") => { const l = limitsFor(key); return (st.total || 0) < l.max && (quick ? (st.quick || 0) < l.max - l.long : (st.long || 0) < l.long); };
 // 親の子がそろったか（数ではなく内訳で：20分以内4品以上・30分以上1品以上。review fix #135）。
-export const parentFilled = (st = {}) => { const n = need(st); return n.quick === 0 && n.long === 0; };
+export const parentFilled = (st = {}, key = "") => { const n = need(st, key); return n.quick === 0 && n.long === 0; };
+// 親料理の分野（主役）。定番の一覧（WAVE_CLASSIC_DISHES）と理想の12品から。分からない親は数えない。
+const GROUP_OF = (() => {
+  const m = {};
+  for (const [name, group] of WAVE_CLASSIC_DISHES) m[parentKeyOf(name)] = group;
+  for (const d of IDEAL_DISHES) m[parentKeyOf(d.name)] = d.group;
+  return m;
+})();
+// いまの割合（見えている新着から。分野の分かる親の料理だけで数える）と、目安との差（足りない分・0〜1）。
+export function shareGaps(items = []) {
+  const counts = {}; let known = 0, light = 0, named = 0;
+  for (const i of items) {
+    const k = i.dish?.key, name = i.dish?.name || "";
+    if (!k) continue;
+    named += 1;
+    if (LIGHT_DISH.test(name)) light += 1;
+    const g = GROUP_OF[k];
+    if (!g) continue;
+    known += 1;
+    counts[g] = (counts[g] || 0) + 1;
+  }
+  const gaps = {};
+  for (const [g, target] of Object.entries(TARGET_SHARES)) {
+    const share = g === "さっぱり" ? (named ? light / named : 0) : known ? (counts[g] || 0) / known : 0;
+    gaps[g] = { share, target, gap: Math.max(0, target - share) };
+  }
+  return gaps;
+}
+// 補充する親料理の順番（2026-10-28 のユーザーの判断：足りないものから）。
+//   ① 理想の12品 → ② 目安より少ない分野（魚・卵豆腐・野菜が主役・さっぱり）の親（足りない分の大きい順）→ ③ ほか（今までの順）。
+export function prioritizedParents(book = {}, items = []) {
+  const base = refillParents(book);
+  const removed = new Set(book.removed || []);
+  const ideal = IDEAL_DISHES.map((d) => ({ key: parentKeyOf(d.name), name: d.name })).filter((p) => !removed.has(p.key));
+  const gaps = shareGaps(items);
+  const gapOf = (p) => (gaps[GROUP_OF[p.key]]?.gap || 0) + (LIGHT_DISH.test(p.name) ? gaps["さっぱり"]?.gap || 0 : 0);
+  const rest = base.filter((p) => !IDEAL_KEYS.has(p.key)).map((p, i) => ({ ...p, i, g: gapOf(p) }));
+  const short = rest.filter((p) => p.g > 0).sort((a, b) => b.g - a.g || a.i - b.i).map(({ i, g, ...p }) => ({ ...p, tier: 1 }));
+  const others = rest.filter((p) => !(p.g > 0)).map(({ i, g, ...p }) => ({ ...p, tier: 2 }));
+  return [...ideal.map((p) => ({ ...p, tier: 0 })), ...short, ...others];
+}
 // 次に補充する親料理の検索（なければ null）。doc.waves.parents に、親ごとの言葉の位置と日を残す。
 export function nextParentWave(doc, parents, stock, nowMs) {
   const w = (doc.waves ||= { turn: 0, trend: 0, trendAt: {}, classic: 0, classicUsed: {}, words: {}, log: [], n: 0 });
   w.parents ||= {}; w.words ||= {}; w.log ||= [];
   const today = new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10);
   // 内訳が足りず、まだ6品に届いていない親（20分以内5・30分以上0なら、30分以上を探して6品目に）。
-  const order = parents.map((p, i) => ({ p, i, n: need(stock[p.key]) })).filter((x) => x.n.quick + x.n.long > 0 && (stock[x.p.key]?.total || 0) < REFILL_CHILDREN_MAX)
-    .sort((a, b) => (b.n.quick + b.n.long) - (a.n.quick + a.n.long) || a.i - b.i);
+  // 順番：理想の12品 → 足りない分野 → ほか（tier）。同じ段の中では、足りない子の多い親から。
+  const order = parents.map((p, i) => ({ p, i, n: need(stock[p.key], p.key) })).filter((x) => x.n.quick + x.n.long > 0 && (stock[x.p.key]?.total || 0) < limitsFor(x.p.key).max)
+    .sort((a, b) => (a.p.tier || 0) - (b.p.tier || 0) || (b.n.quick + b.n.long) - (a.n.quick + a.n.long) || a.i - b.i);
   for (const { p, n } of order) {
     const st = (w.parents[p.key] ||= { quick: 0, long: 0, at: {}, day: "" });
     if (st.day === today) continue; // 1つの親は1日1回まで
@@ -526,7 +573,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const quick = isQuickDish(r.planning?.minutes);
       const pr = parentOf(r.title, dbook, r.dishName);
       const st = pr ? (stock[pr.key] ||= { quick: 0, long: 0, total: 0 }) : null;
-      if (excluded.has(v) || (r.channelId && excluded.has(r.channelId)) || !r.caption || !portfolioRoom(port, r.channelId) || (st ? !parentRoom(st, quick) : !quick)) continue;
+      if (excluded.has(v) || (r.channelId && excluded.has(r.channelId)) || !r.caption || !portfolioRoom(port, r.channelId) || (st ? !parentRoom(st, quick, pr.key) : !quick)) continue;
       if (st) { if (quick) st.quick += 1; else st.long += 1; st.total += 1; }
       portAdd(port, r.channelId);
       week.items.push({ videoId: v, day: today });
@@ -885,8 +932,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           doc.candidates.unshift(...back);
         }
         // 親料理ごとの子の数（見えている新着から。1回の実行で1回だけ読む）と、料理名の辞書。
-        let stock = null, dbook = null, runAdded = 0;
-        const getStock = async () => (stock ||= stockOf((await this.list({ promote: false }).catch(() => ({ items: [] }))).items || []));
+        let stock = null, dbook = null, runAdded = 0, listed = null;
+        const getItems = async () => (listed ||= (await this.list({ promote: false }).catch(() => ({ items: [] }))).items || []);
+        const getStock = async () => (stock ||= stockOf(await getItems()));
         const getDbook = async () => (dbook ||= await (dishBook || createDishBook(store, { now })).book().catch(() => ({})));
         while (now() - started < timeMs) {
           if (runAdded >= maxAdd) { reason = "refill_day"; break; }
@@ -922,7 +970,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               if (day >= WAVE_SEARCH_PER_DAY) { reason = "search_day_limit"; break; }
               const waveDoc = structuredClone(doc.waves);
               // 親料理ごとの補充：子が足りない親から（2026-10-03）。
-              if (axis === "parent") wave = nextParentWave(doc, refillParents(await getDbook()), await getStock(), now());
+              if (axis === "parent") wave = nextParentWave(doc, prioritizedParents(await getDbook(), await getItems()), await getStock(), now());
               else wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added), longOk: longRoom(stage.added) });
               // 選んだ方向だけ使い切った時は、段階を終わりにしない（もう一方の方向で続けられる）。
               if (!wave) { reason = axis === "both" ? "exhausted" : "axis_exhausted"; break; }
@@ -1004,7 +1052,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             // 親料理の子が6品そろっている時は読まない（読んでいる最中の同じ親も数える。試した扱いにしない）。
             if (c.wave && c.pk) {
               const st = (await getStock())[c.pk], same = batch.filter((x) => x.pk === c.pk).length;
-              if ((st?.total || 0) + same >= REFILL_CHILDREN_MAX) { if (same) { doc.candidates.unshift(c); break; } skip("parent_full"); continue; }
+              if ((st?.total || 0) + same >= limitsFor(c.pk).max) { if (same) { doc.candidates.unshift(c); break; } skip("parent_full"); continue; }
             }
             // 定番：その検索で料理が3品増えたら、残りは読まない（読んでいる最中の分も数える）。
             if (c.axis === "classic") {
@@ -1066,7 +1114,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               const pr = parentOf(r.title, await getDbook(), r.dishName);
               if (pr) {
                 const st = (await getStock())[pr.key] || {};
-                if (!parentRoom(st, isQuickDish(r.planning?.minutes))) { skip((st.total || 0) >= REFILL_CHILDREN_MAX ? "parent_full" : "parent_long"); continue; }
+                if (!parentRoom(st, isQuickDish(r.planning?.minutes), pr.key)) { skip((st.total || 0) >= limitsFor(pr.key).max ? "parent_full" : "parent_long"); continue; }
                 pkey = pr.key;
               }
             }
@@ -1124,10 +1172,10 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     async parentStock() {
       const items = (await this.list({ promote: false }).catch(() => ({ items: [] }))).items || [];
       const stock = stockOf(items);
-      const parents = refillParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})));
-      const rows = parents.map((p) => ({ ...p, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
+      const parents = prioritizedParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})), items);
+      const rows = parents.map((p) => ({ ...p, ideal: IDEAL_KEYS.has(p.key), max: limitsFor(p.key).max, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
       const today = (await store.get("trends/refill"))?.envelope;
-      return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => parentFilled(r)).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX,
+      return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => parentFilled(r, r.key)).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX, gaps: shareGaps(items),
         today: today?.day === dayOf(now()) ? today : { day: dayOf(now()), ai: 0, added: 0 }, perDay: { ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY } };
     },
     // 自動の補充（毎日の新着集めの後に呼ぶ）：子が足りない親料理を、1日に料理15品・AI 25回まで埋める。
