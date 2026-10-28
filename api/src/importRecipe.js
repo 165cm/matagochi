@@ -27,7 +27,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const duration = Number.isFinite(snippet.durationSeconds) && snippet.durationSeconds > 0 ? snippet.durationSeconds : null;
   // 長い動画（や長さ不明）は頭から maxSeconds だけを見る。作り方がその中で完結した時だけ使う。
   const clipSeconds = !duration || duration > maxSeconds ? maxSeconds : null;
-  // 動画はボタンを押した時（forceVideo）だけ読む。取り込みでは読まず、読めることだけ知らせる（チケットを勝手に使わない）。
+  // 動画はボタンを押した時（forceVideo）だけ読む。取り込みでは読まず、読めることだけ知らせる（1日の上限の回数を勝手に使わない）。
   const videoSkipped = weak && !options.forceVideo;
   if (weak && options.forceVideo && maxSeconds > 0 && typeof deps.analyzeRecipeVideo === "function") {
     try {

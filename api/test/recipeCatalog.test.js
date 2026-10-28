@@ -136,12 +136,12 @@ test('re-reading from the video re-runs a description result once, then serves t
   const cached = await catalog.import(url, { forceVideo: true, household: 'h1' });
   assert.equal(cached.cacheHit, true, 'no second paid video read'); assert.equal(cached.ticketUsed, undefined);
   assert.equal(calls, 2); assert.deepEqual(seen, [false, true]);
-  assert.equal((await tickets.get('h1')).balance, 9, 'one ticket for one new video read');
+  assert.equal((await tickets.get('h1')).used, 1, 'one use for one new video read');
 });
 
-test('importing keeps a result without steps (the video is read on request); a video read costs a ticket, refunded when it fails', async () => {
+test('importing keeps a result without steps (the video is read on request); a video read uses one of the daily uses, given back when it fails', async () => {
   const store = createMemorySyncStore();
-  const tickets = createTicketBook(store, { startTickets: 1 });
+  const tickets = createTicketBook(store, { limit: 1 });
   await tickets.get('h1');
   let fail = false;
   const catalog = createRecipeCatalog(store, async (u, o) => {
@@ -152,16 +152,16 @@ test('importing keeps a result without steps (the video is read on request); a v
   for (const u of urls) { const r = await catalog.import(u); assert.deepEqual(r.steps, []); assert.equal(r.videoSkipped, true); }
   fail = true;
   await assert.rejects(catalog.import(urls[0], { forceVideo: true, household: 'h1' }), { code: 'ai_failed' });
-  assert.equal((await tickets.get('h1')).balance, 1, 'a failed read gives the ticket back');
+  assert.equal((await tickets.get('h1')).left, 1, 'a failed read gives the use back');
   fail = false;
   assert.equal((await catalog.import(urls[0], { forceVideo: true, household: 'h1' })).analyzedFrom, 'video');
-  await assert.rejects(catalog.import(urls[1], { forceVideo: true, household: 'h1' }), { code: 'no_tickets' });
+  await assert.rejects(catalog.import(urls[1], { forceVideo: true, household: 'h1' }), { code: 'daily_limit' });
   assert.deepEqual((await catalog.import(urls[1])).steps, [], 'the saved result survives a refused read');
-  assert.equal((await catalog.import(urls[1], { forceVideo: true, household: 'h1', unlimited: true })).analyzedFrom, 'video', 'the developer code needs no ticket');
-  assert.equal((await tickets.get('h1')).balance, 0);
+  assert.equal((await catalog.import(urls[1], { forceVideo: true, household: 'h1', unlimited: true })).analyzedFrom, 'video', 'the developer code is not counted');
+  assert.equal((await tickets.get('h1')).left, 0);
   await tickets.get('h2');
   await catalog.import(urls[0], { forceVideo: true, household: 'h2' });
-  assert.equal((await tickets.get('h2')).balance, 1, 'videos someone already read are free');
+  assert.equal((await tickets.get('h2')).left, 1, 'videos someone already read are not counted');
 });
 
 test('description and channel older than 30 days are fetched again, or dropped', async () => {

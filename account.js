@@ -1,4 +1,4 @@
-/* ログイン（Google・メールのコード）。機種変更しても、ログインするとチケット・家族の共有・自分の名前が戻る。 */
+/* ログイン（Google・メールのコード）。機種変更しても、ログインすると家族の共有・自分の名前が戻る。 */
 let authLoaded = false;
 let authConfig = null, account = null, authBusy = false, loginEmail = "", loginCodeSent = false;
 let authMessage = "", transferCode = "", transferExpires = "";
@@ -83,7 +83,7 @@ async function authPost(path, body, signed = false) {
   if (!response.ok) throw new Error(data.error?.message || "ログインできませんでした。");
   return data;
 }
-// ログインできたら：前の端末の識別子（チケット）と家族の合言葉（共有データ）を戻し、この端末の分を覚えさせる。
+// ログインできたら：前の端末の識別子（1日の上限の数え先）と家族の合言葉（共有データ）を戻し、この端末の分を覚えさせる。
 async function afterSignIn({ token, account: acct }) {
   if (!authTransferPage() && state.sync?.accountEmail && state.sync.accountEmail !== acct.email && !window.confirm("別のアカウントです。この端末の献立を新しいアカウントへ統合しますか？統合前の献立は残します。")) return;
   try { localStorage.setItem("ripigochi-session", token); } catch {}
@@ -95,7 +95,7 @@ async function afterSignIn({ token, account: acct }) {
   catch (error) { syncRuntimeStatus = syncErrorText(error); }
   await linkAccount();
   loginEmail = ""; loginCodeSent = false;
-  showToast(restored ? "ログインしました。家族の共有とチケットを戻しました。" : "ログインしました。");
+  showToast(restored ? "ログインしました。家族の共有を戻しました。" : "ログインしました。");
   refreshTickets();
   render();
 }
@@ -161,7 +161,7 @@ function renderAccountPanel() {
   const email = authConfig?.email ? (loginCodeSent
     ? `<label class="small" for="login-code">${escapeHtml(loginEmail)} に届いた6桁のコード</label><div class="login-row"><input id="login-code" class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"><button type="button" class="primary-button" data-action="auth-email-verify" ${authBusy ? "disabled" : ""}>ログイン</button></div><button type="button" class="text-button" data-action="auth-email-reset">メールアドレスを変える</button>`
     : `<div class="login-row"><input id="login-email" class="input" type="email" autocomplete="email" placeholder="メールアドレス" value="${escapeAttr(loginEmail)}"><button type="button" class="secondary-button" data-action="auth-email-start" ${authBusy ? "disabled" : ""}>コードを送る</button></div>`) : "";
-  return `<section class="panel account-panel"><h3>🔐 ログイン</h3><p class="small">ログインしておくと、機種変更やデータが消えた時も、<b>チケット・家族の共有</b>が戻ります。</p>${authConfig?.google ? `<div id="google-login" class="google-login" aria-label="Googleでログイン"></div>` : ""}${email}<p id="auth-message" class="small muted" role="status">${escapeHtml(authMessage)}</p>${renderTransferHelp()}${authBusy ? '<p class="muted small">確かめています…</p>' : ""}</section>`;
+  return `<section class="panel account-panel"><h3>🔐 ログイン</h3><p class="small">ログインしておくと、機種変更やデータが消えた時も、<b>家族の共有</b>が戻ります。</p>${authConfig?.google ? `<div id="google-login" class="google-login" aria-label="Googleでログイン"></div>` : ""}${email}<p id="auth-message" class="small muted" role="status">${escapeHtml(authMessage)}</p>${renderTransferHelp()}${authBusy ? '<p class="muted small">確かめています…</p>' : ""}</section>`;
 }
 async function handleAuthAction(action) {
   if (authBusy && action.startsWith("auth-")) return true;
@@ -220,7 +220,7 @@ if (typeof window !== "undefined") window.addEventListener?.("online", () => {
   else if (syncEnabled()) syncNow({ silent: true });
 });
 
-// Browser-local ID: deviceKey() belongs to the account's tickets and is shared across devices.
+// Browser-local ID: deviceKey() is where the account's daily limit is counted, shared across devices.
 function syncClientId() {
   let id=localStorage.getItem('ripigochi-sync-client');
   if (!id) { id=generateId('browser-');localStorage.setItem('ripigochi-sync-client',id); }

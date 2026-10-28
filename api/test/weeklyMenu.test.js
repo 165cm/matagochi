@@ -41,9 +41,9 @@ test('reading back: the count and every word must be there (case, spaces and mar
   assert.equal(boardMatches(texts, { ...good, texts: ['Weekly Menu', 'MON', 'Nikujaga', 'TUE', 'Pork & Cabage Bowl', 'WED', 'Kamatama Udon'] }), false, 'a misspelling');
 });
 
-test('weekly menu: one drawing with the words, read back and redrawn once, 3 tickets, refunded on failure, bounded', async () => {
+test('weekly menu: one drawing with the words, read back and redrawn once, one use of the day, given back on failure, bounded', async () => {
   const store = createMemorySyncStore();
-  const tickets = createTicketBook(store, { startTickets: 30 });
+  const tickets = createTicketBook(store, { limit: 30 });
   await tickets.get('home-1');
   const jpeg = (await sharp({ create: { width: 60, height: 60, channels: 3, background: '#c86' } }).jpeg().toBuffer()).toString('base64');
   let fail = false, draws = [], checks = 0, wrongFirst = false, describeFails = false;
@@ -61,7 +61,7 @@ test('weekly menu: one drawing with the words, read back and redrawn once, 3 tic
   const meta = await sharp(Buffer.from(out.image.data, 'base64')).metadata();
   assert.deepEqual([meta.format, meta.width, meta.height], ['webp', 1200, 1500]);
   assert.deepEqual(out.notes[0], { kcal: 520, yen: 380, copy: 'ふわとろ卵', en: 'Nikujaga' });
-  assert.equal(out.wallet.halves / 2, 27, '3 tickets');
+  assert.equal(out.wallet.used, 1, 'one use of the day');
   // 読み返しで品数が違ったら、1回だけ描き直す
   draws = []; checks = 0; wrongFirst = true;
   const again = await menu.make({ photos, model: 'lite' }, 'home-1');
@@ -69,7 +69,7 @@ test('weekly menu: one drawing with the words, read back and redrawn once, 3 tic
   wrongFirst = false;
   fail = true;
   await assert.rejects(menu.make({ photos }, 'home-1'), { code: 'menu_failed' });
-  assert.equal((await tickets.get('home-1')).balance, 24, 'refunded after a failure');
+  assert.equal((await tickets.get('home-1')).used, 2, 'given back after a failure');
   fail = false;
   await assert.rejects(menu.make({ photos }, 'home-1'), { code: 'menu_quota' }, `${MENUS_PER_DAY} a day`);
   // 英語の名前が取れなければ日本語で書く

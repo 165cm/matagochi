@@ -1,12 +1,11 @@
 /* 1週間コンプ：その週（月〜日）に作った晩ごはんの写真が、スタンプのように1マスずつ埋まっていく。
-   予定した日が全部（3日以上）写真でそろったら「メニューにする」（チケット3枚）。
+   予定した日が全部（3日以上）写真でそろったら「メニューにする」（1日の上限の1回）。
    その週の写真をまとめて1回で、AIが文字入りの「カフェ風の献立表」1枚に描く（画風・文字の言語・カロリー等の添え書き・雰囲気を選べる）。
    サーバーが書く文字を先に決めて一字一句指定し、描けたら読み返して、違えば1回だけ描き直す。
    アプリは、その絵のまわりに「n/n コンプ」・合計・名前・Lv・ロゴとURLを足す（オン・オフは描き直さない）。
    写真も絵も、この端末だけ（アルバムは同期しない・最大12件）。
    ※ 献立表の生成は、仕上がりの再現度が足りないので止めている（MENU_ENABLED）。スタンプカードとコンプのバッジだけ動く。 */
 const MENU_ENABLED = false;
-const MENU_TICKETS = 3;
 const MENU_MIN = 3;
 const ALBUM_MAX = 12;
 const MENU_URL = "165cm.github.io/matagochi";
@@ -90,7 +89,7 @@ function renderWeeklyStamps() {
   if (weeklyBusy === start) foot = '<p class="stamp-note" role="status">🎨 献立表を描いています…（1分ほど）</p>';
   else if (made.length) foot = `<div class="stamp-actions">${dailyButton("life-menu-open", "🍽 メニューを見る", `data-key="${escapeAttr(menuKey(made[0]))}"`, true)}${MENU_ENABLED ? dailyButton("life-menu-setup", "別の画風でも", `data-week="${start}"`) : ""}</div>`;
   else if (r.complete && !MENU_ENABLED) foot = '<p class="stamp-note">🎉 コンプ！</p>';
-  else if (r.complete) foot = dailyButton("life-menu-setup", `🎉 メニューにする <small>🎟${MENU_TICKETS}枚</small>`, `data-week="${start}"`, true);
+  else if (r.complete) foot = dailyButton("life-menu-setup", "🎉 メニューにする", `data-week="${start}"`, true);
   else foot = `<p class="stamp-note">${noPhoto ? "📷 をタップで写真を追加" : `あと${left}日でコンプ`}</p>`;
   return `<section class="panel stamp-card" aria-label="${last ? "先週" : "今週"}のスタンプ">
     <div class="stamp-head"><b>📸 ${last ? "先週" : "今週"}のスタンプ</b><span class="stamp-count${r.complete ? " is-comp" : ""}">${r.complete ? "コンプ！ " : ""}${r.got}/${r.target}</span></div>
@@ -111,7 +110,7 @@ function renderMenuSetup() {
     <div class="wish-chips">${PROMPT_IDEAS.map((w) => `<button type="button" class="wish-chip" data-action="life-menu-wish" data-wish="${escapeAttr(w)}">+ ${w}</button>`).join("")}</div>
     ${devCode() ? segment("開発用：モデル", "model", [["standard", "標準"], ["lite", "Lite"]], m.model) : ""}
     <p class="stamp-note">今週の写真をまとめて、AIが1枚の献立表に描きます（1分ほど）。書く文字はアプリが決めて、描けたら読み返して確かめます。写真と絵はこの端末だけに保存。</p>
-    ${dailyButton("life-menu-make", `🎨 描く <small>🎟${MENU_TICKETS}枚${devCode() ? "（開発コード：無料）" : ""}</small>`, "", true)}</div></div>`;
+    ${dailyButton("life-menu-make", `🎨 描く${devCode() ? " <small>（開発コード：数えない）</small>" : ""}`, "", true)}</div></div>`;
 }
 const readWish = () => { const el = globalThis.document?.querySelector?.("#menu-prompt"); if (el && menuSetup) menuSetup.prompt = String(el.value || "").slice(0, 60); };
 
@@ -148,8 +147,8 @@ async function makeWeeklyMenu(start, choice = {}) {
     const data = await response.json().catch(() => ({}));
     if (data.tickets) setTickets(data.tickets);
     if (!response.ok || !data.image?.data) {
-      if (data.error?.code === "no_tickets") openTicketSheet();
-      throw new Error(data.error?.message || "メニューにできませんでした。チケットは戻しました。");
+      if (isLimitError(data.error)) showLimitReached();
+      throw new Error(data.error?.message || "メニューにできませんでした。今日の回数は戻しました。");
     }
     const entry = { id: start, style: MENU_STYLES[data.style] ? data.style : pick.style, lang: data.lang === "ja" ? "ja" : "en", info: data.info || pick.info, model: data.model === "lite" ? "lite" : "standard", total: r.target, prompt: pick.prompt, checked: typeof data.checked === "boolean" ? data.checked : null,
       days: days.map((s, i) => ({ date: s.date, dish: s.dish, kcal: num(data.notes?.[i]?.kcal, 30, 3000), yen: num(data.notes?.[i]?.yen, 10, 5000), copy: String(data.notes?.[i]?.copy || "").slice(0, 24) })),

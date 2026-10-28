@@ -22,15 +22,14 @@ function app(now = "2026-10-01T10:00:00") { // 木曜・端末の時刻
 }
 const startWeekday = (run) => run(`state.rhythm = normalizeRhythm({ preset: "weekday", shopTime: "17:00" }); startRhythm(new Date());`);
 
-test("week board: a week before the user started shows no 「決定 ✓」; a week whose days were all made still does", () => {
+test("block status: a week before the user started is not 「決定」; a week whose days were all made still is", () => {
   const run = app();
   startWeekday(run);
-  run("boardWeek = -1");
-  assert.ok(!run("renderWeekBoard()").includes("決定"), "nothing was decided that week");
+  const before = `blocksFrom("2026-09-14", 14).find((b) => b.start === "2026-09-21")`;
+  assert.equal(run(`blockStatus(${before})`), "past", "nothing was decided that week");
   run(`const r = allDinnerRecipes()[0]; for (const d of ["2026-09-21","2026-09-22","2026-09-23","2026-09-24","2026-09-25"]) state.mealSlots[d] = { date: d, status: "cooked", recipe: r };`);
-  assert.ok(run("renderWeekBoard()").includes("決定 ✓"));
-  run("boardWeek = 0");
-  assert.ok(run("renderWeekBoard()").includes("受付中"), "the current week is unchanged");
+  assert.equal(run(`blockStatus(${before})`), "decided");
+  assert.equal(run("blockStatus(currentBlocks().at(-1))"), "open", "the coming week is unchanged");
 });
 
 test("first shopping uses the usual shopping time: today if it is still ahead, otherwise tomorrow — never late at night", () => {

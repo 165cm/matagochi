@@ -762,7 +762,7 @@ test("app: 3-day rhythm splits the week into 月火水／木金土 with Sunday o
   assert.equal(run("decidedUntil()"), "2026-09-26");
   run('handleDailyAction("life-block-shopped",{key:"2026-09-24"})');
   assert.equal(run('blockStatus(currentBlocks()[0])'), "shopped");
-  assert.ok(run("renderWeekBoard()").includes("wk-bar"));
+  assert.match(run("renderDailyPlan()"), /block-head is-shopped[\s\S]*買い物済み ✓/, "the page head shows it (the week calendar was removed on 2026-10-28)");
 });
 
 test("traits: パン粉 and フライパン do not make a dish a bread meal", () => {

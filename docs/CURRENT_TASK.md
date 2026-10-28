@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 献立をかたまりごとのページに・保存の表示を必要な時だけ | レビュー待ち | claude/nice-shannon-6g1g5m | ひとかたまりを1画面・横スライド・食べた日は評価つきで残す／1行は写真16:9＋文字少なめ・「⇄ 変更」／「保存済み」を普段は出さない | daily-ui.js, app.js, styles.css, test/first-week.test.cjs, sw.js, version.json, index.html, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| 献立画面を絞る・チケットをやめて1日の上限に | レビュー待ち | claude/nice-shannon-6g1g5m | 献立の下はカレンダー・バランス・まとめて評価・チケット案内・誘いを外す／チケットの仕組みをやめ、1日10回の上限と半分・残り1回の知らせ | daily-ui.js, household.js, app.js, tickets.js, plus.js, weekly.js, account.js, styles.css, index.html, lp/index.html, legal/*.html, api/src/tickets.js ほか, test/*, docs/* |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
@@ -30,6 +30,8 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 献立をかたまりごとのページに（#178、公開済み）：買い物のかたまりを1画面・横スライド（前回・今回・次回）・食べた日は評価つきで残す／1行は写真16:9＋文字少なめ・「⇄ 変更」／「保存済み・保存を確かめる」はふだん出さない
 
 - 決めた料理も変えられるように（#177、公開済み）：今夜の一品（決定済み）に「⇄ 変更」。その料理の材料を買っている時だけ1問「買った◯◯は？」→ 使う料理から選ぶ（肉・魚・豆腐3／野菜1／調味料・米0 の重みで並べる）／気にせず選ぶ（APP_MAP §37）
 

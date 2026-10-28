@@ -87,15 +87,15 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (result.unavailable) throw unavailableError(result);
       return { ...localizeRecipe(structuredClone(result)), cacheHit: true };
     }
-    // 動画の読み取りは、ボタンを押した時だけ。チケットを先に1枚使う（なければ保存済みの結果には触れない）。
-    // 誰かがもう動画から読んだ動画なら、上で保存済みの結果を返すのでチケットは使わない。
+    // 動画の読み取りは、ボタンを押した時だけ。1日の上限の回数を先に1回使う（上限なら保存済みの結果には触れない）。
+    // 誰かがもう動画から読んだ動画なら、上で保存済みの結果を返すので回数は使わない。
     let spent = false;
-    if (forceVideo) { if (!tickets) throw new ApiError(503, "catalog_not_configured", "チケットの保存先が未設定です。"); await tickets.spend(household, { unlimited }); spent = !unlimited; }
+    if (forceVideo) { if (!tickets) throw new ApiError(503, "catalog_not_configured", "回数の保存先が未設定です。"); await tickets.spend(household, { unlimited }); spent = !unlimited; }
     const refund = async () => { if (spent) { spent = false; await tickets.refund(household, { unlimited }).catch(() => {}); } };
     // A claim older than STALE_PENDING_MS cannot still be waiting on the AI (timeout is 60s), so it may be retried.
     const stale = current?.envelope.status === "pending" && now() - Date.parse(current.envelope.startedAt || 0) > STALE_PENDING_MS;
     if (current?.envelope.status === "pending" && !stale) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
-    // 説明文で失敗した直後でも、動画から読むのは待たせない（チケットを使う操作なので連打にはならない）。
+    // 説明文で失敗した直後でも、動画から読むのは待たせない（1日の上限がある操作なので連打にはならない）。
     if (!forceVideo && current?.envelope.retryAt > now()) { await refund(); throw new ApiError(429, "analysis_cooldown", "分析に失敗したため、1分ほど待ってから再試行してください。"); }
     // 読み直しは、保存済みのレシピを「分析中」で置き換えない（途中で失敗・停止しても、前のレシピを読める）。
     // 別の鍵で同時の読み直しを止め（世代つきの書き込みで1つだけ）、最後に保存済みの版が変わっていない時だけ書く（review fix #138）。
@@ -115,7 +115,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 読み直しで手順が減る（説明欄が変わった・読めなかった）時は、前の結果を残す。
       if (reread && before && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
       if (reread) result.rereadAt = new Date(now()).toISOString();
-      // 動画から作り方を読めなかったら、チケットは戻す。
+      // 動画から作り方を読めなかったら、回数は戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
       // 取り込みは説明文だけで読む。作り方がなくても材料があれば保存し、動画はボタンで読む。
       if (!result.title || !result.ingredients.length || (!result.steps.length && (forceVideo || !raw?.videoSkipped))) {
@@ -286,7 +286,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       }
       return out;
     },
-    // 動画から読んだ結果がもうあるか（あればチケットなしで返せる）。ボタンを押す前の確認用。
+    // 動画から読んだ結果がもうあるか（あれば回数を使わずに返せる）。ボタンを押す前の確認用。
     async videoRead(rawUrl) {
       required();
       const current = await store.get(`youtube-${extractYouTubeVideoId(rawUrl)}`);
