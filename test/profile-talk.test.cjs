@@ -814,7 +814,7 @@ test("a decided dinner can be changed from the today card; with bought ingredien
     globalThis.boughtName = r.ingredients.map((i) => Lifestyle.shoppingName(i.name)).find((n) => n && Lifestyle.isBought(n) && n !== "ごはん");
     state.shoppingMarks = { [Lifestyle.shoppingKey(boughtName)]: { status: "purchased", updatedAt: nowIso() } };`);
   const name = run("boughtName");
-  assert.ok(run("renderToday()").includes("⇄ ほかの一皿に変える"), "a small link on the decided card");
+  assert.ok(run("renderToday()").includes("⇄ 変更"), "a small link on the decided card");
   run("handleDailyAction('life-swap',{date:today()})");
   let html = run("renderSwapChoices()");
   assert.ok(html.includes(`買った<b>${name}`) && html.includes("使う料理から選ぶ") && html.includes("気にせず選ぶ"));

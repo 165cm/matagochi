@@ -687,7 +687,7 @@ function renderToday() {
   else if (!slot || slot.status === "removed")
     actions = `${recipe ? dailyButton("life-confirm-one", "これにする", `data-date="${today()}"`, true) : dailyButton("life-profile", "条件をゆるめる", "", true)}${recipe ? `<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}">⇄ ほかの一皿</button>` : ""}`;
   else if (slot.status === "cooked") actions = "";
-  else actions = `${dailyButton("life-cook", "作り方を見る", `data-date="${today()}"`, true)}${tonightNeeds ? dailyButton("go-view", `🛒 この料理の買うもの あと${tonightNeeds}品`, 'data-view="shopping"') : ""}${isViewer() ? "" : `<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}">⇄ ほかの一皿に変える</button>`}`;
+  else actions = `${dailyButton("life-cook", "作り方を見る", `data-date="${today()}"`, true)}${tonightNeeds ? dailyButton("go-view", `🛒 この料理の買うもの あと${tonightNeeds}品`, 'data-view="shopping"') : ""}${isViewer() ? "" : `<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}" aria-label="今夜の料理を変更">⇄ 変更</button>`}`;
   const pre = !slot && day?.prestart ? prestartUntil() : "";
   const firstBlock = pre ? currentBlocks()[0] : null;
   if (pre) actions = dailyButton("go-view", "最初の献立を見る", 'data-view="plan"', true);
