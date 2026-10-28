@@ -57,11 +57,31 @@ test("決まりどおりの1日・1週の上限や、途中で時間切れは赤
 
 test("7日以内に見えなくなる品数を数え、要約に日本語で出す", () => {
   const list = { items: [...items(150, 3), ...items(100, 20)] };
-  const r = judge({ refresh: { today: 2, done: true, ai: AI }, list, now: NOW });
+  const r = judge({ refresh: { today: 2, done: true, ai: AI }, refill: { added: 0, done: true, reason: "stocked" }, list, now: NOW });
   assert.equal(r.numbers.soon, 150);
   const text = markdown(r);
   assert.match(text, /✅ 問題なし/);
   assert.match(text, /いま見えている新着.*\| 250品 \|/);
   assert.match(text, /985円 \/ 1000円/);
   assert.match(markdown(judge({ refresh: null, list: null, now: NOW })), /❌ 問題あり[\s\S]*不明/);
+});
+
+test("サーバーのエラーの返事・補充の返事なし・補充の設定不足と費用の保存失敗も赤（review fix #171）", () => {
+  const list = { items: items(300) };
+  const err = judge({ refresh: { error: { code: "store_failed", message: "x" } }, list, now: NOW });
+  assert.equal(err.ok, false);
+  assert.match(err.problems.join(), /新着集め：サーバーがエラーを返しました（store_failed）/);
+  // 新着集めが終わったのに補充の返事がない・エラー
+  for (const refill of [null, {}, { error: { code: "internal" } }]) {
+    const r = judge({ refresh: { today: 2, done: true }, refill, list, now: NOW });
+    assert.equal(r.ok, false, JSON.stringify(refill));
+    assert.match(r.problems.join(), /親料理の補充：/);
+  }
+  // 新着集めが終わっていない日は、補充は動かないので返事がなくてよい
+  assert.equal(judge({ refresh: { today: 1, done: false }, refill: null, list, now: NOW }).ok, true);
+  for (const reason of ["not_configured", "cost_not_saved"]) {
+    const r = judge({ refresh: { today: 2, done: true }, refill: { added: 0, done: true, reason }, list, now: NOW });
+    assert.equal(r.ok, false, reason);
+    assert.match(r.problems.join(), /親料理の補充：/);
+  }
 });

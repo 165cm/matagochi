@@ -25,7 +25,11 @@ function readJson(file) {
 function judge({ refresh, refill, list, now = Date.now(), minVisible = MIN_VISIBLE }) {
   const problems = [];
   const notes = [];
-  if (!refresh || typeof refresh !== "object" || !Object.keys(refresh).length) problems.push("新着集めのサーバーから返事がありませんでした（通信の失敗・時間切れ）");
+  const empty = (x) => !x || typeof x !== "object" || !Object.keys(x).length;
+  // サーバーのエラーの返事は { error: { code, message } }（api/src/server.js の send）。正常な返事として扱わない（review fix #171）。
+  const failed = (x) => (x?.error ? `サーバーがエラーを返しました（${x.error.code || x.error.message || "不明"}）` : "");
+  if (empty(refresh)) problems.push("新着集めのサーバーから返事がありませんでした（通信の失敗・時間切れ）");
+  else if (failed(refresh)) problems.push(`新着集め：${failed(refresh)}`);
   else {
     const reason = refresh.paused || refresh.limited || "";
     if (STOPPED[reason]) problems.push(STOPPED[reason]);
@@ -33,8 +37,10 @@ function judge({ refresh, refill, list, now = Date.now(), minVisible = MIN_VISIB
     else if (refresh.done !== true) notes.push(`今日の分はまだ集め終わっていません${reason ? `（${reason}）` : ""}。次の実行で続けます`);
   }
   // 補充（refill）の reason：month_budget＝今月の予算・ai_budget＝AI の利用枠。どちらも止まっているので問題に。
-  const refillStop = { month_budget: STOPPED.trend_month_budget, ai_budget: STOPPED.ai_budget }[refill?.reason];
-  if (refillStop && !problems.includes(refillStop)) problems.push(`親料理の補充：${refillStop}`);
+  const refillStop = { month_budget: STOPPED.trend_month_budget, ai_budget: STOPPED.ai_budget, not_configured: STOPPED.not_configured, cost_not_saved: STOPPED.cost_not_saved }[refill?.reason];
+  // 補充は、新着集めがその日の分を終えた（done: true）時だけ動く。その時に返事がない・エラーなら止まっている（review fix #171）。
+  if (refresh?.done === true && !failed(refresh) && (empty(refill) || failed(refill))) problems.push(`親料理の補充：${failed(refill) || "サーバーから返事がありませんでした（通信の失敗・時間切れ）"}`);
+  else if (refillStop && !problems.includes(refillStop)) problems.push(`親料理の補充：${refillStop}`);
   else if (refill && !refillStop && refill.done !== true && refill.reason !== "stocked") notes.push(`親料理の補充は途中です${refill.reason ? `（${refill.reason}）` : ""}`);
   const items = Array.isArray(list?.items) ? list.items : null;
   if (!items) problems.push("いま見えている新着の一覧を読めませんでした");
