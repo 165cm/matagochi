@@ -1,6 +1,19 @@
-const CACHE_NAME = "ripigochi-v185";
-const APP_VERSION = "20261028-place-recipe";
+const CACHE_NAME = "ripigochi-v186";
+const APP_VERSION = "20261029-place-recipe";
 const CORE_ASSETS = [
+  "./assets/dish-picks/shogayaki.webp",
+  "./assets/dish-picks/karaage.webp",
+  "./assets/dish-picks/hamburg.webp",
+  "./assets/dish-picks/nikujaga.webp",
+  "./assets/dish-picks/reishabu.webp",
+  "./assets/dish-picks/hoikoro.webp",
+  "./assets/dish-picks/mabo.webp",
+  "./assets/dish-picks/omurice.webp",
+  "./assets/dish-picks/salmonfoil.webp",
+  "./assets/dish-picks/sabamiso.webp",
+  "./assets/dish-picks/meuniere.webp",
+  "./assets/dish-picks/happosai.webp",
+
   "./assets/dishes/photo-unavailable-pot.webp",
   "./",
   "./index.html",

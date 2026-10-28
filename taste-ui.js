@@ -1,9 +1,8 @@
 /* Preference answers remain personal and local; sharing is initiated explicitly. */
 /* 好きな味：料理名の写真12枚（taste.js の IDEAL・2026-10-28 から）。ごはん方針と、詳しい設定の「好み」で同じ画面・同じ答え。 */
-// 写真は、新着のうちその料理名の作り方の写真（読み出すだけ）。まだなければ絵文字。
+// 料理の好みは、同じ絵柄・大きさのオリジナルイラストから選ぶ。
 function dishPickPhoto(d) {
-  const list = typeof discoverRecipes === "function" ? discoverRecipes() : [];
-  return list.find((r) => r.thumbnailUrl && FoodTaste.dishOf(r) === d)?.thumbnailUrl || "";
+  return FoodTaste.IDEAL_OF[d?.id] ? `./assets/dish-picks/${d.id}.webp` : "";
 }
 // attrs(d)：ボタンにつける data-*（押した時の操作）。picked：いま選んでいる料理の id。
 function renderDishPickGrid(picked, attrs) {
