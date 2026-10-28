@@ -7,6 +7,7 @@
      失敗した時にルールへ戻る道（interpretWithAi）だけ先に用意する。 */
 (function (root) {
   const L = typeof module !== "undefined" && module.exports ? require("./lifestyle.js") : root.Lifestyle;
+  const Taste = typeof module !== "undefined" && module.exports ? require("./taste.js") : root.FoodTaste;
   const VERSION = 2;
   const MAX_ANSWERS = 120, MAX_SNAPSHOTS = 30, MAX_TEXT = 200;
   // 「わからない」と「あとで」も答えのひとつ（同じ質問をくり返さない）。「あとで」は次に開いた時にまた聞く。
@@ -25,14 +26,19 @@
   const QUESTIONS = [
     { id: "want", ask: () => "好きなのに、あまり作らないものは？", choices: () => [["fish", "🐟", "魚"], ["fried", "🍤", "揚げもの"], ["stew", "🍲", "煮込み"], ["veg", "🥬", "野菜のおかず"], ["none", "🙆", "特にない"]] },
     { id: "why", ask: (a) => `${WANT_OF[a.want]}を作らないのは、どれが気になるから？`, when: (a) => own(WHY, a.want), choices: (a) => WHY[a.want] },
-    { id: "taste", multi: true, ask: () => "よく食べたい味は？（いくつでも）", choices: () => [["sweet", "🍯", "甘辛"], ["light", "🍋", "さっぱり"], ["spicy", "🌶", "ピリ辛"], ["rich", "🧈", "こってり"], ["gentle", "🍵", "やさしい味"]] },
+    // 好きな味は、料理名の写真12枚から選ぶ（2026-10-28 のユーザーの判断で一本化）。答えは設定の好きな料理（foodProfile.dishPicks）にも入れる（talk-ui.js）。
+    { id: "dishes", multi: true, photo: true, ask: () => "食べたい料理は？（いくつでも）", choices: () => Taste.IDEAL.map((d) => [d.id, d.emoji, d.label]) },
     { id: "weeknight", ask: () => "平日の夜、ゆずれないのは？", choices: () => [["onepan", "🍳", "洗い物が少ない"], ["knife", "🔪", "包丁をあまり使わない"], ["any", "🙆", "こだわらない"]] },
     { id: "weekend", ask: () => "休日の夜は、平日とちがう？", choices: () => [["same", "🙆", "同じでいい"], ["cook", "🍳", "休日はじっくり作りたい"], ["relax", "🛋", "休日も手早くすませたい"], ["out", "🍽", "休日は外食が多い"]] },
   ];
   // 本人がそのまま選んだ答え（味・平日・休日）から生まれる項目は、聞き返さずに最初から ✓（献立に使う）。違えば方針の画面で ✕。
   // 「魚 × 片付け → 蒸し魚」のように、こちらが読み取った項目（want と why から）だけ、推測として聞き返す。
   const DIRECT = ["taste", "weeknight", "weekend"];
-  const QUESTION = Object.fromEntries(QUESTIONS.map((q) => [q.id, q]));
+  // もう聞かない質問。以前の答えは読み込み、そこから生まれた方針（甘辛好き など）もそのまま使う（方針の画面で ✕ にできる）。
+  const RETIRED = [
+    { id: "taste", multi: true, ask: () => "よく食べたい味は？（いくつでも）", choices: () => [["sweet", "🍯", "甘辛"], ["light", "🍋", "さっぱり"], ["spicy", "🌶", "ピリ辛"], ["rich", "🧈", "こってり"], ["gentle", "🍵", "やさしい味"]] },
+  ];
+  const QUESTION = Object.fromEntries([...QUESTIONS, ...RETIRED].map((q) => [q.id, q]));
   // 一覧に自分で書いた項目だけを認める（"constructor" "toString" "__proto__" など、継承した名前を通さない）。
   const own = (obj, key) => typeof key === "string" && Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -58,6 +64,10 @@
     "taste-light": { kind: "taste", label: "🍋 さっぱりした味が好き", short: "💬 さっぱり好き", match: (r) => tagSet(r).has("light") },
     "taste-spicy": { kind: "taste", label: "🌶 ピリ辛が好き", short: "💬 ピリ辛好き", match: (r) => tagSet(r).has("spicy") },
     "taste-rich": { kind: "taste", label: "🧈 こってりした味が好き", short: "💬 こってり好き", match: (r) => tagSet(r).has("rich") && !tagSet(r).has("light") },
+    // 記録からの提案（行動から学ぶ）で決まるもの。系統・主役は料理名の写真の加点と同じ決め方（Lifestyle.axes）。
+    "taste-chinese": { kind: "taste", label: "🥟 中華の料理が好き", short: "💬 中華好き", match: (r) => L.axes(r).cuisine === "chinese" },
+    "taste-western": { kind: "taste", label: "🍝 洋風の料理が好き", short: "💬 洋風好き", match: (r) => L.axes(r).cuisine === "western" },
+    "taste-eggtofu": { kind: "taste", label: "🥚 卵・豆腐が主役の料理が好き", short: "💬 卵・豆腐好き", match: (r) => L.axes(r).protein === "eggtofu" },
     "taste-gentle": { kind: "taste", label: "🍵 やさしい味が好き", short: "💬 やさしい味", match: (r) => !["spicy", "rich", "ethnic"].some((t) => tagSet(r).has(t)) && has(r, /やさしい|だし|塩|豆腐|卵/) },
     "life-quick": { kind: "life", label: "⚡ 平日は早くできる料理", short: "💬 早くできる", match: (r) => (r?.planning?.minutes || 99) <= 15 },
     "life-onepan": { kind: "life", label: "🍳 洗い物が少ない料理（フライパンかレンジひとつ）", short: "💬 洗い物少なめ", match: (r) => eq(r).length > 0 && washes(r) <= 1 },
@@ -85,6 +95,9 @@
     { id: "spicy", icon: "🌶", noun: "ピリ辛の料理", lean: "taste-spicy", more: "ピリ辛の料理を増やしますか？", match: (r) => tagSet(r).has("spicy") },
     { id: "rich", icon: "🧈", noun: "こってりした料理", lean: "taste-rich", more: "こってりした料理を増やしますか？", match: (r) => tagSet(r).has("rich") },
     { id: "sweet", icon: "🍯", noun: "甘辛い料理", lean: "taste-sweet", more: "甘辛い料理を増やしますか？", match: (r) => LEANS["taste-sweet"].match(r) },
+    { id: "chinese", icon: "🥟", noun: "中華の料理", lean: "taste-chinese", more: "中華の料理を増やしますか？", match: (r) => LEANS["taste-chinese"].match(r) },
+    { id: "western", icon: "🍝", noun: "洋風の料理", lean: "taste-western", more: "洋風の料理を増やしますか？", match: (r) => LEANS["taste-western"].match(r) },
+    { id: "eggtofu", icon: "🥚", noun: "卵・豆腐が主役の料理", lean: "taste-eggtofu", more: "卵・豆腐が主役の料理を増やしますか？", match: (r) => LEANS["taste-eggtofu"].match(r) },
     { id: "quick", icon: "⚡", noun: "15分以内でできる料理", lean: "life-quick", more: "早くできる料理を増やしますか？", match: (r) => LEANS["life-quick"].match(r) },
     { id: "few", icon: "🧺", noun: "材料が少ない料理", lean: "life-few", more: "材料が少ない料理を増やしますか？", match: (r) => LEANS["life-few"].match(r) },
   ];

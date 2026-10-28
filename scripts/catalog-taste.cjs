@@ -1,7 +1,7 @@
 /* 集まったレシピの棚卸し（好きな味の質問を作るため・2026-10-28 のユーザーの判断「1＋3」）。
    いま見えている新着（GET /api/trends の返事。読み出すだけで AI も YouTube API も使わない）を、
    親の料理名・主役・系統・味の方向で数え、「料理名の写真12枚」の候補を選ぶ。
-   主役・系統・味は、アプリと同じ決め方（lifestyle.js の traits と tags）で決める。
+   主役・系統・味は、アプリと同じ決め方（lifestyle.js の axes）で決める。
    使い方：node scripts/catalog-taste.cjs trends.json   （要約の書き先は環境変数 GITHUB_STEP_SUMMARY） */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -14,15 +14,8 @@ const CUISINE = { japanese: "和風", western: "洋風", chinese: "中華", ethn
 const MOOD = { light: "さっぱり", rich: "こってり", spicy: "ピリ辛", plain: "ふつう" };
 
 const recipeOf = (i) => ({ title: i.title || "", ingredients: Array.isArray(i.ingredients) ? i.ingredients : [], steps: i.steps || [], planning: i.planning || null, tags: i.tags || [] });
-function axesOf(item) {
-  const r = recipeOf(item);
-  const t = L.traits(r), tags = new Set(L.tags(r));
-  return {
-    protein: t.protein,
-    cuisine: tags.has("ethnic") ? "ethnic" : t.cuisine,
-    mood: tags.has("spicy") ? "spicy" : tags.has("light") && !tags.has("rich") ? "light" : tags.has("rich") ? "rich" : "plain",
-  };
-}
+// アプリの写真の加点と同じ決め方（Lifestyle.axes）。
+const axesOf = (item) => L.axes(recipeOf(item));
 const parentName = (i) => String(i.dish?.name || i.dishName || "").trim();
 const most = (list) => { const c = {}; list.forEach((x) => { c[x] = (c[x] || 0) + 1; }); return Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0] || ""; };
 const pct = (n, all) => (all ? `${Math.round((n / all) * 100)}%` : "—");

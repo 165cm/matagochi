@@ -1201,7 +1201,8 @@ test("the dinner type (no longer in the first run) still scores the same", () =>
   assert.equal(run("state.onboardingDraft.chains.join()"), "ichiran,ohsho,sukiya", "three shops at most");
   assert.equal(run("cookTypeOf(state.onboardingDraft).code"), "CKQ");
   assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /cs-grade g-[SABCDEFG]/);
-  assert.equal(run("chainTastes(state.onboardingDraft).join()"), "中華風,和風");
+  // お店からの系統の推し量りはやめた（2026-10-28。好きな味は料理名の写真12枚に一本化）。
+  assert.equal(run("typeof chainTastes"), "undefined");
   assert.equal(run("[combinedSkill(3, 4), combinedSkill(2, null), combinedSkill(null, 5)].join()"), "4,2,5");
 });
 
