@@ -544,7 +544,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     return !!(await store.put("trends/lock", { until: now() + budgetMs + 60_000 }, { ifGeneration: entry?.generation ?? 0 }));
   }
   async function unlock() { const entry = await store.get("trends/lock"); if (entry) await store.put("trends/lock", { until: 0 }, { ifGeneration: entry.generation }).catch(() => {}); }
-  // 1品読む：説明文で作り方がなければ、サーバーの分で動画も読む（利用者のチケットは使わない）。
+  // 1品読む：説明文で作り方がなければ、サーバーの分で動画も読む（利用者の1日の上限は使わない）。
   // AI の回数は、カタログが AI を呼ぶ直前ごと（説明欄・動画・チャプターの対応付け）に aiGate を通して数える。
   // 動画に切り替える時に説明欄をもう一度読む分も、その場で数える（取り込み1回＝1回ではない）。
   async function analyze(videoId, aiGate) {

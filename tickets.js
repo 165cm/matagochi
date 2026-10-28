@@ -1,39 +1,24 @@
-/* チケット（配り方はサーバーが決める。ここは申告と表示）。判定は純粋関数（Nodeのテストでも使う）、画面はその下。
-   ・はじめに10枚 ・はじめの3日で動画を3本取り込むと+5枚
-   ・はじめの4週：作るたびに+1枚（1週5枚・合計20枚まで） ・そのあと：3回作るごとに+1枚 */
+/* 1日の上限（2026-10-28 のユーザーの判断で、チケットの仕組みをやめて置き換えた）。
+   動画から作り方を読む・献立の絵など、AI の費用がかかる操作は、家庭ごとに1日の回数まで（数えるのはサーバー：api/src/tickets.js）。
+   配る・買う・ためる・確認の画面はない。知らせるのは2回だけ：上限の半分に達した時と、残り1回になった時（その日に1度ずつ）。
+   上限に達したら、その操作の時に「今日の上限に達しました」。判定は純粋関数（Nodeのテストでも使う）、画面はその下。 */
 (function (root) {
-  const WEEKS = 4, PER_WEEK = 5, MAX = 20, EVERY = 3;
-  // 申告する「作った日」：作った記録がある日のうち、はじめた日の前日から、7日前〜今日。申告ずみは除く。
-  function cookClaims({ slots, evaluations = [], startDate, today, addDays, claims = [] }) {
-    const got = new Set(claims);
-    const dates = new Set();
-    for (const s of Object.values(slots || {})) if (s?.status === "cooked" && s.date) dates.add(s.date);
-    for (const e of evaluations) if (e?.cookedAt && (!e.mealType || e.mealType === "dinner")) dates.add(String(e.cookedAt).slice(0, 10));
-    return [...dates].filter((d) => d <= today && d >= addDays(today, -7) && d >= addDays(startDate, -1)).map((d) => `cook-${d}`).filter((id) => !got.has(id)).sort();
+  // view：サーバーの { used, limit, left, day, unlimited }。seen：その日にもう出した知らせ（["half", "last"] など）。
+  // 返すのは、いま出す知らせ（"last" ＞ "half"）か ""。
+  function notice(view, seen = []) {
+    if (!view || view.unlimited || !(view.limit > 0)) return "";
+    if (view.left === 1 && !seen.includes("last")) return "last";
+    if (view.left > 1 && view.used >= Math.ceil(view.limit / 2) && !seen.includes("half")) return "half";
+    return "";
   }
-  const weekOf = (startDate, today) => Math.floor((Date.parse(today + "T12:00:00Z") - Date.parse(startDate + "T12:00:00Z")) / (7 * 86400000));
-  // 次にもらえる分の一言（なければ ""）。
-  function nextLine(t) {
-    if (!t || t.unlimited) return "";
-    const ib = t.importBonus;
-    if (ib?.open && ib.have < ib.need) return `📥 動画をあと${ib.need - ib.have}本取り込むと <b>+${ib.bonus}枚</b>`;
-    const c = t.cook;
-    if (!c) return "";
-    if (c.challenge) return c.weekGot < c.perWeek && c.total < c.max ? `🍳 作ると <b>+1枚</b>（今週あと${c.perWeek - c.weekGot}枚）` : "";
-    return `🍳 あと${c.every - c.towardNext}回作ると <b>+1枚</b>`;
-  }
-  const api = { WEEKS, PER_WEEK, MAX, EVERY, cookClaims, weekOf, nextLine };
+  const api = { notice };
   root.Tickets = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
 
 /* ---- 画面（ブラウザのみ） ---- */
-let ticketState = (() => { try { return JSON.parse(localStorage.getItem("ripigochi-tickets") || "null"); } catch { return null; } })();
-let ticketSheet = null; // { need: bool, retry: fn }
-let ticketParties = []; // お祝いの順番待ち：[{ welcome: true } | { claims: [...] }]
-let ticketAsk = null; // 使う前の確認：{ run }
-let ticketCode = "", ticketCodeWrong = false, ticketClaiming = false, ticketClaimTimer = null;
-const ticketRejected = new Set();
+let ticketState = (() => { try { const v = JSON.parse(localStorage.getItem("ripigochi-tickets") || "null"); return v && typeof v.limit === "number" ? v : null; } catch { return null; } })();
+let limitNotice = null; // { kind: "half" | "last" | "over", left, limit }
 
 function deviceKey() {
   try {
@@ -42,262 +27,81 @@ function deviceKey() {
     return id;
   } catch { return ""; }
 }
-// チケットは家庭ごと（つながっていれば同期ルーム、なければこの端末）。ルームを作ると端末の分を引き継ぐ。
+// 回数は家庭ごと（つながっていれば同期ルーム、なければこの端末）。
 function householdKey() { return state.sync?.roomId || deviceKey(); }
 function devCode() { try { return localStorage.getItem("ripigochi-dev-code") || ""; } catch { return ""; } }
 function ticketHeaders() {
   const prev = state.sync?.roomId ? deviceKey() : "";
   return { "X-Household": householdKey(), ...(prev ? { "X-Household-Prev": prev } : {}), ...(devCode() ? { "X-Dev-Code": devCode() } : {}) };
 }
+// その日にもう出した知らせ。保存できない端末（プライベートブラウズなど）でも、開いている間は覚えておく。
+let limitSeenMemo = { day: "", kinds: [] };
+function limitSeen(day) {
+  let saved = [];
+  try { const v = JSON.parse(localStorage.getItem("ripigochi-limit-seen") || "{}"); if (v.day === day) saved = v.kinds || []; } catch {}
+  return [...new Set([...saved, ...(limitSeenMemo.day === day ? limitSeenMemo.kinds : [])])];
+}
+// サーバーから届いた回数を覚え、半分・残り1回の知らせを出す（その日に1度ずつ）。
 function setTickets(view) {
-  if (!view || typeof view.balance !== "number") return;
+  if (!view || typeof view.limit !== "number") return;
   ticketState = { ...view, household: householdKey() };
   try { localStorage.setItem("ripigochi-tickets", JSON.stringify(ticketState)); } catch {}
-  // はじめてのチケットと、新しくもらった分（家族の端末で作った分も）をお祝いする。
-  const seen = ticketSeen();
-  const fresh = (view.rewards || []).filter((r) => r?.id && !seen.includes(r.id));
-  const welcome = !seen.includes("welcome");
-  if (fresh.length || welcome) {
-    if (welcome) ticketParties.push({ welcome: true });
-    if (fresh.length && !welcome) ticketParties.push({ rewards: fresh });
-    try { localStorage.setItem("ripigochi-tickets-seen", JSON.stringify([...seen, ...fresh.map((r) => r.id), "welcome"].slice(-200))); } catch {}
-  }
-  if (view.importBonus?.open && view.importBonus.have >= view.importBonus.need) queueTicketClaim(300);
+  const seen = limitSeen(view.day);
+  const kind = Tickets.notice(view, seen);
+  if (!kind) return;
+  limitNotice = { kind, left: view.left, limit: view.limit };
+  limitSeenMemo = { day: view.day, kinds: [...seen, kind] };
+  try { localStorage.setItem("ripigochi-limit-seen", JSON.stringify({ day: view.day, kinds: [...seen, kind] })); } catch {}
 }
-function ticketSeen() { try { return JSON.parse(localStorage.getItem("ripigochi-tickets-seen") || "[]"); } catch { return []; } }
 const ticketsOn = () => !!API_BASE_URL && !!state?.onboarded;
+// 起動時などに、その日の回数を読む（サーバーに家庭を登録する役目もある）。
 async function refreshTickets() {
   if (!ticketsOn()) return;
   try {
     const response = await fetchWithTimeout(`${API_BASE_URL}/api/tickets`, { headers: ticketHeaders() }, 15_000);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return;
+    const before = !!limitNotice;
     setTickets(data.tickets);
-    render();
-    queueTicketClaim(0);
+    if (limitNotice && !before) render();
   } catch {}
 }
-function ticketStart() {
-  if (!ticketState?.startedAt) return "";
-  const d = new Date(ticketState.startedAt);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-// 献立や記録が変わったら、もらえるチケットがないか確かめる（保存のたびに呼ばれるので、少し待ってまとめる）。
-function queueTicketClaim(delay = 800) {
-  if (!ticketsOn() || !ticketState || ticketState.household !== householdKey()) return;
-  clearTimeout(ticketClaimTimer);
-  ticketClaimTimer = setTimeout(claimTickets, delay);
-}
-async function claimTickets() {
-  if (ticketClaiming || !ticketState || !ticketStart()) return;
-  const cooks = Tickets.cookClaims({ slots: state.mealSlots, evaluations: state.evaluations, startDate: ticketStart(), today: today(), addDays, claims: ticketState.claims });
-  const ib = ticketState.importBonus;
-  const claims = [...cooks, ...(ib?.open && ib.have >= ib.need ? ["import"] : [])].filter((c) => !ticketRejected.has(c));
-  if (!claims.length) return;
-  ticketClaiming = true;
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/api/tickets/claim`, { method: "POST", headers: { "Content-Type": "application/json", ...ticketHeaders() }, body: JSON.stringify({ claims }) }, 15_000);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return;
-    claims.filter((c) => !data.tickets?.claims?.includes(c)).forEach((c) => ticketRejected.add(c));
-    setTickets(data.tickets);
-    render();
-  } catch {} finally { ticketClaiming = false; }
-}
-const fmtTickets = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-// 一覧性を崩さない1行の後押し。タップでチケットの画面を開く。
-function renderTicketNudge() {
-  if (!ticketsOn() || !ticketState || isViewer()) return "";
-  const line = Tickets.nextLine(ticketState);
-  if (!line || (!ticketState.cook?.challenge && !ticketState.importBonus?.open)) return "";
-  return `<button type="button" class="ticket-nudge" data-action="tickets-open"><span>${line}</span><i aria-hidden="true">›</i></button>`;
-}
-function renderTicketChip() {
-  const chip = document.querySelector("#ticket-chip");
-  if (!chip) return;
-  // ページ固有のボタンが上のバーにある画面では、場所をゆずる（献立は下の1行で後押しする）。
-  const show = ticketsOn() && !!ticketState && !document.querySelector("#topbar-actions")?.children.length;
-  chip.hidden = !show;
-  if (!show) return;
-  const soon = !isViewer() && ticketState.importBonus?.open;
-  chip.innerHTML = `<span aria-hidden="true">🎟</span><b>${ticketState.unlimited ? "∞" : fmtTickets(ticketState.balance)}</b>${soon ? '<i class="ticket-dot" aria-hidden="true"></i>' : ""}`;
-  chip.setAttribute("aria-label", `チケット ${ticketState.unlimited ? "無制限" : fmtTickets(ticketState.balance) + "枚"}`);
-}
-// 右上の残数・1行の後押しは、チケットのページを開く。足りない時だけ、小さな画面で知らせる。
-let ticketReturn = "";
-function openTicketSheet({ need = false, retry = null } = {}) {
-  if (!need) return openTicketPage();
-  ticketCodeWrong = !!devCode();
-  if (ticketCodeWrong) try { localStorage.removeItem("ripigochi-dev-code"); } catch {}
-  ticketSheet = { need, retry }; ticketCode = ""; render();
-}
-function openTicketPage() {
-  if (state.view !== "tickets") ticketReturn = state.view;
-  ticketSheet = null;
-  state.view = "tickets";
+// 上限に達した時（サーバーが daily_limit を返した時）。
+function showLimitReached() {
+  const t = ticketState;
+  limitNotice = { kind: "over", left: 0, limit: t?.limit || 0 };
   render();
-  globalThis.scrollTo?.({ top: 0 });
-  refreshTickets();
 }
-const tkDate = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
-const tkDots = (n, max) => `<span class="tk-dots" aria-hidden="true">${Array.from({ length: max }, (_, i) => `<i class="tk-dot${i < n ? " on" : ""}"></i>`).join("")}</span>`;
-// 足りない時の小さな画面：いま何枚いるか・次にもらえる方法・くわしくはページで。
-function renderTicketSheet() {
-  if (!ticketSheet) return "";
-  const t = ticketState, line = t ? Tickets.nextLine(t) : "";
-  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
-  return `<div class="quota-sheet ticket-sheet" role="dialog" aria-modal="true" aria-label="チケット"><div class="quota-card">
-    <div class="tk-balance"><p class="quota-title">🎟 チケットがあと1枚</p><button type="button" class="tk-close" data-action="tickets-close" aria-label="閉じる">×</button></div>
-    ${line ? `<p class="small tk-what">${line}</p>` : ""}${typeof renderTicketPlusLine === "function" ? renderTicketPlusLine() : ""}
-    <button type="button" class="text-button" data-action="tickets-open">くわしく ›</button>
-    <details class="quota-dev" ${ticketCode || ticketCodeWrong ? "open" : ""}><summary>開発者コード</summary>
-      ${ticketCodeWrong ? '<p class="quota-wrong">コードが違うようです。</p>' : ""}<p class="quota-code" aria-live="polite">${ticketCode ? "●".repeat(ticketCode.length) : "&nbsp;"}</p>
-      <div class="quota-keys">${keys.map((k) => k ? `<button type="button" class="quota-key" data-action="tickets-key" data-key="${k}" aria-label="${k === "⌫" ? "1文字消す" : k}">${k}</button>` : "<span></span>").join("")}</div>
-      <button type="button" class="primary-button full-button" data-action="tickets-unlock" ${ticketCode.length ? "" : "disabled"}>決定</button>
-    </details>
-  </div></div>`;
+const isLimitError = (error) => error?.code === "daily_limit" || error?.code === "no_tickets";
+// AI の費用がかかる操作：上限に達していると分かっていれば、押した時に知らせる。それ以外はそのまま（数えるのはサーバー）。
+function withDailyLimit(run) {
+  if (ticketState && !ticketState.unlimited && ticketState.day === limitToday() && ticketState.left < 1) return showLimitReached();
+  return run();
 }
-// チケットのページ：上に残り（と次にもらえる分）、下は3つのタブ。
-//   🎁 もらう：ミッションのカード（進み具合バー・報酬・達成スタンプ）
-//   🛒 ショップ：プラス（おすすめ）と10枚パック
-//   🎬 つかう：1枚でできること・もらった履歴・設定
-let ticketTab = "get";
-const TK_TABS = [["get", "🎁", "もらう"], ["shop", "🛒", "ショップ"], ["use", "🎬", "つかう"]];
-function missionCard({ icon, title, sub = "", have = 0, need = 0, reward, state = "now", extra = "" }) {
-  const pct = need ? Math.round((Math.min(have, need) / need) * 100) : 0;
-  const bar = need ? `<div class="ms-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${need}" aria-valuenow="${Math.min(have, need)}"><i style="width:${pct}%"></i></div><small class="ms-count">${Math.min(have, need)}/${need}</small>` : "";
-  return `<article class="ms-card is-${state}"><span class="ms-ic" aria-hidden="true">${icon}</span><div class="ms-body"><b>${title}</b>${sub ? `<small>${sub}</small>` : ""}${bar}${extra}</div><span class="ms-reward">${state === "done" ? '<i class="ms-stamp">達成</i>' : `🎟<b>${reward}</b>`}</span></article>`;
+// 日本時間の今日（サーバーの日の区切りと同じ）。
+const limitToday = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+function renderLimitNotice() {
+  const n = limitNotice;
+  if (!n) return "";
+  const body = n.kind === "over"
+    ? `<p class="quota-title">今日の上限に達しました</p><p class="small">動画から作り方を読むのは、1日${n.limit}回までです。明日（0時から）また使えます。説明欄から読む・手で入力するのは、いつでもできます。</p>`
+    : n.kind === "last"
+      ? `<p class="quota-title">今日は、あと1回です</p><p class="small">動画から作り方を読むのは、1日${n.limit}回まで。明日（0時から）また${n.limit}回に戻ります。</p>`
+      : `<p class="quota-title">今日の上限の半分を使いました</p><p class="small">動画から作り方を読むのは、1日${n.limit}回まで。今日はあと${n.left}回です。</p>`;
+  // 開発者コード（運営のテスト用。入れた端末は数えない）は、上限に達した時の画面にだけ置く。
+  const dev = n.kind === "over" ? `<details class="quota-dev"><summary>開発者コード</summary><label class="sr-only" for="dev-code">開発者コード</label><input id="dev-code" class="input" type="password" inputmode="numeric" maxlength="6" autocomplete="off"><button type="button" class="secondary-button full-button" data-action="limit-dev">決定</button></details>` : "";
+  return `<div class="quota-sheet limit-notice" role="dialog" aria-modal="true" aria-label="1日の上限"><div class="quota-card">${body}<button type="button" class="primary-button full-button" data-action="limit-ok">OK</button>${dev}</div></div>`;
 }
-function ticketHistory(t) {
-  const label = (r) => {
-    const id = typeof r === "string" ? r : r?.id || "", n = typeof r === "string" ? 0 : r?.n || 0;
-    const cook = /^cook-(\d{4})-(\d{2})-(\d{2})$/.exec(id);
-    if (cook) return ["🍳", `${Number(cook[2])}/${Number(cook[3])} 作った`, n || 1];
-    if (id === "import") return ["📥", "取り込みボーナス", n || 5];
-    if (id.startsWith("plus-")) return ["✨", "プラス", n];
-    if (id.startsWith("buy-")) return ["🛒", "10枚パック", n];
-    return null;
-  };
-  const rows = (t?.rewards || []).map(label).filter(Boolean).reverse().slice(0, 10);
-  return rows.length ? `<ul class="tk-history">${rows.map(([i, l, n]) => `<li><span aria-hidden="true">${i}</span>${l}<b>+${n}</b></li>`).join("")}</ul>` : '<p class="tk-note muted">まだありません</p>';
-}
-function renderTicketPage() {
-  const t = ticketState, c = t?.cook, ib = t?.importBonus;
-  const start = ticketStart();
-  const daysLeft = start ? Math.max(0, daysBetween(today(), addDays(start, Tickets.WEEKS * 7 - 1)) + 1) : 0;
-  const balance = t?.unlimited ? "∞" : t ? fmtTickets(t.balance) : "…";
-  const next = t ? Tickets.nextLine(t) : "";
-  const hero = `<div class="tk-hero"><span class="tk-ticket" aria-hidden="true">🎟</span><p><b>${balance}</b><small>枚</small></p>${t?.expiring ? `<span class="tk-exp">⏳ ${fmtTickets(t.expiring.n)}枚 ${tkDate(t.expiring.at)}まで</span>` : ""}${next ? `<p class="tk-next-line">${next}</p>` : ""}</div>`;
-  const tabs = `<div class="tk-tabs" role="tablist">${TK_TABS.map(([id, i, l]) => `<button type="button" role="tab" class="tk-tab" data-action="tickets-tab" data-tab="${id}" aria-selected="${ticketTab === id}"><span aria-hidden="true">${i}</span>${l}</button>`).join("")}</div>`;
-  let body = "";
-  if (ticketTab === "get") {
-    const missions = [];
-    if (ib) missions.push({ state: ib.got ? "done" : ib.open ? "now" : "past", html: (st) => missionCard({ icon: "📥", title: "動画を3本取り込む", sub: ib.got ? "" : ib.open ? `${tkDate(ib.until)}まで` : "期間おわり", have: ib.got ? ib.need : ib.have, need: ib.got ? 0 : ib.need, reward: `+${ib.bonus}`, state: st }) });
-    if (!c || c.challenge) { const st = c && c.total >= c.max ? "done" : "now"; missions.push({ state: st, html: (s2) => missionCard({ icon: "🍳", title: "晩ごはんを作る", sub: c ? `1回ごと・のこり${daysLeft}日` : "1回ごと・最初の4週", have: c?.total || 0, need: c?.max || Tickets.MAX, reward: "+1", state: s2, extra: c ? `<p class="ms-week">今週 ${tkDots(c.weekGot, c.perWeek)}</p>` : "" }) }); }
-    const later = c && !c.challenge;
-    missions.push({ state: later ? "now" : "later", html: (st) => missionCard({ icon: "🍳", title: `${Tickets.EVERY}回作る`, sub: later ? "くり返し" : "4週のあと・くり返し", have: later ? c.towardNext : 0, need: later ? c.every : 0, reward: "+1", state: st }) });
-    missions.push({ state: "done", html: (st) => missionCard({ icon: "🎁", title: "はじめてのチケット", reward: "10", state: st }) });
-    const order = { now: 0, later: 1, past: 2, done: 3 };
-    body = `<div class="ms-list">${missions.sort((x, y) => order[x.state] - order[y.state]).map((m) => m.html(m.state)).join("")}</div>`;
-  } else if (ticketTab === "shop") {
-    body = `<div class="shop-list">
-      <article class="shop-card is-best"><span class="shop-badge">おすすめ</span><span class="ms-ic" aria-hidden="true">✨</span><div class="ms-body"><b>リピごちプラス</b><small>🎟30枚／4週（60枚まで）＋ 🗓毎日の献立</small></div><button type="button" class="shop-price" data-action="life-plus-open" data-from="tickets">600円<small>／4週</small></button></article>
-      <article class="shop-card"><span class="ms-ic" aria-hidden="true">🎟</span><div class="ms-body"><b>10枚パック</b><small>1枚25円</small></div><button type="button" class="shop-price" data-action="life-fb-thanks" data-from="pack10">250円<small>10枚</small></button></article>
-    </div><p class="tk-note muted">⏳ 購入とプラスの分は6か月で期限。期限の近いものから使います</p>`;
-  } else {
-    body = `<ul class="tk-rules">
-      <li><span class="tk-ic" aria-hidden="true">🎬</span><p><b>動画から作り方を読む</b></p><em>1枚</em></li>
-      <li><span class="tk-ic" aria-hidden="true">♻️</span><p><b>読み取り済みの動画</b></p><em>0枚</em></li>
-      <li><span class="tk-ic" aria-hidden="true">↩️</span><p><b>読めなかった時</b></p><em>戻る</em></li></ul>
-    <h3 class="tk-h">もらった履歴</h3>${ticketHistory(t)}
-    <h3 class="tk-h">設定</h3>
-    <label class="tk-skip"><input type="checkbox" data-action="tickets-ask-toggle" ${ticketSkipAsk() ? "" : "checked"}> 使う前に確認する</label>
-    ${loginAvailable() && !account ? '<button type="button" class="text-button tk-login" data-action="tickets-login">🔐 ログインで機種変更しても引き継ぎ ›</button>' : ""}
-    <details class="quota-dev" ${ticketCode || ticketCodeWrong ? "open" : ""}><summary>開発者コード</summary>
-      ${ticketCodeWrong ? '<p class="quota-wrong">コードが違うようです。</p>' : ""}<p class="quota-code" aria-live="polite">${ticketCode ? "●".repeat(ticketCode.length) : "&nbsp;"}</p>
-      <div class="quota-keys">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((k) => k ? `<button type="button" class="quota-key" data-action="tickets-key" data-key="${k}" aria-label="${k === "⌫" ? "1文字消す" : k}">${k}</button>` : "<span></span>").join("")}</div>
-      <button type="button" class="primary-button full-button" data-action="tickets-unlock" ${ticketCode.length ? "" : "disabled"}>決定</button>
-    </details>`;
-  }
-  return `<div class="page-actions"><button type="button" class="text-button" data-action="tickets-back">‹ 戻る</button></div>
-  <section class="tk-page">${hero}${tabs}<div class="tk-panel" role="tabpanel">${body}</div></section>`;
-}
-// 達成の瞬間：スタンプがポンと押されて、チケットが増える。
-function renderTicketParty() {
-  const party = ticketParties[0];
-  if (!party || !ticketState || ticketSheet) return "";
-  const confetti = Array.from({ length: 14 }, (_, i) => `<i style="--i:${i}"></i>`).join("");
-  const rewards = party.rewards || [];
-  const gain = rewards.reduce((a, r) => a + (r.n || 0), 0);
-  const why = rewards.some((r) => r.id === "import") ? "📥 取り込みボーナス" : rewards.some((r) => r.id.startsWith("plus-")) ? "✨ プラスの4週分" : rewards.some((r) => r.id.startsWith("buy-")) ? "🛒 ご購入ありがとうございます" : "🍳 作ったごほうび";
-  const next = Tickets.nextLine(ticketState);
-  const body = party.welcome
-    ? `<p class="tp-kicker">ようこそ！</p><p class="tp-gain"><span class="tp-ticket" aria-hidden="true">🎁</span><b>${fmtTickets(ticketState.balance)}</b>枚</p><p class="tp-what">🎬 1枚＝動画1本をAIが読み取り</p><p class="tp-next">🍳 最初の4週は、作るたびに<b>+1枚</b></p>`
-    : `<p class="tp-kicker">${why}</p><p class="tp-gain"><span class="tp-ticket" aria-hidden="true">🎟</span><b>+${fmtTickets(gain)}</b>枚</p><p class="tp-what">のこり <b>${fmtTickets(ticketState.balance)}枚</b></p>${next ? `<p class="tp-next">${next}</p>` : ""}`;
-  return `<div class="ticket-party" role="dialog" aria-modal="true" aria-label="チケットをもらいました"><div class="tp-confetti" aria-hidden="true">${confetti}</div><div class="tp-card">${body}<button type="button" class="primary-button full-button" data-action="tickets-party-close">${party.welcome ? "OK" : "やった！"}</button></div></div>`;
-}
-function handleTicketAction(action, data) {
-  if (action === "tickets-open") { openTicketPage(); return true; }
-  if (action === "tickets-tab") { ticketTab = ["get", "shop", "use"].includes(data.tab) ? data.tab : "get"; render(); return true; }
-  if (action === "tickets-back") { state.view = ticketReturn && ticketReturn !== "tickets" ? ticketReturn : "today"; render(); return true; }
-  if (action === "tickets-login") { ticketSheet = null; setView("settings"); return true; }
-  if (action === "tickets-ask-yes") {
-    const run = ticketAsk?.run;
-    if (document.querySelector("#ticket-skip")?.checked) { try { localStorage.setItem("ripigochi-ticket-ask", "skip"); } catch {} showToast("次からは確認せずに読みます。チケット画面で戻せます。"); }
-    ticketAsk = null; render(); run?.(); return true;
-  }
-  if (action === "tickets-ask-no") { ticketAsk = null; render(); return true; }
-  if (action === "tickets-ask-toggle") { try { ticketSkipAsk() ? localStorage.removeItem("ripigochi-ticket-ask") : localStorage.setItem("ripigochi-ticket-ask", "skip"); } catch {} render(); return true; }
-  if (action === "tickets-close") { ticketSheet = null; ticketCode = ""; ticketCodeWrong = false; render(); return true; }
-  if (action === "tickets-party-close") { ticketParties.shift(); render(); return true; }
-  if (action === "tickets-key") { ticketCode = data.key === "⌫" ? ticketCode.slice(0, -1) : (ticketCode + data.key).slice(0, 6); render(); return true; }
-  if (action === "tickets-unlock") {
-    try { localStorage.setItem("ripigochi-dev-code", ticketCode); } catch {}
-    const retry = ticketSheet?.retry;
-    ticketSheet = null; ticketCode = ""; ticketCodeWrong = false;
-    showToast(retry ? "開発者コードを設定しました。もう一度読み取ります。" : "開発者コードを設定しました。");
+function handleTicketAction(action) {
+  if (action === "limit-ok") { limitNotice = null; render(); return true; }
+  if (action === "limit-dev") {
+    const code = String(document.querySelector?.("#dev-code")?.value || "").trim().slice(0, 6);
+    if (code) { try { localStorage.setItem("ripigochi-dev-code", code); } catch {} }
+    limitNotice = null;
+    showToast(code ? "開発者コードを設定しました。もう一度お試しください。" : "コードが空です。");
     render();
-    if (retry) retry(); else refreshTickets();
+    refreshTickets();
     return true;
   }
   return false;
-}
-// チケットを使う前の確認。「次から確認しない」を選んだ端末では省く（チケット画面で戻せる）。
-const ticketSkipAsk = () => { try { return localStorage.getItem("ripigochi-ticket-ask") === "skip"; } catch { return false; } };
-// 押した時にサーバーへ聞く：だれかがもう動画から読んでいれば、確認なし・チケットなしでそのまま読む。
-let ticketChecking = false;
-async function videoAlreadyRead(url) {
-  if (!url || !API_BASE_URL) return false;
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/api/import/youtube/status?url=${encodeURIComponent(url)}`, {}, 6_000);
-    return response.ok && (await response.json()).videoRead === true;
-  } catch { return false; }
-}
-async function askTicket(run, url = "") {
-  if (!ticketState || ticketState.unlimited) return run();
-  if (ticketChecking) return;
-  ticketChecking = true;
-  const free = await videoAlreadyRead(url);
-  ticketChecking = false;
-  if (free || ticketSkipAsk()) return run();
-  if (ticketState.balance < 1) return openTicketSheet({ need: true, retry: run });
-  ticketAsk = { run }; render();
-}
-function renderTicketAsk() {
-  if (!ticketAsk || !ticketState) return "";
-  return `<div class="quota-sheet ticket-ask" role="dialog" aria-modal="true" aria-label="チケットを使う確認"><div class="quota-card">
-    <p class="quota-title">🎬 動画から作り方を読みますか？</p>
-    <div class="tk-cost"><span class="tk-ticket" aria-hidden="true">🎟</span><p><span><b>チケットを1枚</b>使います</span><small>のこり ${fmtTickets(ticketState.balance)}枚 → ${fmtTickets(ticketState.balance - 1)}枚</small></p></div>
-    <p class="small tk-what">読めなかった時は、チケットは戻ります。</p>
-    <label class="tk-skip"><input id="ticket-skip" type="checkbox"> 次から確認しない</label>
-    <button type="button" class="primary-button full-button" data-action="tickets-ask-yes">🎟1枚で読む</button>
-    <button type="button" class="text-button full-button" data-action="tickets-ask-no">やめる</button>
-  </div></div>`;
-}
-// 動画を読んだあとのひとこと。
-function ticketNote(result) {
-  if (!result?.tickets) return "";
-  if (result.tickets.unlimited) return "（開発モード）";
-  if (result.cacheHit) return "読み取り済みの動画だったので、チケットは使いませんでした🎉";
-  return result.ticketUsed ? `🎟 のこり${fmtTickets(result.tickets.balance)}枚` : "";
 }

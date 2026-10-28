@@ -252,10 +252,8 @@ function needsCheck(recipe) {
 }
 function renderRequests() {
   const list = openRequests().filter((q) => !q.date);
-  if (!list.length) {
-    const log = isViewer() ? "" : renderRequestLog();
-    return log ? `<section class="request-card is-quiet">${log}</section>` : "";
-  }
+  // 届いていない時は出さない（これまでのリクエストは、ふりかえりの画面に。2026-10-28）。
+  if (!list.length) return "";
   const plan = dailyPlan();
   const where = (q) => {
     const r = requestRecipe(q);
@@ -267,7 +265,7 @@ function renderRequests() {
     const mine = q.from === me();
     return `<div class="request-row">${dishTile(r, "request-thumb")}<div><p class="request-from">${mine ? "あなたのリクエスト" : `${escapeHtml(q.from)}から`}${q.late ? "（食べたい気持ち）" : ""}</p><strong>${escapeHtml(r.title || q.recipeTitle)}</strong><small>${escapeHtml(where(q))}</small></div>${mine ? `<button type="button" class="text-button" data-action="life-request" data-recipe="${escapeAttr(q.recipeId)}">取り消す</button>` : `<span class="request-actions">${needsCheck(r) ? `<button type="button" class="secondary-button" data-action="edit-recipe" data-recipe="${escapeAttr(r.id)}">条件を確認</button>` : ""}<button type="button" class="text-button" data-action="life-request-pass" data-id="${escapeAttr(q.id)}">今回はパス</button></span>`}</div>`;
   }).join("");
-  return `<section class="request-card" aria-label="リクエスト"><h3>💌 リクエスト</h3>${rows}${isViewer() ? "" : renderRequestLog()}</section>`;
+  return `<section class="request-card" aria-label="リクエスト"><h3>💌 リクエスト</h3>${rows}</section>`;
 }
 
 // ----- screens -----
@@ -288,10 +286,6 @@ function renderSharePanel() {
     <div class="actions">${dailyButton("life-share-send", "招待リンクを送る", "", true)}${copyButton("invite")}${dailyButton("sync-now", "今すぐ同期")}</div>
     <details class="share-link"><summary>招待リンクを表示</summary><input class="input" readonly value="${escapeAttr(link)}" aria-label="招待リンク"></details>
     <button type="button" class="text-button" data-action="sync-disconnect">この端末の共有をやめる</button></section>`;
-}
-function renderShareInvite() {
-  if (!shareAvailable() || syncEnabled() || dailyProfile().servings < 2) return "";
-  return `<section class="share-invite"><p class="hand">＼ ふたりで使うと、もっと楽しい ／</p><p class="small">相手のスマホから「これ食べたい」をリクエストできます。</p>${dailyButton("life-share-open", "招待リンクをつくる")}</section>`;
 }
 const PLACEHOLDER_NAMES = ["自分", "いっしょに食べた人"];
 let joinPick = "";
@@ -534,7 +528,7 @@ function renderViewerPlan() {
     const sent = openRequests().find((q) => q.date === d.date && q.from === me());
     return `<div class="viewer-day">${dishTile(r)}<div><b>${label}</b><strong>${escapeHtml(r.title)}</strong>${sent ? `<small>🙋 ${escapeHtml(requestRecipe(sent).title)}を送ったよ</small>` : ""}</div>${d.slot?.status === "cooked" || !canSwapRequest(d.date) ? "" : `<button type="button" class="tile-request" data-action="${swapDate === d.date ? "life-close-swap" : "life-swap"}" data-date="${d.date}">${swapDate === d.date ? "閉じる" : "🙋 変えたい"}</button>`}</div>${swapDate === d.date ? renderSwapChoices() : ""}`;
   }).join("");
-  return `${renderWeekBoard()}${open && canSwapRequest() ? '<p class="page-hint">変えたい日は、買い物の前に🙋で送ってね</p>' : ""}<section class="viewer-days">${rows}</section>`;
+  return `<p class="page-hint">${boardHint()}</p>${open && canSwapRequest() ? '<p class="page-hint">変えたい日は、買い物の前に🙋で送ってね</p>' : ""}<section class="viewer-days">${rows}</section>`;
 }
 function renderRoleSettings() {
   if (!syncEnabled()) return "";
@@ -772,7 +766,6 @@ function rhythmBlocks(r = state.rhythm) {
 // 週の始まりの曜日から、作る曜日の初期値（続けて preset の日数）。
 const defaultRhythmDays = (preset, start = 1) => Array.from({ length: rhythmSize(preset) }, (_, i) => (start + i) % 7);
 const SHOP_TIMES = ["10:00", "12:00", "17:00", "19:00"];
-const LOOP_WEEKS = 4;
 function normalizeShopDone(raw) {
   return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && typeof v === "string"));
 }
@@ -904,49 +897,7 @@ function decidedUntil() {
   }
   return last;
 }
-function loopWeek() {
-  const first = [...state.evaluations].map((e) => e.cookedAt).filter(Boolean).sort()[0];
-  return first ? Math.floor(daysBetween(first, today()) / 7) + 1 : 0;
-}
-let boardWeek = 0;
-function renderWeekBoard() {
-  if (!state.onboarded) return "";
-  const t = today();
-  const start = addDays(addDays(t, -dow(t)), boardWeek * 7);
-  const dates = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const plan = new Map(dailyPlan().map((d) => [d.date, d]));
-  const eaten = new Map(mealHistory(28).map((m) => [m.date, m.recipe]));
-  const blocks = rhythmOn() ? blocksFrom(addDays(start, -7), 28).filter((b) => b.end >= start && b.start <= dates[6]) : [];
-  const shopDays = new Map(blocks.map((b) => [b.shopAt.slice(0, 10), b.shopAt.slice(11)]));
-  const cells = dates.map((date) => {
-    const slot = state.mealSlots?.[date];
-    const day = plan.get(date);
-    const past = date < t;
-    const recipe = past ? eaten.get(date) || slot?.recipe : slot?.recipe || day?.candidate?.recipe;
-    const off = slot?.status === "off" || day?.off || (rhythmOn() && !rhythmDays().includes(String(dow(date))));
-    const kind = slot?.status === "cooked" || (past && recipe) ? "is-cooked" : slot && slot.status !== "removed" ? "is-decided" : recipe ? "is-draft" : "";
-    const inner = day?.prestart && !recipe ? "<em>–</em>" : off && !recipe ? "<em>休</em>" : recipe ? dishTile(recipe) : "<em>・</em>";
-    const shop = shopDays.has(date) ? `<b class="wk-shop" title="買い物 ${shopDays.get(date)}">🛒</b>` : "";
-    return `<button type="button" class="wk-cell ${kind} ${date === t ? "is-today" : ""}" ${recipe ? `data-action="life-cal-pick" data-date="${date}"` : "disabled"} aria-label="${escapeAttr(`${formatDate(date)}${recipe ? " " + recipe.title : off ? " お休み" : " 未定"}`)}"><span class="wk-num">${Number(date.slice(8))}</span>${inner}${shop}${kind === "is-cooked" ? '<i class="wk-check">✓</i>' : ""}</button>`;
-  }).join("");
-  const label = { open: "受付中", late: "締切すぎ", decided: "決定", shopped: "買い物済み" };
-  const bars = blocks.map((b) => {
-    const from = Math.max(0, daysBetween(start, b.start)), to = Math.min(6, daysBetween(start, b.end));
-    const st = blockStatus(b);
-    if (st === "past") return "";
-    return `<span class="wk-bar is-${st}" style="grid-column:${from + 1} / ${to + 2}">${label[st]}${st === "open" ? ` 〜${WD[dow(b.shopAt.slice(0, 10))]}${b.shopAt.slice(11)}` : st === "shopped" || st === "decided" ? " ✓" : ""}</span>`;
-  }).join("");
-  const pick = calPick && dates.includes(calPick) ? (plan.get(calPick)?.slot?.recipe || plan.get(calPick)?.candidate?.recipe || eaten.get(calPick)) : null;
-  const week = loopWeek();
-  const counter = week ? `<span class="wk-loop" title="${LOOP_WEEKS}週目ごろから「また食べたい」が回り始めます">${week}週目 ${Array.from({ length: LOOP_WEEKS }, (_, i) => `<i class="${i < Math.min(week, LOOP_WEEKS) ? "on" : ""}"></i>`).join("")}</span>` : "";
-  return `<section class="week-board" aria-label="今週の献立">
-    <div class="wk-top"><button type="button" class="wk-nav" data-action="life-week" data-delta="-1" ${boardWeek <= -2 ? "disabled" : ""} aria-label="前の週">‹</button><strong>${boardWeek === 0 ? "今週" : boardWeek === 1 ? "来週" : `${-boardWeek}週前`}</strong><button type="button" class="wk-nav" data-action="life-week" data-delta="1" ${boardWeek >= 1 ? "disabled" : ""} aria-label="次の週">›</button>${counter}${typeof yohaku === "function" ? `<span class="wk-yohaku">${yohaku("popup")}</span>` : ""}</div>
-    <div class="wk-head">${[...WD].map((w) => `<span>${w}</span>`).join("")}</div>
-    <div class="wk-grid">${cells}</div>
-    ${bars ? `<div class="wk-bars">${bars}</div>` : ""}
-    ${pick ? `<p class="wk-pick">${formatDate(calPick)}（${weekdayLabel(calPick)}）：<b>${escapeHtml(pick.title)}</b></p>` : ""}
-    <div class="wk-hint">${boardHint()}</div></section>`;
-}
+// 献立の週のカレンダーは外した（2026-10-28：献立のページと同じ情報だったため）。締切などの一言は boardHint に残す。
 function boardHint() {
   const v = isViewer();
   const until = decidedUntil();
@@ -1016,8 +967,7 @@ function applyRhythm({ preset, days, start, shopBefore = state.rhythm?.shopBefor
   state.planOverrides = {};
 }
 function handleRhythmAction(action, data) {
-  if (action === "life-week") { boardWeek = Math.max(-2, Math.min(1, boardWeek + (Number(data.delta) || 0))); calPick = ""; }
-  else if (action === "life-rhythm-open") { state.view = "settings"; saveState(); openSetting("rhythm"); return true; }
+  if (action === "life-rhythm-open") { state.view = "settings"; saveState(); openSetting("rhythm"); return true; }
   else if (action === "life-rhythm" && RHYTHMS[data.preset] && !isViewer()) {
     // 週の始まりは、選んでいた曜日のまま（はじめは月曜）。作る曜日は、そこから続けて preset の日数。
     const start = rhythmOn() ? rhythmStart() : 1;

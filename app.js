@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261028-plan-pages";
+const APP_VERSION = "20261028-slim-plan";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -357,7 +357,7 @@ function normalizeState(saved) {
   const base = clone(demoState);
   const family = Array.isArray(saved.family) && saved.family.length ? saved.family : base.family;
   const savedView = saved.view === "ratings" ? "repeat" : saved.view;
-  const view = ["today", "register", "playlist", "collection", "recipe", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings", "pantry", "tickets", "talk"].includes(savedView) ? savedView : base.view;
+  const view = ["today", "register", "playlist", "collection", "recipe", "plan", "shopping", "repeat", "recordDetails", "cooking", "settings", "pantry", "talk"].includes(savedView) ? savedView : base.view;
   return {
     ...base,
     ...saved,
@@ -627,8 +627,6 @@ function saveState({ scheduleSync = true } = {}) {
     }).catch(()=>showToast("保存容量が上限に達しました。書き出して整理してください。"));
   } else if (!recoverySaved) showToast("保存できませんでした。書き出して整理してください。");
   requestPersistentStorage();
-  // 献立や「作った」が増えたら、チャレンジのチケットを申請する。
-  queueTicketClaim();
   if (typeof queueUsage === "function") queueUsage();
 }
 
@@ -1389,23 +1387,21 @@ function render() {
     collection: renderCollection,
     recipe: renderRecipeDetail,
     plan: renderDailyPlan,
-    repeat: renderReflection,
+    repeat: () => renderReflection() + (isViewer() ? "" : renderRequestLog()),
     settings: renderSettings,
     pantry: renderPantryPage,
-    tickets: renderTicketPage,
     talk: renderTalk
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = renderSyncSavePanel() + views[state.view]() + renderTicketSheet() + renderTicketAsk() + renderMenuViewer() + renderFeedbackSheet() + (Object.keys(state.sync?.conflicts || {}).length ? "" : paywall ? renderPaywall() : renderTicketParty());
+  document.querySelector("#app").innerHTML = renderSyncSavePanel() + views[state.view]() + renderLimitNotice() + renderMenuViewer() + renderFeedbackSheet() + (Object.keys(state.sync?.conflicts || {}).length ? "" : paywall ? renderPaywall() : "");
   placePageChrome();
-  renderTicketChip();
   bindEvents();
   if (state.view === "plan" && typeof placePlanPages === "function") placePlanPages();
   if (state.view === "settings") mountGoogleButton();
 }
 
 // App-bar pattern: the logo on 今日, the page name elsewhere; a page's own buttons sit at the right.
-const PAGE_TITLES = { plan: "献立", shopping: "買い物", collection: "レシピ", recipe: "レシピ", register: "レシピを追加", playlist: "まとめて追加", repeat: "ふりかえり", recordDetails: "記録", cooking: "作る", settings: "設定", pantry: "常備品", tickets: "チケット", talk: "ごはん方針" };
+const PAGE_TITLES = { plan: "献立", shopping: "買い物", collection: "レシピ", recipe: "レシピ", register: "レシピを追加", playlist: "まとめて追加", repeat: "ふりかえり", recordDetails: "記録", cooking: "作る", settings: "設定", pantry: "常備品", talk: "ごはん方針" };
 function placePageChrome() {
   const title = state.view === "register" && state.editingRecipeId ? "レシピを編集" : PAGE_TITLES[state.view] || "";
   const el = document.querySelector("#page-title");
@@ -1444,13 +1440,13 @@ function renderRecipeEntry() {
       ${playlistAvailable ? '<button class="text-button paste-inline" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加</button>' : ""}
       </div>
       ${state.draft.readInfo && youtubeVideoId(state.draft.videoUrl) ? renderReadSteps(busy) : `${state.fetchStatus ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
-      ${canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>${draftVideoBusy ? "動画を読んでいます…（最大2分）" : `🎬 動画から作り方を読む${ticketPrice()}`}</button>` : ""}`}
+      ${canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>${draftVideoBusy ? "動画を読んでいます…（最大2分）" : "🎬 動画から作り方を読む"}</button>` : ""}`}
     </section>`;
   return `${entry}
     ${!editing && entryMethod === "image" ? renderImageImport() : ""}
     ${showDetails ? `
     <section class="panel entry-detail-panel">
-      ${editing && canRereadRecipe(recipeById(state.editingRecipeId)) ? `<div class="reread-row"><button type="button" class="secondary-button" data-action="life-reread" data-recipe="${escapeAttr(state.editingRecipeId)}" ${rereadingId ? "disabled" : ""}>${rereadingId ? "動画を読んでいます…（最大2分）" : `🎬 動画から読み直す${ticketPrice()}`}</button><small>作り方がおかしい時に。読み直した内容は、保存前にここで直せます。</small></div>` : ""}
+      ${editing && canRereadRecipe(recipeById(state.editingRecipeId)) ? `<div class="reread-row"><button type="button" class="secondary-button" data-action="life-reread" data-recipe="${escapeAttr(state.editingRecipeId)}" ${rereadingId ? "disabled" : ""}>${rereadingId ? "動画を読んでいます…（最大2分）" : "🎬 動画から読み直す"}</button><small>作り方がおかしい時に。読み直した内容は、保存前にここで直せます。</small></div>` : ""}
       ${state.fetchStatus && editing ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
       ${editing || isViewer() ? "" : '<div id="recipe-checklist"></div>'}
       <input id="recipe-title" class="input title-input" value="${escapeAttr(state.draft.title)}" placeholder="料理名" aria-label="料理名">
@@ -1493,7 +1489,7 @@ function renderRecipeEntry() {
   `;
 }
 
-// 読み取りの2段階：① 説明欄（無料）→ ② 動画AI（🎟1）。どこまで読めたかを1目で。②は説明欄に作り方がない時だけ使う。
+// 読み取りの2段階：① 説明欄（無料）→ ② 動画AI（1日の上限の1回）。どこまで読めたかを1目で。②は説明欄に作り方がない時だけ使う。
 function renderReadSteps(busy) {
   const r = state.draft.readInfo || {};
   const desc = { ok: ["is-ok", "✓ 材料と作り方"], ingredients: ["is-part", "△ 材料だけ（作り方なし）"], steps: ["is-part", "△ 作り方だけ（材料なし）"], none: ["is-no", "✗ 見つからず"], fail: ["is-no", "✗ 読めず"] }[r.desc] || ["", ""];
@@ -1502,13 +1498,13 @@ function renderReadSteps(busy) {
     : r.gone ? ["is-no", "✗ 動画を見られません"]
     : r.aiLimited && r.video !== "done" ? ["is-no", "⏸ 今日のAIの上限（明日また読めます）"]
     : r.video === "done" ? ["is-ok", `✓ 作り方${state.extractedSteps.length}ステップを書き出し`]
-    : r.video === "fail" ? ["is-no", "✗ 読めず（🎟は戻しました）"]
+    : r.video === "fail" ? ["is-no", "✗ 読めず（今日の回数は戻しました）"]
     : needVideo ? ["is-todo", "説明欄にない作り方を、AIが動画の音声と画面から書き出します"]
     : ["is-skip", "— 必要なし"];
   return `<ol class="read-steps" aria-label="読み取り">
     <li class="rs ${desc[0]}"><p><b>① 📝 説明欄</b><small>無料</small></p><em>${desc[1]}</em></li>
-    <li class="rs ${video[0]}"><p><b>② 🎬 動画AI</b><small>🎟1</small></p><em>${video[1]}</em>
-      ${video[0] === "is-todo" && canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>🎬 動画から読む${ticketPrice()}</button>` : ""}</li>
+    <li class="rs ${video[0]}"><p><b>② 🎬 動画AI</b><small>1日${ticketState?.limit || 10}回まで</small></p><em>${video[1]}</em>
+      ${video[0] === "is-todo" && canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>🎬 動画から読む</button>` : ""}</li>
   </ol>
   ${(r.desc === "fail" || r.aiLimited || r.gone) && state.fetchStatus ? `<p class="notice small read-reason" role="status">${escapeHtml(state.fetchStatus)}</p>` : ""}
   ${state.draft.embeddable === false ? `<p class="notice small read-reason">▶ この動画は、投稿者の設定でアプリの中では再生できません。レシピは保存でき、動画は YouTube で開いて見ます。</p>` : ""}`;
@@ -3039,7 +3035,7 @@ async function handleAction(event) {
     }
   }
 
-  if (action === "draft-video") { captureDraft(); askTicket(() => readDraftFromVideo(), state.draft.videoUrl); return; }
+  if (action === "draft-video") { captureDraft(); withDailyLimit(() => readDraftFromVideo()); return; }
 
   if (action === "set-meal-type") {
     captureDraft();
@@ -4118,9 +4114,9 @@ async function importRecipeFromYouTube(videoUrl, { mode = "" } = {}) {
   }, 180_000);
   const data = await response.json().catch(() => ({}));
   if (data.tickets) setTickets(data.tickets);
-  if (!response.ok && data.error?.code === "no_tickets") {
+  if (!response.ok && isLimitError(data.error)) {
     const error = new Error(data.error.message);
-    error.code = "no_tickets";
+    error.code = "daily_limit";
     throw error;
   }
   if (!response.ok) {
@@ -4197,7 +4193,7 @@ function aiPlanning(ai, recipe) {
     tasks: ai.tasks || base.tasks, tastes: ai.tastes || base.tastes,
     aiJudged: true, conditionsConfirmed: true, ingredientsVerified: !restricted };
 }
-// 新しく取り込むレシピ：説明文に作り方がなかった時だけ、ボタンで動画を読む（チケット1枚）。
+// 新しく取り込むレシピ：説明文に作り方がなかった時だけ、ボタンで動画を読む（1日の上限の1回）。
 let draftVideoBusy = false;
 function canReadDraftVideo() {
   return !state.editingRecipeId && !!API_BASE_URL && !!youtubeVideoId(state.draft.videoUrl) && !isCaptionImporting && !!state.draft.title && !state.extractedSteps?.length;
@@ -4220,13 +4216,13 @@ async function readDraftFromVideo() {
     state.fetchStatus = reason?.ai
       ? reason.text
       : result.analyzedFrom?.startsWith("video")
-      ? `${result.analyzedFrom === "video-clip" ? "動画の最初の10分から" : "動画の音声と画面から"}読み取りました。材料と作り方を確かめてください。${ticketNote(result)}`
-      : "動画からも作り方を読み取れませんでした（チケットは戻しました）。動画を見ながら入力してください。";
+      ? `${result.analyzedFrom === "video-clip" ? "動画の最初の10分から" : "動画の音声と画面から"}読み取りました。材料と作り方を確かめてください。`
+      : "動画からも作り方を読み取れませんでした（今日の回数は戻しました）。動画を見ながら入力してください。";
     saveState();
   } catch (error) {
-    if (error.code === "no_tickets") openTicketSheet({ need: true, retry: () => readDraftFromVideo() });
+    if (isLimitError(error)) showLimitReached();
     else {
-      // 上限・停止中：今日は 🎬 を出さない（チケットはサーバーが戻す）。
+      // 上限・停止中：今日は 🎬 を出さない（回数はサーバーが戻す）。
       if (importReason(error.code)?.ai && state.draft.readInfo) state.draft.readInfo.aiLimited = true;
       state.fetchStatus = error.message || "読み取れませんでした。";
       showToast(error.message || "読み取れませんでした。");
@@ -4611,7 +4607,6 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 document.querySelector("#profile-button")?.addEventListener("click", () => setView("settings"));
-document.querySelector("#ticket-chip")?.addEventListener("click", () => openTicketPage());
 
 document.addEventListener("visibilitychange", () => {
   // アプリに戻ってきたら、他の端末の変更を取り込む

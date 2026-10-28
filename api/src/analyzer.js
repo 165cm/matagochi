@@ -368,10 +368,10 @@ export async function drawMenuBoard(images, spec, env = process.env) {
     config: { httpOptions: { timeout: 150_000, retryOptions: { attempts: 1 } }, responseModalities: ["IMAGE"], temperature: 0.4, imageConfig: { aspectRatio: "4:5", imageSize: env.GEMINI_MENU_SIZE || "1K" } }
   }).catch((error) => {
     console.error(JSON.stringify({ event: "menu_board_failed", model, message: String(error?.message || "").slice(0, 200) }));
-    throw new ApiError(502, "menu_failed", "メニューを描けませんでした。チケットは戻しました。");
+    throw new ApiError(502, "menu_failed", "メニューを描けませんでした。今日の回数は戻しました。");
   });
   const part = response.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
-  if (!part) throw new ApiError(502, "menu_failed", "メニューを描けませんでした。チケットは戻しました。");
+  if (!part) throw new ApiError(502, "menu_failed", "メニューを描けませんでした。今日の回数は戻しました。");
   return { mimeType: part.inlineData.mimeType || "image/png", data: part.inlineData.data };
 }
 // 描けた献立表を読み返す：描かれた料理の数と、読める文字をすべて。

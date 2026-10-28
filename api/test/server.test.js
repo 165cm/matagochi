@@ -101,7 +101,7 @@ test('youtube import still returns the title and description when AI analysis fa
   assert.equal(bad.status, 400);
 });
 
-test('tickets: 10 to start, a video read uses one, 886 needs none, rewards are claimed once, CORS allows the headers', async (t) => {
+test('daily limit: 10 a day, a video read uses one, 886 is not counted, old reward claims give nothing, CORS allows the headers', async (t) => {
   const app = createApp({}, { recipeStore: createMemorySyncStore(), syncStore: null,
     importRecipe: async (u, o) => ({ title: '丼', ingredients: [{ name: '米', amount: '2合' }], steps: ['炊く', '盛る'], analyzedFrom: o.forceVideo ? 'video' : 'description' }) });
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
@@ -109,24 +109,36 @@ test('tickets: 10 to start, a video read uses one, 886 needs none, rewards are c
   const headers = { 'Content-Type': 'application/json', 'X-Household': 'house-0001' };
   const post = (url, extra = {}) => fetch(`${base}/api/import/youtube`, { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify({ url, mode: 'video' }) });
   const wallet = await fetch(`${base}/api/tickets`, { headers }).then((r) => r.json());
-  assert.equal(wallet.tickets.balance, 10); assert.equal(wallet.tickets.created, true);
+  assert.deepEqual([wallet.tickets.used, wallet.tickets.limit, wallet.tickets.left, wallet.tickets.created], [0, 10, 10, true]);
   const status = (id) => fetch(`${base}/api/import/youtube/status?url=${encodeURIComponent(`https://youtu.be/${id}`)}`).then((r) => r.json());
   assert.equal((await status('aaaaaaaaaaa')).videoRead, false);
   const first = await post('https://youtu.be/aaaaaaaaaaa');
-  assert.equal(first.status, 200); const firstBody = await first.json(); assert.equal(firstBody.tickets.balance, 9); assert.equal(firstBody.tickets.importBonus.have, 1, 'imports are counted for the bonus');
+  assert.equal(first.status, 200); const firstBody = await first.json(); assert.equal(firstBody.tickets.left, 9);
   assert.equal((await status('aaaaaaaaaaa')).videoRead, true, 'a video already read is known before the tap');
   const dev = await post('https://youtu.be/bbbbbbbbbbb', { 'X-Dev-Code': '886' });
-  assert.equal(dev.status, 200); const devBody = await dev.json(); assert.equal(devBody.tickets.unlimited, true); assert.equal(devBody.tickets.balance, 9);
+  assert.equal(dev.status, 200); const devBody = await dev.json(); assert.equal(devBody.tickets.unlimited, true); assert.equal(devBody.tickets.left, 9);
   const claim = (claims) => fetch(`${base}/api/tickets/claim`, { method: 'POST', headers, body: JSON.stringify({ claims }) }).then((r) => r.json());
   const today = new Date().toISOString().slice(0, 10);
-  const got = await claim([`cook-${today}`, 'w0-plan-1', 'import', 'bogus']);
-  assert.deepEqual(got.granted, [`cook-${today}`], 'a cooked dinner gives one; old goals and an early bonus do not');
-  assert.equal(got.tickets.balance, 10);
-  assert.deepEqual((await claim([`cook-${today}`])).granted, [], 'each day once');
-  const moved = await fetch(`${base}/api/tickets`, { headers: { ...headers, 'X-Household': 'a'.repeat(64), 'X-Household-Prev': 'house-0001' } }).then((r) => r.json());
-  assert.equal(moved.tickets.balance, 10, 'a new shared room takes over the device wallet');
+  const got = await claim([`cook-${today}`, 'import']);
+  assert.deepEqual(got.granted, [], 'an old app asking for rewards gets nothing');
+  assert.equal(got.tickets.left, 9);
   const pre = await fetch(`${base}/api/import/youtube`, { method: 'OPTIONS', headers: { Origin: 'https://165cm.github.io', 'Access-Control-Request-Method': 'POST' } });
   assert.match(pre.headers.get('access-control-allow-headers') || '', /X-Household-Prev/);
+});
+
+test('daily limit: at the limit, reading from the video answers with the description and the reason', async (t) => {
+  const app = createApp({ DAILY_USES: '1' }, { recipeStore: createMemorySyncStore(), syncStore: null,
+    importRecipe: async (u, o) => ({ title: '丼', ingredients: [{ name: '米', amount: '2合' }], steps: ['炊く'], analyzedFrom: o.forceVideo ? 'video' : 'description' }) });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const headers = { 'Content-Type': 'application/json', 'X-Household': 'house-0002' };
+  await fetch(`${base}/api/tickets`, { headers });
+  const post = (url) => fetch(`${base}/api/import/youtube`, { method: 'POST', headers, body: JSON.stringify({ url, mode: 'video' }) });
+  assert.equal((await post('https://youtu.be/aaaaaaaaaaa')).status, 200);
+  const over = await post('https://youtu.be/ccccccccccc');
+  assert.equal(over.status, 429);
+  const body = await over.json();
+  assert.equal(body.error.code, 'daily_limit'); assert.equal(body.tickets.left, 0, 'the app hears how many are left');
 });
 
 test('sync over HTTP: gzip, unchanged answers, gzip uploads and photos', async (t) => {
@@ -149,7 +161,7 @@ test('sync over HTTP: gzip, unchanged answers, gzip uploads and photos', async (
   assert.match(back.headers.get('cache-control'), /immutable/); assert.equal((await back.json()).data, photo);
 });
 
-test('weekly menu route: 3 tickets, one board, the wallet on failure too', async (t) => {
+test('weekly menu route: one use of the day, one board, the count on failure too', async (t) => {
   const sharp = (await import('sharp')).default;
   let fail = false;
   const sheet = await sharp({ create: { width: 1536, height: 1024, channels: 3, background: '#fff' } }).png().toBuffer();
@@ -165,10 +177,10 @@ test('weekly menu route: 3 tickets, one board, the wallet on failure too', async
   const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: '#c86' } }).jpeg().toBuffer();
   const body = JSON.stringify({ style: 'retro', photos: [1, 2, 3, 4, 5, 6].map(() => ({ mimeType: 'image/jpeg', data: jpeg.toString('base64'), dish: 'カレー' })) });
   const ok = await fetch(`${base}/api/weekly/menu`, { method: 'POST', headers, body }).then((r) => r.json());
-  assert.equal(ok.image?.mimeType, 'image/webp', JSON.stringify(ok).slice(0, 200)); assert.equal(ok.style, 'retro'); assert.equal(ok.notes.length, 6); assert.equal(ok.lang, 'ja', 'no English names without the text model'); assert.equal(ok.tickets.balance, 7);
+  assert.equal(ok.image?.mimeType, 'image/webp', JSON.stringify(ok).slice(0, 200)); assert.equal(ok.style, 'retro'); assert.equal(ok.notes.length, 6); assert.equal(ok.lang, 'ja', 'no English names without the text model'); assert.equal(ok.tickets.used, 1);
   fail = true;
   const bad = await fetch(`${base}/api/weekly/menu`, { method: 'POST', headers, body });
-  assert.equal(bad.status, 502); assert.equal((await bad.json()).tickets.balance, 7, 'refunded, and the app hears the balance');
+  assert.equal(bad.status, 502); assert.equal((await bad.json()).tickets.used, 1, 'given back, and the app hears the count');
 });
 
 test('the daily refresh also runs housekeeping once: a deleted video leaves the public lists without AI', async t => {

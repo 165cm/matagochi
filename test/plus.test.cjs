@@ -102,7 +102,7 @@ test('the trial start is kept for existing users and set at the end of the first
 test('in the beta, a pay button says thank you and invites feedback for a 3-month code', () => {
   const run = app();
   setup(run);
-  run('handleDailyAction("life-plus-open", { from: "tickets" }); handleDailyAction("life-pay-start", {})');
+  run('handleDailyAction("life-plus-open", { from: "locked" }); handleDailyAction("life-pay-start", {})');
   assert.equal(run('paywall'), null);
   assert.equal(run('feedbackSheet.step'), 'thanks');
   const thanks = run('renderFeedbackSheet()');

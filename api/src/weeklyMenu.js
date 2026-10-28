@@ -7,8 +7,9 @@ import { prepareImages } from "./imageImport.js";
 //   1) 先に文字のモデルで、書く文字（英語の料理名など）と目安（1人分のkcal・材料費）・ひとことを決める
 //   2) 画像のモデルには、品数・並べ方・書く文字を一字一句指定して、写真といっしょに渡す
 //   3) 描けたら文字のモデルで読み返し、品数か文字が違えば1回だけ描き直す
-// 写真も絵も保存しない（端末に返すだけ）。チケット3枚（開発コードは無料）。描けなかったらチケットを戻す。1家庭1日3回まで。
-export const MENU_TICKETS = 3;
+// 写真も絵も保存しない（端末に返すだけ）。1日の上限の1回（開発コードは数えない）。描けなかったら回数を戻す。1家庭1日3回まで。
+// 献立の絵は、1日の上限（tickets.js）の1回として数える。
+export const MENU_USES = 1;
 export const MENUS_PER_DAY = 3;
 export const MENU_STYLES = ["chalk", "watercolor", "pencil", "anime", "retro"];
 export const MENU_LANGS = ["en", "ja"];
@@ -19,7 +20,7 @@ const DAYS = { en: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"], ja: ["月�
 const text = (v, n) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n) : "");
 // 画像に書く文字は、書き崩れにくい文字だけにする（引用符や記号の指示の混入も防ぐ）。
 const safe = (v, n) => text(v, n * 2).replace(/[「」『』"“”<>{}\[\]\\|`]/g, "").replace(/\s+/g, " ").trim().slice(0, n);
-const FAILED = "メニューを描けませんでした。チケットは戻しました。";
+const FAILED = "メニューを描けませんでした。今日の回数は戻しました。";
 
 function readPhotos(raw) {
   const list = Array.isArray(raw) ? raw : [];
@@ -85,7 +86,7 @@ export function createWeeklyMenu(store, { drawBoard, describe, check, tickets, r
       const used = quota?.envelope.used || 0;
       if (used >= MENUS_PER_DAY && !unlimited) throw new ApiError(429, "menu_quota", "今日はここまでです。明日また作れます。");
       const prepared = await prepareImages(photos.map(({ buffer, mimeType }) => ({ buffer, mimeType })));
-      const spent = await tickets.spend(household, { unlimited, count: MENU_TICKETS });
+      const spent = await tickets.spend(household, { unlimited, count: MENU_USES });
       try {
         await reserveBudget();
         await store.put(dayKey, { used: used + 1 }, { ifGeneration: quota?.generation ?? 0 }).catch(() => {});
@@ -113,7 +114,7 @@ export function createWeeklyMenu(store, { drawBoard, describe, check, tickets, r
         const image = await shrink(out);
         return { style, lang, info, model, image, notes, texts, checked, wallet: spent };
       } catch (error) {
-        const back = await tickets.refund(household, { unlimited, count: MENU_TICKETS }).catch(() => null);
+        const back = await tickets.refund(household, { unlimited, count: MENU_USES }).catch(() => null);
         const failure = error instanceof ApiError && error.code === "menu_failed" ? error : new ApiError(502, "menu_failed", FAILED);
         if (back) failure.wallet = back;
         throw failure;

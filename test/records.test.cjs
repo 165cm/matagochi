@@ -271,11 +271,12 @@ test("Proposal 12: Lifestyle.planBalance and renderPlanBalance summarize main pr
   assert.match(b2.vegLabel, /🥬 野菜たっぷり5種/);
   assert.match(b2.moodNote, /肉・魚バランス◎/);
 
-  // renderDailyPlan includes .plan-balance-bar
+  // 献立画面には、野菜が少ない時だけ1行（内訳はふだん出さない。2026-10-28）
   const run = app();
-  const planHtml = run("renderDailyPlan()");
-  assert.match(planHtml, /class="plan-balance-bar"/);
-  assert.match(planHtml, /aria-label="献立のバランス"/);
+  run("Lifestyle.planBalance = () => ({ vegCount: 1, vegLabel: '野菜少なめ（1種）（＋添え物がおすすめ）' })");
+  assert.match(run("renderDailyPlan()"), /class="plan-balance-low[^"]*"[^>]*>🥬 野菜少なめ/);
+  run("Lifestyle.planBalance = () => ({ vegCount: 5, vegLabel: '🥬 野菜たっぷり5種' })");
+  assert.ok(!run("renderDailyPlan()").includes("plan-balance"), "nothing when vegetables are fine");
 });
 
 test("review: widening preserves manual recipe choices", () => {

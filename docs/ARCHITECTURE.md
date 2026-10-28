@@ -9,7 +9,7 @@
         │  ログインした複数端末・家族共有で同期
         ▼
 API（Cloud Run: matagochi-api / Node + Express）  api/src/
-  YouTube 取り込み・AI（Gemini）・同期・通知・チケット・集計
+  YouTube 取り込み・AI（Gemini）・同期・通知・1日の上限・集計
   保存は Google Cloud Storage（RECIPE_BUCKET / SYNC_BUCKET）
 ```
 
@@ -36,7 +36,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | `cook-type.js` `plan-moves.js` | 料理タイプ・献立の入れ替え |
 | `plus.js` | 無料／プラスの出し分け（`GATING_LIVE=false`）・β版のお礼と意見・使われ方の集計 |
 | `folders.js` `install.js` `push.js` | 定番フォルダ・ホーム画面に追加・通知 |
-| `tickets.js` | AIチケット |
+| `tickets.js` | 1日の上限（半分・残り1回の知らせ） |
 | `cook-mode.js` | 作る画面の手助け（⏰タイマー・画面つけっぱなし・手順ごとの材料・🍳料理モード・✋手の形で操作） |
 | `account.js` `discover.js` | ログイン・おすすめ／動画プレーヤー／▶の時刻 |
 | `app.js` | 起動・状態の保存と同期・登録画面・設定・`APP_VERSION` |
@@ -57,11 +57,11 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 
 | まとまり | 主なルート |
 |---|---|
-| 取り込み | `POST /api/import/youtube`（説明欄→AI、`mode:"video"` で動画をAIが読む・チケット1枚）・`/api/import/youtube/playlist`・`/api/import/images`・`/api/oembed/tiktok`・`/api/import/youtube/timecodes`（手順の時刻。AI の1日の予算の中で動き、動画の接続先を切り替える時も切り替えの直前ごとに予算を確かめる） |
+| 取り込み | `POST /api/import/youtube`（説明欄→AI、`mode:"video"` で動画をAIが読む・1日の上限の1回）・`/api/import/youtube/playlist`・`/api/import/images`・`/api/oembed/tiktok`・`/api/import/youtube/timecodes`（手順の時刻。AI の1日の予算の中で動き、動画の接続先を切り替える時も切り替えの直前ごとに予算を確かめる） |
 | 同期 | `GET/PUT /api/sync/rooms/:roomId`（写真は `/photos/:hash`） |
 | ログイン | `/api/auth/google`・`/api/auth/email/start`・`/api/auth/email/verify`・`/api/auth/me`・`POST /api/auth/sync`（保存先確定／明示切替） |
 | 通知 | `/api/push/*` |
-| チケット | `GET /api/tickets`・`POST /api/tickets/claim` |
+| 1日の上限 | `GET /api/tickets`（その日の回数・家庭の登録）・`POST /api/tickets/claim`（古い版のため。何も配らない） |
 | 投稿者 | `POST /api/creators/request`（掲載停止の申し込み）・`/api/creators/verify`（YouTubeでログイン）・`/api/creators/me`（持ち主の操作・動画を一覧に戻す）・`POST /api/creators/corrections`（修正依頼）・管理 `/api/admin/creators*`（承認画面 `admin/creators.html`） |
 | おすすめ | `/api/trends`・`/api/popular`（読み出すだけ）・`POST /api/trends/refresh`（定期実行：新着を集める＋1日1回の後片付け `housekeeping.js`。APP_MAP §39・§41） |
 | 意見・集計 | `POST /api/feedback`・`POST /api/usage`（管理：`/api/admin/*` は `RECIPE_ADMIN_TOKEN`） |
@@ -75,4 +75,4 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 
 Google Cloud（Cloud Run・Storage・Gemini）／YouTube Data API／TikTok oEmbed／Resend（メール）／GitHub Pages／jsDelivr と Google（✋手の形の認識の部品 MediaPipe を初回に読み込む。映像は外に送らない）
 
-- `api/src/syncDevices.js`：同一アカウント・共有先ごとのメイン端末と献立の確認待ち。認証付き `/api/auth/devices`、CAS更新。端末IDはチケットIDと独立。仕様はAPP_MAP §60。
+- `api/src/syncDevices.js`：同一アカウント・共有先ごとのメイン端末と献立の確認待ち。認証付き `/api/auth/devices`、CAS更新。端末IDは1日の上限の家庭IDと独立。仕様はAPP_MAP §60。

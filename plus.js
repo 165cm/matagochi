@@ -5,7 +5,7 @@
    ・3日は自動で選ぶ（決めた日・作った日が先、あとは早い日から）。ロックの日から「この日を3日に入れる」で入れ替えられる
    ・決めた日・作った日はロックしない（無料期間中に決めた分もそのまま）
    ・プラスは、同期している家族みんなで使える（決済と一緒に、サーバーの状態を state.plus に入れる）
-   ・プラスの案内は3か所だけ：3日を使い切った時／ロックの日を押した時／チケットが足りない時 */
+   ・プラスの案内は2か所だけ：3日を使い切った時／ロックの日を押した時（チケットの仕組みは 2026-10-28 にやめた） */
 const GATING_LIVE = false;
 const FREE_DAYS = 3;
 let gatingOverride = null; // テスト用
@@ -89,20 +89,15 @@ function renderFreeUsedCard(plan = dailyPlan()) {
   if (used < FREE_DAYS || !lockedThisWeek || seen === w) return "";
   return `<div class="plus-nudge"><span>🎉 無料3日 決定・🔒あと${lockedThisWeek}日</span><button type="button" class="lock-plus" data-action="life-plus-open" data-from="used">✨ プラス</button><button type="button" class="tk-close" data-action="life-free-used-close" data-week="${w}" aria-label="閉じる">×</button></div>`;
 }
-// チケットが足りない時の1行（チケットの画面の中）。
-function renderTicketPlusLine() {
-  if (!gatingOn() || plusActive()) return "";
-  return `<button type="button" class="text-button tk-plus-line" data-action="life-plus-open" data-from="tickets">✨ プラスなら30枚／4週 ›</button>`;
-}
-const PLUS_FROM = { locked: "🔒 毎日の献立はプラスで", used: "🎉 今週の3日分、決定！", tickets: "🎟 チケットが足りない？" };
-const PLUS_PERKS = [["🗓", "毎日の献立"], ["🎟", "30枚／4週"], ["👫", "家族で共有"], ["🔕", "いつでも解約"]];
+const PLUS_FROM = { locked: "🔒 毎日の献立はプラスで", used: "🎉 今週の3日分、決定！" };
+const PLUS_PERKS = [["🗓", "毎日の献立"], ["👫", "家族で共有"], ["🔕", "いつでも解約"]];
 function openPlus(from) {
   if (!PLUS_FROM[from]) return;
   paywall = { plan: "year", from };
   trackDaily("plus_view", { from });
 }
 function handlePlusAction(action, data) {
-  if (action === "life-plus-open") { if (typeof ticketSheet !== "undefined") ticketSheet = null; openPlus(data.from); render(); return true; }
+  if (action === "life-plus-open") { openPlus(data.from); render(); return true; }
   if (action === "life-free-pick") { if (pickFreeDay(data.date)) saveState(); render(); return true; }
   if (action === "life-free-used-close") { try { localStorage.setItem("ripigochi-free-used", data.week || ""); } catch {} render(); return true; }
   return false;
@@ -111,7 +106,7 @@ function handlePlusAction(action, data) {
 // ── β版のあいだ：課金ボタンを押してくれた人に「お気持ちありがとう」。意見を送ってくれた人には、正式版で3か月無料の招待コードを届ける。
 const BETA = !GATING_LIVE;
 let feedbackSheet = null; // { step: "thanks" | "form" | "sent", from, busy, error }
-function openFeedback(from = "", step = "form") { feedbackSheet = { step, from, busy: false, error: "" }; paywall = null; if (typeof ticketSheet !== "undefined") ticketSheet = null; trackDaily("feedback_open", { from, step }); render(); }
+function openFeedback(from = "", step = "form") { feedbackSheet = { step, from, busy: false, error: "" }; paywall = null; trackDaily("feedback_open", { from, step }); render(); }
 async function sendFeedback() {
   if (!feedbackSheet || feedbackSheet.busy) return;
   const message = String(document.querySelector("#fb-message")?.value || "").trim();
