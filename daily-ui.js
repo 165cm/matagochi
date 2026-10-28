@@ -1838,6 +1838,9 @@ function handleDailyAction(action, data) {
       showToast(`「${r.title}」をレシピに保存しました。`);
     }
   }
+  if (action === "life-place-open") placeRecipeId = data.recipe || "";
+  if (action === "life-place-close") placeRecipeId = "";
+  if (action === "life-place") { placeFromRecipe(data.recipe, data.date); placeRecipeId = ""; }
   if (action === "life-choose") {
     trackDaily("plan_swapped");
     const r = allDinnerRecipes().find((r) => r.id === data.recipe);
@@ -2798,20 +2801,28 @@ function renderRecipeDetail() {
   const meta = [r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", r.planning?.equipment?.length ? r.planning.equipment.join("・") : "", r.author ? `@${r.author}` : "", saved ? r.source : "おすすめ"].filter(Boolean);
   const last = lastEatenLabel(r);
   const edit = !isViewer();
+  // いつも使うのは「献立に入れる」「料理モード」「保存」だけ。動画・定番フォルダ・記録・編集・削除は ⋯ の中へ（2026-10-28 のユーザーの判断）。
+  const fLine = edit ? renderFolderLine(r) : "";
+  const more = edit ? `<details class="plan-more detail-more"><summary aria-label="${escapeAttr(r.title)}のメニュー">⋯</summary><div class="plan-more-menu">
+      ${r.videoUrl ? `<a class="text-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}
+      ${fLine}
+      ${saved ? `<button type="button" class="text-button" data-action="life-new-record" data-recipe="${escapeAttr(r.id)}">作った記録をつける</button><button type="button" class="text-button" data-action="edit-recipe" data-recipe="${escapeAttr(r.id)}">✏️ 編集する</button><button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button>` : ""}
+    </div></details>` : "";
+  const cookable = (r.steps || []).length > 0;
+  const actions = edit
+    ? `<button type="button" class="primary-button full-button detail-place" data-action="life-place-open" data-recipe="${escapeAttr(r.id)}">🗓 献立に入れる</button><div class="detail-actions">${cookable ? `<button type="button" class="secondary-button" data-cook-mode="open">🍳 料理モード</button>` : ""}${saved ? "" : dailyButton("life-save-starter", "🤍 保存", `data-recipe="${escapeAttr(r.id)}"`)}</div>`
+    : `<div class="detail-actions">${requestButton(r)}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>`;
+  const pLine = renderParentLine(r);
   return `<section class="recipe-detail">
-    <button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button>
+    <div class="detail-top"><button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button>${more}</div>
     ${renderCreatorCredit(r) || dishTile(r, "detail-photo")}
     <h2 class="detail-title">${escapeHtml(r.title)}</h2>
     <p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>
     <div class="detail-tags">${tagLabels(r).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
     ${renderSkillLine(r)}
-    ${(() => {
-      const fLine = saved || edit ? renderFolderLine(r) : "";
-      const pLine = renderParentLine(r);
-      return fLine || pLine ? `<div class="dish-group-box">${pLine}${fLine}</div>` : "";
-    })()}
     <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
-    <div class="detail-actions">${requestButton(r)}${edit ? (saved ? dailyButton("edit-recipe", "✏️ 編集する", `data-recipe="${escapeAttr(r.id)}"`) : dailyButton("life-save-starter", "🔖 自分のレシピに保存", `data-recipe="${escapeAttr(r.id)}"`)) : ""}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>
+    ${actions}
+    ${pLine ? `<div class="dish-group-box">${pLine}</div>` : ""}
     ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? "🎬 作り方がおかしい？動画から読み直す" : "🎬 動画から読み取る"}</button></div>` : ""}
     ${servingsUnknownBanner(r, saved && edit)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
@@ -2819,8 +2830,52 @@ function renderRecipeDetail() {
     ${cook.steps}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
     <div class="yohaku-corner">${yohaku("wave")}</div>
-    ${edit && saved ? `<div class="detail-foot">${dailyButton("life-new-record", "作った記録をつける", `data-recipe="${escapeAttr(r.id)}"`)}<button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button></div>` : ""}
+    ${renderPlaceSheet(r)}
   </section>`;
+}
+// ----- 🗓 献立に入れる（レシピの画面から・2026-10-28 のユーザーの判断） -----
+// これからの献立の日（作らない日・作った日・始まる前の日は除く）を並べ、選んだ日の料理と入れかえる。決めた日は決めた料理のまま入れかえる。
+let placeRecipeId = "";
+function placeDays() {
+  return dailyPlan().filter((d) => d.date >= today() && !d.off && !d.prestart && !(d.slot && ["cooked", "off"].includes(d.slot.status)));
+}
+const sameRecipe = (a, b) => !!a && !!b && (a.id === b.id || (!!a.starterId && a.starterId === b.id) || (!!b.starterId && b.starterId === a.id));
+function renderPlaceSheet(r) {
+  if (!r || placeRecipeId !== r.id || isViewer()) return "";
+  const p = dailyProfile();
+  const rows = placeDays().map((d) => {
+    const cur = d.slot?.recipe || d.candidate?.recipe;
+    const fit = Lifestyle.fit(r, p, d.date);
+    const decided = d.slot?.status === "confirmed";
+    const day = `${d.date === today() ? "今夜 " : ""}${formatDate(d.date)}（${"日月火水木金土"[new Date(`${d.date}T12:00:00`).getDay()]}）`;
+    if (sameRecipe(cur, r)) return `<div class="place-day is-same"><span>${escapeHtml(day)}<small>この料理です</small></span></div>`;
+    // 決めた日の、もう買った材料のうち、この料理では使わないもの（入れかえたあと、買い物タブでも知らせる）。
+    const unused = decided ? swapBoughtItems(d.date).filter((x) => !usesNames(r, [x]).length) : [];
+    const now = cur ? `いまの予定：${cur.title}（${decided ? "決定済み" : "候補"}）` : "まだ決まっていない";
+    if (!fit.ok) return `<div class="place-day is-off"><span>${escapeHtml(day)}<small>${escapeHtml(fit.reason || "この日の条件に合いません")}</small></span></div>`;
+    return `<button type="button" class="place-day" data-action="life-place" data-recipe="${escapeAttr(r.id)}" data-date="${d.date}"><span>${escapeHtml(day)}<small>${escapeHtml(now)}</small>${unused.length ? `<small class="place-unused">🧺 買った${escapeHtml(namesOf(unused))}は、この料理では使いません</small>` : ""}</span><b>${cur ? "入れかえ" : "入れる"}</b></button>`;
+  }).join("");
+  return `<div class="place-sheet" role="dialog" aria-modal="true" aria-labelledby="place-title"><button type="button" class="place-dim" data-action="life-place-close" aria-label="閉じる"></button><div class="place-card">
+    <h3 id="place-title">「${escapeHtml(r.title)}」を、いつ？</h3>
+    ${rows ? `<p class="muted small">選んだ日の料理と入れかわります</p><div class="place-days">${rows}</div>` : `<p class="small">これからの献立がまだありません。献立タブで献立を作ると、ここから入れられます。</p>`}
+    <button type="button" class="text-button full-button" data-action="life-place-close">閉じる</button>
+  </div></div>`;
+}
+function placeFromRecipe(id, date) {
+  const r = detailRecipe();
+  if (!r || r.id !== id || !placeDays().some((d) => d.date === date) || !Lifestyle.fit(r, dailyProfile(), date).ok) return false;
+  // 献立の候補にない料理（おすすめを隠している時など）は、自分のレシピに保存してから入れる。
+  const inPlan = allDinnerRecipes().some((x) => x.id === r.id);
+  const recipe = inPlan ? r : r.curated ? saveOwnRecipe(r) : null;
+  if (!recipe) { showToast("夜ごはんのレシピだけ、献立に入れられます"); return false; }
+  const before = dailyShopping();
+  if (state.mealSlots[date]?.status === "confirmed") confirmDaily({ date }, recipe);
+  else state.planOverrides[date] = recipe.id;
+  changedShopping(before);
+  trackDaily("plan_placed_from_recipe");
+  showToast(`${date === today() ? "今夜" : formatDate(date)}に「${recipe.title}」を入れました`);
+  if (recipe !== r && state.view === "recipe") recipeDetailId = recipe.id;
+  return true;
 }
 
 // ----- 最初から入っているおすすめレシピの表示 ON/OFF（家庭で共有） -----

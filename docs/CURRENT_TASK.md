@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-28（好きな味を料理名の写真12枚に一本化）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-28（レシピタブの整理 PR 1：献立に入れる）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,8 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | レビュー待ち（写真12枚の画面・加点・移し替え） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
+| 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 公開済み（#184。次：そろったら需要に合わせて集める） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
+| レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | レビュー待ち（PR 1：献立に入れる） | claude/nice-shannon-6g1g5m | PR 1：レシピの画面に「🗓 献立に入れる」（日を選ぶ・入れかえ）、⋯ に動画・定番・記録・編集・削除 → PR 2：タブを「おすすめ／わたしのレシピ」に、絞り込み1行、💛 好きな料理から、保存の説明と追加は ＋ の画面へ | daily-ui.js, styles.css, test/recipe-place.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）

@@ -4117,3 +4117,23 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .dp-tile[aria-pressed="true"] .pick-check { background: var(--tomato); }
 .dp-tile[aria-pressed="true"] .pick-check::after { content: ""; position: absolute; left: 5px; top: 2px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
 .persona-likes .dp-emoji { display: grid; place-items: center; aspect-ratio: 1 / 1; font-size: 34px; }
+
+/* レシピの画面：上の ⋯ と「🗓 献立に入れる」（daily-ui.js renderRecipeDetail）。 */
+.detail-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.detail-top .detail-more { position: relative; }
+.detail-top .detail-more .plan-more-menu { right: 0; left: auto; min-width: 240px; z-index: 20; }
+.detail-place { margin: 12px 0 8px; }
+.detail-actions:empty { display: none; }
+/* 「◯◯を、いつ？」：下から出る日の一覧。 */
+.place-sheet { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
+.place-dim { position: absolute; inset: 0; border: 0; padding: 0; background: rgba(40, 30, 20, .45); cursor: pointer; }
+.place-card { position: relative; width: 100%; max-width: 560px; max-height: 80vh; overflow: auto; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; background: var(--surface); box-shadow: 0 -8px 30px rgba(0, 0, 0, .15); }
+.place-card h3 { margin: 0 0 4px; font-size: 18px; }
+.place-days { display: grid; gap: 8px; margin: 10px 0 6px; }
+.place-day { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.place-day span { display: grid; gap: 2px; font-size: 15px; font-weight: 700; }
+.place-day small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.place-day .place-unused { color: var(--sage-dark); }
+.place-day b { flex: none; color: var(--tomato); font-size: 13px; }
+.place-day.is-same, .place-day.is-off { cursor: default; background: var(--surface-soft); }
+.place-day.is-off span { color: var(--muted); }

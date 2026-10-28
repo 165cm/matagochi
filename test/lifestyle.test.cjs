@@ -837,7 +837,7 @@ test("app: tapping a recipe opens a read-only detail; starters can be hidden fro
   assert.equal(run("state.view"), "recipe");
   const html = run("renderRecipeDetail()");
   assert.ok(html.includes("材料") && html.includes("作り方") && html.includes("豚こま"));
-  assert.ok(html.includes("自分のレシピに保存"));
+  assert.ok(html.includes("🤍 保存") && html.includes("🗓 献立に入れる"));
   run('handleDailyAction("life-save-starter",{recipe:"starter-03"})');
   assert.ok(run("!detailRecipe().curated"), "detail follows the saved copy");
   assert.ok(run('renderRecipeDetail().includes("編集する")'));
