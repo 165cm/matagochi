@@ -466,10 +466,14 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
   async function revive(index, { excluded, port, list }) {
     const today = dayOf(now());
     // 初めての時だけ：以前に集める側（一括収集・補充）が試した動画も候補に入れる（この仕組みより前に28日を過ぎた料理を拾う）。
+    // 読み出しに失敗した時は移行済みにしない（次の実行でやり直す。記録がない＝null は、移行するものがないので済み。review fix #172）。
     if (!index.retiredSeeded) {
-      const tried = (await store.get("trends/seed").catch(() => null))?.envelope?.tried || [];
-      index.retired = [...new Set([...tried, ...index.retired])].slice(-RETIRED_MAX);
-      index.retiredSeeded = true;
+      let seedDoc, ok = true;
+      try { seedDoc = await store.get("trends/seed"); } catch { ok = false; }
+      if (ok) {
+        index.retired = [...new Set([...(seedDoc?.envelope?.tried || []), ...index.retired])].slice(-RETIRED_MAX);
+        index.retiredSeeded = true;
+      }
     }
     const day = index.revive?.on === today ? index.revive : { on: today, n: 0 };
     index.revive = day;

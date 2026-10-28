@@ -134,3 +134,21 @@ test('③ the daily collection checks the description for free before calling th
   assert.equal(r.skipped.description_not_recipe, 1);
   assert.equal(r.skipped.not_public, 1);
 });
+
+test('④ review fix (#172): if reading the old tried list fails, the one-time pickup is retried on the next run', async () => {
+  const store = createMemorySyncStore(), catalog = fakeCatalog();
+  const before = [vid()];
+  catalog.ready.set(before[0], recipe(before[0]));
+  await store.put('trends/seed', { stages: [], q: 0, candidates: [], tried: before }, { ifGeneration: 0 });
+  const get = store.get.bind(store);
+  let fail = true;
+  store.get = async (key, ...rest) => (fail && key === 'trends/seed' ? Promise.reject(Object.assign(new Error('unavailable'), { code: 'EAI_AGAIN' })) : get(key, ...rest));
+  let now = NOW;
+  const book = make(store, catalog, { now: () => now });
+  assert.equal((await book.step()).revived.run, 0);
+  assert.notEqual((await get('trends/index')).envelope.retiredSeeded, true, 'not marked as done');
+  fail = false;
+  now += DAY;
+  assert.equal((await book.step()).revived.run, 1, 'picked up on the next run');
+  assert.equal((await get('trends/index')).envelope.retiredSeeded, true);
+});
