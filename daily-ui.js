@@ -52,14 +52,20 @@ function profileDraft() {
   migrateFunnel(state.onboardingDraft);
   return state.onboardingDraft;
 }
-// 初回設定の途中の人（以前の21段階の順番で保存されている）を、今の順番の同じ画面・なければ次に残っている画面へ移す。何度通しても同じ。
+// 初回設定の途中の人（以前の順番で保存されている）を、今の順番の同じ画面・なければ次に残っている画面へ移す。何度通しても同じ。
+// funnelV：なし＝21段階（FUNNEL_V1）・2＝15画面（FUNNEL_V2）・3＝今の7画面。
 function migrateFunnel(p) {
-  if (!p || p.funnelV === 2) return;
-  p.funnelV = 2;
+  if (!p || p.funnelV === 3) return;
+  const from = p.funnelV === 2 ? FUNNEL_V2 : FUNNEL_V1;
+  p.funnelV = 3;
   if (p.quickSetupIndex === null || p.quickSetupIndex === undefined) return;
-  const moved = { pain: 0, ratio: "talk", staple: "talk", chains: "talk", priority: "talk", type: "talk", commit: "result", building: "result" };
-  const old = FUNNEL_V1[p.quickSetupIndex];
-  const key = old in moved ? moved[old] : old;
+  // 21段階 → 15画面
+  const v1 = { pain: 0, ratio: "talk", staple: "talk", chains: "talk", priority: "talk", type: "talk", commit: "result", building: "result" };
+  // 15画面 → 7画面：外した画面は、次に残っている画面へ（リズムは以前は後ろにあったので、外した画面の多くはリズムへ）。
+  const v2 = { equipment: 3, 2: 1, talk: 1, videos: 1, demo: 1, loss: 1, goal: 1, remind: "result" };
+  let key = from[p.quickSetupIndex];
+  if (from === FUNNEL_V1 && key in v1) key = v1[key];
+  if (key in v2) key = v2[key];
   const at = FUNNEL.indexOf(key);
   p.quickSetupIndex = at >= 0 ? at : 0;
 }
@@ -151,7 +157,7 @@ function renderWelcome() {
   // 質問の前に、何ができるアプリかを見せる（文脈がわかってから答えてもらう）。
   document.querySelector("#app").innerHTML = `<section class="hero-card profile-wizard welcome-card"><p class="eyebrow">リピごち ${betaBadge()}</p><h2 tabindex="-1">保存した料理動画が、<br><span class="marker">来週の献立</span>になる。</h2>
     <ol class="welcome-flow" aria-label="リピごちでできること"><li><span aria-hidden="true">📱</span><b>動画を貼る</b><small>YouTube</small></li><li><span aria-hidden="true">🤖</span><b>AIが読む</b><small>材料・作り方・時間</small></li><li><span aria-hidden="true">🗓</span><b>献立が決まる</b><small>かぶらず自動で</small></li><li><span aria-hidden="true">🛒</span><b>買い物リスト</b><small>まとめて1回</small></li></ol>
-    <p class="small">いくつかの質問に答えると、<b>あなたの家族専用</b>の献立を作ります。</p><p class="muted small beta-line">いまは<b>晩ごはん</b>の献立だけ。朝ごはん・お弁当は準備中です。</p><div class="welcome-actions">${dailyButton("life-quick", "はじめる（約3分）", "", true)}${dailyButton("life-preview", "設定せずに見てみる")}</div><button type="button" class="text-button" data-action="life-detailed">好み・器具・常備品まで詳しく設定する</button></section>`;
+    <p class="small">いくつかの質問に答えると、<b>あなたの家族専用</b>の献立を作ります。</p><p class="muted small beta-line">いまは<b>晩ごはん</b>の献立だけ。朝ごはん・お弁当は準備中です。</p><div class="welcome-actions">${dailyButton("life-quick", "はじめる（約1分）", "", true)}${dailyButton("life-preview", "設定せずに見てみる")}</div><button type="button" class="text-button" data-action="life-detailed">好み・器具・常備品まで詳しく設定する</button></section>`;
   document.querySelectorAll("[data-action]").forEach((el) => el.addEventListener("click", handleAction));
 }
 function renderProfileWizard() {
@@ -1441,7 +1447,8 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-quick-skill") {
     state.skillProfile = { level: Number(data.level), growth: state.skillProfile?.growth || "steady", diagnosed: false, updatedAt: nowIso() };
-    profileDraft().quickSetupIndex = FUNNEL.indexOf(2) + 1;
+    // スキルの画面が初回設定にある時だけ、次の画面へ（2026-10-28 から初回にはない）。
+    if (FUNNEL.includes(2) && FUNNEL[profileDraft().quickSetupIndex] === 2) profileDraft().quickSetupIndex = FUNNEL.indexOf(2) + 1;
   }
   if (action === "life-funnel-pick") {
     const p = profileDraft();
@@ -1467,6 +1474,7 @@ function handleDailyAction(action, data) {
     picks.has(data.recipe) ? picks.delete(data.recipe) : picks.add(data.recipe);
     p.picks = [...picks].slice(0, 12);
   }
+  if (action === "life-start-when") profileDraft().startTonight = data.when === "tonight";
   if (action === "life-quick-back") { profileDraft().quickSetupIndex=Math.max(0,profileDraft().quickSetupIndex-1); }
   if (action === "life-preview" && !state.onboarded) {
     state.onboarded=true;state.planLength=3;state.view="plan";profileEditing=false;
@@ -1576,6 +1584,8 @@ function handleDailyAction(action, data) {
     state.planDrafts = {};
     // 最初の提案の画面を出すのは、初めての初回設定を終えた時だけ（詳しい設定の保存・かんたん設定のやり直しでは出さない）。
     const firstRun = !state.onboarded && profileDraft().quickSetupIndex !== null;
+    // 初めての初回設定：選んだ「今夜から／明日から」で最初の回を作り直す（2026-10-28）。
+    if (firstRun && rhythmOn() && !Object.values(state.mealSlots || {}).some((x) => x.date >= today() && ["confirmed", "cooked"].includes(x.status))) startRhythm(new Date(), { tonight: startTonight(profileDraft()) });
     const chosen = [...finishFunnelPicks(), ...(funnelDemo.result ? [funnelDemo.result] : [])];
     trackDaily("profile_completed");
     const p = Lifestyle.profile(profileDraft());
@@ -2080,14 +2090,19 @@ const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", 
 //  ・晩ごはんタイプ（割合・主食・お店・いちばん大事なこと・タイプ）は、方針の会話（味・大変なこと）が役目を持つので、初回からは外した
 //  ・宣言（3回の長押し）と、時間だけで100%になる「作成中」はやめた。最後は、実際に反映する中身と、最初の提案
 //  ・方針の会話（talk）を、食べられないもの・器具・時間・スキルのあとに入れた（聞き返し・確認・保存まで）
-const FUNNEL = [0, "eaters", 4, "equipment", 3, 2, "talk", "picks", "videos", "demo", "loss", "goal", 1, "remind", "result"];
+// 2026-10-28 の見直し（ユーザーの判断「少ない質問で魅力的な献立を出し、あとから段階的に聞く」）：初回は7画面だけ
+// （人数 → 一緒に食べる人 → 食べられないもの → 平日の時間 → リズム → 気になる料理 → 確認といつから始めるか）。
+// 器具（基本の道具のまま）・スキル・ごはん方針は「今日やること」から1つずつ（スキル試験・方針・詳しい設定）。
+// 動画の習慣・読み取りのお試し・1年の損・目標・カレンダーの登録は初回から外した（画面の関数は残す）。
+const FUNNEL = [0, "eaters", 4, 3, 1, "picks", "result"];
+// 2026-09-30〜10-27 の順番（途中まで進んだ人の移し替えだけに使う）。
+const FUNNEL_V2 = [0, "eaters", 4, "equipment", 3, 2, "talk", "picks", "videos", "demo", "loss", "goal", 1, "remind", "result"];
 // 以前の順番（途中まで進んだ人の移し替えだけに使う）。
 const FUNNEL_V1 = ["pain", 0, "eaters", 4, "equipment", "ratio", "staple", "chains", "priority", 2, "type", "videos", "demo", "loss", "goal", 1, "remind", 3, "picks", "commit", "building"];
 const EATERS = [["me", "🧑", "自分"], ["partner", "💑", "パートナー"], ["kids", "🧒", "子ども（小学生まで）"], ["teens", "🧑‍🎓", "子ども（中学生から）"], ["parents", "👵", "親"], ["friends", "🏠", "同居の友人など"]];
 const EATER_OF = Object.fromEntries(EATERS.map(([id, , label]) => [id, label.replace(/（.*$/, "")]));
 const OPTIONAL_TOOLS = ["炊飯器", "トースター", "オーブン", "電気ケトル", "圧力鍋", "ホットプレート", "ミキサー", "はかり"];
 const QUICK_STEPS = FUNNEL.length;
-const FUNNEL_PART2 = FUNNEL.indexOf("goal");
 // 答えへのひとこと（入力が続く第1部を、会話のようにする）。前の答えを次の画面の上に出す。
 const FUNNEL_ECHO = {
   0: (p) => ({ fridge: "毎日その場で考えるの、大変ですよね。", same: "同じ料理が続くと、飽きちゃいますよね。", tired: "考えるのが一番しんどい、よく聞きます。", ok: "いいですね。もっと楽にしましょう。" })[p.pain] || "",
@@ -2353,8 +2368,14 @@ function renderFunnelStep(key) {
   if (key === "result") {
     // 時間で進む演出はしない。この時点で決まっている中身を、そのまま見せる。
     const lines = resultLines(p);
-    return [`✅ この条件で、献立を作ります`, `<ul class="funnel-result">${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>
-      <p class="muted small">あとから設定で変えられます</p>
+    // いつから始めるか（2026-10-28 のユーザーの判断）：今日が作る日なら「今夜から」も選べる。決めていなければ17時より前は今夜・あとは明日。
+    const can = canStartTonight(), tonight = startTonight(p);
+    const when = can ? `<h3 class="quick-sub">いつから始める？</h3><div class="funnel-picks is-grid2 start-when">
+        <button type="button" class="funnel-pick" data-action="life-start-when" data-when="tonight" aria-pressed="${tonight}"><span class="fp-icon" aria-hidden="true">🌙</span>今夜から</button>
+        <button type="button" class="funnel-pick" data-action="life-start-when" data-when="tomorrow" aria-pressed="${!tonight}"><span class="fp-icon" aria-hidden="true">☀️</span>明日から</button></div>
+      <p class="muted small">${tonight ? "今夜の一品から決めます。最初の買い物は1時間後の目安です" : "最初の買い物は、いつもの買い物の時間です"}</p>` : "";
+    return [`✅ この条件で、献立を作ります`, `<ul class="funnel-result">${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>${when}
+      <p class="muted small">あとから設定で変えられます。好み・器具・腕前は、使いながら少しずつ聞きます</p>
       <button type="button" class="primary-button full-button" data-action="life-finish">最初の提案を見る</button>`];
   }
   return ["", ""];
@@ -2374,6 +2395,15 @@ function bindFunnel() {
   });
 }
 // 最後の画面：この時点で決まっている条件を、そのまま並べる（「〜しています」と進んでいるふりはしない）。
+// 今日が作る日（リズムの曜日）で、まだ21時より前なら、今夜から始められる。
+function canStartTonight(now = new Date()) {
+  return now.getHours() < 21 && (!rhythmOn() || rhythmDays().includes(String(new Date(today() + "T12:00:00").getDay())));
+}
+// 今夜から始めるか：選んでいればその答え。決めていなければ、17時より前なら今夜（買い物と料理に間に合う目安）。
+function startTonight(p, now = new Date()) {
+  if (!canStartTonight(now)) return false;
+  return typeof p?.startTonight === "boolean" ? p.startTonight : now.getHours() < 17;
+}
 function resultLines(p) {
   const avoid = [...(p.restrictions || []), ...(p.dislikes || [])];
   const tools = OPTIONAL_TOOLS.filter((t) => p.equipment?.[t] === "have");
@@ -2450,11 +2480,10 @@ function handlePaywallAction(action, data) {
   render();
   return true;
 }
-// 上の進み具合：13のブロックが1つずつ色づく。
+// 上の進み具合：画面の数だけのブロックが1つずつ色づく（2026-10-28 から1部だけ）。
 function funnelProgress(i) {
   const block = (k) => `<li class="${k < i ? "is-done" : k === i ? "is-current" : ""}"></li>`;
-  const part = (from, to, label, n) => `<div class="fs-part${i >= from && i < to ? " is-active" : i >= to ? " is-done" : ""}"><span class="fs-label">${n}. ${label}</span><ol class="funnel-steps" style="--n:${to - from}">${FUNNEL.slice(from, to).map((_, k) => block(from + k)).join("")}</ol></div>`;
-  return `<div class="funnel-parts" role="progressbar" aria-label="初回設定の進み具合" aria-valuemin="1" aria-valuemax="${QUICK_STEPS}" aria-valuenow="${i + 1}" aria-valuetext="${i < FUNNEL_PART2 ? "第1部 いまのあなた" : "第2部 これからのあなた"}（${i + 1} / ${QUICK_STEPS}）">${part(0, FUNNEL_PART2, "いまのあなた", 1)}${part(FUNNEL_PART2, QUICK_STEPS, "これからのあなた", 2)}</div>`;
+  return `<div class="funnel-parts" role="progressbar" aria-label="初回設定の進み具合" aria-valuemin="1" aria-valuemax="${QUICK_STEPS}" aria-valuenow="${i + 1}" aria-valuetext="${i + 1} / ${QUICK_STEPS}"><div class="fs-part is-active"><span class="fs-label">はじめの設定（${i + 1} / ${QUICK_STEPS}）</span><ol class="funnel-steps" style="--n:${QUICK_STEPS}">${FUNNEL.map((_, k) => block(k)).join("")}</ol></div></div>`;
 }
 // 自分で選ぶ時のスキル（診断しない人向け）。
 const SKILL_PICK_HINT = { 1: "混ぜてチン、が中心", 2: "切って炒める・煮るならOK", 3: "照り焼きやガパオも作れる", 4: "ハンバーグや揚げ焼きも", 5: "揚げ物も魚をおろすのも" };
