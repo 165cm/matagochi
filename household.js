@@ -798,18 +798,24 @@ function normalizeRhythm(raw) {
 }
 // 始める時の最初の回：次の丸ごとの回まで間があけば、明日から次の回の前日までのリズムの日を「今週の残り」の回にする。
 // 買い物はいつもの時間（今日のその時間を過ぎていたら明日）。2026-10-27 のユーザーの判断
-function startRhythm(nowDate = new Date()) {
+// tonight（2026-10-28 のユーザーの判断「今夜から／明日から」を選べる）：今日が作る日なら、今日から始める。買い物は1時間後（30分単位に切り上げ）。
+function startRhythm(nowDate = new Date(), { tonight = false } = {}) {
+  // 前に作った最初の回は、先に消す（残したまま次の丸ごとの回を探すと、それを丸ごとの回と取りちがえる。2回目の呼び出し・リズムの選び直し）。
+  delete state.rhythm.kickoff;
   const full = firstFullBlock();
   const days = rhythmDays();
   const tomorrow = addDays(today(), 1);
+  const fromToday = tonight && days.includes(String(dow(today())));
   const gap = [];
-  for (let d = tomorrow; full && d < full.start && gap.length < 7; d = addDays(d, 1)) if (days.includes(String(dow(d)))) gap.push(d);
-  delete state.rhythm.kickoff;
+  for (let d = fromToday ? today() : tomorrow; full && d < full.start && gap.length < 7; d = addDays(d, 1)) if (days.includes(String(dow(d)))) gap.push(d);
   if (gap.length) {
     // 最初の買い物も、いつもの買い物の時間に（今日のその時間を過ぎていたら明日。深夜・早朝にしない）。
     const time = state.rhythm.shopTime || "17:00";
+    const soon = new Date(nowDate.getTime() + 60 * 60_000);
+    const m = soon.getMinutes();
+    soon.setMinutes(m === 0 ? 0 : m <= 30 ? 30 : 60, 0, 0);
     const day = localStamp(nowDate) < `${today()}T${time}` ? today() : tomorrow;
-    const shopAt = `${day}T${time}`;
+    const shopAt = fromToday ? localStamp(soon) : `${day}T${time}`;
     // 次のまとまりの買い物と同じ時刻（かそれより後）になる時は、1回の買い物にまとめる（同じ時刻に2回の買い物・お知らせを出さない）。
     const dates = full.shopAt <= shopAt ? [...gap, ...full.dates] : gap;
     state.rhythm.kickoff = { start: gap[0], dates, shopAt };

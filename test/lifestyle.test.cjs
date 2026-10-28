@@ -1129,10 +1129,10 @@ test("hidden starter recipes leave the list and the planner; bulk delete removes
   assert.ok(run("!!state.tombstones.recipes.own1 && !!state.tombstones.evaluations.e1"));
 });
 
-test("the first-run funnel (2026-09-30): no duplicate question, no pledge, no timed progress; the policy talk is inside; it ends on real facts and the first suggestion", () => {
+test("the first-run funnel (2026-10-28): seven screens — people, who eats, foods to avoid, time, rhythm, dishes, result — and it ends on real facts", () => {
   const run = app();
   const key = () => run("FUNNEL[state.onboardingDraft.quickSetupIndex]");
-  assert.deepEqual(JSON.parse(run("JSON.stringify(FUNNEL.filter((k) => ['pain','commit','building','ratio','staple','chains','priority','type'].includes(k)))")), [], "removed from the first run");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(FUNNEL)")), [0, "eaters", 4, 3, 1, "picks", "result"]);
   run(`handleDailyAction("life-quick",{})`);
   assert.equal(key(), 0, "how many people first");
   run(`handleDailyAction("life-servings",{count:"4"})`);
@@ -1140,90 +1140,59 @@ test("the first-run funnel (2026-09-30): no duplicate question, no pledge, no ti
   run(`handleDailyAction("life-eater",{value:"partner"}); handleDailyAction("life-eater",{value:"kids"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(key(), 4, "then foods to avoid");
   run(`state.onboardingDraft.restrictions=["えび"]; handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), "equipment");
-  run(`state.onboardingDraft.equipment = Lifestyle.equipmentDefaults(state.onboardingDraft.equipment); handleDailyAction("life-equipment-toggle",{name:"オーブン"}); handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), 3, "then the weeknight time");
+  assert.equal(key(), 3, "then the weeknight time (no kitchen tools, no skill)");
   run(`handleDailyAction("life-minutes",{minutes:"45"}); handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), 2, "then the skill");
-  run(`handleDailyAction("life-quick-skill",{level:"3"})`);
-  assert.equal(key(), "talk", "then the policy talk");
-  // 方針の会話（初回設定の中）
-  run("startTalkInFunnel()");
-  assert.equal(run("talkInFunnel()"), true);
-  let html = run("renderTalk()");
-  assert.ok(html.includes("夜ごはんで、いちばん大変なのは？") && html.includes("方針はあとで（次へ）"), "closing means: the policy later, go on");
-  assert.ok(!/data-action="life-talk-back" disabled/.test(html), "back goes to the previous setup screen");
-  run(`handleDailyAction("life-talk-pick",{q:"hard",value:"clean"}); handleDailyAction("life-talk-pick",{q:"want",value:"fish"}); handleDailyAction("life-talk-pick",{q:"why",value:"clean"})`);
-  assert.ok(run("renderTalk()").includes("魚を減らすより"), "the guess is asked back during setup too");
-  run(`handleDailyAction("life-talk-decide",{id:"fish-easy",status:"confirmed"}); handleDailyAction("life-talk-toggle",{q:"taste",value:"light"}); handleDailyAction("life-talk-multi-done",{q:"taste"})`);
-  assert.ok(run("renderTalk()").includes("休日の夜は、平日とちがう？"), "the deeper questions come next");
-  run(`handleDailyAction("life-talk-pick",{q:"weekend",value:"same"}); handleDailyAction("life-talk-pick",{q:"together",value:"same"})`);
-  html = run("renderTalk()");
-  assert.ok(html.includes("わが家のごはん方針（案）"));
-  assert.ok(html.includes("🚫 えび（食べられない）"), "the restrictions come from the setup draft (not saved yet)");
-  run(`handleDailyAction("life-talk-save",{})`);
-  assert.equal(key(), "picks", "saving the policy goes on to the next setup screen");
-  assert.equal(run("state.tasteProfile.snapshots.length"), 1);
-  assert.equal(run("state.tasteProfile.session"), null);
+  assert.equal(key(), 1, "then the rhythm");
   run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), "videos");
-  run(`handleDailyAction("life-funnel-pick",{field:"savedVideos",value:"few"})`);
-  assert.equal(key(), "demo");
-  run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), "loss");
-  assert.equal(run("nowCost(state.onboardingDraft).kg"), 76, "19kg a person a year");
-  run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(run("state.onboardingDraft.quickSetupIndex"), run("FUNNEL_PART2"), "part 2 starts with the goal");
-  run(`handleDailyAction("life-funnel-pick",{field:"goal",value:"save"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(run("state.rhythm.preset"), "weekday", "the rhythm starts on weekdays");
-  assert.equal(key(), "remind");
+  assert.equal(key(), "picks", "then the dishes to try");
   run(`handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
   assert.equal(key(), "result", "a reload keeps the place");
   const lines = JSON.parse(run("JSON.stringify(resultLines(state.onboardingDraft))"));
-  assert.deepEqual(lines.slice(0, 4), ["🍽 4人分（パートナー・子どもと）", "🚫 えびは入れない", "⏱ 平日 45分以内", "🍳 基本の道具＋オーブン・★3まで"]);
-  assert.ok(lines.some((l) => l.startsWith("🐟 魚は好き")), "what the person confirmed in the talk");
+  assert.deepEqual(lines.slice(0, 4), ["🍽 4人分（パートナー・子どもと）", "🚫 えびは入れない", "⏱ 平日 45分以内", "🍳 基本の道具"]);
   assert.ok(!lines.some((l) => /しています/.test(l)), "no pretending to work");
   assert.equal(run("renderFunnelStep('result')[1].includes('life-finish')"), true);
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded"), true);
   assert.equal(run("state.servingCount"), 4);
-  assert.equal(run("state.view"), "talk", "it lands on the first dish and why");
-  assert.ok(run("renderTalk()").includes("この料理にした理由"));
+  assert.equal(run("state.view"), "plan", "no saved policy: the plan");
+  assert.ok(/スキル試験|ごはん方針/.test(run("renderTodayTodos()")), "skill and policy are asked later, from today, one at a time");
 });
 
-test("first-run funnel: people part-way through the old order continue on the same (or next remaining) screen, once", () => {
+test("first-run funnel: people part-way through an older order continue on the same (or next remaining) screen, once", () => {
   const run = app();
-  const at = (oldKey) => {
-    run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: FUNNEL_V1.indexOf(${JSON.stringify(oldKey)}) }); state.onboardingDraft = normalizeState(JSON.parse(JSON.stringify(state))).onboardingDraft;`);
+  const at = (list, oldKey, v) => {
+    run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: ${list}.indexOf(${JSON.stringify(oldKey)}) })${v ? `; state.onboardingDraft.funnelV = ${v}` : ""}; state.onboardingDraft = normalizeState(JSON.parse(JSON.stringify(state))).onboardingDraft;`);
     return run("FUNNEL[profileDraft().quickSetupIndex]");
   };
-  assert.equal(at("pain"), 0);
-  assert.equal(at("eaters"), "eaters");
-  assert.equal(at("chains"), "talk", "the dinner-type steps move on to the policy talk");
-  assert.equal(at("type"), "talk");
-  assert.equal(at("remind"), "remind");
-  assert.equal(at(3), 3);
-  assert.equal(at("commit"), "result", "the pledge moves on to the result");
-  assert.equal(at("building"), "result");
-  // 移し替えは一度だけ（その後の「次へ」「戻る」で動いた位置を、もう一度読みかえない）。
-  run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: FUNNEL_V1.indexOf("staple") }); profileDraft(); handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
+  // 21段階（funnelV なし）
+  assert.equal(at("FUNNEL_V1", "pain"), 0);
+  assert.equal(at("FUNNEL_V1", "eaters"), "eaters");
+  assert.equal(at("FUNNEL_V1", "chains"), 1, "the dinner-type steps (then the talk) move on to the rhythm");
+  assert.equal(at("FUNNEL_V1", "remind"), "result");
+  assert.equal(at("FUNNEL_V1", 3), 3);
+  assert.equal(at("FUNNEL_V1", "building"), "result");
+  // 15画面（funnelV 2）
+  assert.equal(at("FUNNEL_V2", "equipment", 2), 3, "kitchen tools → the time");
+  assert.equal(at("FUNNEL_V2", 2, 2), 1, "skill → the rhythm");
+  assert.equal(at("FUNNEL_V2", "talk", 2), 1);
+  assert.equal(at("FUNNEL_V2", "loss", 2), 1);
+  assert.equal(at("FUNNEL_V2", "goal", 2), 1);
+  assert.equal(at("FUNNEL_V2", "picks", 2), "picks");
+  assert.equal(at("FUNNEL_V2", "remind", 2), "result");
+  // 移し替えは一度だけ
+  run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: FUNNEL_V2.indexOf("talk") }); state.onboardingDraft.funnelV = 2; profileDraft(); handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
   assert.equal(run("FUNNEL[profileDraft().quickSetupIndex]"), "picks");
-  assert.equal(run("state.onboardingDraft.funnelV"), 2);
+  assert.equal(run("state.onboardingDraft.funnelV"), 3);
 });
 
-test("first-run funnel: 'later' in the talk goes on without saving, and the talk can be finished from today", () => {
+test("the policy talk (no longer in the first run) can still be started and finished from today", () => {
   const run = app();
-  run(`handleDailyAction("life-quick",{}); state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("talk"); startTalkInFunnel(); handleDailyAction("life-talk-pick",{q:"hard",value:"time"}); handleDailyAction("life-talk-close",{})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "picks");
-  assert.equal(run("state.tasteProfile.snapshots.length"), 0);
-  assert.ok(run("state.tasteProfile.session"), "the talk stays open to continue later");
-  run(`state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("result"); handleDailyAction("life-finish",{})`);
-  assert.equal(run("state.view"), "plan", "no saved policy: the plan, as before");
-  assert.ok(run("renderTodayTodos()").includes("続きから"));
-  // 最初の質問からの「戻る」は、初回設定の前の画面へ。
-  const r2 = app();
-  r2(`handleDailyAction("life-quick",{}); state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("talk"); startTalkInFunnel(); handleDailyAction("life-talk-back",{})`);
-  assert.equal(r2("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 2);
+  run(`handleDailyAction("life-quick",{}); state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("result"); handleDailyAction("life-finish",{})`);
+  assert.equal(run("talkInFunnel()"), false);
+  // 追加の質問は一度に1つ：腕前（スキル）を決めると、次はごはん方針。
+  run(`state.skillProfile = { level: 2, growth: "steady", diagnosed: false }`);
+  assert.ok(run("renderTodayTodos()").includes("ごはん方針"));
 });
 
 test("the dinner type (no longer in the first run) still scores the same", () => {
