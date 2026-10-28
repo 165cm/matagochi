@@ -27,3 +27,23 @@ test("catalog taste inventory: an empty or broken list does not crash", () => {
     assert.match(C.markdown(r), /0品/);
   }
 });
+
+// 棚卸しで見つかった見分け方の間違い（2026-10-28）がもどらないように。
+test("main ingredient and flavour: katakana and kanji fish, stock is not the main, sweet-salty and garnish chili are not spicy", () => {
+  const r = (title, names) => ({ title, ingredients: names.map((name) => ({ name })) });
+  const main = (title, names) => L.traits(r(title, names)).protein;
+  const tags = (title, names) => L.tags(r(title, names));
+  assert.equal(main("ぶりの照り焼き", ["ブリ", "しょうゆ"]), "fish");
+  assert.equal(main("かれいの煮付け", ["カレイ", "しょうが"]), "fish");
+  assert.equal(main("サーモンのムニエル", ["サーモン", "バター"]), "fish");
+  assert.equal(main("さばの味噌煮", ["鯖", "みそ"]), "fish");
+  assert.equal(main("揚げ出し豆腐", ["豆腐", "かつお節", "めんつゆ"]), "eggtofu", "bonito flakes are not the main");
+  assert.equal(main("野菜スープ", ["キャベツ", "鶏ガラスープの素"]), "veg", "chicken stock is not the main");
+  assert.equal(main("カルボナーラうどん", ["うどん", "卵", "牛乳"]), "eggtofu", "milk is not beef");
+  assert.equal(main("天津飯", ["卵", "カニカマ", "ごはん"]), "eggtofu", "crab sticks are not the main");
+  assert.ok(!tags("豚汁", ["豚こま", "大根", "七味"]).includes("spicy"), "garnish chili");
+  assert.ok(!tags("照り焼きチキン", ["鶏もも肉", "甘辛だれ"]).includes("spicy"), "甘辛");
+  assert.ok(tags("麻婆豆腐", ["豆腐", "豚ひき肉", "豆板醤"]).includes("spicy"));
+  assert.equal(L.traits(r("八宝菜", ["豚こま", "白菜", "オイスターソース"])).cuisine, "chinese", "seasonings still tell the cuisine");
+  assert.ok(!L.tags({ title: "鶏むね肉のソテー", ingredients: [{ name: "鶏むね肉" }], steps: ["ふたをして蒸し焼きにする"] }).includes("light"), "a step does not make it light");
+});

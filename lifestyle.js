@@ -394,16 +394,24 @@
   ];
   // --- Rotation: remember what was eaten recently so dinners don't repeat by type ---
   const NOODLE = /パスタ|スパゲ|うどん|そば|ラーメン|焼きそば|そうめん|麺/;
+  // 主役の見分け方（2026-10-28：集まったレシピの棚卸しで見つかった間違いを直した）。
+  // ・魚はカタカナ・漢字の名前も（ブリ・鰤・カレイ・サーモン・サバ・鯖…）。
+  // ・だし・調味料に入っている魚や肉は、主役に数えない（かつお節・ほんだし・鶏ガラスープの素・コンソメ・魚醤 など）。
+  const MEAT_RE = /鶏|豚|牛(?!乳)|ひき肉|挽き肉|挽肉|合いびき|合挽|ささみ|手羽|チキン|ポーク|ビーフ|ハム|ベーコン|ウインナー|ソーセージ|ミンチ|レバー|砂肝|鴨|ラム肉|肉/;
+  const FISH_RE = /鮭|さけ|サケ|サーモン|さば|サバ|鯖|ぶり|ブリ|鰤|かれい|カレイ|鰈|たら(?!し)|タラ|鱈|あじ|アジ|鯵|いわし|イワシ|鰯|さんま|サンマ|秋刀魚|まぐろ|マグロ|鮪|かつお|カツオ|鰹|鯛|めかじき|かじき|カジキ|ひらめ|すずき|うなぎ|ししゃも|えび|エビ|海老|いか|イカ|たこ(?!焼)|タコ(?!ライス)|ほたて|ホタテ|帆立|あさり|アサリ|しじみ|かき|カキ|牡蠣|しらす|ちりめん|ツナ|明太|たらこ|かに(?!かま)|カニ(?!カマ)|蟹|白身|切り身|魚/;
+  const SEASONING_RE = /(かつお|カツオ|鰹)(節|ぶし|だし|風味)|削り節|花かつお|だしの素|ほんだし|顆粒だし|和風だし|白だし|めんつゆ|魚醤|ナンプラー|オイスター(ソース)?|えびせん|鶏ガラ|鶏がら|ガラスープ|コンソメ|ブイヨン|豚骨|とんこつ|牛脂|中華だし|ウェイパー|味の素/g;
+  const mainText = (s) => String(s || "").replace(SEASONING_RE, " ");
   function traits(recipe) {
     const title = String(recipe?.title || "");
-    const names = (recipe?.ingredients || []).map((i) => i.name).join(" ");
-    const text = title + " " + names;
+    const raw = (recipe?.ingredients || []).map((i) => i.name).join(" ");
+    const names = mainText(raw);
+    // 主食・系統は、調味料も手がかりにする（オイスターソース → 中華 など）。主役だけ、だし・調味料を除いて見る。
+    const text = title + " " + raw;
     const staple = NOODLE.test(text) ? "noodle"
       : /(?<!フライ)パン(?!粉)|トースト|サンド/.test(text) ? "bread"
       : /ごはん|米|丼|チャーハン|リゾット|カレー|ライス|おにぎり|雑炊|ビリヤニ/.test(text) ? "rice" : "other";
-    const protein = /鶏|豚|牛|ひき肉|合いびき|ハム|ベーコン|ウインナー|ソーセージ|肉/.test(names || title) ? "meat"
-      : /鮭|さけ|さば|ツナ|魚|えび|いか|たら|しらす|まぐろ|かつお|ぶり/.test(names || title) ? "fish"
-      : /卵|たまご|豆腐|厚揚げ|納豆|豆乳/.test(names || title) ? "eggtofu" : "veg";
+    const where = names.trim() ? names : mainText(title);
+    const protein = MEAT_RE.test(where) ? "meat" : FISH_RE.test(where) ? "fish" : /卵|たまご|玉子|豆腐|厚揚げ|油揚げ|納豆|豆乳/.test(where) ? "eggtofu" : "veg";
     const tastes = recipe?.planning?.tastes || recipe?.tags || [];
     const cuisine = tastes.includes("中華風") ? "chinese" : tastes.includes("洋風") ? "western" : tastes.includes("和風") ? "japanese"
       : /豆板醤|オイスター|キムチ|麻婆|担々|ナンプラー/.test(text) ? "chinese"
@@ -418,9 +426,10 @@
   ];
   const TAG_RULES = {
     chicken: /鶏|ささみ|手羽|チキン/, pork: /豚|ベーコン|ハム|ウインナー|ソーセージ/, beef: /牛(?!乳)/,
-    mince: /ひき肉|合いびき|そぼろ|つくね|ハンバーグ|小籠包/, fish: /鮭|さけ|さば|サバ|ツナ|魚|えび|いか|たら|しらす|ぶり|まぐろ|かつお/,
+    mince: /ひき肉|挽き肉|挽肉|合いびき|合挽|ミンチ|そぼろ|つくね|ハンバーグ|小籠包/, fish: FISH_RE,
     egg: /卵|たまご|玉子/, tofu: /豆腐|厚揚げ|油揚げ|納豆|豆乳|大豆/,
-    spicy: /辛|キムチ|豆板醤|コチュジャン|ラー油|担々|麻辣|一味|七味|ガパオ|カレー|ヤンニョム/,
+    // 「甘辛」「塩辛」「辛子（からし）」と、仕上げの一味・七味はピリ辛に数えない。
+    spicy: /(?<![甘塩])辛(?!子)|唐辛子|鷹の爪|キムチ|豆板醤|コチュジャン|ラー油|担々|坦々|麻辣|花椒|ガパオ|カレー|ヤンニョム|チリ|タバスコ|柚子胡椒|ゆずこしょう/,
     light: /ポン酢|酢|冷や|梅|レモン|しそ|大葉|おろし|蒸し/,
     rich: /バター|チーズ|マヨ|クリーム|カルボナーラ|揚げ|甘辛|照り焼き|ハンバーグ/,
     soup: /スープ|汁|麻辣湯/, ethnic: /ナンプラー|ガパオ|タコライス|ビリヤニ|ヤンニョム|コチュジャン|エスニック/,
@@ -431,8 +440,11 @@
     const text = [recipe.title, names, ...(recipe.steps || []), ...(recipe.planning?.equipment || [])].join(" ");
     const t = traits(recipe);
     const out = new Set([t.staple, t.cuisine]);
+    // 主役は料理名と材料から（だし・調味料の魚や肉は除く）。味（ピリ辛・さっぱり・こってり・汁もの）も料理名と材料から
+    // （作り方の「蒸し焼きにする」「お好みで七味」などで決めない）。作り方の道具（レンジ・鍋など）だけ作り方も見る。
+    const MAIN = ["chicken", "pork", "beef", "mince", "fish", "egg", "tofu"], MOOD = ["spicy", "light", "rich", "soup", "ethnic"];
     for (const [tag, re] of Object.entries(TAG_RULES)) {
-      const where = ["chicken", "pork", "beef", "mince", "fish", "egg", "tofu"].includes(tag) ? `${recipe.title} ${names}` : text;
+      const where = MAIN.includes(tag) ? mainText(`${recipe.title} ${names}`) : MOOD.includes(tag) ? `${recipe.title} ${names}` : text;
       if (re.test(where)) out.add(tag);
     }
     if (!["chicken", "pork", "beef", "mince", "fish"].some((x) => out.has(x))) out.add("veg");

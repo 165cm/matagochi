@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 作業中（1. 数える） | claude/nice-shannon-6g1g5m | 集まったレシピを料理名・主役・系統・味で数え、写真12枚の候補を出す（0円）→ 一覧をユーザーに見せる → 写真の画面・加点・行動から学ぶ・移し替え | scripts/catalog-taste.cjs, .github/workflows/catalog-taste.yml, test/catalog-taste.test.cjs, docs/* | daily-ui.js, household.js, app.js, tickets.js, plus.js, weekly.js, account.js, styles.css, index.html, lp/index.html, legal/*.html, api/src/tickets.js ほか, test/*, docs/* |
+| 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | レビュー待ち（主役・味の見分け方の修正） | claude/nice-shannon-6g1g5m | 棚卸し（#180 公開済み）で見つかった見分け方の間違いを直す → 写真12枚の一覧をユーザーに見せる → 写真の画面・加点・行動から学ぶ・移し替え | lifestyle.js, test/*, docs/CATALOG_COVERAGE.md, docs/APP_MAP.md, docs/CURRENT_TASK.md, sw.js, version.json, index.html, app.js | daily-ui.js, household.js, app.js, tickets.js, plus.js, weekly.js, account.js, styles.css, index.html, lp/index.html, legal/*.html, api/src/tickets.js ほか, test/*, docs/* |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
