@@ -3480,6 +3480,9 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .swap-why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
 .swap-why > span { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: 2px; }
 .swap-why-echo { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }
+.swap-bought { padding: 12px; border-radius: 14px; background: #fff7ea; border: 1px dashed #f0c98f; }
+.swap-bought p { margin: 0 0 10px; font-size: 15px; line-height: 1.6; }
+.swap-bought-actions { display: grid; gap: 8px; }
 .swap-folder { margin: 0; font-size: 14px; }
 .swap-medal { margin-right: 4px; font-style: normal; }
 .rank-prompt { display: grid; gap: 8px; }

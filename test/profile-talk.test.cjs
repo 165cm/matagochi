@@ -805,3 +805,48 @@ test("D: a records-based suggestion shows on the today screen (one at a time, be
   html = run("renderTodayTodos()");
   assert.ok(!html.includes("増やしますか？") && html.includes("料理の腕前"), "answered, then the next question comes back");
 });
+
+test("a decided dinner can be changed from the today card; with bought ingredients, one question first (use them / ignore them)", () => {
+  const run = app();
+  run(`state.family=["わたし"]; state.me="わたし"; state.view='today';
+    const r = Lifestyle.curated.find((x) => x.title === "豚こまキャベツ丼");
+    confirmDaily({ date: today() }, r);
+    globalThis.boughtName = r.ingredients.map((i) => Lifestyle.shoppingName(i.name)).find((n) => n && Lifestyle.isBought(n) && n !== "ごはん");
+    state.shoppingMarks = { [Lifestyle.shoppingKey(boughtName)]: { status: "purchased", updatedAt: nowIso() } };`);
+  const name = run("boughtName");
+  assert.ok(run("renderToday()").includes("⇄ 変更"), "a small link on the decided card");
+  run("handleDailyAction('life-swap',{date:today()})");
+  let html = run("renderSwapChoices()");
+  assert.ok(html.includes(`買った<b>${name}`) && html.includes("使う料理から選ぶ") && html.includes("気にせず選ぶ"));
+  assert.ok(!html.includes("life-choose") && !html.includes("変えたい理由は？"), "only the one question");
+  run("handleDailyAction('life-swap-bought',{use:'use'})");
+  html = run("renderSwapChoices()");
+  const first = html.match(/data-action="life-choose" data-recipe="([^"]+)"/)[1];
+  assert.ok(run(`allDinnerRecipes().find((r) => r.id === ${JSON.stringify(first)}).ingredients.some((i) => Lifestyle.shoppingName(i.name) === boughtName)`), "a dish using it comes first");
+  assert.ok(html.includes(`🧺 ${name}を使う`));
+  // 開き直すと、また聞く。「気にせず」は並びを変えない
+  run("handleDailyAction('life-swap',{date:today()}); handleDailyAction('life-swap-bought',{use:'skip'})");
+  assert.ok(run("renderSwapChoices()").includes("買った材料は気にせず"));
+  // 何も買っていなければ、聞かずに候補（と理由の質問）
+  run("state.shoppingMarks = {}; handleDailyAction('life-swap',{date:today()})");
+  html = run("renderSwapChoices()");
+  assert.ok(!html.includes("使う料理から選ぶ") && html.includes("変えたい理由は？"));
+});
+
+test("reusing bought ingredients weighs the main ones (meat, fish, tofu 3 / vegetables 1 / seasonings and rice 0)", () => {
+  const run = app();
+  run(`state.family=["わたし"]; state.me="わたし"; state.view='today';
+    const r = Lifestyle.curated.find((x) => x.title === "豚こまキャベツ丼");
+    confirmDaily({ date: today() }, r);
+    state.shoppingMarks = Object.fromEntries(r.ingredients.map((i) => [Lifestyle.shoppingKey(Lifestyle.shoppingName(i.name)), { status: "purchased", updatedAt: nowIso() }]));
+    handleDailyAction('life-swap',{date:today()});`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(swapBoughtItems(today()))")), [{ name: "豚こま", weight: 3 }, { name: "キャベツ", weight: 1 }], "no rice, soy sauce or oil; the main one first");
+  assert.ok(run("renderSwapChoices()").includes("買った<b>豚こま・キャベツ</b>は？"));
+  run("handleDailyAction('life-swap-bought',{use:'use'})");
+  const ids = [...run("renderSwapChoices()").matchAll(/data-action="life-choose" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+  const uses = (id, n) => run(`allDinnerRecipes().find((r) => r.id === ${JSON.stringify(id)}).ingredients.some((i) => Lifestyle.shoppingName(i.name) === ${JSON.stringify(n)})`);
+  assert.ok(uses(ids[0], "豚こま") && uses(ids[0], "キャベツ"), "both first");
+  const lastPork = ids.map((id) => uses(id, "豚こま")).lastIndexOf(true);
+  const firstCabbageOnly = ids.findIndex((id) => uses(id, "キャベツ") && !uses(id, "豚こま"));
+  assert.ok(firstCabbageOnly === -1 || firstCabbageOnly > lastPork, "a dish with only the cabbage comes after the pork dishes");
+});
