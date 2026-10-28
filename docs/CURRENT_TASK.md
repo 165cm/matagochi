@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 献立のリストを写真大きめ・文字少なめに | レビュー待ち | claude/nice-shannon-6g1g5m | 写真16:9を上に・1行の情報と料理名だけ・「☰ 選択」→「⇄ 変更」 | daily-ui.js, styles.css, sw.js, version.json, index.html, app.js, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| 献立をかたまりごとのページに・保存の表示を必要な時だけ | レビュー待ち | claude/nice-shannon-6g1g5m | ひとかたまりを1画面・横スライド・食べた日は評価つきで残す／1行は写真16:9＋文字少なめ・「⇄ 変更」／「保存済み」を普段は出さない | daily-ui.js, app.js, styles.css, test/first-week.test.cjs, sw.js, version.json, index.html, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）

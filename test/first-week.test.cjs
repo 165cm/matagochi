@@ -119,16 +119,18 @@ test("today's to-dos: a policy talk in progress comes first; once saved or close
   assert.equal(count(html()), 0);
 });
 
-test("save status: hidden while used alone on this device, shown once sharing is set up", () => {
+test("save status: hidden while used alone; with sharing, only in settings unless something needs doing (2026-10-28)", () => {
   const run = app();
   assert.equal(run("renderSyncSavePanel()"), "");
-  run("state.sync.roomId = 'room-1'");
-  assert.ok(run("renderSyncSavePanel()").includes("sync-save-panel"));
+  run("state.sync.roomId = 'room-1'; state.view = 'today'");
+  assert.equal(run("renderSyncSavePanel()"), "", "「保存済み」 alone is not shown on the main screens");
+  run("state.view = 'settings'");
+  assert.ok(run("renderSyncSavePanel()").includes("sync-save-panel"), "but can be checked in settings");
 });
 
 test("save status: still shown when logged in, paused, in conflict, after a connection error, or with a restore point in settings", () => {
   const cases = {
-    "logged in": "localStorage = { getItem: (k) => (k === 'ripigochi-session' ? 'token' : null), setItem() {}, removeItem() {} }",
+    "logged in (settings)": "state.view = 'settings'; localStorage = { getItem: (k) => (k === 'ripigochi-session' ? 'token' : null), setItem() {}, removeItem() {} }",
     "paused": "state.sync.paused = true",
     "conflict": "state.sync.conflicts = { '2026-10-02': { remote: null } }",
     "connection error": "syncRuntimeStatus = 'つながりませんでした。'",
@@ -143,4 +145,29 @@ test("save status: still shown when logged in, paused, in conflict, after a conn
   const run = app();
   run("state.view = 'today'; state.sync.backupKey = 'backup-1'");
   assert.equal(run("renderSyncSavePanel()"), "", "the restore button lives only in settings");
+});
+
+test("plan pages (2026-10-28): one page per shopping block, swipe between them; eaten days stay with their rating", () => {
+  const run = app();
+  run(`state.onboarded = true; state.view = "plan";
+    state.rhythm = normalizeRhythm({ preset: "3day", shopTime: "17:00", startFrom: "2000-01-01" });
+    const days = planPageBlocks().find((b) => b.end >= today()).dates.filter((d) => d < today());
+    globalThis.pastDays = days;
+    days.forEach((d, i) => { const r = Lifestyle.curated[i + 3]; state.mealSlots[d] = { date: d, status: "cooked", recipe: r, servings: 2, updatedAt: nowIso() };
+      state.evaluations.push({ id: "meal-" + d, recipeId: r.id, recipeTitle: r.title, cookedAt: d + "T19:00:00", familyRepeatCycles: i === 0 ? { [raterNames()[0]]: "weekly" } : {} }); });`);
+  const html = run("renderDailyPlan()");
+  const pages = (html.match(/class="plan-page"/g) || []).length;
+  assert.ok(pages >= 2, "at least this block and the next");
+  assert.ok(html.includes('data-action="life-plan-page"') && html.includes(">今回<") && html.includes(">次回<"));
+  assert.equal(run("planPage"), run("planPageBlocks().find((b) => b.end >= today()).key"), "opens on the current block");
+  const past = JSON.parse(run("JSON.stringify(pastDays)"));
+  if (past.length) {
+    assert.ok(html.includes("食べた"), "an eaten day stays in its block");
+    assert.ok(html.includes("😋") && html.includes("毎週"), "with its rating");
+    if (past.length > 1) assert.ok(html.includes("⭐ 評価する"), "or a button to rate it");
+  }
+  // 「⇄ 変更」はそのページのまま
+  run("handleDailyAction('life-plan-page', { page: planPageBlocks().at(-1).key })");
+  assert.equal(run("planPage"), run("planPageBlocks().at(-1).key"));
+  assert.ok(run("renderDailyPlan()").includes("⇄</span><span class=\"plan-icon-label\">変更"));
 });
