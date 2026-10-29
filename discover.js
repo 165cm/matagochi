@@ -228,7 +228,8 @@ function saveQuickTimeFix(recipe, stepIndex, newSeconds) {
   if (!recipe || !Array.isArray(recipe.steps) || stepIndex < 0 || stepIndex >= recipe.steps.length || !Number.isFinite(newSeconds)) return;
   const key = timecodeKey(recipe);
   const current = recipeStepTimes(recipe);
-  const times = recipe.steps.map((_, i) => (i === stepIndex ? Math.max(0, Math.floor(newSeconds)) : (Number.isFinite(current[i]) ? Math.floor(current[i]) : null)));
+  const roundSec = (s) => (Number.isFinite(s) ? Math.max(0, Math.round(s * 10) / 10) : null);
+  const times = recipe.steps.map((_, i) => (i === stepIndex ? roundSec(newSeconds) : roundSec(current[i])));
   timecodes.set(key, { status: "done", at: Date.now(), times, source: "fix" });
   recipe.stepTimes = times;
   recipe.stepTimesFrom = "fix";

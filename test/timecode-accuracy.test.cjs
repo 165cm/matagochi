@@ -246,6 +246,11 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   assert.equal(puts.length, 1);
   assert.deepEqual(puts[0].body.stepTimes[1], 55);
 
+  // review fix: 小数第1位の微調整も Math.floor で切り捨てられずに正確に保存・共有される
+  run("saveQuickTimeFix(state.recipes[0], 2, 85.5)");
+  assert.equal(run("state.recipes[0].stepTimes[2]"), 85.5);
+  assert.deepEqual(puts.at(-1).body.stepTimes[2], 85.5);
+
   // 4. review fix (#152): 人が修正した時刻（source === "fix" / stepTimesFrom === "admin"）は料理モードでも再補正されない
   run(`globalThis.fixedRecipe = {
     id: "human-fixed",
