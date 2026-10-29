@@ -190,9 +190,10 @@ export async function buildHybridRecipeSteps({ title, ingredients, steps, format
 4. 開始字幕の特定: 各手順の作業を実際に開始する字幕の[番号]（cueId）を指定してください。該当がない場合はnull。
 5. 手順の数: 4〜7手順程度にまとめてください（細かすぎる10手順以上や、粗すぎる3手順以下は避ける）。
 6. 各手順の文章: 簡潔に1〜2文（60字以内）。
+7. 完結判定: 盛り付けや完成まで手順が含まれていれば stepsComplete を true、字幕が途中で切れるなどして最後まで完結していなければ false にしてください。
 
 JSONのみ:
-{"steps":[{"text":"手順の文章（例: フライパンに豚こまを入れ、酒、塩こしょうを加えてよく揉み込む。）","cueId":番号またはnull}]}
+{"stepsComplete":trueまたはfalse,"steps":[{"text":"手順の文章（例: フライパンに豚こまを入れ、酒、塩こしょうを加えてよく揉み込む。）","cueId":番号またはnull}]}
 
 料理名: ${String(title || "").slice(0, 80)}
 材料（説明欄）:
@@ -256,7 +257,8 @@ ${formattedTranscript}`;
   return {
     steps: finalSteps,
     stepTimes,
-    stepCues
+    stepCues,
+    stepsComplete: raw?.stepsComplete !== false
   };
 }
 

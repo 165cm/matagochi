@@ -339,3 +339,76 @@ test("long description steps are passed completely to hybrid generator without 5
   assert.equal(detailedResult.steps.length, 6);
   assert.equal(detailedResult.analyzedFrom, "description");
 });
+
+test("ingredient groups are passed to hybrid generator, and truncated transcripts without description steps are rejected", async () => {
+  let passedIngredients = [];
+  const resultWithGroup = await importYouTubeRecipe("https://www.youtube.com/watch?v=grouped0001", {
+    fetchYouTubeSnippet: async () => ({
+      title: "油淋鶏",
+      description: "【材料】鶏肉 1枚\n【A】醤油 大さじ1\n【タレ】酢 大さじ1",
+      channelTitle: "料理人"
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "油淋鶏",
+      ingredients: [
+        { name: "鶏肉", amount: "1枚", group: "" },
+        { name: "醤油", amount: "大さじ1", group: "A" },
+        { name: "酢", amount: "大さじ1", group: "タレ" }
+      ],
+      steps: ["下味をつける", "揚げる", "タレをかける"]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [{ start: 10, dur: 5, text: "鶏肉を切ります" }]
+    }),
+    buildHybridRecipeSteps: async ({ ingredients }) => {
+      passedIngredients = ingredients;
+      return {
+        steps: ["Aで下味をつける", "片栗粉をつけて揚げる", "タレを混ぜてかける"],
+        stepTimes: [10, 50, 100]
+      };
+    }
+  });
+
+  assert.equal(passedIngredients.find((i) => i.name === "醤油")?.group, "A");
+  assert.equal(passedIngredients.find((i) => i.name === "酢")?.group, "タレ");
+  assert.equal(resultWithGroup.steps.length, 3);
+
+  // 説明欄に手順がなく、字幕が長すぎて切り捨て（truncated）された場合は、中途半端な手順を採用せずフォールバックする
+  let hybridCalledForTruncated = false;
+  // 500件の長い字幕（合計24,000文字超）
+  const longItems = Array.from({ length: 500 }, (_, i) => ({
+    start: i * 5,
+    dur: 4,
+    text: `工程その${i + 1}：しっかりと材料を炒めて水分を飛ばしていきましょうね。`
+  }));
+  const resultTruncated = await importYouTubeRecipe("https://www.youtube.com/watch?v=truncated00", {
+    fetchYouTubeSnippet: async () => ({
+      title: "超大作レシピ",
+      description: "【材料】牛肉 300g", // 手順なし
+      channelTitle: "長編"
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "超大作レシピ",
+      ingredients: [{ name: "牛肉", amount: "300g" }],
+      steps: [] // 説明欄に手順なし
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: longItems
+    }),
+    buildHybridRecipeSteps: async () => {
+      hybridCalledForTruncated = true;
+      return {
+        steps: ["途中で切れた手順1", "途中で切れた手順2"],
+        stepTimes: [10, 50],
+        stepsComplete: false
+      };
+    }
+  });
+
+  // 不完全な手順としてスキップされ、ハイブリッド生成は呼ばれず、手順なしのまま動画読み取り待ちを維持する
+  assert.equal(hybridCalledForTruncated, false);
+  assert.equal(resultTruncated.steps.length, 0);
+  assert.equal(resultTruncated.videoSkipped, true);
+});

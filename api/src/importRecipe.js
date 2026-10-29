@@ -70,25 +70,31 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     if (items && items.length) {
       const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
       if (budgetOk) {
-        const { text, cues } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
-        const hybrid = await deps.buildHybridRecipeSteps({
-          title: analysis.title || snippet.title,
-          ingredients: rawIngredients,
-          steps: rawSteps,
-          formattedTranscript: text,
-          cues
-        }).catch(() => null);
+        const { text, cues, truncated } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
+        // 字幕が文字数や動画尺上限で途中で切れており、かつ説明欄に元の手順がない場合（rawSteps.length < 2）、
+        // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
+        const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
+        if (!skipTruncatedWithoutSteps) {
+          const hybrid = await deps.buildHybridRecipeSteps({
+            title: analysis.title || snippet.title,
+            ingredients: rawIngredients,
+            steps: rawSteps,
+            formattedTranscript: text,
+            cues
+          }).catch(() => null);
 
-        const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= rawSteps.length);
-        if (hybrid && Array.isArray(hybrid.steps) && hybrid.steps.length >= 2 && isBetterOrCoarse) {
-          analysis = {
-            ...analysis,
-            steps: hybrid.steps,
-            stepTimes: hybrid.stepTimes
-          };
-          analyzedFrom = "description+transcript";
-          if (Array.isArray(hybrid.stepTimes) && hybrid.stepTimes.some((t) => t !== null)) {
-            analyzedTimes = "transcript";
+          const isComplete = hybrid?.stepsComplete !== false || rawSteps.length >= 2;
+          const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= rawSteps.length);
+          if (hybrid && Array.isArray(hybrid.steps) && hybrid.steps.length >= 2 && isComplete && isBetterOrCoarse) {
+            analysis = {
+              ...analysis,
+              steps: hybrid.steps,
+              stepTimes: hybrid.stepTimes
+            };
+            analyzedFrom = "description+transcript";
+            if (Array.isArray(hybrid.stepTimes) && hybrid.stepTimes.some((t) => t !== null)) {
+              analyzedTimes = "transcript";
+            }
           }
         }
       }
