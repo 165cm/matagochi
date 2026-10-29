@@ -958,17 +958,17 @@
     });
     dn.append(dnInput, dnSave, dnNote);
     body.append(el("h3", "料理名（親を決める元）"), dn);
-    // 覚えやすく書き直した手順（AI。APP_MAP §49）：表に出す手順。元の手順のどれをまとめたか（元：手順◯）と並べて見比べる。
-    const gd = el("div");
-    const gdNote = el("span", "", "meta");
-    const gdRun = el("button", r.guide ? "✍ 書き直し直す（約1円）" : "✍ 手順を書き直す（約1円）", "quiet small"); gdRun.type = "button";
-    gdRun.addEventListener("click", async () => {
-      gdRun.disabled = true; gdNote.textContent = "書き直しています…（10〜30秒）";
-      try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/guide`, {}); gdNote.textContent = `手順 ${x.before} → ${x.after}（上限 ${x.limit}・約${x.yen}円）。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
-      catch (error) { gdNote.textContent = error.message; gdRun.disabled = false; }
-    });
-    const gdRow = el("div", undefined, "row"); gdRow.style.margin = "6px 0"; gdRow.append(gdRun);
+    // 覚えやすく書き直した手順（AI。APP_MAP §49）：すでに書き直されている場合は比較表示と解除ボタンを出す。
     if (r.guide) {
+      const gd = el("div");
+      const gdNote = el("span", "", "meta");
+      const gdRun = el("button", "✍ 書き直し直す（約1円）", "quiet small"); gdRun.type = "button";
+      gdRun.addEventListener("click", async () => {
+        gdRun.disabled = true; gdNote.textContent = "書き直しています…（10〜30秒）";
+        try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/guide`, {}); gdNote.textContent = `手順 ${x.before} → ${x.after}（上限 ${x.limit}・約${x.yen}円）。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
+        catch (error) { gdNote.textContent = error.message; gdRun.disabled = false; }
+      });
+      const gdRow = el("div", undefined, "row"); gdRow.style.margin = "6px 0"; gdRow.append(gdRun);
       const gdDel = el("button", "書き直しを外す", "quiet small"); gdDel.type = "button";
       gdDel.addEventListener("click", async () => {
         if (!confirm("書き直した手順を外して、元の手順を表に出します。よろしいですか？")) return;
@@ -980,9 +980,9 @@
       const ol = el("ol", undefined, "guide-cmp");
       r.guide.forEach((g) => { const li = el("li"); li.append(el("div", g.text)); li.append(el("div", `元：${g.from.map((j) => `手順${j + 1}「${String(r.steps?.[j] || "").slice(0, 40)}${String(r.steps?.[j] || "").length > 40 ? "…" : ""}」`).join(" ")}`, "meta")); ol.append(li); });
       gd.append(el("p", `アプリでは、この手順を表に出し、元の手順は各手順の下の「動画では」に小さく出します（手順 ${(r.steps || []).length} → ${r.guide.length}・上限 ${r.guideLimit}）。`, "meta"), ol);
-    } else gd.append(el("p", `まだ書き直していません（この料理の上限は ${r.guideLimit ?? "?"} 個。20分以内 7・30分 10・45分以上 15）。`, "meta"));
-    gdRow.append(gdNote); gd.append(gdRow);
-    body.append(el("h3", "覚えやすい手順（AI の書き直し）"), gd);
+      gdRow.append(gdNote); gd.append(gdRow);
+      body.append(el("h3", "覚えやすい手順（AI の書き直し）"), gd);
+    }
     body.append(el("h3", "手順と時刻"), el("p", `時刻は「分:秒」（例 2:15）。▶ でその時刻から再生、⏱ で再生中の時刻を入れます。${r.stepTimesFrom === "admin" ? "（運営が直した時刻です）" : ""}`, "meta"));
     // 0円の点検の結果（要確認の理由と、引っかかった手順に印）。
     const ck = r.check || { issues: [] };
@@ -995,45 +995,77 @@
     const SRCL = { recipe: "読み取りの時刻", fix: "運営が直した時刻", chapters: "説明欄の章からの時刻", video: "AI が動画から探した時刻" };
     if (r.stepTimesSource) body.append(el("p", `いまの時刻：${SRCL[r.stepTimesSource] || r.stepTimesSource}${r.durationSeconds ? `・動画の長さ ${sec(r.durationSeconds)}` : ""}`, "meta"));
     const badSteps = new Set((ck.issues || []).filter((x) => Number.isInteger(x.step)).map((x) => x.step));
-    // 説明欄から読み直す（約1円）／動画から時刻を探し直す（約3〜8円・保存はしない＝見比べて「時刻を保存」）。
-    const fixRow = el("div", undefined, "row"); fixRow.style.margin = "6px 0";
-    const fixNote = el("span", "", "meta");
-    const rr = el("button", "📄 説明欄から読み直す（約1円）", "quiet small"); rr.type = "button";
+
+    // メインの自動生成ボタン：説明欄＋字幕から、手順と時刻を一括で最新化（推奨アクション）
+    const mainActionRow = el("div", undefined, "row"); mainActionRow.style.margin = "8px 0";
+    const mainNote = el("span", "", "meta");
+    const rr = el("button", "✨ 手順と時刻を自動生成（説明欄＋字幕 / 約1円）", "small"); rr.type = "button";
     rr.addEventListener("click", async () => {
-      rr.disabled = true; fixNote.textContent = "読み直しています…";
-      try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread`, {}); fixNote.textContent = `手順 ${x.before} → ${x.after}${x.analyzedFrom === "description+transcript" ? "（字幕ハイブリッド）" : ""}。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
-      catch (error) { fixNote.textContent = error.message; rr.disabled = false; }
-    });
-    const ra = el("button", "🎬 動画から時刻を探し直す（約3〜8円）", "quiet small"); ra.type = "button";
-    ra.addEventListener("click", async () => {
-      if (!confirm("AI に動画を見せて、手順の時刻を探し直します（約3〜8円）。結果は入力欄に入るだけで、見比べて「時刻を保存」を押した時に保存されます。")) return;
-      ra.disabled = true; fixNote.textContent = "動画を見ています…（1〜2分）";
+      rr.disabled = true; mainNote.textContent = "自動生成しています…（説明欄の材料と字幕の段取りを統合）";
       try {
-        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/reanalyze`, {});
-        (x.stepTimes || []).forEach((t, i) => { if (inputs[i]) { inputs[i].value = sec(t); inputs[i].classList.remove("is-bad"); inputs[i].classList.add("is-new"); } });
-        fixNote.textContent = `AI の時刻を入れました（${x.seenSeconds ? `動画の ${sec(x.seenSeconds)} まで見た` : "最後まで見た"}）。▶ で確かめてから「時刻を保存」を押してください。`;
-      } catch (error) { fixNote.textContent = error.message; }
-      finally { ra.disabled = false; }
+        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread`, {});
+        mainNote.textContent = `✓ 手順 ${x.before} → ${x.after}${x.analyzedFrom === "description+transcript" ? "（字幕ハイブリッド）" : ""} に更新しました。開き直します…`;
+        setTimeout(() => openRecipe(videoId), 600);
+      } catch (error) {
+        mainNote.textContent = error.message;
+        rr.disabled = false;
+      }
     });
-    const rp = el("button", "🔧 0円で自動補正", "quiet small"); rp.type = "button";
+    mainActionRow.append(rr, mainNote);
+    body.append(mainActionRow);
+
+    // その他の修正ツール（折りたたんで迷いをなくす）
+    const moreDetails = el("details", undefined, "more");
+    moreDetails.style.margin = "6px 0 10px";
+    moreDetails.append(el("summary", "その他の修正ツール（手動補正・動画から探すなど）"));
+    const moreBody = el("div", undefined, "row");
+    moreBody.style.marginTop = "8px";
+    const moreNote = el("span", "", "meta");
+
+    const rp = el("button", "🔧 0円で時刻を自動補正", "quiet small"); rp.type = "button";
     rp.addEventListener("click", async () => {
-      rp.disabled = true; fixNote.textContent = "補正しています…";
+      rp.disabled = true; moreNote.textContent = "補正しています…";
       try {
         const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/repair`, {});
         if (x.failed) {
-          fixNote.textContent = x.message;
+          moreNote.textContent = x.message;
         } else if (x.skipped) {
-          fixNote.textContent = "手動修正済み、または補正対象の時刻がありません。";
+          moreNote.textContent = "手動修正済み、または補正対象の時刻がありません。";
         } else if (x.changed && Array.isArray(x.after)) {
           x.after.forEach((t, i) => { if (inputs[i]) { inputs[i].value = sec(t); inputs[i].classList.remove("is-bad"); inputs[i].classList.add("is-new"); } });
-          fixNote.textContent = "✓ 順番・重複・空白を0円で補正して保存しました。";
+          moreNote.textContent = "✓ 順番・重複・空白を0円で補正して保存しました。";
         } else {
-          fixNote.textContent = "補正が必要な箇所はありませんでした。";
+          moreNote.textContent = "補正が必要な箇所はありませんでした。";
         }
-      } catch (error) { fixNote.textContent = error.message; }
+      } catch (error) { moreNote.textContent = error.message; }
       finally { rp.disabled = false; }
     });
-    fixRow.append(rr, ra, rp, fixNote); body.append(fixRow);
+
+    const ra = el("button", "🎬 動画から時刻を探し直す（約3〜8円）", "quiet small"); ra.type = "button";
+    ra.addEventListener("click", async () => {
+      if (!confirm("AI に動画を見せて、手順の時刻を探し直します（約3〜8円）。結果は入力欄に入るだけで、見比べて「時刻を保存」を押した時に保存されます。")) return;
+      ra.disabled = true; moreNote.textContent = "動画を見ています…（1〜2分）";
+      try {
+        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/reanalyze`, {});
+        (x.stepTimes || []).forEach((t, i) => { if (inputs[i]) { inputs[i].value = sec(t); inputs[i].classList.remove("is-bad"); inputs[i].classList.add("is-new"); } });
+        moreNote.textContent = `AI の時刻を入れました（${x.seenSeconds ? `動画の ${sec(x.seenSeconds)} まで見た` : "最後まで見た"}）。▶ で確かめてから「時刻を保存」を押してください。`;
+      } catch (error) { moreNote.textContent = error.message; }
+      finally { ra.disabled = false; }
+    });
+    moreBody.append(rp, ra);
+
+    if (!r.guide) {
+      const gdRun = el("button", "✍ 手順を要約する（約1円）", "quiet small"); gdRun.type = "button";
+      gdRun.addEventListener("click", async () => {
+        gdRun.disabled = true; moreNote.textContent = "要約しています…（10〜30秒）";
+        try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/guide`, {}); moreNote.textContent = `手順 ${x.before} → ${x.after}（上限 ${x.limit}・約${x.yen}円）。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
+        catch (error) { moreNote.textContent = error.message; gdRun.disabled = false; }
+      });
+      moreBody.append(gdRun);
+    }
+    moreBody.append(moreNote);
+    moreDetails.append(moreBody);
+    body.append(moreDetails);
     const ol = el("ol", undefined, "steps");
     const inputs = [];
     (r.steps || []).forEach((step, i) => {
