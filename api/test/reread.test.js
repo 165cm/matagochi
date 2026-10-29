@@ -75,6 +75,16 @@ test('catalog reread: reads the description again (not the cache), keeps the old
   answer = recipe(5, { analyzedFrom: 'video' });
   await cat.import(vurl);
   await assert.rejects(cat.import(vurl, { reread: true }), { code: 'reread_not_description' });
+
+  // 字幕ハイブリッド（description+transcript）のレシピは説明欄から再度読み直せる
+  const hurl = 'https://www.youtube.com/watch?v=hybridreci1';
+  answer = recipe(4, { analyzedFrom: 'description+transcript' });
+  await cat.import(hurl);
+  answer = recipe(6, { analyzedFrom: 'description+transcript' });
+  const hr = await cat.import(hurl, { reread: true });
+  assert.equal(hr.steps.length, 6);
+  assert.equal(hr.analyzedFrom, 'description+transcript');
+  assert.ok(hr.rereadAt);
 });
 
 test('admin: re-read the 10-step description recipes in batches; video re-analyze returns times without saving', async (t) => {

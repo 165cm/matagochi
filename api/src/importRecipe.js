@@ -73,7 +73,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
       const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
       if (!skipTruncatedWithoutSteps) {
-        const budgetOk = options.reread ? true : (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
+        const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
         if (budgetOk) {
           const hybrid = await deps.buildHybridRecipeSteps({
             title: analysis.title || snippet.title,
