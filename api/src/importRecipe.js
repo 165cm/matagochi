@@ -68,13 +68,13 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     const transcriptRes = await deps.fetchYouTubeTranscript(videoId).catch(() => null);
     const items = transcriptRes?.status === "ok" && Array.isArray(transcriptRes?.items) ? transcriptRes.items : (Array.isArray(transcriptRes) ? transcriptRes : null);
     if (items && items.length) {
-      const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
-      if (budgetOk) {
-        const { text, cues, truncated } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
-        // 字幕が文字数や動画尺上限で途中で切れており、かつ説明欄に元の手順がない場合（rawSteps.length < 2）、
-        // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
-        const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
-        if (!skipTruncatedWithoutSteps) {
+      const { text, cues, truncated } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
+      // 字幕が文字数や動画尺上限で途中で切れており、かつ説明欄に元の手順がない場合（rawSteps.length < 2）、
+      // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
+      const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
+      if (!skipTruncatedWithoutSteps) {
+        const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
+        if (budgetOk) {
           const hybrid = await deps.buildHybridRecipeSteps({
             title: analysis.title || snippet.title,
             ingredients: rawIngredients,
