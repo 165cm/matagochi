@@ -71,6 +71,7 @@ test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s
   assert.deepEqual(fixes.at(-1), [0, 20]);
 
   // 終了位置チップへの切り替え（timeTarget = "end"）
+  // review fix: チップ切り替えや終了時刻の調整では手順の先頭へ巻き戻らず、再生位置を維持すること
   CookMode.setTimeTarget("end");
   assert.equal(CookMode._mode().timeTarget, "end");
 

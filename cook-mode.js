@@ -407,7 +407,7 @@ const CookMode = (() => {
     }
     localTimes[targetIdx] = nextSec;
     try { recipe.onTimeFix?.(targetIdx, nextSec); } catch {}
-    drawMode();
+    drawMode({ seek: false });
     if (isStart) seekTo(at);
     flash(`🔁 ${isStart ? "始まり" : "終わり"}を ${fmt(nextSec)} に調整`);
   }
@@ -419,7 +419,25 @@ const CookMode = (() => {
     lastSeek = Date.now();
     if (ready) { post("seekTo", [seg.start, true]); post("playVideo"); }
   }
-  function drawMode() {
+  function setTarget(t) {
+    timeTarget = t === "end" ? "end" : "start";
+    if (typeof document === "undefined" || !document.getElementById) return;
+    const el = document.getElementById("cook-mode");
+    if (!el) return;
+    const isStart = timeTarget === "start";
+    el.querySelectorAll(".cm-time-chip").forEach((btn) => {
+      const want = btn.dataset.cookMode === (isStart ? "target-start" : "target-end");
+      btn.classList.toggle("is-active", want);
+      btn.setAttribute("aria-pressed", want ? "true" : "false");
+    });
+    const minusBtn = el.querySelector('[data-cook-mode="time-minus"]');
+    const hereBtn = el.querySelector('[data-cook-mode="time-here"]');
+    const plusBtn = el.querySelector('[data-cook-mode="time-plus"]');
+    if (minusBtn) minusBtn.setAttribute("aria-label", isStart ? "開始を5秒前にする" : "終了を5秒前にする");
+    if (hereBtn) hereBtn.setAttribute("aria-label", isStart ? "いま再生している位置を開始にする" : "いま再生している位置を終了にする");
+    if (plusBtn) plusBtn.setAttribute("aria-label", isStart ? "開始を5秒後にする" : "終了を5秒後にする");
+  }
+  function drawMode(opts = {}) {
     if (typeof document === "undefined" || !document.getElementById) return;
     let el = document.getElementById("cook-mode");
     if (at < 0 || !recipe) { el?.remove(); frame = null; document.body.classList.remove("cook-mode-open"); return; }
@@ -459,7 +477,7 @@ const CookMode = (() => {
     drawVoice();
     drawHand();
     el.querySelector('[data-cook-mode="next"]').innerHTML = `${last ? "✓ できた！" : "次へ ▶"}<i class="g" data-g="Open_Palm" aria-hidden="true">✋</i>`;
-    if (!first) seekTo(at);
+    if (!first && opts?.seek !== false) seekTo(at);
   }
   function openMode() {
     if (!recipe?.steps?.length) return;
@@ -477,8 +495,8 @@ const CookMode = (() => {
     if (kind === "close") return closeMode();
     if (kind === "prev") { at = Math.max(0, at - 1); timeTarget = "start"; }
     if (kind === "next") { if (at >= n - 1) { closeMode(); try { showToast("🎉 おつかれさま！「作った！」で記録"); } catch {} return; } at += 1; timeTarget = "start"; }
-    if (kind === "target-start") { timeTarget = "start"; drawMode(); return; }
-    if (kind === "target-end") { if (segment(at)?.end != null) { timeTarget = "end"; drawMode(); } return; }
+    if (kind === "target-start") { setTarget("start"); return; }
+    if (kind === "target-end") { setTarget("end"); return; }
     if (kind === "time-minus" || kind === "time-plus" || kind === "time-here") return nudgeTime(kind);
     if (kind === "time-here-end") {
       if (segment(at)?.end == null) { flash("🔁 最後の手順は動画の終わりまで再生されます"); return; }
@@ -494,8 +512,8 @@ const CookMode = (() => {
       if (kind === "coach-voice") voiceStart();
       return;
     }
-    if (kind === "all") showAll = true;
-    if (kind === "uses") showAll = false;
+    if (kind === "all") { showAll = true; drawMode({ seek: false }); return; }
+    if (kind === "uses") { showAll = false; drawMode({ seek: false }); return; }
     drawMode();
   }
   // 手が汚れていても、指の関節でスワイプ：左へ＝次、右へ＝前。
@@ -898,6 +916,6 @@ const CookMode = (() => {
     else if (ev.key === "Escape") closeMode();
   });
 
-  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, refineTimes, nudgeTime, setTimeTarget: (t) => { timeTarget = t === "end" ? "end" : "start"; }, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll, timeTarget }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
+  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, refineTimes, nudgeTime, setTimeTarget: (t) => { setTarget(t); }, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll, timeTarget }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
 })();
 if (typeof module !== "undefined") module.exports = CookMode;
