@@ -91,7 +91,7 @@ test("weekday/weekend time, tasks, and simplicity constraints apply", () => {
   assert.equal(L.fit(L.curated[10], p, "2026-09-26").ok, true);
 });
 test("curated recipes are unique, single-dish, portioned and complete; serving two does not mutate source", () => {
-  assert.equal(new Set(L.curated.map((r) => r.id)).size, 38);
+  assert.equal(new Set(L.curated.map((r) => r.id)).size, 48);
   assert.ok(
     L.curated.every(
       (r) =>
