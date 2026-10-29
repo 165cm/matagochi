@@ -376,16 +376,17 @@ const CookMode = (() => {
   function nudgeTime(kind) {
     if (at < 0 || !recipe) return;
     const seg = segment(at);
-    if (!seg) return;
     const isStart = timeTarget === "start";
-    if (!isStart && seg.end == null) {
+    if (!isStart && (!seg || seg.end == null)) {
       flash("🔁 最後の手順は動画の終わりまで再生されます");
       return;
     }
     const targetIdx = isStart ? at : at + 1;
     if (targetIdx >= (recipe?.steps?.length || 0)) return;
     const times = currentTimes();
-    const cur = isStart ? seg.start : seg.end;
+    const cur = isStart
+      ? (seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0))
+      : seg.end;
 
     const minSec = isStart ? 0 : seg.start + 1;
     const nextKnown = times.slice(targetIdx + 1).find((t) => Number.isFinite(t));

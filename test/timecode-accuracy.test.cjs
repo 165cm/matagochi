@@ -122,6 +122,22 @@ test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s
   CookMode.closeMode();
   assert.equal(CookMode._mode().timeTarget, "start");
   CookMode._clearTimers();
+
+  // 6. 時刻未設定のレシピでも開始位置を設定できること（review fix）
+  const uncalFixes = [];
+  CookMode.setRecipe({
+    title: "未設定レシピ",
+    steps: ["準備", "調理"],
+    timesOf: () => [null, null],
+    videoId: "uncalibrated1",
+    ingredients: [],
+    onTimeFix: (idx, sec) => uncalFixes.push([idx, sec]),
+  });
+  CookMode.openMode();
+  assert.equal(CookMode.segment(0), null);
+  CookMode.nudgeTime("time-plus");
+  assert.deepEqual(uncalFixes.at(-1), [0, 5], "uncalibrated recipe must allow adjusting start timestamp");
+  CookMode.closeMode();
 });
 
 test("daily-ui & discover: already-saved recipes refine coarse times, guide steps inherit non-null member times, and saveQuickTimeFix persists & shares", async () => {
