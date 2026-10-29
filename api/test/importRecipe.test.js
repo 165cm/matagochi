@@ -411,4 +411,35 @@ test("ingredient groups are passed to hybrid generator, and truncated transcript
   assert.equal(hybridCalledForTruncated, false);
   assert.equal(resultTruncated.steps.length, 0);
   assert.equal(resultTruncated.videoSkipped, true);
+
+  // 説明欄に手順が複数ある場合でも、ハイブリッド生成が stepsComplete: false（未完結）を返した場合は、
+  // 不完全な手順で上書きせず、元の説明欄の手順をそのまま維持すること
+  const resultIncompleteHybrid = await importYouTubeRecipe("https://www.youtube.com/watch?v=incomplet01", {
+    fetchYouTubeSnippet: async () => ({
+      title: "豚こま炒め",
+      description: "【材料】豚肉\n【作り方】①炒める ②調味する ③盛る",
+      durationSeconds: 300
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "豚こま炒め",
+      ingredients: [{ name: "豚肉", amount: "200g" }],
+      steps: ["炒める", "調味する", "盛る"]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [
+        { start: 10, dur: 5, text: "豚肉を切ります" },
+        { start: 20, dur: 5, text: "フライパンに入れます" }
+      ]
+    }),
+    buildHybridRecipeSteps: async () => ({
+      steps: ["肉を切る", "フライパンに入れる"], // 盛り付けまで到達していない
+      stepTimes: [10, 20],
+      stepsComplete: false
+    })
+  });
+
+  // stepsComplete: false なのでハイブリッド手順は採用されず、説明欄の3工程が維持されること
+  assert.equal(resultIncompleteHybrid.analyzedFrom, "description");
+  assert.deepEqual(resultIncompleteHybrid.steps, ["炒める", "調味する", "盛る"]);
 });

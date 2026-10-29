@@ -197,7 +197,7 @@ JSONのみ:
 
 料理名: ${String(title || "").slice(0, 80)}
 材料（説明欄）:
-${(ingredients || []).slice(0, 50).map((ing) => `- ${ing.name || ""}: ${ing.amount || ""}`).join("\n").slice(0, 3000)}
+${(ingredients || []).slice(0, 50).map((ing) => `- ${ing.group ? `[${ing.group}] ` : ""}${ing.name || ""}: ${ing.amount || ""}`).join("\n").slice(0, 3000)}
 元の手順（説明欄）:
 ${(steps || []).slice(0, 30).map((s, i) => `${i + 1}. ${String(s || "").slice(0, 300)}`).join("\n").slice(0, 6000)}
 動画の字幕（発話ログ）:
