@@ -73,7 +73,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
       const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
       if (!skipTruncatedWithoutSteps) {
-        const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
+        const budgetOk = options.reread ? true : (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
         if (budgetOk) {
           const hybrid = await deps.buildHybridRecipeSteps({
             title: analysis.title || snippet.title,
@@ -81,7 +81,10 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
             steps: rawSteps,
             formattedTranscript: text,
             cues
-          }).catch(() => null);
+          }).catch((err) => {
+            console.error(JSON.stringify({ event: "hybrid_recipe_failed", videoId, message: String(err?.message || err).slice(0, 300) }));
+            return null;
+          });
 
           const isComplete = hybrid?.stepsComplete !== false;
           const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= rawSteps.length);

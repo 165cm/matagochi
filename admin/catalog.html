@@ -1001,7 +1001,7 @@
     const rr = el("button", "📄 説明欄から読み直す（約1円）", "quiet small"); rr.type = "button";
     rr.addEventListener("click", async () => {
       rr.disabled = true; fixNote.textContent = "読み直しています…";
-      try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread`, {}); fixNote.textContent = `手順 ${x.before} → ${x.after}。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
+      try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread`, {}); fixNote.textContent = `手順 ${x.before} → ${x.after}${x.analyzedFrom === "description+transcript" ? "（字幕ハイブリッド）" : ""}。開き直します…`; setTimeout(() => openRecipe(videoId), 600); }
       catch (error) { fixNote.textContent = error.message; rr.disabled = false; }
     });
     const ra = el("button", "🎬 動画から時刻を探し直す（約3〜8円）", "quiet small"); ra.type = "button";
