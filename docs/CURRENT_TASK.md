@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-29（説明欄の材料と字幕の段取りを統合したハイブリッド手順・タイムコード生成 #196 公開）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-30（料理モードのタイムコード調整UIのチップ式切り替え #199 公開）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 料理モードのタイムコード調整UIのチップ式切り替え（開始・終了両対応） | 作業中 | feat/cook-mode-timecode-chips | 料理モード内のタイムコード表示（`🔁 0:50 〜 1:55`）をチップ式ボタン化し、タップで開始／終了位置を選択して「⏪ -5秒」「📍 ここ」「+5秒 ⏩」で微調整可能に改善。逆転防止クランプと音声「ここを終わりに」「ここまで」にも対応 | cook-mode.js, styles.css, test/timecode-accuracy.test.cjs, docs/CURRENT_TASK.md |
+| 料理モードのタイムコード調整UIのチップ式切り替え（開始・終了両対応） | 公開済み（#199） | feat/cook-mode-timecode-chips | 料理モード内のタイムコード表示（`🔁 0:50 〜 1:55`）をチップ式ボタン化し、タップで開始／終了位置を選択して「⏪ -5秒」「📍 ここ」「+5秒 ⏩」で微調整可能に改善。逆転防止クランプ・小数第1位保護・再生位置維持と音声「ここを終わりに」「ここまで」にも対応 | cook-mode.js, discover.js, styles.css, test/timecode-accuracy.test.cjs, docs/CURRENT_TASK.md |
 | 読み直し（reread）の字幕ハイブリッド対応と管理画面ボタンの一本化 | 公開済み（#198） | fix/hybrid-reread-budget-fallback | 1回のレシピ取り込み・読み直しでgate()とimportRecipeの2重予算予約によりハイブリッド生成がブロックされる問題を解消。管理画面reread時の確実な実行とエラーログ可視化、管理画面のレシピ修正ボタン（4つ）を「手順と時刻を自動生成（説明欄＋字幕）」へ一本化 | api/src/importRecipe.js, api/src/recipeCatalog.js, api/src/server.js, admin/catalog.html, api/test/importRecipe.test.js, api/test/reread.test.js, docs/CURRENT_TASK.md |
 | 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 公開済み（#184。次：そろったら需要に合わせて集める） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
 | レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | 公開済み（#186・#187） | claude/nice-shannon-6g1g5m | 料理の画面に「🗓 献立に入れる」（#186）・一覧の整理（#187） | — |
