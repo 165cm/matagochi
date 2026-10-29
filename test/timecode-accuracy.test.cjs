@@ -237,4 +237,21 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   );
   assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(0))")), { start: 10.5, end: 15.5 });
   assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(1))")), { start: 15.5, end: 20.5 });
+
+  // 8. [P2 fix] URL取り込み（applyImportedRecipe ➔ 保存）でも stepTimesFrom: "transcript" が保持される
+  run(`applyImportedRecipe({
+    title: "ハイブリッド豚こま",
+    videoUrl: "https://www.youtube.com/watch?v=hybriddraft1",
+    channelTitle: "料理チャンネル",
+    ingredients: [{ name: "豚こま", amount: "300g" }],
+    steps: ["揉み込む", "片栗粉まぶす", "焼く", "和える"],
+    stepTimes: [10.5, 15.5, 20.5, 25.5],
+    stepTimesFrom: "transcript",
+    source: "YouTube"
+  })`);
+  assert.equal(run("state.draft.stepTimesFrom"), "transcript", "draft must retain stepTimesFrom: transcript");
+  assert.deepEqual(
+    JSON.parse(run("JSON.stringify(state.draft.stepTimes)")),
+    [10.5, 15.5, 20.5, 25.5]
+  );
 });

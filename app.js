@@ -11,8 +11,8 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261029-transcript-accuracy";
-const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
+const APP_VERSION = "20261029-hybrid-steps";
+const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
   { id: "tomorrow", label: "明日でも", days: 1, tone: "hot" },
@@ -3308,6 +3308,7 @@ async function handleAction(event) {
       if (state.draft.embeddable === false) existing.embeddable = false;
       // 手順ごとの動画の時刻は、手順の数が変わっていなければ残す。
       existing.stepTimes = stepTimesFor(steps, state.draft.stepTimes);
+      if (state.draft.stepTimesFrom) existing.stepTimesFrom = state.draft.stepTimesFrom;
       existing.note = state.draft.note;
       existing.planning = state.draft.planning || undefined;
       existing.thumbnailUrl = state.draftThumbnailUrl || existing.thumbnailUrl || "";
@@ -3340,6 +3341,7 @@ async function handleAction(event) {
         channelId: state.draft.channelId || "",
         ...(state.draft.embeddable === false ? { embeddable: false } : {}),
         stepTimes: stepTimesFor(steps, state.draft.stepTimes),
+        ...(state.draft.stepTimesFrom ? { stepTimesFrom: state.draft.stepTimesFrom } : {}),
         mealType: state.draft.mealType,
         caption: state.draft.caption,
         ingredients,
@@ -4299,6 +4301,7 @@ function applyImportedRecipe(result) {
     // 埋め込み再生を許可していない動画：アプリの中では再生せず、YouTube で開く。
     embeddable: result.embeddable === false ? false : undefined,
     stepTimes: Array.isArray(result.stepTimes) ? result.stepTimes : [],
+    stepTimesFrom: result.stepTimesFrom || undefined,
     caption: result.caption || state.draft.caption,
     note: state.draft.note || result.note || ""
   };
