@@ -107,6 +107,18 @@ test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s
   assert.equal(CookMode._mode().timeTarget, "start");
   assert.equal(fixes.at(-1)[0], 0);
 
+  // 5. 終了時刻がない最終手順で「ここを終わりに」を発話しても、開始時刻を上書きしない（review fix）
+  CookMode._hear("次へ");
+  CookMode._hear("次へ"); // step 2（最終手順：盛る、start 120, end null）へ移動
+  assert.equal(CookMode._mode().at, 2);
+  assert.equal(CookMode.segment(2).end, null);
+  const fixCountBefore = fixes.length;
+  CookMode.setTimeTarget("end");
+  CookMode.nudgeTime("time-here");
+  assert.equal(fixes.length, fixCountBefore, "last step without end timestamp must not touch start timestamp");
+  CookMode._hear("ここを終わりに");
+  assert.equal(fixes.length, fixCountBefore, "voice time-here-end on last step must not trigger onTimeFix");
+
   CookMode.closeMode();
   assert.equal(CookMode._mode().timeTarget, "start");
   CookMode._clearTimers();

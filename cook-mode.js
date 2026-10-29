@@ -376,15 +376,18 @@ const CookMode = (() => {
   function nudgeTime(kind) {
     if (at < 0 || !recipe) return;
     const seg = segment(at);
-    const isStart = timeTarget === "start" || seg?.end == null;
+    if (!seg) return;
+    const isStart = timeTarget === "start";
+    if (!isStart && seg.end == null) {
+      flash("🔁 最後の手順は動画の終わりまで再生されます");
+      return;
+    }
     const targetIdx = isStart ? at : at + 1;
     if (targetIdx >= (recipe?.steps?.length || 0)) return;
     const times = currentTimes();
-    const cur = isStart
-      ? (seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0))
-      : (seg?.end != null ? seg.end : (Number.isFinite(videoTime) ? Math.floor(videoTime) : (seg ? seg.start + 1 : 1)));
+    const cur = isStart ? seg.start : seg.end;
 
-    const minSec = isStart ? 0 : (seg ? seg.start + 1 : 0);
+    const minSec = isStart ? 0 : seg.start + 1;
     const nextKnown = times.slice(targetIdx + 1).find((t) => Number.isFinite(t));
     const maxSec = nextKnown != null ? Math.max(minSec, nextKnown - 1) : 35_999;
 
@@ -476,7 +479,11 @@ const CookMode = (() => {
     if (kind === "target-start") { timeTarget = "start"; drawMode(); return; }
     if (kind === "target-end") { if (segment(at)?.end != null) { timeTarget = "end"; drawMode(); } return; }
     if (kind === "time-minus" || kind === "time-plus" || kind === "time-here") return nudgeTime(kind);
-    if (kind === "time-here-end") { timeTarget = "end"; return nudgeTime("time-here"); }
+    if (kind === "time-here-end") {
+      if (segment(at)?.end == null) { flash("🔁 最後の手順は動画の終わりまで再生されます"); return; }
+      timeTarget = "end";
+      return nudgeTime("time-here");
+    }
     if (kind === "hand") { hand.on ? handStop() : handStart(); return; }
     if (kind === "voice") { voice.on ? voiceStop() : voiceStart(); return; }
     if (kind === "coach-start" || kind === "coach-later" || kind === "coach-voice") {
@@ -588,7 +595,11 @@ const CookMode = (() => {
     if (cmd.act === "repeat") return seekTo(at);
     if (cmd.act === "time-minus" || cmd.act === "time-plus") return nudgeTime(cmd.act);
     if (cmd.act === "time-here") { timeTarget = "start"; return nudgeTime("time-here"); }
-    if (cmd.act === "time-here-end") { timeTarget = "end"; return nudgeTime("time-here"); }
+    if (cmd.act === "time-here-end") {
+      if (segment(at)?.end == null) { flash("🔁 最後の手順は動画の終わりまで再生されます"); return; }
+      timeTarget = "end";
+      return nudgeTime("time-here");
+    }
     if (cmd.act === "toggle-uses") return modeOp(showAll ? "uses" : "all");
     if (cmd.act === "timer") {
       const ringing = timers.filter((t) => t.done);
