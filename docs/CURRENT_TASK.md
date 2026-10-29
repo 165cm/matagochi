@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 字幕結果の採用判定・一時失敗キャッシュ・競合防止の修正 | 作業中 | fix/transcript-accuracy-and-cache | 架空時刻の補間防止（実字幕ID/区間での検証）、既存時刻を欠損結果で上書きしない網羅率判定、一時障害（429等）の再試行可能化、保存競合時の手動修正優先、発話IDによる元タイムスタンプ保持 | api/src/transcript.js, api/src/analyzer.js, api/src/timecodes.js, api/test/transcript.test.js, api/test/timecodes.test.js, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| 字幕結果の採用判定・一時失敗キャッシュ・競合防止の修正 | 作業中 | fix/transcript-accuracy-and-cache | 架空時刻の補間防止（画面側の密集解除防止・実字幕検証）、既存時刻を欠損結果で上書きしない網羅率判定、一時障害（429・AI例外等）の再試行可能化、保存競合時の手動修正・全消去優先、家庭別20本上限の枠予約（超過防止）、小数第1位の一貫保持 | api/src/transcript.js, api/src/analyzer.js, api/src/timecodes.js, api/src/chapters.js, discover.js, cook-mode.js, api/test/transcript.test.js, api/test/timecodes.test.js, test/timecode-accuracy.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md, app.js, sw.js, index.html, version.json |
 | 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 公開済み（#184。次：そろったら需要に合わせて集める） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
 | レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | 公開済み（#186・#187） | claude/nice-shannon-6g1g5m | 料理の画面に「🗓 献立に入れる」（#186）・一覧の整理（#187） | — |
 | 管理者・編集者・閲覧者の見えるものの整理（2026-10-29 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 🙋 は閲覧者だけ・「リクエストを受け付ける」は閲覧者がいる時だけ・閲覧者のレシピタブの文言と定番づくり・使われていない古い部品を削除・共有中は「わが家のレシピ」 | household.js, app.js, test/roles-ui.test.cjs, sw.js, index.html, version.json, docs/* |

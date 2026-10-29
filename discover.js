@@ -208,8 +208,8 @@ function isTimecodeFixed(recipe) {
   const key = timecodeKey(recipe);
   if (timeFix?.key === key) return true;
   const entry = timecodes.get(key);
-  if (entry?.cleared || entry?.source === "fix") return true;
-  if (recipe?.stepTimesFrom === "admin" || recipe?.stepTimesFrom === "fix") return true;
+  if (entry?.cleared || entry?.source === "fix" || entry?.source === "transcript") return true;
+  if (recipe?.stepTimesFrom === "admin" || recipe?.stepTimesFrom === "fix" || recipe?.stepTimesFrom === "transcript") return true;
   return false;
 }
 function recipeStepTimes(recipe) {
@@ -220,8 +220,8 @@ function recipeStepTimes(recipe) {
   if (entry?.cleared) return entry.times;
   const fixed = isTimecodeFixed(recipe);
   const refine = (arr) => (!fixed && typeof CookMode !== "undefined" && typeof CookMode.refineTimes === "function" && Array.isArray(arr) && arr.some((t) => Number.isFinite(t)) ? CookMode.refineTimes(recipe?.steps || [], arr, { durationSeconds: recipe?.durationSeconds }) : arr);
-  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.source === "fix" ? entry.times : refine(entry.times);
-  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return refine(recipe.stepTimes);
+  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return (entry.source === "fix" || entry.source === "transcript") ? entry.times : refine(entry.times);
+  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return fixed ? recipe.stepTimes : refine(recipe.stepTimes);
   return refine(entry?.times || []);
 }
 function saveQuickTimeFix(recipe, stepIndex, newSeconds) {

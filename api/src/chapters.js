@@ -2,30 +2,30 @@
 const STAMP = /(?:^|[\s(（【\[])((?:\d{1,2}:)?\d{1,2}:\d{2})(?=[\s)）】\]\-–—:：・|｜]|$)/;
 const toSeconds = (stamp) => stamp.split(":").map(Number).reduce((total, n) => total * 60 + n, 0);
 
-// AI や入力の時刻（「02:15」「1:02:05」「2分15秒」「135s」や秒数の数値）を秒数（0〜35999の整数）に揃える。
+// AI や入力の時刻（「02:15」「1:02:05」「2分15秒」「135s」や秒数の数値）を秒数（0〜35999の秒数。小数第1位まで保持）に揃える。
 export function parseTimeValue(raw) {
   const val = raw && typeof raw === "object" ? (raw.time ?? raw.seconds ?? raw.start ?? null) : raw;
   if (val === null || val === undefined || val === "" || typeof val === "boolean") return null;
-  if (typeof val === "number") return Number.isFinite(val) && val >= 0 && val < 36_000 ? Math.floor(val) : null;
+  if (typeof val === "number") return Number.isFinite(val) && val >= 0 && val < 36_000 ? Math.round(val * 10) / 10 : null;
   if (typeof val !== "string") return null;
   const s = val.normalize("NFKC").trim();
   if (!s) return null;
-  const colon = s.match(/^(?:(\d{1,2}):)?(\d{1,3}):(\d{2})(?:\.\d+)?$/);
+  const colon = s.match(/^(?:(\d{1,2}):)?(\d{1,3}):(\d{2}(?:\.\d+)?)$/);
   if (colon) {
     const [, h, m, sec] = colon;
     if (Number(sec) >= 60) return null;
     const total = (h ? Number(h) * 3600 : 0) + Number(m) * 60 + Number(sec);
-    return total >= 0 && total < 36_000 ? Math.floor(total) : null;
+    return total >= 0 && total < 36_000 ? Math.round(total * 10) / 10 : null;
   }
-  const jp = s.match(/^(?:(\d{1,3})\s*分)?\s*(?:(\d{1,2})\s*秒)?$/);
+  const jp = s.match(/^(?:(\d{1,3})\s*分)?\s*(?:(\d{1,2}(?:\.\d+)?)\s*秒)?$/);
   if (jp && (jp[1] || jp[2])) {
     const total = Number(jp[1] || 0) * 60 + Number(jp[2] || 0);
-    return total >= 0 && total < 36_000 ? Math.floor(total) : null;
+    return total >= 0 && total < 36_000 ? Math.round(total * 10) / 10 : null;
   }
   const num = s.match(/^(\d+(?:\.\d+)?)\s*s?$/i);
   if (num) {
     const n = Number(num[1]);
-    return Number.isFinite(n) && n >= 0 && n < 36_000 ? Math.floor(n) : null;
+    return Number.isFinite(n) && n >= 0 && n < 36_000 ? Math.round(n * 10) / 10 : null;
   }
   return null;
 }
