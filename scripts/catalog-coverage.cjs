@@ -19,6 +19,7 @@ const timeOf = (r) => { const m = r?.planning?.minutes; return !m ? "tx" : m <= 
 // よくある条件。profile は Lifestyle.profile に渡す答え。
 const CONDITIONS = [
   ["条件なし", {}],
+  ["平日10分以内", { weekdayMinutes: 10 }],
   ["平日20分以内", { weekdayMinutes: 20 }],
   ["平日15分以内・かんたん", { weekdayMinutes: 15, skill: "easy" }],
   ["卵なし", { restrictions: ["卵"] }],
