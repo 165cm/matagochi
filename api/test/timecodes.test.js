@@ -540,7 +540,8 @@ test('review fix: concurrent release conflicts are retried until reserved is 0, 
   assert.equal(quota.envelope.reserved ?? 0, 0, 'all reserved quota must be released even under concurrent completion conflicts');
   assert.equal(quota.envelope.used, 0);
 
-  // 2. 過去の更新から120秒以上経過した孤立 reserved がセルフヒーリングされること
+  // 2. 過去の更新から REANALYZE_LOCK_MS 以上経過した孤立 reserved がセルフヒーリングされること
+  const { REANALYZE_LOCK_MS } = await import('../src/timecodes.js');
   let mockTime = Date.now();
   const staleBook = createTimecodeBook(store, {
     reserveBudget: async () => {},
@@ -551,15 +552,15 @@ test('review fix: concurrent release conflicts are retried until reserved is 0, 
   });
 
   const staleKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-stale-heal`;
-  // クラッシュ等で reserved: 1 が残った古い状態（3分前）
+  // クラッシュ等で reserved: 1 が残った古い状態（REANALYZE_LOCK_MS + 10秒前）
   await store.put(staleKey, {
     used: 19,
     tries: 20,
     reserved: 1,
-    at: new Date(mockTime - 180_000).toISOString()
+    at: new Date(mockTime - (REANALYZE_LOCK_MS + 10_000)).toISOString()
   });
 
-  // 3分経過しているため、reserved はセルフヒーリングで 0 と判定され、残り1本（used: 19）の枠が使える
+  // 解析最長時間を経過しているため、reserved はセルフヒーリングで 0 と判定され、残り1本（used: 19）の枠が使える
   const healRes = await staleBook.find({ url: 'https://www.youtube.com/watch?v=staleheal11', steps: ['準備', '炒める'] }, 'home-stale-heal');
   assert.equal(healRes.source, 'transcript');
   assert.deepEqual(healRes.stepTimes, [10, 50]);

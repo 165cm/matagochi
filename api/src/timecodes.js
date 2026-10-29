@@ -28,14 +28,14 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   const dayKeyOf = (household) => `timecodes-quota/${new Date(now()).toISOString().slice(0, 10)}/${household || "anon"}`;
   const answer = (entry, cacheHit) => ({ stepTimes: entry.stepTimes, source: entry.source || "video", cacheHit });
   // 1家庭1日：見つかった本数は20まで、失敗も含めた試しは40まで（同時実行の枠予約・競合再試行で上限を厳格に保護）。
-  // 予約枠（reserved）は探索中の数分間のみ有効とし、万が一の孤立枠は2分で自動回復（セルフヒーリング）する。
+  // 予約枠（reserved）のセルフヒーリングは、動画解析の全接続先の最長待機時間（REANALYZE_LOCK_MS）を超えた孤立枠のみを対象とする。
   async function countTry(household) {
     const dayKey = dayKeyOf(household);
     for (let attempt = 0; attempt < 3; attempt++) {
       const quota = await store.get(dayKey);
       const used = quota?.envelope.used || 0, tries = quota?.envelope.tries || 0;
       const lastAt = quota?.envelope.at ? Date.parse(quota.envelope.at) : 0;
-      const isStale = lastAt > 0 && now() - lastAt > 120_000;
+      const isStale = lastAt > 0 && now() - lastAt > REANALYZE_LOCK_MS;
       const reserved = isStale ? 0 : (quota?.envelope.reserved || 0);
       if (used + reserved >= TIMECODES_PER_DAY || tries >= TIMECODES_PER_DAY * 2) {
         throw new ApiError(429, "timecode_quota", "今日はここまでです。明日また探します。");
