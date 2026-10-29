@@ -254,4 +254,23 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
     JSON.parse(run("JSON.stringify(state.draft.stepTimes)")),
     [10.5, 15.5, 20.5, 25.5]
   );
+
+  // 9. [P2 fix] おすすめ・新着・人気（discoverRecipe）経由でも stepTimesFrom: "transcript" が保持され、重複時刻が推測値へ補間されない
+  run(`globalThis.discRecipe = discoverRecipe({
+    videoId: "poptranscript1",
+    title: "定番ハイブリッド炒め",
+    videoUrl: "https://www.youtube.com/watch?v=poptranscript1",
+    channelTitle: "定番チャンネル",
+    ingredients: [{ name: "豚肉", amount: "200g" }],
+    steps: ["準備する", "下味をつける", "炒める", "盛る"],
+    stepTimes: [10, 10, 10, 90],
+    stepTimesFrom: "transcript"
+  }, "pop")`);
+  assert.equal(run("discRecipe.stepTimesFrom"), "transcript", "discoverRecipe must retain stepTimesFrom: transcript");
+  const discTimes = JSON.parse(run("JSON.stringify(recipeStepTimes(discRecipe))"));
+  assert.deepEqual(discTimes, [10, 10, 10, 90], "transcript timestamps must not be interpolated to [10, 31, 51, 90]");
+  // 自分のレシピとして保存した場合も出所が維持される
+  run("globalThis.ownFromDisc = saveOwnRecipe(discRecipe)");
+  assert.equal(run("ownFromDisc.stepTimesFrom"), "transcript");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(recipeStepTimes(ownFromDisc))")), [10, 10, 10, 90]);
 });
