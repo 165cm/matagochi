@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId } from "./youtube.js";
 import { parseChapters, timesFromChapterIndexes, parseTimeValue } from "./chapters.js";
 import { refineStepTimes } from "./timecodeCheck.js";
-import { formatTranscriptForPrompt } from "./transcript.js";
+import { formatTranscriptForPrompt, resolveTranscriptTimes } from "./transcript.js";
 import { VIDEO_TIMEOUT_MS, VIDEO_CLIENTS_MAX } from "./analyzer.js";
 
 // レシピの手順に「▶ 2:15」を付ける。動画と手順の組ごとに保存して全員で使い回す。
@@ -27,22 +27,52 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   const keyOf = (videoId, list) => `timecodes/${videoId}-${createHash("sha256").update(list.join("\n")).digest("hex").slice(0, 16)}`;
   const dayKeyOf = (household) => `timecodes-quota/${new Date(now()).toISOString().slice(0, 10)}/${household || "anon"}`;
   const answer = (entry, cacheHit) => ({ stepTimes: entry.stepTimes, source: entry.source || "video", cacheHit });
-  // 1家庭1日：見つかった本数は20まで、失敗も含めた試しは40まで（AIの枠を失敗で使い切らないように）。
+  // 1家庭1日：見つかった本数は20まで、失敗も含めた試しは40まで（同時実行の枠予約・競合再試行で上限を厳格に保護）。
+  // 予約枠（reserved）のセルフヒーリングは、動画解析の全接続先の最長待機時間（REANALYZE_LOCK_MS）を超えた孤立枠のみを対象とする。
   async function countTry(household) {
     const dayKey = dayKeyOf(household);
-    const quota = await store.get(dayKey);
-    const used = quota?.envelope.used || 0, tries = quota?.envelope.tries || 0;
-    if (used >= TIMECODES_PER_DAY || tries >= TIMECODES_PER_DAY * 2) throw new ApiError(429, "timecode_quota", "今日はここまでです。明日また探します。");
-    const counted = await store.put(dayKey, { used, tries: tries + 1 }, { ifGeneration: quota?.generation ?? 0 }).catch(() => null);
-    return async () => { if (counted) await store.put(dayKey, { used: used + 1, tries: tries + 1 }, { ifGeneration: counted.generation }).catch(() => {}); };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const quota = await store.get(dayKey);
+      const used = quota?.envelope.used || 0, tries = quota?.envelope.tries || 0;
+      const lastAt = quota?.envelope.at ? Date.parse(quota.envelope.at) : 0;
+      const isStale = lastAt > 0 && now() - lastAt > REANALYZE_LOCK_MS;
+      const reserved = isStale ? 0 : (quota?.envelope.reserved || 0);
+      if (used + reserved >= TIMECODES_PER_DAY || tries >= TIMECODES_PER_DAY * 2) {
+        throw new ApiError(429, "timecode_quota", "今日はここまでです。明日また探します。");
+      }
+      const counted = await store.put(dayKey, { used, tries: tries + 1, reserved: reserved + 1, at: new Date(now()).toISOString() }, { ifGeneration: quota?.generation ?? 0 }).catch(() => null);
+      if (counted) {
+        let finished = false;
+        return async (success = true) => {
+          if (finished) return;
+          for (let r = 0; r < 10; r++) {
+            const cur = await store.get(dayKey);
+            const u = cur?.envelope.used || 0, tr = cur?.envelope.tries || 0;
+            const res = Math.max(0, (cur?.envelope.reserved || 1) - 1);
+            const next = { used: success ? u + 1 : u, tries: tr, at: new Date(now()).toISOString() };
+            if (res > 0) next.reserved = res;
+            const ok = await store.put(dayKey, next, { ifGeneration: cur?.generation ?? 0 }).catch(() => null);
+            if (ok) {
+              finished = true;
+              break;
+            }
+            if (r < 9) await new Promise((resolve) => setTimeout(resolve, 10 * (r + 1)));
+          }
+        };
+      }
+    }
+    throw new ApiError(429, "timecode_quota", "混み合っています。少し待ってからお試しください。");
   }
   async function save(key, entry, cached) {
-    await store.put(key, { ...entry, at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 }).catch(() => {});
+    return await store.put(key, { ...entry, at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 }).catch(() => null);
   }
-  // YouTubeのタイムスタンプ付き字幕から（高精度・低コスト）。見つかれば chapters や video より優先する。
+  // YouTubeのタイムスタンプ付き字幕から（高精度・低コスト）。実在する字幕発話と照合し、架空の補間は行わない。
   async function fromTranscript(key, videoId, list, cached, household, info) {
     if (cached?.envelope.transcriptChecked || typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return null;
-    const items = await fetchTranscript(videoId).catch(() => null);
+    const res = await fetchTranscript(videoId).catch(() => null);
+    // 一時エラー（429やタイムアウト等）は transcriptChecked: true を保存せず、次回再試行可能にする
+    if (res?.status === "retryable_error") return null;
+    const items = res?.status === "ok" && Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : null);
     if (!items || !items.length) {
       await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
       return null;
@@ -52,40 +82,94 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       done = await countTry(household);
       await reserveBudget();
     } catch (err) {
+      if (done) await done(false);
       // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
       if (found(cached?.envelope.stepTimes)) return null;
       throw err;
     }
-    const formatted = formatTranscriptForPrompt(items, { maxSeconds: info?.durationSeconds || maxSeconds });
-    const raw = await matchTranscript(list, formatted).catch(() => null);
-    const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: info?.durationSeconds });
-    if (!found(stepTimes)) {
-      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
+    const { text, cues } = formatTranscriptForPrompt(items, { maxSeconds: info?.durationSeconds || maxSeconds });
+    let raw = null;
+    try {
+      raw = await matchTranscript(list, text);
+    } catch {
+      // AI照合の例外（503や一時障害）は retryable として扱い、transcriptChecked を保存せず次回再試行可能にする
+      await done(false);
       return null;
     }
-    await save(key, { stepTimes, source: "transcript", transcriptChecked: true, chaptersChecked: true }, cached);
-    await done();
-    return { stepTimes, source: "transcript", cacheHit: false };
+    const { stepTimes: rawTimes, stepCues } = resolveTranscriptTimes(cues, raw);
+
+    // 順序の逆転や動画尺超過の不正値は null にする（実字幕の根拠がないものは null のまま残す。架空の按分補間は行わない）
+    const duration = info?.durationSeconds && info.durationSeconds > 0 ? info.durationSeconds : null;
+    const verifiedTimes = list.map((_, idx) => {
+      const t = rawTimes[idx];
+      if (!Number.isFinite(t)) return null;
+      if (duration !== null && t >= duration) return null;
+      return t;
+    });
+    // 単調増加チェック：前の有効時刻より小さい場合は null にする
+    let lastValid = -1;
+    for (let i = 0; i < verifiedTimes.length; i++) {
+      if (verifiedTimes[i] !== null) {
+        if (lastValid >= 0 && verifiedTimes[i] < verifiedTimes[lastValid]) {
+          verifiedTimes[i] = null;
+        } else {
+          lastValid = i;
+        }
+      }
+    }
+
+    // 既存の完全な時刻を欠損結果（1手順のみ等）で上書きしないよう、網羅率を比較
+    const existingTimes = cached?.envelope.stepTimes || [];
+    const existingValidCount = existingTimes.filter(Number.isFinite).length;
+    const newValidCount = verifiedTimes.filter(Number.isFinite).length;
+
+    if (newValidCount === 0 || (existingValidCount > 0 && newValidCount < existingValidCount)) {
+      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
+      await done(false);
+      return null;
+    }
+
+    const saved = await save(key, { stepTimes: verifiedTimes, stepCues, source: "transcript", transcriptChecked: true, chaptersChecked: true }, cached);
+    await done(true);
+
+    // 保存競合時（手動修正 fix や全消去 cleared などが先行して入った場合）、最新の保存レコードを優先して返す
+    if (!saved) {
+      const latest = await store.get(key);
+      if (latest?.envelope?.cleared) {
+        return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: false };
+      }
+      if (found(latest?.envelope.stepTimes) && latest?.envelope.source === "fix") {
+        return answer(latest.envelope, false);
+      }
+    }
+
+    return { stepTimes: verifiedTimes, stepCues, source: "transcript", cacheHit: false };
   }
   // 説明欄のタイムスタンプから（1つの組につき1回だけ調べる）。
   async function fromChapters(key, videoId, list, cached, household, info) {
     if (cached?.envelope.chaptersChecked || typeof matchChapters !== "function") return null;
     const chapters = parseChapters(info?.description);
-    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
+    const transcriptChecked = Boolean(cached?.envelope?.transcriptChecked);
+    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), transcriptChecked, chaptersChecked: true }, cached); return null; }
     let done = null;
     try {
       done = await countTry(household);
       await reserveBudget();
     } catch (err) {
+      if (done) await done(false);
       // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
       if (found(cached?.envelope.stepTimes)) return null;
       throw err;
     }
     const raw = await matchChapters(list, chapters).catch(() => null);
     const stepTimes = refineStepTimes(list, cleanTimes(timesFromChapterIndexes(raw?.chapterIndex, chapters, list.length), list), { durationSeconds: info?.durationSeconds });
-    if (!found(stepTimes)) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
-    await save(key, { stepTimes, source: "chapters", transcriptChecked: true, chaptersChecked: true }, cached);
-    await done();
+    if (!found(stepTimes)) {
+      await save(key, { ...(cached?.envelope || {}), transcriptChecked, chaptersChecked: true }, cached);
+      await done(false);
+      return null;
+    }
+    await save(key, { stepTimes, source: "chapters", transcriptChecked, chaptersChecked: true }, cached);
+    await done(true);
     return { stepTimes, source: "chapters", cacheHit: false };
   }
   return {
@@ -101,7 +185,9 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       const work = (async () => {
         const cached = await store.get(key);
         const entry = cached?.envelope;
-        if (found(entry?.stepTimes) && TRUSTED.has(entry.source)) return answer(entry, true);
+        // fix または transcript、もしくは字幕確認済みの chapters は最優先キャッシュとして即座に返す
+        const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && entry?.transcriptChecked);
+        if (found(entry?.stepTimes) && isFullyChecked) return answer(entry, true);
         if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         let info = null;
         if (!entry?.transcriptChecked) {
@@ -127,16 +213,31 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         if (found(cached?.envelope.stepTimes)) return peek ? { stepTimes: [], source: "none", cacheHit: true } : answer(cached.envelope, true);
         if (peek) return { stepTimes: [], source: "none", cacheHit: false };
         const done = await countTry(household);
-        await reserveBudget();
+        try {
+          await reserveBudget();
+        } catch (err) {
+          await done(false);
+          throw err;
+        }
         const seconds = info?.durationSeconds ?? (await snippet(videoId).catch(() => null))?.durationSeconds;
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
-        // 接続先を切り替える時も、切り替えの直前ごとに AI の予算を通す（最初の1回は上の reserveBudget）。
-        const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, durationSeconds: seconds, beforeRetry: reserveBudget });
+        let raw = null;
+        try {
+          // 接続先を切り替える時も、切り替えの直前ごとに AI の予算を通す（最初の1回は上の reserveBudget）。
+          raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, durationSeconds: seconds, beforeRetry: reserveBudget });
+        } catch (err) {
+          await done(false);
+          throw err;
+        }
         const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
-        if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
+        if (!found(stepTimes)) {
+          await done(false);
+          throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
+        }
+        const transcriptChecked = Boolean(cached?.envelope?.transcriptChecked);
         // seenSeconds：AI が見た長さ（点検で「見ていない後半に時刻がない」を見分ける）。
-        await save(key, { stepTimes, source: "video", transcriptChecked: true, chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
-        await done();
+        await save(key, { stepTimes, source: "video", transcriptChecked, chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
+        await done(true);
         return { stepTimes, source: "video", cacheHit: false };
       }
     },

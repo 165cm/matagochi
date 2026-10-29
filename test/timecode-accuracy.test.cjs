@@ -173,4 +173,68 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   })`);
   assert.deepEqual(JSON.parse(run("JSON.stringify(recipeStepTimes(state.recipes[1]))")), [15, 45, 90], "transcript source overrides older recipe.stepTimes");
   assert.equal(run("timecodeHint(state.recipes[1])"), "▶ は動画の字幕から合わせた時刻です");
+
+  // 6. [P1 fix] 字幕由来の検証済み時刻（例: [10.5, 15.5, 20.5, 25.5]）は短尺で工程が密集していても架空時刻へ按分補間されない
+  run(`globalThis.transcriptRecipe = {
+    id: "transcript-short-dense",
+    title: "スピードたまご焼き",
+    videoUrl: "https://www.youtube.com/watch?v=densevideo1",
+    ingredients: [{ name: "卵", amount: "2個" }],
+    steps: ["割る", "混ぜる", "焼く", "巻く"],
+    stepTimes: [10.5, 15.5, 20.5, 25.5],
+    stepTimesFrom: "transcript"
+  }`);
+  run("cookSections(transcriptRecipe, 2)");
+  assert.deepEqual(
+    JSON.parse(run("JSON.stringify(recipeStepTimes(transcriptRecipe))")),
+    [10.5, 15.5, 20.5, 25.5],
+    "transcript source preserves dense accurate timestamps without interpolating fake times"
+  );
+  assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(0))")), { start: 10.5, end: 15.5 });
+  assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(1))")), { start: 15.5, end: 20.5 });
+
+  // 7. [P2 fix] 取得 → 端末保存 → メモリ初期化（再起動相当） → 再表示まで通し、字幕時刻が再補間されずに保持される
+  run(`state.recipes.push({
+    id: "restart-persist-test",
+    title: "時短オムレツ",
+    videoUrl: "https://www.youtube.com/watch?v=persreboot1",
+    ingredients: [{ name: "卵", amount: "2個" }],
+    steps: ["割る", "混ぜる", "焼く", "盛る"],
+    stepTimes: [null, null, null, null]
+  })`);
+  // サーバーAPIのモック（字幕由来の密集時刻を返す）
+  ctx.fetch = (url) => {
+    if (url.includes("/api/import/youtube/timecodes")) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          stepTimes: [10.5, 15.5, 20.5, 25.5],
+          source: "transcript"
+        })
+      });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) });
+  };
+  // サーバーから取得実行（ensureTimecodes）
+  run("ensureTimecodes(state.recipes[2], { peek: false })");
+  // 取得直後の保存状態を確認
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(run("state.recipes[2].stepTimesFrom"), "transcript", "own.stepTimesFrom must be saved as transcript");
+  assert.deepEqual(
+    JSON.parse(run("JSON.stringify(state.recipes[2].stepTimes)")),
+    [10.5, 15.5, 20.5, 25.5]
+  );
+
+  // 再起動相当のメモリ初期化：timecodes マップをクリアし、サーバー未応答・オフライン状態を再現
+  run("timecodes.clear()");
+  // 再起動後の recipeStepTimes および料理モードでの再表示
+  run("cookSections(state.recipes[2], 2)");
+  const afterRebootTimes = JSON.parse(run("JSON.stringify(recipeStepTimes(state.recipes[2]))"));
+  assert.deepEqual(
+    afterRebootTimes,
+    [10.5, 15.5, 20.5, 25.5],
+    "preserved transcript stepTimesFrom prevents fake interpolation after app reboot"
+  );
+  assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(0))")), { start: 10.5, end: 15.5 });
+  assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(1))")), { start: 15.5, end: 20.5 });
 });

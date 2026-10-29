@@ -208,8 +208,8 @@ function isTimecodeFixed(recipe) {
   const key = timecodeKey(recipe);
   if (timeFix?.key === key) return true;
   const entry = timecodes.get(key);
-  if (entry?.cleared || entry?.source === "fix") return true;
-  if (recipe?.stepTimesFrom === "admin" || recipe?.stepTimesFrom === "fix") return true;
+  if (entry?.cleared || entry?.source === "fix" || entry?.source === "transcript") return true;
+  if (recipe?.stepTimesFrom === "admin" || recipe?.stepTimesFrom === "fix" || recipe?.stepTimesFrom === "transcript") return true;
   return false;
 }
 function recipeStepTimes(recipe) {
@@ -220,8 +220,8 @@ function recipeStepTimes(recipe) {
   if (entry?.cleared) return entry.times;
   const fixed = isTimecodeFixed(recipe);
   const refine = (arr) => (!fixed && typeof CookMode !== "undefined" && typeof CookMode.refineTimes === "function" && Array.isArray(arr) && arr.some((t) => Number.isFinite(t)) ? CookMode.refineTimes(recipe?.steps || [], arr, { durationSeconds: recipe?.durationSeconds }) : arr);
-  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return entry.source === "fix" ? entry.times : refine(entry.times);
-  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return refine(recipe.stepTimes);
+  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return (entry.source === "fix" || entry.source === "transcript") ? entry.times : refine(entry.times);
+  if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return fixed ? recipe.stepTimes : refine(recipe.stepTimes);
   return refine(entry?.times || []);
 }
 function saveQuickTimeFix(recipe, stepIndex, newSeconds) {
@@ -280,11 +280,14 @@ function ensureTimecodes(recipe) {
       const times = stepTimesFor(recipe.steps, data?.stepTimes);
       if (peek) timecodes.set(key, { status: "done", at: Date.now(), times, source: times.length ? data.source : "" });
       else timecodes.set(key, { status: times.length ? "done" : "none", at: Date.now(), times, source: data?.source || "", reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
-      // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
+      // 自分のレシピなら、見つけた時刻を出所（fix や transcript）とともに保存しておく（再起動後も正しく保護）。
       const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
       if (own && times.length && (!peek || TRUSTED_TIMES.has(data.source))) {
         own.stepTimes = times;
-        if (data.source === "fix") own.stepTimesFrom = "fix";
+        if (data.source === "fix" || data.source === "transcript") {
+          own.stepTimesFrom = data.source;
+          recipe.stepTimesFrom = data.source;
+        }
         saveState();
       }
       // 画面全体は描き直さない（再生中の動画が最初に戻らないように）。▶ と案内だけ差し替える。

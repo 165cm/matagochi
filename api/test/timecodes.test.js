@@ -186,3 +186,386 @@ test('review fix: returns older video stepTimes without crashing when transcript
   assert.deepEqual(res.stepTimes, [10, 50]);
   assert.equal(res.cacheHit, true);
 });
+
+test('P1 fix: out-of-range AI answer does not invent interpolated fake times for transcript', async () => {
+  let videoCalls = 0;
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [
+      { start: 10, duration: 5, text: '材料を用意します' },
+      { start: 50, duration: 5, text: '炒めます' }
+    ],
+    // 300秒の動画に対して [999, 999, 999, 999] という範囲外の回答
+    matchTranscript: async () => ({ cueIds: [999, 999, 999, 999], stepTimes: [999, 999, 999, 999] }),
+    matchChapters: async () => ({ chapterIndex: [] }),
+    analyze: async () => { videoCalls++; return { stepTimes: [10, 80, 150, 220] }; }
+  });
+
+  const steps = ['準備', '切る', '炒める', '盛り付け'];
+  const res = await book.find({ url: 'https://www.youtube.com/watch?v=faketime123', steps }, 'home-p1-1');
+  // 架空の按分時刻が transcript として保存されるのではなく、video 探索へフォールバックされる
+  assert.equal(res.source, 'video');
+  assert.equal(videoCalls, 1);
+});
+
+test('P1 fix: partial transcript result does not overwrite existing complete timecodes', async () => {
+  const store = createMemorySyncStore();
+  const steps = ['準備', '切る', '炒める', '盛り付け'];
+  const { createHash } = await import('node:crypto');
+  const key = `timecodes/partover123-${createHash('sha256').update(steps.join('\n')).digest('hex').slice(0, 16)}`;
+  // 既存の動画由来の完全な時刻（4手順すべて有効）
+  await store.put(key, { stepTimes: [10, 50, 100, 200], source: 'video', seenSeconds: 300 });
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [
+      { start: 10, duration: 5, text: '材料を用意します' }
+    ],
+    // 字幕では 1 手順のみ一致
+    matchTranscript: async () => ({ cueIds: [1, null, null, null], stepTimes: [10, null, null, null] }),
+    analyze: async () => { throw new Error('should not analyze'); }
+  });
+
+  const res = await book.find({ url: 'https://www.youtube.com/watch?v=partover123', steps }, 'home-p1-2');
+  // 網羅率が下がる上書きは行われず、既存の完全な時刻が維持される
+  assert.equal(res.source, 'video');
+  assert.deepEqual(res.stepTimes, [10, 50, 100, 200]);
+
+  const saved = await store.get(key);
+  assert.equal(saved.envelope.source, 'video');
+  assert.deepEqual(saved.envelope.stepTimes, [10, 50, 100, 200]);
+});
+
+test('P2 fix: retryable error does not set permanent transcriptChecked: true', async () => {
+  let attempts = 0;
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '0:00 OP\n1:00 チャプター炒める', durationSeconds: 300 }),
+    fetchTranscript: async () => {
+      attempts++;
+      if (attempts === 1) {
+        // 初回は一時的エラー（429など）
+        return { status: 'retryable_error', error: 'http_429' };
+      }
+      return {
+        status: 'ok',
+        items: [
+          { start: 15, duration: 3, text: '準備します' },
+          { start: 60, duration: 3, text: '炒めます' }
+        ]
+      };
+    },
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [15, 60] }),
+    matchChapters: async () => ({ chapterIndex: [1, 2] }),
+    analyze: async () => ({ stepTimes: [10, 50] })
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=retryable12', steps: ['準備', '炒める'] };
+  // 1回目：一時エラーのため transcript はスキップされ、チャプターへフォールバックされる
+  const first = await book.find(ask, 'home-p2-1');
+  assert.equal(first.source, 'chapters');
+  assert.equal(attempts, 1);
+
+  // 2回目：transcriptChecked が永続保存されていないため、再度字幕取得を試みる
+  const second = await book.find(ask, 'home-p2-1');
+  assert.equal(second.source, 'transcript');
+  assert.deepEqual(second.stepTimes, [15, 60]);
+  assert.equal(attempts, 2);
+});
+
+test('P2 fix: concurrent manual fix wins over in-flight transcript matching response', async () => {
+  const store = createMemorySyncStore();
+  let bookRef = null;
+  const steps = ['準備', '炒める'];
+  const ask = { url: 'https://www.youtube.com/watch?v=concurrent1', steps };
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => {
+      // 照合中にユーザーが手動修正を実行するシミュレーション
+      await bookRef.fix({ ...ask, stepTimes: [15, 60] }, 'user-editor');
+      return { cueIds: [1, 2], stepTimes: [10, 50] };
+    },
+    analyze: async () => { throw new Error('should not analyze'); }
+  });
+  bookRef = book;
+
+  // 字幕照合の結果ではなく、競合して先行保存された手動修正 fix が返却される
+  const res = await book.find(ask, 'user-viewer');
+  assert.equal(res.source, 'fix');
+  assert.deepEqual(res.stepTimes, [15, 60]);
+});
+
+test('P2 fix: countTry retries on CAS race when updating household quota', async () => {
+  const store = createMemorySyncStore();
+  let putAttempts = 0;
+  const originalPut = store.put.bind(store);
+  // 初回の put で一度だけ CAS 競合をシミュレート
+  store.put = async (key, val, opts) => {
+    if (key.startsWith('timecodes-quota/')) {
+      putAttempts++;
+      if (putAttempts === 1) {
+        // 競合発生
+        return false;
+      }
+    }
+    return originalPut(key, val, opts);
+  };
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [10, 50] }),
+    analyze: async () => { throw new Error('should not analyze'); }
+  });
+
+  const res = await book.find({ url: 'https://www.youtube.com/watch?v=concurrent2', steps: ['準備', '炒める'] }, 'home-cas-retry');
+  assert.equal(res.source, 'transcript');
+  // 初回競合後にリトライして成功したため、2回以上の put 試行が行われている
+  assert.ok(putAttempts >= 2);
+});
+
+test('P2 fix: fallback to video after 429 still allows transcript retry next time', async () => {
+  let attempts = 0;
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明なし（チャプターなし）', durationSeconds: 300 }),
+    fetchTranscript: async () => {
+      attempts++;
+      if (attempts === 1) return { status: 'retryable_error', error: 'http_429' };
+      return {
+        status: 'ok',
+        items: [{ start: 20.5, duration: 3, text: '準備' }, { start: 80.5, duration: 3, text: '炒める' }]
+      };
+    },
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [20.5, 80.5] }),
+    matchChapters: async () => ({ chapterIndex: [] }),
+    analyze: async () => ({ stepTimes: [10, 50] })
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=fallvideo12', steps: ['準備', '炒める'] };
+  // 1回目：字幕429 → チャプターなし → 動画解析で成功して保存
+  const first = await book.find(ask, 'home-p2-video');
+  assert.equal(first.source, 'video');
+  assert.equal(attempts, 1);
+
+  // 2回目：transcriptChecked が永続保存されていないため、再度字幕取得を試みて transcript に昇格
+  const second = await book.find(ask, 'home-p2-video');
+  assert.equal(second.source, 'transcript');
+  assert.deepEqual(second.stepTimes, [20.5, 80.5]);
+  assert.equal(attempts, 2);
+});
+
+test('P2 fix: matchTranscript exception does not permanently save transcriptChecked: true', async () => {
+  let attempts = 0;
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '0:00 OP\n1:00 炒める', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 20, duration: 3, text: '準備' }, { start: 80, duration: 3, text: '炒める' }],
+    matchTranscript: async () => {
+      attempts++;
+      if (attempts === 1) throw new Error('AI endpoint 503 unavailable');
+      return { cueIds: [1, 2], stepTimes: [20, 80] };
+    },
+    matchChapters: async () => ({ chapterIndex: [1, 2] }),
+    analyze: async () => ({ stepTimes: [10, 50] })
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=matcherr123', steps: ['準備', '炒める'] };
+  // 1回目：AI照合が例外 → チャプターへフォールバック
+  const first = await book.find(ask, 'home-match-err');
+  assert.equal(first.source, 'chapters');
+  assert.equal(attempts, 1);
+
+  // 2回目：transcriptChecked が保存されていないため再試行され、字幕で成功
+  const second = await book.find(ask, 'home-match-err');
+  assert.equal(second.source, 'transcript');
+  assert.deepEqual(second.stepTimes, [20, 80]);
+  assert.equal(attempts, 2);
+});
+
+test('P2 fix: concurrent cleared: true wins over in-flight transcript response', async () => {
+  const store = createMemorySyncStore();
+  const { createHash } = await import('node:crypto');
+  const steps = ['準備', '炒める'];
+  const ask = { url: 'https://www.youtube.com/watch?v=concurrent3', steps };
+  const key = `timecodes/concurrent3-${createHash('sha256').update(steps.join('\n')).digest('hex').slice(0, 16)}`;
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => {
+      // 照合中に管理者が「すべて消去」を実行して保存
+      await store.put(key, { cleared: true, source: 'fix', stepTimes: [null, null] });
+      return { cueIds: [1, 2], stepTimes: [10, 50] };
+    },
+    analyze: async () => { throw new Error('should not analyze'); }
+  });
+
+  const res = await book.find(ask, 'user-viewer');
+  assert.equal(res.source, 'fix');
+  assert.equal(res.cleared, true);
+  assert.deepEqual(res.stepTimes, [null, null]);
+});
+
+test('P2 fix: reservation blocks concurrent requests exceeding TIMECODES_PER_DAY', async () => {
+  const store = createMemorySyncStore();
+  const dayKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-race-quota`;
+  // used: 19 の状態（残り1本）
+  await store.put(dayKey, { used: TIMECODES_PER_DAY - 1, tries: 19 });
+
+  let releaseFirst = null;
+  const waitFirst = new Promise((resolve) => { releaseFirst = resolve; });
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async (steps) => {
+      if (steps[0] === '先行処理') {
+        await waitFirst; // 1本目を処理中に保持
+      }
+      return { cueIds: [1, 2], stepTimes: [10, 50] };
+    },
+    analyze: async () => ({ stepTimes: [10, 50] })
+  });
+
+  // 1本目を開始（used: 19, reserved: 1 になる）
+  const p1 = book.find({ url: 'https://www.youtube.com/watch?v=racequota11', steps: ['先行処理', '炒める'] }, 'home-race-quota');
+
+  // 2本目をほぼ同時に開始 → used(19) + reserved(1) >= 20 のため 429 で拒否されるはず
+  await assert.rejects(
+    book.find({ url: 'https://www.youtube.com/watch?v=racequota22', steps: ['後続処理', '炒める'] }, 'home-race-quota'),
+    { code: 'timecode_quota' }
+  );
+
+  // 1本目を完了させる
+  releaseFirst();
+  const res1 = await p1;
+  assert.equal(res1.source, 'transcript');
+
+  const finalDay = await store.get(dayKey);
+  // used はちょうど 20（TIMECODES_PER_DAY）であり、21に超過していない
+  assert.equal(finalDay.envelope.used, TIMECODES_PER_DAY);
+});
+
+test('P2 fix: fractional seconds (0.1s) are preserved in stored() and parseTimeValue()', async () => {
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10.5, duration: 3, text: '準備' }, { start: 50.8, duration: 3, text: '炒める' }],
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [10.5, 50.8] }),
+    analyze: async () => { throw new Error('should not analyze'); }
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=fractional1', steps: ['準備', '炒める'] };
+  const first = await book.find(ask, 'home-frac');
+  assert.deepEqual(first.stepTimes, [10.5, 50.8]);
+
+  // 保存後の stored() 読み出しでも小数第1位が切り捨てられず保持される
+  const storedResult = await book.stored(ask);
+  assert.deepEqual(storedResult.stepTimes, [10.5, 50.8]);
+});
+
+test('review fix: reserveBudget failure immediately releases household reserved quota', async () => {
+  const store = createMemorySyncStore();
+  const dayKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-budget-fail`;
+  let shouldFailBudget = true;
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {
+      if (shouldFailBudget) {
+        throw Object.assign(new Error('AI budget full'), { code: 'analysis_busy', status: 429 });
+      }
+    },
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [10, 50] }),
+    analyze: async () => ({ stepTimes: [10, 50] })
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=budgetfail1', steps: ['準備', '炒める'] };
+
+  // 初回：reserveBudget で失敗
+  await assert.rejects(book.find(ask, 'home-budget-fail'), { code: 'analysis_busy' });
+
+  // 予約枠（reserved）が残っておらず解放されていること
+  const quotaAfterFail = await store.get(dayKey);
+  assert.equal(quotaAfterFail.envelope.reserved ?? 0, 0, 'reserved must be released upon reserveBudget failure');
+  assert.equal(quotaAfterFail.envelope.used, 0);
+
+  // 混雑解消後、直ちに正常に利用できること
+  shouldFailBudget = false;
+  const res = await book.find(ask, 'home-budget-fail');
+  assert.equal(res.source, 'transcript');
+  assert.deepEqual(res.stepTimes, [10, 50]);
+
+  const finalQuota = await store.get(dayKey);
+  assert.equal(finalQuota.envelope.used, 1);
+  assert.equal(finalQuota.envelope.reserved ?? 0, 0);
+});
+
+test('review fix: concurrent release conflicts are retried until reserved is 0, and stale reserved self-heals', async () => {
+  const store = createMemorySyncStore();
+  const dayKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-multi-release`;
+
+  // 1. 4件の並行リクエストが同時に失敗しても、リトライによって reserved が確実に 0 に戻ること
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => { throw new Error('AI fail'); },
+    matchChapters: async () => ({ chapterIndex: [] }),
+    analyze: async () => { throw new Error('video fail'); }
+  });
+
+  const urls = [1, 2, 3, 4].map((i) => `https://www.youtube.com/watch?v=multirel00${i}`);
+  await Promise.all(
+    urls.map((url) => book.find({ url, steps: ['準備', '炒める'] }, 'home-multi-release').catch(() => null))
+  );
+
+  const quota = await store.get(dayKey);
+  assert.ok(quota, 'day quota must exist after requests');
+  assert.equal(quota.envelope.reserved ?? 0, 0, 'all reserved quota must be released even under concurrent completion conflicts');
+  assert.equal(quota.envelope.used, 0);
+
+  // 2. 過去の更新から REANALYZE_LOCK_MS 以上経過した孤立 reserved がセルフヒーリングされること
+  const { REANALYZE_LOCK_MS } = await import('../src/timecodes.js');
+  let mockTime = Date.now();
+  const staleBook = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [10, 50] }),
+    now: () => mockTime
+  });
+
+  const staleKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-stale-heal`;
+  // クラッシュ等で reserved: 1 が残った古い状態（REANALYZE_LOCK_MS + 10秒前）
+  await store.put(staleKey, {
+    used: 19,
+    tries: 20,
+    reserved: 1,
+    at: new Date(mockTime - (REANALYZE_LOCK_MS + 10_000)).toISOString()
+  });
+
+  // 解析最長時間を経過しているため、reserved はセルフヒーリングで 0 と判定され、残り1本（used: 19）の枠が使える
+  const healRes = await staleBook.find({ url: 'https://www.youtube.com/watch?v=staleheal11', steps: ['準備', '炒める'] }, 'home-stale-heal');
+  assert.equal(healRes.source, 'transcript');
+  assert.deepEqual(healRes.stepTimes, [10, 50]);
+
+  const healedQuota = await store.get(staleKey);
+  assert.equal(healedQuota.envelope.used, 20);
+  assert.equal(healedQuota.envelope.reserved ?? 0, 0);
+});
