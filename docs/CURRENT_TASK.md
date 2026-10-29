@@ -17,7 +17,7 @@
 | レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | 公開済み（#186・#187） | claude/nice-shannon-6g1g5m | 料理の画面に「🗓 献立に入れる」（#186）・一覧の整理（#187） | — |
 | 管理者・編集者・閲覧者の見えるものの整理（2026-10-29 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 🙋 は閲覧者だけ・「リクエストを受け付ける」は閲覧者がいる時だけ・閲覧者のレシピタブの文言と定番づくり・使われていない古い部品を削除・共有中は「わが家のレシピ」 | household.js, app.js, test/roles-ui.test.cjs, sw.js, index.html, version.json, docs/* |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
-| 新着集めの費用の見積もりを実測に合わせる（2026-10-29 のユーザーの依頼：管理画面 985円・Google Cloud の請求 634円） | レビュー待ち | claude/gallant-cannon-179lc9 | 1回の単価を実測のトークン数から自動で合わせる（APP_MAP §46-9）。次：Google Cloud の SKU ごとの内訳と照らし合わせる・アプリ全体の AI の月の回数（`AI_MONTHLY_LIMIT` 1,000回）を上げるかはユーザーの判断待ち | api/src/trends.js, api/src/server.js, api/test/costCalibrate.test.js, admin/catalog.html, scripts/trends-health.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| 新着集めの費用の見積もりを実測に合わせる（2026-10-29 のユーザーの依頼：管理画面 985円・Google Cloud の請求 634円） | レビュー済み・公開はユーザーの判断で保留（#192） | claude/gallant-cannon-179lc9 | 1回の単価を実測のトークン数から自動で合わせる（APP_MAP §46-9）。Google Cloud の SKU ごとの内訳と照らし合わせ済み（AI は約508円・単価の計算は請求とほぼ同じ）。`AI_MONTHLY_LIMIT`（1,000回）は今のまま（2026-10-29 のユーザーの判断） | api/src/trends.js, api/src/server.js, api/test/costCalibrate.test.js, admin/catalog.html, scripts/trends-health.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
