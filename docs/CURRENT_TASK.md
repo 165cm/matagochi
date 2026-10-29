@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-29（10分以内のレシピを10品足す・レビュー待ち）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-29（10分以内のレシピを10品足す・公開 #189）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,6 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 10分以内のレシピを増やす（1回目） | レビュー待ち | claude/quirky-feynman-q9dxu7 | 最初からのレシピに10分以内の10品を足す。集計表に「平日10分以内」 | starter-recipes.js, scripts/catalog-coverage.cjs, docs/CATALOG_COVERAGE.md, docs/STARTER_RECIPES.md, test/quick-dinners.test.cjs, test/lifestyle.test.cjs, sw.js, version.json, index.html, app.js, docs/CURRENT_TASK.md |
 | 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 公開済み（#184。次：そろったら需要に合わせて集める） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
 | レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | 公開済み（#186・#187） | claude/nice-shannon-6g1g5m | 料理の画面に「🗓 献立に入れる」（#186）・一覧の整理（#187） | — |
 | 管理者・編集者・閲覧者の見えるものの整理（2026-10-29 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 🙋 は閲覧者だけ・「リクエストを受け付ける」は閲覧者がいる時だけ・閲覧者のレシピタブの文言と定番づくり・使われていない古い部品を削除・共有中は「わが家のレシピ」 | household.js, app.js, test/roles-ui.test.cjs, sw.js, index.html, version.json, docs/* |
@@ -33,6 +32,8 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 10分以内の夜ごはんを10品追加（#189、公開済み。Codex は利用上限でレビューできず、Claude の見直しで公開）：1人・平日10分以内の候補 8品→18品（`docs/STARTER_RECIPES.md`）。料理写真はまだ
 
 - 好きな料理12品のイラスト（`codex/dish-pick-illustrations`、公開待ち）：1枚生成の3×4シートから12枚を切り出し、計約238KBのWebPで設定。ごはん方針・詳しい設定・結果カードを共通素材へ。皿全体を表示し、12枚を事前キャッシュ。396件PASS、Chromeで2導線の選択操作・12枚読み込み・390×844／844×390／1440×900表示確認。版`20261029-dish-illustrations`・キャッシュv185。
 
