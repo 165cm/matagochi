@@ -39,7 +39,7 @@ test("CookMode.refineTimes and segment: subdivides coarse chapter duplicates and
   assert.ok(cappedDup[2] > 50 && cappedDup[2] < 90);
 });
 
-test("CookMode nudgeTime and voice commands: adjusts loop start by -5s / +5s / here and triggers onTimeFix", () => {
+test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s / here and triggers onTimeFix", () => {
   const fixes = [];
   CookMode.setRecipe({
     title: "豚キムチ",
@@ -50,25 +50,130 @@ test("CookMode nudgeTime and voice commands: adjusts loop start by -5s / +5s / h
     onTimeFix: (idx, sec) => fixes.push([idx, sec]),
   });
   CookMode.openMode();
+  assert.equal(CookMode._mode().timeTarget, "start");
   assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
 
   // 音声コマンドの認識確認
   assert.deepEqual(CookMode.parseVoice("5秒前"), { act: "time-minus", label: "5秒前へ" });
   assert.deepEqual(CookMode.parseVoice("少し後ろ"), { act: "time-plus", label: "5秒後へ" });
   assert.deepEqual(CookMode.parseVoice("ここを始まりに"), { act: "time-here", label: "ここを始まりに" });
+  assert.deepEqual(CookMode.parseVoice("ここを終わりに"), { act: "time-here-end", label: "ここを終わりに" });
+  assert.deepEqual(CookMode.parseVoice("ここまで"), { act: "time-here-end", label: "ここを終わりに" });
 
-  // -5秒微調整
+  // 開始時刻の -5秒微調整
   CookMode.nudgeTime("time-minus");
   assert.deepEqual(CookMode.segment(0), { start: 15, end: 60 });
   assert.deepEqual(fixes.at(-1), [0, 15]);
 
-  // +5秒微調整
+  // 開始時刻の +5秒微調整
   CookMode.nudgeTime("time-plus");
   assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
   assert.deepEqual(fixes.at(-1), [0, 20]);
 
+  // 終了位置チップへの切り替え（timeTarget = "end"）
+  // review fix: チップ切り替えや終了時刻の調整では手順の先頭へ巻き戻らず、再生位置を維持すること
+  CookMode.setTimeTarget("end");
+  assert.equal(CookMode._mode().timeTarget, "end");
+
+  // 終了時刻の -5秒微調整（step 1 の開始時刻 60 -> 55）
+  CookMode.nudgeTime("time-minus");
+  assert.deepEqual(CookMode.segment(0), { start: 20, end: 55 });
+  assert.deepEqual(fixes.at(-1), [1, 55]);
+
+  // 終了時刻の +5秒微調整（step 1 の開始時刻 55 -> 60）
+  CookMode.nudgeTime("time-plus");
+  assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
+  assert.deepEqual(fixes.at(-1), [1, 60]);
+
+  // 逆転防止クランプの確認
+  // 1. 開始時刻を +5秒 していった場合、終了時刻（60）- 1 = 59 を超えない
+  CookMode.setTimeTarget("start");
+  for (let i = 0; i < 15; i++) CookMode.nudgeTime("time-plus");
+  assert.equal(CookMode.segment(0).start, 59);
+
+  // 2. 終了時刻を -5秒 していった場合、開始時刻（59）+ 1 = 60 を下回らない
+  CookMode.setTimeTarget("end");
+  for (let i = 0; i < 15; i++) CookMode.nudgeTime("time-minus");
+  assert.equal(CookMode.segment(0).end, 60);
+
+  // 3. 終了時刻を +5秒 していった場合、後続手順の時刻（120）- 1 = 119 を超えない（次の区間の保護）
+  for (let i = 0; i < 20; i++) CookMode.nudgeTime("time-plus");
+  assert.equal(CookMode.segment(0).end, 119);
+
+  // 4. 音声操作で「ここを終わりに」後に「ここを始まりに」と言った場合に対象が開始に戻ること
+  CookMode._hear("ここを終わりに");
+  assert.equal(CookMode._mode().timeTarget, "end");
+  assert.equal(fixes.at(-1)[0], 1);
+  CookMode._hear("ここを始まりに");
+  assert.equal(CookMode._mode().timeTarget, "start");
+  assert.equal(fixes.at(-1)[0], 0);
+
+  // 5. 終了時刻がない最終手順で「ここを終わりに」を発話しても、開始時刻を上書きしない（review fix）
+  CookMode._hear("次へ");
+  CookMode._hear("次へ"); // step 2（最終手順：盛る、start 120, end null）へ移動
+  assert.equal(CookMode._mode().at, 2);
+  assert.equal(CookMode.segment(2).end, null);
+  const fixCountBefore = fixes.length;
+  CookMode.setTimeTarget("end");
+  CookMode.nudgeTime("time-here");
+  assert.equal(fixes.length, fixCountBefore, "last step without end timestamp must not touch start timestamp");
+  CookMode._hear("ここを終わりに");
+  assert.equal(fixes.length, fixCountBefore, "voice time-here-end on last step must not trigger onTimeFix");
+
   CookMode.closeMode();
+  assert.equal(CookMode._mode().timeTarget, "start");
   CookMode._clearTimers();
+
+  // 6. 時刻未設定のレシピでも開始位置を設定できること（review fix）
+  const uncalFixes = [];
+  CookMode.setRecipe({
+    title: "未設定レシピ",
+    steps: ["準備", "調理"],
+    timesOf: () => [null, null],
+    videoId: "uncalibrated1",
+    ingredients: [],
+    onTimeFix: (idx, sec) => uncalFixes.push([idx, sec]),
+  });
+  CookMode.openMode();
+  assert.equal(CookMode.segment(0), null);
+  CookMode.nudgeTime("time-plus");
+  assert.deepEqual(uncalFixes.at(-1), [0, 5], "uncalibrated recipe must allow adjusting start timestamp");
+  CookMode.closeMode();
+
+  // 7. 字幕由来などで隣り合う手順が同じ時刻を持つ場合でも開始の「+5秒」が逆戻りしないこと（review fix）
+  const dupFixes = [];
+  CookMode.setRecipe({
+    title: "重複時刻レシピ",
+    steps: ["準備", "加熱", "盛付"],
+    timesOf: () => [20, 20, 60],
+    timesFixed: true,
+    videoId: "duptimes1",
+    ingredients: [],
+    onTimeFix: (idx, sec) => dupFixes.push([idx, sec]),
+  });
+  CookMode.openMode();
+  assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
+  CookMode.nudgeTime("time-plus");
+  assert.deepEqual(dupFixes.at(-1), [0, 25], "start time +5s advances forward instead of shrinking to next duplicate");
+  CookMode.closeMode();
+
+  // 8. 字幕由来の小数秒で手順間が1秒未満の場合でも終了の「+5秒」が後続手順を越えないこと（review fix）
+  const denseFixes = [];
+  CookMode.setRecipe({
+    title: "小数密集レシピ",
+    steps: ["準備", "加熱", "盛付"],
+    timesOf: () => [20, 20.5, 20.8],
+    timesFixed: true,
+    videoId: "densetimes1",
+    ingredients: [],
+    onTimeFix: (idx, sec) => denseFixes.push([idx, sec]),
+  });
+  CookMode.openMode();
+  CookMode.setTimeTarget("end");
+  CookMode.nudgeTime("time-plus");
+  assert.ok(denseFixes.at(-1)[1] < 20.8, "end time must not exceed next step timestamp 20.8");
+  assert.ok(denseFixes.at(-1)[1] >= 20.5, "end time remains valid");
+  CookMode.closeMode();
 });
 
 test("daily-ui & discover: already-saved recipes refine coarse times, guide steps inherit non-null member times, and saveQuickTimeFix persists & shares", async () => {
@@ -140,6 +245,11 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   assert.equal(run("saved"), 1);
   assert.equal(puts.length, 1);
   assert.deepEqual(puts[0].body.stepTimes[1], 55);
+
+  // review fix: 小数第1位の微調整も Math.floor で切り捨てられずに正確に保存・共有される
+  run("saveQuickTimeFix(state.recipes[0], 2, 85.5)");
+  assert.equal(run("state.recipes[0].stepTimes[2]"), 85.5);
+  assert.deepEqual(puts.at(-1).body.stepTimes[2], 85.5);
 
   // 4. review fix (#152): 人が修正した時刻（source === "fix" / stepTimesFrom === "admin"）は料理モードでも再補正されない
   run(`globalThis.fixedRecipe = {

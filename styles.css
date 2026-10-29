@@ -4011,6 +4011,13 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 
 /* 料理モード内：動画ループ位置のワンタップ微調整バー */
 .cm-time-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 6px 10px; margin-bottom: 10px; border-radius: 10px; background: rgba(255, 248, 238, 0.9); border: 1px solid #f0dfc4; font-size: 12.5px; }
+.cm-time-chips { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: #6e5233; white-space: nowrap; }
+.cm-time-loop-icon { font-size: 13px; margin-right: 2px; }
+.cm-time-chip { min-height: 28px; padding: 2px 8px; border-radius: 6px; border: 1.5px solid transparent; background: rgba(230, 215, 195, 0.45); color: #5c4428; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; transition: all 0.15s ease; }
+.cm-time-chip:hover { background: rgba(230, 215, 195, 0.7); }
+.cm-time-chip.is-active { background: #fff; border-color: #e25c34; color: #c4411a; box-shadow: 0 1px 3px rgba(226, 92, 52, 0.2); }
+.cm-time-sep { color: #9c8266; font-size: 11px; margin: 0 1px; }
+.cm-time-end-static { color: #8a735c; font-size: 12px; padding: 2px 4px; }
 .cm-time-range { font-weight: 700; color: #6e5233; white-space: nowrap; }
 .cm-time-btns { display: inline-flex; align-items: center; gap: 6px; }
 .cm-time-btn { min-height: 34px; padding: 4px 10px; border-radius: 999px; border: 1px solid #dcc5a3; background: #fff; color: #4a3a28; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }

@@ -209,7 +209,7 @@ const CookMode = (() => {
 
   // ---- 🍳 料理モード ----
   // recipe: { title, steps, times[秒], videoId, shorts, ingredients, amountOf, onTimeFix }
-  let recipe = null, at = -1, loop = true, showAll = false, frame = null, ready = false, lastSeek = 0, videoTime = null, localTimes = {};
+  let recipe = null, at = -1, loop = true, showAll = false, frame = null, ready = false, lastSeek = 0, videoTime = null, localTimes = {}, timeTarget = "start";
   function parseTime(raw) {
     const val = raw && typeof raw === "object" ? (raw.time ?? raw.seconds ?? raw.start ?? null) : raw;
     if (val === null || val === undefined || val === "" || typeof val === "boolean") return null;
@@ -376,19 +376,47 @@ const CookMode = (() => {
   function nudgeTime(kind) {
     if (at < 0 || !recipe) return;
     const seg = segment(at);
-    const cur = seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0);
-    let nextSec = cur;
-    if (kind === "time-minus") nextSec = Math.max(0, cur - 5);
-    else if (kind === "time-plus") nextSec = Math.min(35_999, cur + 5);
-    else if (kind === "time-here") {
-      if (Number.isFinite(videoTime)) nextSec = Math.max(0, Math.floor(videoTime) - 1);
-      else if (seg) nextSec = seg.start;
+    const isStart = timeTarget === "start";
+    if (!isStart && (!seg || seg.end == null)) {
+      flash("🔁 最後の手順は動画の終わりまで再生されます");
+      return;
     }
-    localTimes[at] = nextSec;
-    try { recipe.onTimeFix?.(at, nextSec); } catch {}
-    drawMode();
-    seekTo(at);
-    flash(`🔁 始まりを ${fmt(nextSec)} に調整`);
+    const targetIdx = isStart ? at : at + 1;
+    if (targetIdx >= (recipe?.steps?.length || 0)) return;
+    const times = currentTimes();
+    const cur = isStart
+      ? (seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0))
+      : seg.end;
+
+    const nextLimit = isStart
+      ? (seg?.end != null ? seg.end : times.slice(targetIdx + 1).find((t) => Number.isFinite(t) && t > cur))
+      : times.slice(targetIdx + 1).find((t) => Number.isFinite(t) && t > cur);
+    const minSec = isStart
+      ? 0
+      : (seg ? (cur - seg.start >= 1 ? seg.start + 1 : seg.start + 0.1) : 0);
+    const maxSec = nextLimit != null
+      ? Math.max(minSec, nextLimit - cur >= 1 ? nextLimit - 1 : nextLimit - 0.1)
+      : 35_999;
+
+    let nextSec = cur;
+    if (kind === "time-minus") {
+      nextSec = Math.max(minSec, Math.min(maxSec, cur - 5));
+    } else if (kind === "time-plus") {
+      nextSec = Math.min(maxSec, Math.max(minSec, cur + 5));
+    } else if (kind === "time-here") {
+      if (Number.isFinite(videoTime)) {
+        const floorTime = Math.max(0, Math.floor(videoTime) - 1);
+        nextSec = Math.max(minSec, Math.min(maxSec, floorTime));
+      } else {
+        nextSec = cur;
+      }
+    }
+    nextSec = Math.round(nextSec * 10) / 10;
+    localTimes[targetIdx] = nextSec;
+    try { recipe.onTimeFix?.(targetIdx, nextSec); } catch {}
+    drawMode({ seek: false });
+    if (isStart) seekTo(at);
+    flash(`🔁 ${isStart ? "始まり" : "終わり"}を ${fmt(nextSec)} に調整`);
   }
   const hasVideo = () => !!recipe?.videoId;
   function post(func, args = []) { frame?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*"); }
@@ -398,7 +426,25 @@ const CookMode = (() => {
     lastSeek = Date.now();
     if (ready) { post("seekTo", [seg.start, true]); post("playVideo"); }
   }
-  function drawMode() {
+  function setTarget(t) {
+    timeTarget = t === "end" ? "end" : "start";
+    if (typeof document === "undefined" || !document.getElementById) return;
+    const el = document.getElementById("cook-mode");
+    if (!el) return;
+    const isStart = timeTarget === "start";
+    el.querySelectorAll(".cm-time-chip").forEach((btn) => {
+      const want = btn.dataset.cookMode === (isStart ? "target-start" : "target-end");
+      btn.classList.toggle("is-active", want);
+      btn.setAttribute("aria-pressed", want ? "true" : "false");
+    });
+    const minusBtn = el.querySelector('[data-cook-mode="time-minus"]');
+    const hereBtn = el.querySelector('[data-cook-mode="time-here"]');
+    const plusBtn = el.querySelector('[data-cook-mode="time-plus"]');
+    if (minusBtn) minusBtn.setAttribute("aria-label", isStart ? "開始を5秒前にする" : "終了を5秒前にする");
+    if (hereBtn) hereBtn.setAttribute("aria-label", isStart ? "いま再生している位置を開始にする" : "いま再生している位置を終了にする");
+    if (plusBtn) plusBtn.setAttribute("aria-label", isStart ? "開始を5秒後にする" : "終了を5秒後にする");
+  }
+  function drawMode(opts = {}) {
     if (typeof document === "undefined" || !document.getElementById) return;
     let el = document.getElementById("cook-mode");
     if (at < 0 || !recipe) { el?.remove(); frame = null; document.body.classList.remove("cook-mode-open"); return; }
@@ -429,7 +475,8 @@ const CookMode = (() => {
       ...u.groups.map((g) => `<li class="cm-group"><p>🥣 ${escapeHtml(groupLabel(g.group))}</p><ul>${g.items.map((x) => `<li><span>${escapeHtml(x.name)}</span><b>${escapeHtml(amount(x))}</b></li>`).join("")}</ul></li>`)].join("");
     const riceAlert = recipe.staple === "other" && at === 0 ? `<div class="cm-rice-alert"><span class="cm-rice-icon" aria-hidden="true">🍚</span><span>ごはん（主食）は準備できていますか？</span>${recipe.side ? `<b class="cm-side-tag">🥢 添え物：${escapeHtml(recipe.side)}</b>` : ""}</div>` : "";
     const curSeg = segment(at);
-    const timeBar = hasVideo() ? `<div class="cm-time-bar" role="group" aria-label="動画のループ位置の微調整"><span class="cm-time-range">🔁 ${curSeg ? `${fmt(curSeg.start)} 〜 ${curSeg.end != null ? fmt(curSeg.end) : "最後"}` : "位置未設定"}</span><div class="cm-time-btns"><button type="button" class="cm-time-btn" data-cook-mode="time-minus" aria-label="この手順の始まりを5秒前にする">⏪ -5秒</button><button type="button" class="cm-time-btn cm-time-here" data-cook-mode="time-here" aria-label="いま再生している位置をこの手順の始まりにする">📍ここ</button><button type="button" class="cm-time-btn" data-cook-mode="time-plus" aria-label="この手順の始まりを5秒後にする">+5秒 ⏩</button></div></div>` : "";
+    const isStart = timeTarget === "start" || curSeg?.end == null;
+    const timeBar = hasVideo() ? `<div class="cm-time-bar" role="group" aria-label="動画のループ位置の微調整"><div class="cm-time-chips"><span class="cm-time-loop-icon" aria-hidden="true">🔁</span><button type="button" class="cm-time-chip ${isStart ? "is-active" : ""}" data-cook-mode="target-start" aria-pressed="${isStart ? "true" : "false"}" aria-label="開始位置：${curSeg ? fmt(curSeg.start) : "未設定"}（タップして微調整）">${curSeg ? fmt(curSeg.start) : "未設定"}</button><span class="cm-time-sep" aria-hidden="true">〜</span>${curSeg && curSeg.end != null ? `<button type="button" class="cm-time-chip ${!isStart ? "is-active" : ""}" data-cook-mode="target-end" aria-pressed="${!isStart ? "true" : "false"}" aria-label="終了位置：${fmt(curSeg.end)}（タップして微調整）">${fmt(curSeg.end)}</button>` : `<span class="cm-time-end-static">最後</span>`}</div><div class="cm-time-btns"><button type="button" class="cm-time-btn" data-cook-mode="time-minus" aria-label="${isStart ? "開始を5秒前にする" : "終了を5秒前にする"}">⏪ -5秒</button><button type="button" class="cm-time-btn cm-time-here" data-cook-mode="time-here" aria-label="${isStart ? "いま再生している位置を開始にする" : "いま再生している位置を終了にする"}">📍ここ</button><button type="button" class="cm-time-btn" data-cook-mode="time-plus" aria-label="${isStart ? "開始を5秒後にする" : "終了を5秒後にする"}">+5秒 ⏩</button></div></div>` : "";
     el.querySelector(".cm-body").innerHTML = `${riceAlert}${timeBar}<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`, { thumb: true })}</p>
       ${showAll ? `<div class="cm-uses is-all"><p class="cm-uses-head">📋 材料ぜんぶ <button type="button" class="link-inline" data-cook-mode="uses">この手順だけ</button></p>${ingredientsHtml(recipe.ingredients, amount, "cm-list")}</div>`
         : `<div class="cm-uses">${usesList ? `<p class="cm-uses-head">🥄 この手順で使う <button type="button" class="link-inline" data-cook-mode="all">ぜんぶ</button></p><ul class="cm-list">${usesList}</ul>` : `<p class="cm-uses-head">🥄 <button type="button" class="link-inline" data-cook-mode="all">材料をぜんぶ見る</button></p>`}</div>`}`;
@@ -437,25 +484,32 @@ const CookMode = (() => {
     drawVoice();
     drawHand();
     el.querySelector('[data-cook-mode="next"]').innerHTML = `${last ? "✓ できた！" : "次へ ▶"}<i class="g" data-g="Open_Palm" aria-hidden="true">✋</i>`;
-    if (!first) seekTo(at);
+    if (!first && opts?.seek !== false) seekTo(at);
   }
   function openMode() {
     if (!recipe?.steps?.length) return;
-    at = 0; showAll = false;
+    at = 0; showAll = false; timeTarget = "start";
     try { playerCommand?.("pauseVideo"); } catch {}
     drawMode();
     wanted = true; acquire();
     if (!seenCoach()) drawCoach();
     try { trackDaily("cook_mode_opened"); } catch {}
   }
-  function closeMode() { if (at < 0) return; handStop(); voiceStop(); at = -1; drawMode(); }
+  function closeMode() { if (at < 0) return; handStop(); voiceStop(); at = -1; timeTarget = "start"; drawMode(); }
   function modeOp(kind) {
     const n = recipe?.steps?.length || 0;
     if (kind === "open") return openMode();
     if (kind === "close") return closeMode();
-    if (kind === "prev") at = Math.max(0, at - 1);
-    if (kind === "next") { if (at >= n - 1) { closeMode(); try { showToast("🎉 おつかれさま！「作った！」で記録"); } catch {} return; } at += 1; }
+    if (kind === "prev") { at = Math.max(0, at - 1); timeTarget = "start"; }
+    if (kind === "next") { if (at >= n - 1) { closeMode(); try { showToast("🎉 おつかれさま！「作った！」で記録"); } catch {} return; } at += 1; timeTarget = "start"; }
+    if (kind === "target-start") { setTarget("start"); return; }
+    if (kind === "target-end") { setTarget("end"); return; }
     if (kind === "time-minus" || kind === "time-plus" || kind === "time-here") return nudgeTime(kind);
+    if (kind === "time-here-end") {
+      if (segment(at)?.end == null) { flash("🔁 最後の手順は動画の終わりまで再生されます"); return; }
+      timeTarget = "end";
+      return nudgeTime("time-here");
+    }
     if (kind === "hand") { hand.on ? handStop() : handStart(); return; }
     if (kind === "voice") { voice.on ? voiceStop() : voiceStart(); return; }
     if (kind === "coach-start" || kind === "coach-later" || kind === "coach-voice") {
@@ -465,8 +519,8 @@ const CookMode = (() => {
       if (kind === "coach-voice") voiceStart();
       return;
     }
-    if (kind === "all") showAll = true;
-    if (kind === "uses") showAll = false;
+    if (kind === "all") { showAll = true; drawMode({ seek: false }); return; }
+    if (kind === "uses") { showAll = false; drawMode({ seek: false }); return; }
     drawMode();
   }
   // 手が汚れていても、指の関節でスワイプ：左へ＝次、右へ＝前。
@@ -518,6 +572,9 @@ const CookMode = (() => {
     if (/(5秒後|五秒後|少し後|ちょっと後|もっと後|遅らせて)/.test(s)) {
       return { act: "time-plus", label: "5秒後へ" };
     }
+    if (/(ここを終わり|ここまで|ここで終わり|ここを最後に|終わりをここ)/.test(s)) {
+      return { act: "time-here-end", label: "ここを終わりに" };
+    }
     if (/(ここを始まり|ここから開始|今の場面|いまの場面)/.test(s)) {
       return { act: "time-here", label: "ここを始まりに" };
     }
@@ -562,7 +619,13 @@ const CookMode = (() => {
     if (cmd.act === "prev") return modeOp("prev");
     if (cmd.act === "close") return modeOp("close");
     if (cmd.act === "repeat") return seekTo(at);
-    if (cmd.act === "time-minus" || cmd.act === "time-plus" || cmd.act === "time-here") return nudgeTime(cmd.act);
+    if (cmd.act === "time-minus" || cmd.act === "time-plus") return nudgeTime(cmd.act);
+    if (cmd.act === "time-here") { timeTarget = "start"; return nudgeTime("time-here"); }
+    if (cmd.act === "time-here-end") {
+      if (segment(at)?.end == null) { flash("🔁 最後の手順は動画の終わりまで再生されます"); return; }
+      timeTarget = "end";
+      return nudgeTime("time-here");
+    }
     if (cmd.act === "toggle-uses") return modeOp(showAll ? "uses" : "all");
     if (cmd.act === "timer") {
       const ringing = timers.filter((t) => t.done);
@@ -860,6 +923,6 @@ const CookMode = (() => {
     else if (ev.key === "Escape") closeMode();
   });
 
-  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, refineTimes, nudgeTime, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
+  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, refineTimes, nudgeTime, setTimeTarget: (t) => { setTarget(t); }, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll, timeTarget }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
 })();
 if (typeof module !== "undefined") module.exports = CookMode;
