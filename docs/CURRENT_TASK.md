@@ -14,6 +14,7 @@
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
+| 忙しい共働き夫婦向けLP訴求最適化 | レビュー待ち | claude/working-couples-lp | 共働き夫婦の平日リアル（電車内の「今日なに食べる？」LINE・駅前スーパー買い物・帰宅後15分料理モード・残業外食スライド等）にLPの訴求を最適化。表面文字数を約1,630字に抑制。 | lp/index.html, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
 
