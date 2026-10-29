@@ -10,7 +10,8 @@ import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, matchStepsToTranscript, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
+import { fetchYouTubeTranscript } from "./transcript.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
@@ -53,6 +54,8 @@ export function createApp(env = process.env, deps = {}) {
       checkVideos: async (ids) => Object.fromEntries(Object.entries(await (deps.fetchYouTubeStatuses || fetchYouTubeStatuses)(ids, env)).map(([id, v]) => [id, v.status === "public" ? { status: "public", caption: buildCaption(v.snippet), channelTitle: v.snippet.channelTitle } : { status: v.status }])) });
   const timecodeBook = createTimecodeBook(recipeStore, { analyze: deps.analyzeStepTimes || ((url, steps, o) => analyzeStepTimes(url, steps, env, o)), reserveBudget: () => catalog.reserveAnalysisBudget(),
     matchChapters: deps.matchStepsToChapters || ((steps, chapters) => matchStepsToChapters(steps, chapters, env)),
+    matchTranscript: deps.matchStepsToTranscript || ((steps, text) => matchStepsToTranscript(steps, text, env)),
+    fetchTranscript: deps.fetchYouTubeTranscript || ((id) => fetchYouTubeTranscript(id)),
     // 手順の時刻は動画の最後まで見る（30分まで。5秒に1コマなので費用は抑えられる。2026-10-04）。レシピの読み取り（VIDEO_MAX_SECONDS）とは別。
     snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), now: deps.now || Date.now });
   const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
@@ -437,14 +440,14 @@ export function createApp(env = process.env, deps = {}) {
     }
     return out;
   }
-  // レシピに付いた時刻の出どころ：運営が直した → fix／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
+  // レシピに付いた時刻の出どころ：運営が直した → fix／字幕から読んだ → transcript／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
   // 説明欄から読んだレシピの時刻は、説明欄の章からしか付かない（importRecipe.js）。出どころを残す前（#136 より前）に読んだものも章とみなす。
-  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
-  // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・説明欄の章（timecodes/* の fix・cleared・chapters）
+  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "transcript" ? "transcript" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
+  // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・YouTube字幕・説明欄の章（timecodes/* の fix・cleared・transcript・chapters）
   // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
   async function timesOf(url, r) {
     const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
-    if (st && (st.cleared || ["fix", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
+    if (st && (st.cleared || ["fix", "transcript", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
     if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
     return { times: st?.stepTimes || [], source: st?.source || "", ...(st?.seenSeconds ? { seenSeconds: st.seenSeconds } : {}) };
   }

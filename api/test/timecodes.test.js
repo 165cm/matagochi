@@ -92,3 +92,97 @@ test('step times: switching the AI endpoint is counted against the AI budget, an
   await assert.rejects(book.find({ url, steps: ['混ぜる', '煮る'] }, 'home-0001'), (e) => e.code === 'ai_budget');
   assert.equal(seen.join(''), 'a');
 });
+
+test('transcript wins over chapters and video, with fallback when missing', async () => {
+  let transcriptCalls = 0, chapterCalls = 0, videoCalls = 0;
+  const mockItems = [
+    { start: 10, duration: 3, text: '玉ねぎを薄切りにします' },
+    { start: 45, duration: 4, text: 'フライパンで強火で炒めます' }
+  ];
+  const book = createTimecodeBook(createMemorySyncStore(), {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '0:00 OP\n1:00 チャプター炒める', durationSeconds: 300 }),
+    fetchTranscript: async () => { transcriptCalls++; return mockItems; },
+    matchTranscript: async (steps, text) => {
+      assert.ok(text.includes('玉ねぎ'));
+      return { stepTimes: ['00:10', '00:45'], stepCues: ['玉ねぎ', '炒め'] };
+    },
+    matchChapters: async () => { chapterCalls++; return { chapterIndex: [1, 2] }; },
+    analyze: async () => { videoCalls++; return { stepTimes: [1, 2] }; }
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['玉ねぎを切る', '炒める'] };
+  const first = await book.find(ask, 'home-tc-1');
+  assert.deepEqual(first.stepTimes, [10, 45]);
+  assert.equal(first.source, 'transcript');
+  assert.equal(transcriptCalls, 1);
+  assert.equal(chapterCalls, 0);
+  assert.equal(videoCalls, 0);
+
+  // 再度呼び出すとキャッシュが使われる
+  const again = await book.find(ask, 'home-tc-2');
+  assert.equal(again.cacheHit, true);
+  assert.equal(again.source, 'transcript');
+  assert.deepEqual(again.stepTimes, [10, 45]);
+
+  // 字幕がない場合は chapters にフォールバック
+  const noTranscriptBook = createTimecodeBook(createMemorySyncStore(), {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '0:00 OP\n0:30 焼く', durationSeconds: 200 }),
+    fetchTranscript: async () => null,
+    matchTranscript: async () => { throw new Error('should not be called'); },
+    matchChapters: async () => { chapterCalls++; return { chapterIndex: [1, 2] }; },
+    analyze: async () => { videoCalls++; return { stepTimes: [5, 10] }; }
+  });
+  const fallbackAsk = { url: 'https://www.youtube.com/watch?v=fallback123', steps: ['切る', '焼く'] };
+  const fallbackResult = await noTranscriptBook.find(fallbackAsk, 'home-tc-3');
+  assert.equal(fallbackResult.source, 'chapters');
+  assert.equal(chapterCalls, 1);
+});
+
+test('review fix: after falling back to video, transcriptChecked is preserved so transcript is not re-checked', async () => {
+  let transcriptCalls = 0, videoCalls = 0;
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明文', durationSeconds: 120 }),
+    fetchTranscript: async () => { transcriptCalls++; return [{ start: 5, duration: 2, text: '無関係な発話' }]; },
+    matchTranscript: async () => ({ stepTimes: [null, null] }), // マッチせずフォールバック
+    analyze: async () => { videoCalls++; return { stepTimes: [10, 50] }; }
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=fallbackvid', steps: ['切る', '焼く'] };
+  const first = await book.find(ask, 'home-tc-4');
+  assert.equal(first.source, 'video');
+  assert.deepEqual(first.stepTimes, [10, 50]);
+  assert.equal(transcriptCalls, 1);
+  assert.equal(videoCalls, 1);
+
+  // 2回目：保存された video の結果を返す際、再度字幕照合をしない
+  const second = await book.find(ask, 'home-tc-4');
+  assert.equal(second.source, 'video');
+  assert.equal(transcriptCalls, 1, 'transcript must not be re-checked');
+});
+
+test('review fix: returns older video stepTimes without crashing when transcript check has no budget', async () => {
+  const { createHash } = await import('node:crypto');
+  const store = createMemorySyncStore();
+  // 変更前の古い形式で保存されている（source: "video", chaptersChecked: true, transcriptChecked なし）
+  const steps = ['切る', '焼く'];
+  const key = `timecodes/oldvideo123-${createHash('sha256').update(steps.join('\n')).digest('hex').slice(0, 16)}`;
+  await store.put(key, { stepTimes: [10, 50], source: 'video', chaptersChecked: true, seenSeconds: 120 });
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => { throw Object.assign(new Error('budget'), { code: 'ai_budget', status: 429 }); },
+    snippet: async () => ({ description: '説明', durationSeconds: 120 }),
+    fetchTranscript: async () => [{ start: 5, duration: 2, text: '発話' }],
+    matchTranscript: async () => ({ stepTimes: [5, 45] }),
+    analyze: async () => { throw new Error('should not analyze'); }
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=oldvideo123', steps };
+  const res = await book.find(ask, 'home-budget-test');
+  assert.equal(res.source, 'video');
+  assert.deepEqual(res.stepTimes, [10, 50]);
+  assert.equal(res.cacheHit, true);
+});

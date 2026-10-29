@@ -952,6 +952,10 @@ MVP の間は、読み取りの決まりを変えるたびに、前に集めた�
 
 - **AI の動画解析で `MM:SS` 文字列＋視覚・音声の根拠（`stepCues`）を出力（api/src/analyzer.js・api/src/chapters.js `parseTimeValue`）**：
   - AI に頭の中で「2分35秒＝155秒」の60進数計算をさせず、画面と同じ `"2:35"` 形式の文字列と、その場面の手がかり（テロップ・食材投入・音声）をセットで出力させ、サーバー側の `parseTimeValue` で正確に秒数へ変換する。
+- **YouTube字幕（Transcript）を活用した超低コスト・高精度な特定（api/src/transcript.js・api/src/analyzer.js `matchStepsToTranscript`・api/src/timecodes.js）**：
+  - 公開動画からミリ秒精度の字幕トラック（自動生成字幕または手動字幕）を軽量に取得（外部ライブラリ不要）。
+  - テキスト版 Gemini（Flash）で調理手順と字幕発話を照合し、動画解析の約50分の1（約0.1円以下）のコストで秒単位の正確な開始時刻と発話根拠（`stepCues`）を特定。
+  - 探索順序は `fix`（手動修正）→ `transcript`（字幕）→ `chapters`（説明欄タイムスタンプ）→ `video`（動画解析）。字幕が見つからない場合やマッチしない場合は自動で従来のチャプター・動画解析へフォールバックする。
 - **動画の長さに応じたコマ密度（FPS）の自動最適化（api/src/analyzer.js `fpsForDuration`）**：
   - 3分以下の短尺動画は `0.5 fps`（2秒に1コマ）、6分以下は `0.35 fps`（約3秒に1コマ）、それ以上は `0.2 fps`（5秒に1コマ）に自動調整。短い動画ほど場面転換が速いため、トークン上限やコストをほぼ変えずに時間分解能を2.5倍に引き上げる。
 - **0円の自動細分化・順序補正（api/src/timecodeCheck.js `refineStepTimes`・cook-mode.js `refineTimes`）**：

@@ -3,13 +3,14 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl, extractYouTubeVideoId } from "./youtube.js";
 import { parseChapters, timesFromChapterIndexes, parseTimeValue } from "./chapters.js";
 import { refineStepTimes } from "./timecodeCheck.js";
+import { formatTranscriptForPrompt } from "./transcript.js";
 import { VIDEO_TIMEOUT_MS, VIDEO_CLIENTS_MAX } from "./analyzer.js";
 
 // レシピの手順に「▶ 2:15」を付ける。動画と手順の組ごとに保存して全員で使い回す。
-// 確かさの順：① だれかが直した時刻（fix）→ ② 説明欄の投稿者のタイムスタンプ（chapters）→ ③ AIが動画から探した時刻（video）。
+// 確かさの順：① だれかが直した時刻（fix）→ ② YouTubeの字幕（transcript）→ ③ 説明欄の投稿者のタイムスタンプ（chapters）→ ④ AIが動画から探した時刻（video）。
 // AIの1日の上限（全体）の中で動き、1家庭1日20本まで。利用者の1日の上限（tickets.js）は使わない。
 export const TIMECODES_PER_DAY = 20;
-const TRUSTED = new Set(["fix", "chapters"]);
+const TRUSTED = new Set(["fix", "transcript", "chapters"]);
 // 管理の探し直しの鍵の長さ：3つの接続先がそれぞれ時間切れまでかかっても切れない長さ＋余裕5分（これより古い鍵は止まったもの。review fix #138 r2）。
 export const REANALYZE_LOCK_MS = VIDEO_TIMEOUT_MS * VIDEO_CLIENTS_MAX + 5 * 60_000;
 // 手順の並びはそのまま（空の手順も位置を保つ）。返す時刻は手順と同じ数・同じ順。
@@ -20,7 +21,7 @@ const cleanTimes = (raw, list) => {
   return list.map((step, i) => (!step ? null : parseTimeValue(times[i])));
 };
 
-export function createTimecodeBook(store, { analyze, matchChapters, snippet = async () => null, reserveBudget, maxSeconds = 600, now = Date.now } = {}) {
+export function createTimecodeBook(store, { analyze, matchChapters, matchTranscript = null, fetchTranscript = async () => null, snippet = async () => null, reserveBudget, maxSeconds = 600, now = Date.now } = {}) {
   const required = () => { if (!store) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   const inFlight = new Map();
   const keyOf = (videoId, list) => `timecodes/${videoId}-${createHash("sha256").update(list.join("\n")).digest("hex").slice(0, 16)}`;
@@ -38,17 +39,52 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
   async function save(key, entry, cached) {
     await store.put(key, { ...entry, at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 }).catch(() => {});
   }
+  // YouTubeのタイムスタンプ付き字幕から（高精度・低コスト）。見つかれば chapters や video より優先する。
+  async function fromTranscript(key, videoId, list, cached, household, info) {
+    if (cached?.envelope.transcriptChecked || typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return null;
+    const items = await fetchTranscript(videoId).catch(() => null);
+    if (!items || !items.length) {
+      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
+      return null;
+    }
+    let done = null;
+    try {
+      done = await countTry(household);
+      await reserveBudget();
+    } catch (err) {
+      // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
+      if (found(cached?.envelope.stepTimes)) return null;
+      throw err;
+    }
+    const formatted = formatTranscriptForPrompt(items, { maxSeconds: info?.durationSeconds || maxSeconds });
+    const raw = await matchTranscript(list, formatted).catch(() => null);
+    const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: info?.durationSeconds });
+    if (!found(stepTimes)) {
+      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
+      return null;
+    }
+    await save(key, { stepTimes, source: "transcript", transcriptChecked: true, chaptersChecked: true }, cached);
+    await done();
+    return { stepTimes, source: "transcript", cacheHit: false };
+  }
   // 説明欄のタイムスタンプから（1つの組につき1回だけ調べる）。
   async function fromChapters(key, videoId, list, cached, household, info) {
     if (cached?.envelope.chaptersChecked || typeof matchChapters !== "function") return null;
     const chapters = parseChapters(info?.description);
-    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), chaptersChecked: true }, cached); return null; }
-    const done = await countTry(household);
-    await reserveBudget();
+    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
+    let done = null;
+    try {
+      done = await countTry(household);
+      await reserveBudget();
+    } catch (err) {
+      // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
+      if (found(cached?.envelope.stepTimes)) return null;
+      throw err;
+    }
     const raw = await matchChapters(list, chapters).catch(() => null);
     const stepTimes = refineStepTimes(list, cleanTimes(timesFromChapterIndexes(raw?.chapterIndex, chapters, list.length), list), { durationSeconds: info?.durationSeconds });
-    if (!found(stepTimes)) { await save(key, { ...(cached?.envelope || {}), chaptersChecked: true }, cached); return null; }
-    await save(key, { stepTimes, source: "chapters", chaptersChecked: true }, cached);
+    if (!found(stepTimes)) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
+    await save(key, { stepTimes, source: "chapters", transcriptChecked: true, chaptersChecked: true }, cached);
     await done();
     return { stepTimes, source: "chapters", cacheHit: false };
   }
@@ -67,14 +103,22 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         const entry = cached?.envelope;
         if (found(entry?.stepTimes) && TRUSTED.has(entry.source)) return answer(entry, true);
         if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
-        if (!entry?.chaptersChecked) {
-          const info = await snippet(videoId).catch(() => null);
-          const chapters = await fromChapters(key, videoId, list, cached, household, info);
+        let info = null;
+        if (!entry?.transcriptChecked) {
+          info = await snippet(videoId).catch(() => null);
+          const transcriptRes = await fromTranscript(key, videoId, list, cached, household, info);
+          if (transcriptRes) return transcriptRes;
+          if (found(entry?.stepTimes)) return answer(entry, true);
+        }
+        const afterTranscript = await store.get(key);
+        if (!afterTranscript?.envelope?.chaptersChecked) {
+          if (!info) info = await snippet(videoId).catch(() => null);
+          const chapters = await fromChapters(key, videoId, list, afterTranscript, household, info);
           if (chapters) return chapters;
           const latest = await store.get(key);
           return findFromVideo(key, videoId, list, latest, household, info);
         }
-        return findFromVideo(key, videoId, list, cached, household, null);
+        return findFromVideo(key, videoId, list, afterTranscript, household, null);
       })().finally(() => inFlight.delete(flight));
       inFlight.set(flight, work);
       return work;
@@ -91,7 +135,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, snippet = as
         const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
         if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
         // seenSeconds：AI が見た長さ（点検で「見ていない後半に時刻がない」を見分ける）。
-        await save(key, { stepTimes, source: "video", chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
+        await save(key, { stepTimes, source: "video", transcriptChecked: true, chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
         await done();
         return { stepTimes, source: "video", cacheHit: false };
       }

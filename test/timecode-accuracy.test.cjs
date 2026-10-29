@@ -155,4 +155,22 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   assert.deepEqual(JSON.parse(run("JSON.stringify(recipeStepTimes(fixedRecipe))")), [0, 5, 5, 15]);
   assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(0))")), { start: 0, end: 5 });
   assert.deepEqual(JSON.parse(run("JSON.stringify(CookMode.segment(1))")), { start: 5, end: 15 });
+
+  // 5. review fix: サーバーから届いた YouTube 字幕（transcript）由来の時刻は、レシピの古い時刻より優先して保存・表示される
+  run(`state.recipes.push({
+    id: "transcript-target",
+    title: "生姜焼き",
+    videoUrl: "https://www.youtube.com/watch?v=transvid001",
+    steps: ["肉を切る", "タレに漬ける", "焼く"],
+    stepTimes: [0, 10, 20]
+  })`);
+  // ensureTimecodes で peek: true で問い合わせ、サーバーから source: "transcript" で届いたケース
+  run(`timecodes.set(timecodeKey(state.recipes[1]), {
+    status: "done",
+    at: Date.now(),
+    times: [15, 45, 90],
+    source: "transcript"
+  })`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(recipeStepTimes(state.recipes[1]))")), [15, 45, 90], "transcript source overrides older recipe.stepTimes");
+  assert.equal(run("timecodeHint(state.recipes[1])"), "▶ は動画の字幕から合わせた時刻です");
 });
