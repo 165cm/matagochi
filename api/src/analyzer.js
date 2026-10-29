@@ -196,9 +196,9 @@ JSONのみ:
 
 料理名: ${String(title || "").slice(0, 80)}
 材料（説明欄）:
-${(ingredients || []).map((ing) => `- ${ing.name || ""}: ${ing.amount || ""}`).join("\n").slice(0, 500)}
+${(ingredients || []).slice(0, 50).map((ing) => `- ${ing.name || ""}: ${ing.amount || ""}`).join("\n").slice(0, 3000)}
 元の手順（説明欄）:
-${(steps || []).map((s, i) => `${i + 1}. ${s}`).join("\n").slice(0, 500)}
+${(steps || []).slice(0, 30).map((s, i) => `${i + 1}. ${String(s || "").slice(0, 300)}`).join("\n").slice(0, 6000)}
 動画の字幕（発話ログ）:
 ${formattedTranscript}`;
 

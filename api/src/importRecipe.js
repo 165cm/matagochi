@@ -79,7 +79,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
           cues
         }).catch(() => null);
 
-        if (hybrid && Array.isArray(hybrid.steps) && hybrid.steps.length >= 2) {
+        const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= rawSteps.length);
+        if (hybrid && Array.isArray(hybrid.steps) && hybrid.steps.length >= 2 && isBetterOrCoarse) {
           analysis = {
             ...analysis,
             steps: hybrid.steps,

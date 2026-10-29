@@ -280,3 +280,62 @@ test("falls back cleanly to description steps when transcript is unavailable or 
   assert.equal(resultFailedHybrid.analyzedFrom, "description");
   assert.equal(resultFailedHybrid.steps.length, 3);
 });
+
+test("long description steps are passed completely to hybrid generator without 500-char truncation, and already-detailed steps avoid reduction", async () => {
+  const longStep1 = "下準備としてフライパンに豚肉を並べ、調味料A（酒、塩こしょう、醤油少々、おろし生姜、おろしニンニク）をしっかり手で揉み込み、約10分置いて味をなじませてから片栗粉を全体に丁寧にまぶします。".repeat(3);
+  const longStep2 = "フライパンにサラダ油大さじ2を回し入れ、弱火から中火でじっくりと片面4分、裏返してさらに3分、合計7分間カリッカリのきつね色になるまで焦がさないように注意しながら焼き上げます。".repeat(3);
+
+  let passedStepsLength = 0;
+  const result = await importYouTubeRecipe("https://www.youtube.com/watch?v=longstep001", {
+    fetchYouTubeSnippet: async () => ({
+      title: "本格豚こま料理",
+      description: `【材料】豚こま 300g\n【作り方】①${longStep1}\n②${longStep2}`,
+      channelTitle: "料理人"
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "本格豚こま料理",
+      ingredients: [{ name: "豚こま", amount: "300g" }],
+      steps: [longStep1, longStep2]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [{ start: 10, dur: 5, text: "豚肉に下味をもみ込みます" }]
+    }),
+    buildHybridRecipeSteps: async ({ steps }) => {
+      passedStepsLength = steps.reduce((sum, s) => sum + s.length, 0);
+      return {
+        steps: ["下味をつける", "粉をまぶす", "焼く", "仕上げる"],
+        stepTimes: [10, 30, 60, 120]
+      };
+    }
+  });
+
+  // 500文字で途切れずに全文字（546文字）が渡っていること
+  assert.ok(passedStepsLength > 500);
+  assert.equal(result.steps.length, 4);
+
+  // 既に6工程ある詳細なレシピで、ハイブリッド生成が3工程に減らそうとした場合は元の詳細手順を維持する保護
+  const detailedResult = await importYouTubeRecipe("https://www.youtube.com/watch?v=detailed001", {
+    fetchYouTubeSnippet: async () => ({
+      title: "工程の多い料理",
+      description: "【材料】豚肉\n【手順】1〜6",
+      channelTitle: "プロ"
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "工程の多い料理",
+      ingredients: [{ name: "豚肉", amount: "200g" }],
+      steps: ["工程1", "工程2", "工程3", "工程4", "工程5", "工程6"]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [{ start: 5, dur: 5, text: "工程です" }]
+    }),
+    buildHybridRecipeSteps: async () => ({
+      steps: ["要約1", "要約2"], // 6工程を2工程に減らしてしまう劣化
+      stepTimes: [5, 50]
+    })
+  });
+
+  assert.equal(detailedResult.steps.length, 6);
+  assert.equal(detailedResult.analyzedFrom, "description");
+});
