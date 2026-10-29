@@ -10,7 +10,7 @@ import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, matchStepsToTranscript, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, matchStepsToTranscript, buildHybridRecipeSteps, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
 import { fetchYouTubeTranscript } from "./transcript.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
@@ -44,7 +44,9 @@ export function createApp(env = process.env, deps = {}) {
     deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
       analyzeRecipeVideo: env.VIDEO_ANALYSIS_ENABLED === "false" ? undefined : (videoUrl, snippet, videoOptions) => analyzeRecipeVideo(videoUrl, snippet, env, videoOptions),
       analyzeRecipeDescription: requireAnalyzer((snippet) => analyzeRecipeDescription(snippet, env)),
-      matchStepsToChapters: env.GOOGLE_CLOUD_PROJECT ? (steps, chapters) => matchStepsToChapters(steps, chapters, env) : undefined
+      matchStepsToChapters: env.GOOGLE_CLOUD_PROJECT ? (steps, chapters) => matchStepsToChapters(steps, chapters, env) : undefined,
+      fetchYouTubeTranscript: deps.fetchYouTubeTranscript || ((id) => fetchYouTubeTranscript(id)),
+      buildHybridRecipeSteps: env.GOOGLE_CLOUD_PROJECT || env.GEMINI_API_KEY ? (args) => buildHybridRecipeSteps(args, env) : undefined
     }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
       enabled: env.AI_IMPORT_ENABLED !== "false",

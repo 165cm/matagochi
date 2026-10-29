@@ -186,26 +186,33 @@ export async function fetchYouTubeTranscript(videoId, { lang = "ja", fetchImpl =
 // AIプロンプト用に字幕を各発話ID [ID] とタイムスタンプ付きで整形する。
 // 発話時刻の秒未満（0.1秒単位）も保持し、AIには該当する発話IDを選ばせる。
 export function formatTranscriptForPrompt(items = [], { maxSeconds = 1800, maxChars = 24000 } = {}) {
-  if (!Array.isArray(items) || !items.length) return { text: "", cues: [] };
+  if (!Array.isArray(items) || !items.length) return { text: "", cues: [], truncated: false };
 
   const cues = [];
   const lines = [];
   let totalChars = 0;
+  let truncated = false;
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    if (item.start > maxSeconds) break;
+    if (item.start > maxSeconds) {
+      truncated = true;
+      break;
+    }
     const id = i + 1;
     const timeStr = formatTime(item.start, true);
     const line = `[${id}] ${timeStr} ${item.text}`;
-    if (totalChars + line.length > maxChars) break;
+    if (totalChars + line.length > maxChars) {
+      truncated = true;
+      break;
+    }
 
     cues.push({ id, start: item.start, duration: item.duration, end: item.end, text: item.text });
     lines.push(line);
     totalChars += line.length + 1;
   }
 
-  return { text: lines.join("\n"), cues };
+  return { text: lines.join("\n"), cues, truncated };
 }
 
 // AIの回答（cueIds または stepTimes）から、実在する字幕発話の開始秒を安全にルックアップする。

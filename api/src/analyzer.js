@@ -172,6 +172,96 @@ ${formattedTranscript}`;
   return parseJsonResponse(response.text || "");
 }
 
+// 説明欄の材料・手順と字幕（発話ログ）を統合し、動画の実際の調理段取り・作業単位に沿った手順とタイムコードを生成する。
+export async function buildHybridRecipeSteps({ title, ingredients, steps, formattedTranscript, cues }, env = process.env) {
+  const project = env.GOOGLE_CLOUD_PROJECT;
+  if (!project && !env.GEMINI_API_KEY) throw new ApiError(500, "missing_google_cloud_project", "Google Cloudプロジェクトが設定されていません。");
+  const ai = env.GEMINI_API_KEY
+    ? new GoogleGenAI({ apiKey: env.GEMINI_API_KEY })
+    : new GoogleGenAI({ vertexai: true, project, location: env.GOOGLE_CLOUD_LOCATION || "us-central1" });
+  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+  const prompt = `料理動画の字幕（[番号] 時刻 発話内容）と、説明欄の材料・手順があります。
+家で実際に料理する人が動画やタイマーを見ながら迷わず作れるよう、実際の動画の調理進行・段取りに沿った「わかりやすい作り方（4〜7手順）」を組み立ててください。
+
+制約:
+1. 段取りの反映: 焼いている待ち時間にタレを混ぜる・和え衣を作るなど、動画内で実際に話されている調理順序に沿って手順を並べてください。
+2. 作業単位の分割: 「下味をもみ込む」と「片栗粉をまぶす」など、別の作業は1つの手順にまとめず適切に分割してください。
+3. 事実の保持: 材料の分量や加熱時間（例: 中火で3〜4分）の数字は元の情報から変えず、創作しないでください。
+4. 開始字幕の特定: 各手順の作業を実際に開始する字幕の[番号]（cueId）を指定してください。該当がない場合はnull。
+5. 手順の数: 4〜7手順程度にまとめてください（細かすぎる10手順以上や、粗すぎる3手順以下は避ける）。
+6. 各手順の文章: 簡潔に1〜2文（60字以内）。
+7. 完結判定: 盛り付けや完成まで手順が含まれていれば stepsComplete を true、字幕が途中で切れるなどして最後まで完結していなければ false にしてください。
+
+JSONのみ:
+{"stepsComplete":trueまたはfalse,"steps":[{"text":"手順の文章（例: フライパンに豚こまを入れ、酒、塩こしょうを加えてよく揉み込む。）","cueId":番号またはnull}]}
+
+料理名: ${String(title || "").slice(0, 80)}
+材料（説明欄）:
+${(ingredients || []).slice(0, 50).map((ing) => `- ${ing.group ? `[${ing.group}] ` : ""}${ing.name || ""}: ${ing.amount || ""}`).join("\n").slice(0, 3000)}
+元の手順（説明欄）:
+${(steps || []).slice(0, 30).map((s, i) => `${i + 1}. ${String(s || "").slice(0, 300)}`).join("\n").slice(0, 6000)}
+動画の字幕（発話ログ）:
+${formattedTranscript}`;
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      httpOptions: { timeout: 60_000, retryOptions: { attempts: 1 } },
+      maxOutputTokens: 2048,
+      temperature: 0.1,
+      responseMimeType: "application/json"
+    }
+  });
+  recordUsage(model, response);
+  const raw = parseJsonResponse(response.text || "");
+  const rawSteps = Array.isArray(raw?.steps) ? raw.steps : [];
+  if (rawSteps.length < 2) return null;
+
+  const cueMap = new Map();
+  if (Array.isArray(cues)) {
+    for (const c of cues) {
+      if (c && c.id != null) cueMap.set(Number(c.id), c);
+    }
+  }
+
+  const finalSteps = [];
+  const stepTimes = [];
+  const stepCues = [];
+  for (const item of rawSteps) {
+    const text = String(item?.text || "").trim();
+    if (!text) continue;
+    finalSteps.push(text);
+    const cid = item?.cueId != null ? Number(item.cueId) : null;
+    const cue = cid != null && cueMap.has(cid) ? cueMap.get(cid) : null;
+    const rawSec = cue?.start ?? cue?.startSeconds;
+    const time = Number.isFinite(rawSec) ? Math.round(rawSec * 10) / 10 : null;
+    stepTimes.push(time);
+    stepCues.push(cue?.text ? cue.text.slice(0, 15) : null);
+  }
+
+  if (finalSteps.length < 2) return null;
+
+  // タイムコードの単調増加チェック（順序の逆転は null にする）
+  let lastTime = -1;
+  for (let i = 0; i < stepTimes.length; i++) {
+    if (stepTimes[i] !== null) {
+      if (lastTime >= 0 && stepTimes[i] < lastTime) {
+        stepTimes[i] = null;
+      } else {
+        lastTime = stepTimes[i];
+      }
+    }
+  }
+
+  return {
+    steps: finalSteps,
+    stepTimes,
+    stepCues,
+    stepsComplete: raw?.stepsComplete !== false
+  };
+}
+
 // 手順の書き直し（覚えやすい手順。APP_MAP §49）：文字だけ・1回。0円の確かめ（rewrite.js checkGuide）で落ちたら、理由を添えてもう1回まで。
 export async function rewriteRecipeSteps({ title, ingredients, steps, limit, retry }, env = process.env) {
   const project = env.GOOGLE_CLOUD_PROJECT;
