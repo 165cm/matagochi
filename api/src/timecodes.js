@@ -47,8 +47,15 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
       return null;
     }
-    const done = await countTry(household);
-    await reserveBudget();
+    let done = null;
+    try {
+      done = await countTry(household);
+      await reserveBudget();
+    } catch (err) {
+      // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
+      if (found(cached?.envelope.stepTimes)) return null;
+      throw err;
+    }
     const formatted = formatTranscriptForPrompt(items, { maxSeconds: info?.durationSeconds || maxSeconds });
     const raw = await matchTranscript(list, formatted).catch(() => null);
     const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: info?.durationSeconds });
@@ -65,8 +72,15 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
     if (cached?.envelope.chaptersChecked || typeof matchChapters !== "function") return null;
     const chapters = parseChapters(info?.description);
     if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
-    const done = await countTry(household);
-    await reserveBudget();
+    let done = null;
+    try {
+      done = await countTry(household);
+      await reserveBudget();
+    } catch (err) {
+      // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
+      if (found(cached?.envelope.stepTimes)) return null;
+      throw err;
+    }
     const raw = await matchChapters(list, chapters).catch(() => null);
     const stepTimes = refineStepTimes(list, cleanTimes(timesFromChapterIndexes(raw?.chapterIndex, chapters, list.length), list), { durationSeconds: info?.durationSeconds });
     if (!found(stepTimes)) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
@@ -94,6 +108,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
           info = await snippet(videoId).catch(() => null);
           const transcriptRes = await fromTranscript(key, videoId, list, cached, household, info);
           if (transcriptRes) return transcriptRes;
+          if (found(entry?.stepTimes)) return answer(entry, true);
         }
         const afterTranscript = await store.get(key);
         if (!afterTranscript?.envelope?.chaptersChecked) {

@@ -163,3 +163,26 @@ test('review fix: after falling back to video, transcriptChecked is preserved so
   assert.equal(second.source, 'video');
   assert.equal(transcriptCalls, 1, 'transcript must not be re-checked');
 });
+
+test('review fix: returns older video stepTimes without crashing when transcript check has no budget', async () => {
+  const { createHash } = await import('node:crypto');
+  const store = createMemorySyncStore();
+  // 変更前の古い形式で保存されている（source: "video", chaptersChecked: true, transcriptChecked なし）
+  const steps = ['切る', '焼く'];
+  const key = `timecodes/oldvideo123-${createHash('sha256').update(steps.join('\n')).digest('hex').slice(0, 16)}`;
+  await store.put(key, { stepTimes: [10, 50], source: 'video', chaptersChecked: true, seenSeconds: 120 });
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => { throw Object.assign(new Error('budget'), { code: 'ai_budget', status: 429 }); },
+    snippet: async () => ({ description: '説明', durationSeconds: 120 }),
+    fetchTranscript: async () => [{ start: 5, duration: 2, text: '発話' }],
+    matchTranscript: async () => ({ stepTimes: [5, 45] }),
+    analyze: async () => { throw new Error('should not analyze'); }
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=oldvideo123', steps };
+  const res = await book.find(ask, 'home-budget-test');
+  assert.equal(res.source, 'video');
+  assert.deepEqual(res.stepTimes, [10, 50]);
+  assert.equal(res.cacheHit, true);
+});
