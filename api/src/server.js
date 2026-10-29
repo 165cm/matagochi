@@ -10,7 +10,8 @@ import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, matchStepsToTranscript, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
+import { fetchYouTubeTranscript } from "./transcript.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
@@ -53,6 +54,8 @@ export function createApp(env = process.env, deps = {}) {
       checkVideos: async (ids) => Object.fromEntries(Object.entries(await (deps.fetchYouTubeStatuses || fetchYouTubeStatuses)(ids, env)).map(([id, v]) => [id, v.status === "public" ? { status: "public", caption: buildCaption(v.snippet), channelTitle: v.snippet.channelTitle } : { status: v.status }])) });
   const timecodeBook = createTimecodeBook(recipeStore, { analyze: deps.analyzeStepTimes || ((url, steps, o) => analyzeStepTimes(url, steps, env, o)), reserveBudget: () => catalog.reserveAnalysisBudget(),
     matchChapters: deps.matchStepsToChapters || ((steps, chapters) => matchStepsToChapters(steps, chapters, env)),
+    matchTranscript: deps.matchStepsToTranscript || ((steps, text) => matchStepsToTranscript(steps, text, env)),
+    fetchTranscript: deps.fetchYouTubeTranscript || ((id) => fetchYouTubeTranscript(id)),
     // 手順の時刻は動画の最後まで見る（30分まで。5秒に1コマなので費用は抑えられる。2026-10-04）。レシピの読み取り（VIDEO_MAX_SECONDS）とは別。
     snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), now: deps.now || Date.now });
   const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });

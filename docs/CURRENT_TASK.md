@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| YouTube字幕を活用した高精度・低コストなタイムコード抽出（フェーズ1） | 実装完了・テスト通過（PR待ち） | feat/timecode-transcript | YouTube字幕（自動生成/手動）を取得し、テキスト版Geminiで調理手順と高精度・低コストにマッチング（動画解析の1/50のコスト）。手動fix → 字幕 → チャプター → 動画解析の順でフォールバック | api/src/transcript.js, api/src/analyzer.js, api/src/timecodes.js, api/src/server.js, api/test/transcript.test.js, api/test/timecodes.test.js, docs/APP_MAP.md, docs/ARCHITECTURE.md, docs/CURRENT_TASK.md |
 | 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 公開済み（#184。次：そろったら需要に合わせて集める） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
 | レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | 公開済み（#186・#187） | claude/nice-shannon-6g1g5m | 料理の画面に「🗓 献立に入れる」（#186）・一覧の整理（#187） | — |
 | 管理者・編集者・閲覧者の見えるものの整理（2026-10-29 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 🙋 は閲覧者だけ・「リクエストを受け付ける」は閲覧者がいる時だけ・閲覧者のレシピタブの文言と定番づくり・使われていない古い部品を削除・共有中は「わが家のレシピ」 | household.js, app.js, test/roles-ui.test.cjs, sw.js, index.html, version.json, docs/* |
