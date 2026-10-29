@@ -39,7 +39,7 @@ test("CookMode.refineTimes and segment: subdivides coarse chapter duplicates and
   assert.ok(cappedDup[2] > 50 && cappedDup[2] < 90);
 });
 
-test("CookMode nudgeTime and voice commands: adjusts loop start by -5s / +5s / here and triggers onTimeFix", () => {
+test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s / here and triggers onTimeFix", () => {
   const fixes = [];
   CookMode.setRecipe({
     title: "豚キムチ",
@@ -50,24 +50,53 @@ test("CookMode nudgeTime and voice commands: adjusts loop start by -5s / +5s / h
     onTimeFix: (idx, sec) => fixes.push([idx, sec]),
   });
   CookMode.openMode();
+  assert.equal(CookMode._mode().timeTarget, "start");
   assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
 
   // 音声コマンドの認識確認
   assert.deepEqual(CookMode.parseVoice("5秒前"), { act: "time-minus", label: "5秒前へ" });
   assert.deepEqual(CookMode.parseVoice("少し後ろ"), { act: "time-plus", label: "5秒後へ" });
   assert.deepEqual(CookMode.parseVoice("ここを始まりに"), { act: "time-here", label: "ここを始まりに" });
+  assert.deepEqual(CookMode.parseVoice("ここを終わりに"), { act: "time-here-end", label: "ここを終わりに" });
+  assert.deepEqual(CookMode.parseVoice("ここまで"), { act: "time-here-end", label: "ここを終わりに" });
 
-  // -5秒微調整
+  // 開始時刻の -5秒微調整
   CookMode.nudgeTime("time-minus");
   assert.deepEqual(CookMode.segment(0), { start: 15, end: 60 });
   assert.deepEqual(fixes.at(-1), [0, 15]);
 
-  // +5秒微調整
+  // 開始時刻の +5秒微調整
   CookMode.nudgeTime("time-plus");
   assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
   assert.deepEqual(fixes.at(-1), [0, 20]);
 
+  // 終了位置チップへの切り替え（timeTarget = "end"）
+  CookMode.setTimeTarget("end");
+  assert.equal(CookMode._mode().timeTarget, "end");
+
+  // 終了時刻の -5秒微調整（step 1 の開始時刻 60 -> 55）
+  CookMode.nudgeTime("time-minus");
+  assert.deepEqual(CookMode.segment(0), { start: 20, end: 55 });
+  assert.deepEqual(fixes.at(-1), [1, 55]);
+
+  // 終了時刻の +5秒微調整（step 1 の開始時刻 55 -> 60）
+  CookMode.nudgeTime("time-plus");
+  assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
+  assert.deepEqual(fixes.at(-1), [1, 60]);
+
+  // 逆転防止クランプの確認
+  // 1. 開始時刻を +5秒 していった場合、終了時刻（60）- 1 = 59 を超えない
+  CookMode.setTimeTarget("start");
+  for (let i = 0; i < 15; i++) CookMode.nudgeTime("time-plus");
+  assert.equal(CookMode.segment(0).start, 59);
+
+  // 2. 終了時刻を -5秒 していった場合、開始時刻（59）+ 1 = 60 を下回らない
+  CookMode.setTimeTarget("end");
+  for (let i = 0; i < 15; i++) CookMode.nudgeTime("time-minus");
+  assert.equal(CookMode.segment(0).end, 60);
+
   CookMode.closeMode();
+  assert.equal(CookMode._mode().timeTarget, "start");
   CookMode._clearTimers();
 });
 
