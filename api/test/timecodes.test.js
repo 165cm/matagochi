@@ -515,3 +515,56 @@ test('review fix: reserveBudget failure immediately releases household reserved 
   assert.equal(finalQuota.envelope.used, 1);
   assert.equal(finalQuota.envelope.reserved ?? 0, 0);
 });
+
+test('review fix: concurrent release conflicts are retried until reserved is 0, and stale reserved self-heals', async () => {
+  const store = createMemorySyncStore();
+  const dayKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-multi-release`;
+
+  // 1. 4件の並行リクエストが同時に失敗しても、リトライによって reserved が確実に 0 に戻ること
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => { throw new Error('AI fail'); },
+    matchChapters: async () => ({ chapterIndex: [] }),
+    analyze: async () => { throw new Error('video fail'); }
+  });
+
+  const urls = [1, 2, 3, 4].map((i) => `https://www.youtube.com/watch?v=multirel00${i}`);
+  await Promise.all(
+    urls.map((url) => book.find({ url, steps: ['準備', '炒める'] }, 'home-multi-release').catch(() => null))
+  );
+
+  const quota = await store.get(dayKey);
+  assert.ok(quota, 'day quota must exist after requests');
+  assert.equal(quota.envelope.reserved ?? 0, 0, 'all reserved quota must be released even under concurrent completion conflicts');
+  assert.equal(quota.envelope.used, 0);
+
+  // 2. 過去の更新から120秒以上経過した孤立 reserved がセルフヒーリングされること
+  let mockTime = Date.now();
+  const staleBook = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [10, 50] }),
+    now: () => mockTime
+  });
+
+  const staleKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-stale-heal`;
+  // クラッシュ等で reserved: 1 が残った古い状態（3分前）
+  await store.put(staleKey, {
+    used: 19,
+    tries: 20,
+    reserved: 1,
+    at: new Date(mockTime - 180_000).toISOString()
+  });
+
+  // 3分経過しているため、reserved はセルフヒーリングで 0 と判定され、残り1本（used: 19）の枠が使える
+  const healRes = await staleBook.find({ url: 'https://www.youtube.com/watch?v=staleheal11', steps: ['準備', '炒める'] }, 'home-stale-heal');
+  assert.equal(healRes.source, 'transcript');
+  assert.deepEqual(healRes.stepTimes, [10, 50]);
+
+  const healedQuota = await store.get(staleKey);
+  assert.equal(healedQuota.envelope.used, 20);
+  assert.equal(healedQuota.envelope.reserved ?? 0, 0);
+});

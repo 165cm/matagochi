@@ -28,29 +28,35 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   const dayKeyOf = (household) => `timecodes-quota/${new Date(now()).toISOString().slice(0, 10)}/${household || "anon"}`;
   const answer = (entry, cacheHit) => ({ stepTimes: entry.stepTimes, source: entry.source || "video", cacheHit });
   // 1家庭1日：見つかった本数は20まで、失敗も含めた試しは40まで（同時実行の枠予約・競合再試行で上限を厳格に保護）。
+  // 予約枠（reserved）は探索中の数分間のみ有効とし、万が一の孤立枠は2分で自動回復（セルフヒーリング）する。
   async function countTry(household) {
     const dayKey = dayKeyOf(household);
     for (let attempt = 0; attempt < 3; attempt++) {
       const quota = await store.get(dayKey);
       const used = quota?.envelope.used || 0, tries = quota?.envelope.tries || 0;
-      const reserved = quota?.envelope.reserved || 0;
+      const lastAt = quota?.envelope.at ? Date.parse(quota.envelope.at) : 0;
+      const isStale = lastAt > 0 && now() - lastAt > 120_000;
+      const reserved = isStale ? 0 : (quota?.envelope.reserved || 0);
       if (used + reserved >= TIMECODES_PER_DAY || tries >= TIMECODES_PER_DAY * 2) {
         throw new ApiError(429, "timecode_quota", "今日はここまでです。明日また探します。");
       }
-      const counted = await store.put(dayKey, { used, tries: tries + 1, reserved: reserved + 1 }, { ifGeneration: quota?.generation ?? 0 }).catch(() => null);
+      const counted = await store.put(dayKey, { used, tries: tries + 1, reserved: reserved + 1, at: new Date(now()).toISOString() }, { ifGeneration: quota?.generation ?? 0 }).catch(() => null);
       if (counted) {
         let finished = false;
         return async (success = true) => {
           if (finished) return;
-          finished = true;
-          for (let r = 0; r < 3; r++) {
+          for (let r = 0; r < 10; r++) {
             const cur = await store.get(dayKey);
             const u = cur?.envelope.used || 0, tr = cur?.envelope.tries || 0;
             const res = Math.max(0, (cur?.envelope.reserved || 1) - 1);
-            const next = { used: success ? u + 1 : u, tries: tr };
+            const next = { used: success ? u + 1 : u, tries: tr, at: new Date(now()).toISOString() };
             if (res > 0) next.reserved = res;
             const ok = await store.put(dayKey, next, { ifGeneration: cur?.generation ?? 0 }).catch(() => null);
-            if (ok) break;
+            if (ok) {
+              finished = true;
+              break;
+            }
+            if (r < 9) await new Promise((resolve) => setTimeout(resolve, 10 * (r + 1)));
           }
         };
       }
