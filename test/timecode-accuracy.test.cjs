@@ -156,6 +156,24 @@ test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s
   CookMode.nudgeTime("time-plus");
   assert.deepEqual(dupFixes.at(-1), [0, 25], "start time +5s advances forward instead of shrinking to next duplicate");
   CookMode.closeMode();
+
+  // 8. 字幕由来の小数秒で手順間が1秒未満の場合でも終了の「+5秒」が後続手順を越えないこと（review fix）
+  const denseFixes = [];
+  CookMode.setRecipe({
+    title: "小数密集レシピ",
+    steps: ["準備", "加熱", "盛付"],
+    timesOf: () => [20, 20.5, 20.8],
+    timesFixed: true,
+    videoId: "densetimes1",
+    ingredients: [],
+    onTimeFix: (idx, sec) => denseFixes.push([idx, sec]),
+  });
+  CookMode.openMode();
+  CookMode.setTimeTarget("end");
+  CookMode.nudgeTime("time-plus");
+  assert.ok(denseFixes.at(-1)[1] < 20.8, "end time must not exceed next step timestamp 20.8");
+  assert.ok(denseFixes.at(-1)[1] >= 20.5, "end time remains valid");
+  CookMode.closeMode();
 });
 
 test("daily-ui & discover: already-saved recipes refine coarse times, guide steps inherit non-null member times, and saveQuickTimeFix persists & shares", async () => {

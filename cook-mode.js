@@ -388,11 +388,15 @@ const CookMode = (() => {
       ? (seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0))
       : seg.end;
 
-    const minSec = isStart ? 0 : seg.start + 1;
     const nextLimit = isStart
       ? (seg?.end != null ? seg.end : times.slice(targetIdx + 1).find((t) => Number.isFinite(t) && t > cur))
       : times.slice(targetIdx + 1).find((t) => Number.isFinite(t) && t > cur);
-    const maxSec = nextLimit != null ? Math.max(minSec, nextLimit - 1) : 35_999;
+    const minSec = isStart
+      ? 0
+      : (seg ? (cur - seg.start >= 1 ? seg.start + 1 : seg.start + 0.1) : 0);
+    const maxSec = nextLimit != null
+      ? Math.max(minSec, nextLimit - cur >= 1 ? nextLimit - 1 : nextLimit - 0.1)
+      : 35_999;
 
     let nextSec = cur;
     if (kind === "time-minus") {
@@ -407,6 +411,7 @@ const CookMode = (() => {
         nextSec = cur;
       }
     }
+    nextSec = Math.round(nextSec * 10) / 10;
     localTimes[targetIdx] = nextSec;
     try { recipe.onTimeFix?.(targetIdx, nextSec); } catch {}
     drawMode({ seek: false });
