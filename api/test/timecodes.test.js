@@ -477,3 +477,41 @@ test('P2 fix: fractional seconds (0.1s) are preserved in stored() and parseTimeV
   const storedResult = await book.stored(ask);
   assert.deepEqual(storedResult.stepTimes, [10.5, 50.8]);
 });
+
+test('review fix: reserveBudget failure immediately releases household reserved quota', async () => {
+  const store = createMemorySyncStore();
+  const dayKey = `timecodes-quota/${new Date().toISOString().slice(0, 10)}/home-budget-fail`;
+  let shouldFailBudget = true;
+
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {
+      if (shouldFailBudget) {
+        throw Object.assign(new Error('AI budget full'), { code: 'analysis_busy', status: 429 });
+      }
+    },
+    snippet: async () => ({ description: '説明', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '準備' }, { start: 50, duration: 3, text: '炒める' }],
+    matchTranscript: async () => ({ cueIds: [1, 2], stepTimes: [10, 50] }),
+    analyze: async () => ({ stepTimes: [10, 50] })
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=budgetfail1', steps: ['準備', '炒める'] };
+
+  // 初回：reserveBudget で失敗
+  await assert.rejects(book.find(ask, 'home-budget-fail'), { code: 'analysis_busy' });
+
+  // 予約枠（reserved）が残っておらず解放されていること
+  const quotaAfterFail = await store.get(dayKey);
+  assert.equal(quotaAfterFail.envelope.reserved ?? 0, 0, 'reserved must be released upon reserveBudget failure');
+  assert.equal(quotaAfterFail.envelope.used, 0);
+
+  // 混雑解消後、直ちに正常に利用できること
+  shouldFailBudget = false;
+  const res = await book.find(ask, 'home-budget-fail');
+  assert.equal(res.source, 'transcript');
+  assert.deepEqual(res.stepTimes, [10, 50]);
+
+  const finalQuota = await store.get(dayKey);
+  assert.equal(finalQuota.envelope.used, 1);
+  assert.equal(finalQuota.envelope.reserved ?? 0, 0);
+});

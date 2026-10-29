@@ -76,6 +76,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       done = await countTry(household);
       await reserveBudget();
     } catch (err) {
+      if (done) await done(false);
       // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
       if (found(cached?.envelope.stepTimes)) return null;
       throw err;
@@ -149,6 +150,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       done = await countTry(household);
       await reserveBudget();
     } catch (err) {
+      if (done) await done(false);
       // 既存の保存済み時刻がある場合は、AIの枠や予算が尽きていても既存の時刻を返し、利用を止めない
       if (found(cached?.envelope.stepTimes)) return null;
       throw err;
@@ -205,7 +207,12 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         if (found(cached?.envelope.stepTimes)) return peek ? { stepTimes: [], source: "none", cacheHit: true } : answer(cached.envelope, true);
         if (peek) return { stepTimes: [], source: "none", cacheHit: false };
         const done = await countTry(household);
-        await reserveBudget();
+        try {
+          await reserveBudget();
+        } catch (err) {
+          await done(false);
+          throw err;
+        }
         const seconds = info?.durationSeconds ?? (await snippet(videoId).catch(() => null))?.durationSeconds;
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
         let raw = null;
