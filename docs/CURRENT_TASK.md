@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-29（YouTube字幕を活用したタイムコード抽出 #193 公開）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-29（YouTube字幕タイムコードの採用判定・キャッシュ・競合処理を修正 #194 公開）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,6 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 字幕結果の採用判定・一時失敗キャッシュ・競合防止の修正 | 作業中 | fix/transcript-accuracy-and-cache | 架空時刻の補間防止（画面側の密集解除防止・実字幕検証）、既存時刻を欠損結果で上書きしない網羅率判定、一時障害（429・AI例外等）の再試行可能化、保存競合時の手動修正・全消去優先、家庭別20本上限の枠予約（超過防止）、小数第1位の一貫保持 | api/src/transcript.js, api/src/analyzer.js, api/src/timecodes.js, api/src/chapters.js, discover.js, cook-mode.js, api/test/transcript.test.js, api/test/timecodes.test.js, test/timecode-accuracy.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md, app.js, sw.js, index.html, version.json |
 | 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 公開済み（#184。次：そろったら需要に合わせて集める） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
 | レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | 公開済み（#186・#187） | claude/nice-shannon-6g1g5m | 料理の画面に「🗓 献立に入れる」（#186）・一覧の整理（#187） | — |
 | 管理者・編集者・閲覧者の見えるものの整理（2026-10-29 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 🙋 は閲覧者だけ・「リクエストを受け付ける」は閲覧者がいる時だけ・閲覧者のレシピタブの文言と定番づくり・使われていない古い部品を削除・共有中は「わが家のレシピ」 | household.js, app.js, test/roles-ui.test.cjs, sw.js, index.html, version.json, docs/* |
@@ -34,6 +33,8 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- YouTube字幕タイムコードの採用判定・一時失敗キャッシュ・競合処理を修正（#194、公開済み）：架空時刻の按分補正防止（画面側の密集解除防止・実字幕検証）、既存時刻を欠損結果で上書きしない網羅率判定、一時障害（429・AI例外等）の再試行可能化、保存競合時の手動修正・全消去優先、家庭別20本上限の枠予約（超過防止）、小数第1位の一貫保持、アプリ開き直し後も端末保存された出所（`stepTimesFrom: "transcript"`）により架空補間を防止する修正を反映。版 `20261029-transcript-accuracy`（キャッシュ `ripigochi-v192`）。APP_MAP §52。
 
 - YouTube字幕を活用した高精度・低コストな手順タイムコード抽出（#193、公開済み）：公開動画からミリ秒精度の字幕トラック（自動生成・手動）を軽量取得し、テキスト版AIで調理手順と照合。従来の動画丸ごと解析に比べトークン費用を約50分の1（約0.1円以下）に削減し、発話タイミングに同期した秒単位の高精度タイムコードを抽出。探索順序は「手動修正 → YouTube字幕 → 説明欄タイムスタンプ → 動画解析」で、字幕がない動画でも既存フォールバックを維持。アプリ側の優先順位反映・確認済みフラグ保持・予算切れ時のフォールバック保護を実装。版 `20261029-transcript-timecodes`（キャッシュ `ripigochi-v191`）。APP_MAP §52。
 
