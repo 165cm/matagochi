@@ -449,4 +449,73 @@ test("ingredient groups are passed to hybrid generator, and truncated transcript
   // stepsComplete: false なのでハイブリッド手順は採用されず、説明欄の3工程が維持されること
   assert.equal(resultIncompleteHybrid.analyzedFrom, "description");
   assert.deepEqual(resultIncompleteHybrid.steps, ["炒める", "調味する", "盛る"]);
+
+  // 字幕ハイブリッド生成前に reserveBudget を確認し、成功時はハイブリッド手順を反映すること
+  let budgetCalls = 0;
+  const resultRereadHybrid = await importYouTubeRecipe("https://www.youtube.com/watch?v=rereadok001", {
+    fetchYouTubeSnippet: async () => ({
+      title: "油淋豚",
+      description: "【材料】豚肉\n【作り方】①もむ ②焼く ③和える",
+      durationSeconds: 300
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "油淋豚",
+      ingredients: [{ name: "豚肉", amount: "300g" }],
+      steps: ["もむ", "焼く", "和える"]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [
+        { start: 10, dur: 5, text: "豚肉に下味をつけます" },
+        { start: 20, dur: 5, text: "片栗粉をまぶします" },
+        { start: 30, dur: 5, text: "焼きます" },
+        { start: 40, dur: 5, text: "タレを和えます" }
+      ]
+    }),
+    buildHybridRecipeSteps: async () => ({
+      steps: ["下味をつける", "片栗粉をまぶす", "焼く", "タレを和える"],
+      stepTimes: [10, 20, 30, 40],
+      stepsComplete: true
+    })
+  }, {
+    reread: true,
+    reserveBudget: async () => {
+      budgetCalls += 1;
+    }
+  });
+
+  assert.equal(budgetCalls, 1, "ハイブリッド生成前に reserveBudget が1回呼ばれること");
+  assert.equal(resultRereadHybrid.analyzedFrom, "description+transcript");
+  assert.equal(resultRereadHybrid.stepTimesFrom, "transcript");
+  assert.deepEqual(resultRereadHybrid.steps, ["下味をつける", "片栗粉をまぶす", "焼く", "タレを和える"]);
+  assert.deepEqual(resultRereadHybrid.stepTimes, [10, 20, 30, 40]);
+
+  // 字幕ハイブリッド生成前の reserveBudget が拒否された場合は説明欄の手順に安全にフォールバックすること
+  const resultFallback = await importYouTubeRecipe("https://www.youtube.com/watch?v=rereadok002", {
+    fetchYouTubeSnippet: async () => ({
+      title: "油淋豚",
+      description: "【材料】豚肉\n【作り方】①もむ ②焼く ③和える",
+      durationSeconds: 300
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "油淋豚",
+      ingredients: [{ name: "豚肉", amount: "300g" }],
+      steps: ["もむ", "焼く", "和える"]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [{ start: 10, dur: 5, text: "豚肉に下味をつけます" }]
+    }),
+    buildHybridRecipeSteps: async () => {
+      throw new Error("must not be called");
+    }
+  }, {
+    reread: true,
+    reserveBudget: async () => {
+      throw new Error("予算上限超過");
+    }
+  });
+
+  assert.equal(resultFallback.analyzedFrom, "description");
+  assert.deepEqual(resultFallback.steps, ["もむ", "焼く", "和える"]);
 });

@@ -555,7 +555,7 @@ export function createApp(env = process.env, deps = {}) {
     const before = await catalog.peek(url).catch(() => null);
     const after = await usage.run({ lite: true }, () => catalog.import(url, { reread: true }));
     trendBook.clearCache(); popularBook.clearCache();
-    return { videoId, before: (before?.steps || []).length, after: (after?.steps || []).length };
+    return { videoId, before: (before?.steps || []).length, after: (after?.steps || []).length, analyzedFrom: after?.analyzedFrom, stepTimesFrom: after?.stepTimesFrom };
   };
   app.post("/api/admin/recipes/:videoId/reread", (req, res) => {
     res.setHeader("Cache-Control", "no-store");

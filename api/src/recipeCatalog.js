@@ -81,7 +81,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
     if (current?.envelope.status === "ready" && current.envelope.result?.unavailable) throw unavailableError(current.envelope.result);
     if (reread && current?.envelope.status !== "ready") throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
-    if (reread && current.envelope.result?.analyzedFrom !== "description") throw new ApiError(409, "reread_not_description", "動画から読んだレシピは、説明欄から読み直せません。");
+    if (reread && fromVideo) throw new ApiError(409, "reread_not_description", "動画から読んだレシピは、説明欄から読み直せません。");
     if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo) && !reread) {
       const result = await refreshed(key, current);
       if (result.unavailable) throw unavailableError(result);
@@ -105,7 +105,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     try {
       // 説明欄の読み取り・動画の読み取り・チャプターとの対応付けの、それぞれの直前に gate を通す。
       await gate();
-      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo });
+      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo, reread });
       const validAnalyzedFrom = ["video", "video-clip", "description+transcript"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description";
       const result = { ...normalizeImportResult(raw), analyzedFrom: validAnalyzedFrom };
       // 時刻の出どころ（説明欄の章・YouTube字幕）も残す（管理の点検で、AI が動画から探した時刻と分ける。review fix #136）。

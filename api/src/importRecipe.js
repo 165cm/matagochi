@@ -81,7 +81,10 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
             steps: rawSteps,
             formattedTranscript: text,
             cues
-          }).catch(() => null);
+          }).catch((err) => {
+            console.error(JSON.stringify({ event: "hybrid_recipe_failed", videoId, message: String(err?.message || err).slice(0, 300) }));
+            return null;
+          });
 
           const isComplete = hybrid?.stepsComplete !== false;
           const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= rawSteps.length);
