@@ -106,9 +106,12 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 説明欄の読み取り・動画の読み取り・チャプターとの対応付けの、それぞれの直前に gate を通す。
       await gate();
       const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo });
-      const result = { ...normalizeImportResult(raw), analyzedFrom: ["video", "video-clip"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description" };
-      // 時刻の出どころ（説明欄の章）も残す（管理の点検で、AI が動画から探した時刻と分ける。review fix #136）。
-      if (raw?.stepTimesFrom === "chapters" && (result.stepTimes || []).some((t) => Number.isFinite(t))) result.stepTimesFrom = "chapters";
+      const validAnalyzedFrom = ["video", "video-clip", "description+transcript"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description";
+      const result = { ...normalizeImportResult(raw), analyzedFrom: validAnalyzedFrom };
+      // 時刻の出どころ（説明欄の章・YouTube字幕）も残す（管理の点検で、AI が動画から探した時刻と分ける。review fix #136）。
+      if (["chapters", "transcript"].includes(raw?.stepTimesFrom) && (result.stepTimes || []).some((t) => Number.isFinite(t))) {
+        result.stepTimesFrom = raw.stepTimesFrom;
+      }
       // 運営が直した料理名は、読み直しても引き継ぐ（AI の新しい料理名で上書きしない。空＝題名で決める、も含めて）。
       const before = current?.envelope.status === "ready" ? current.envelope.result : null;
       if (before?.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }

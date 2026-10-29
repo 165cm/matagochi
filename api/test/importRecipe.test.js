@@ -185,6 +185,67 @@ test("when transcript is available, description materials and transcript flow cr
   assert.equal(result.steps[3], "焼いている間に、ボウルで油淋ダレの調味料を混ぜ合わせる。");
 });
 
+test("transcript timestamps are preserved as-is without coarse or cluster refinement", async () => {
+  // 短時間の密集時刻 [10.5, 15.5, 20.5, 25.5] が refineStepTimes で架空補間されないことを確認
+  const snippet = {
+    title: "スピード炒め",
+    description: "【材料】豚肉 200g\n【作り方】①炒める ②調味する ③盛る",
+    durationSeconds: 300
+  };
+  const result = await importYouTubeRecipe("https://www.youtube.com/watch?v=speed000001", {
+    fetchYouTubeSnippet: async () => snippet,
+    analyzeRecipeDescription: async () => ({
+      title: "スピード炒め",
+      ingredients: [{ name: "豚肉", amount: "200g" }],
+      steps: ["炒める", "調味する", "盛る"]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [
+        { start: 10.5, dur: 3.0, text: "豚肉を入れます" },
+        { start: 15.5, dur: 3.0, text: "タレを入れます" },
+        { start: 20.5, dur: 3.0, text: "一気に炒めます" },
+        { start: 25.5, dur: 3.0, text: "お皿に盛ります" }
+      ]
+    }),
+    buildHybridRecipeSteps: async () => ({
+      steps: ["肉を入れる", "タレを入れる", "炒める", "盛る"],
+      stepTimes: [10.5, 15.5, 20.5, 25.5],
+      stepCues: ["豚肉を", "タレを", "一気に", "お皿に"]
+    })
+  });
+
+  assert.equal(result.analyzedFrom, "description+transcript");
+  assert.equal(result.stepTimesFrom, "transcript");
+  // 密集時刻が [10.5, 45, 81, 115] 等に補正されず、そのまま維持されていること
+  assert.deepEqual(result.stepTimes, [10.5, 15.5, 20.5, 25.5]);
+});
+
+test("createRecipeCatalog preserves description+transcript and transcript sources", async () => {
+  const { createRecipeCatalog } = await import("../src/recipeCatalog.js");
+  const { createMemorySyncStore } = await import("../src/syncStore.js");
+
+  const store = createMemorySyncStore();
+  const catalog = createRecipeCatalog(store, async () => ({
+    title: "塩麻婆豆腐",
+    ingredients: [{ name: "豆腐", amount: "1丁" }],
+    steps: ["準備する", "炒める", "煮る", "盛る"],
+    stepTimes: [10.5, 25.0, 45.2, 80.0],
+    stepTimesFrom: "transcript",
+    analyzedFrom: "description+transcript"
+  }));
+
+  const res = await catalog.import("https://www.youtube.com/watch?v=yRCUGLTp9Vk");
+  assert.equal(res.analyzedFrom, "description+transcript");
+  assert.equal(res.stepTimesFrom, "transcript");
+  assert.deepEqual(res.stepTimes, [10.5, 25.0, 45.2, 80.0]);
+
+  // ストア上の永続化データも確認
+  const stored = await store.get("youtube-yRCUGLTp9Vk");
+  assert.equal(stored.envelope.result.analyzedFrom, "description+transcript");
+  assert.equal(stored.envelope.result.stepTimesFrom, "transcript");
+});
+
 test("falls back cleanly to description steps when transcript is unavailable or hybrid generation fails", async () => {
   const snippet = {
     title: "豚こま油淋トン",

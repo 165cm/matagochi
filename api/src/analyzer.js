@@ -217,6 +217,13 @@ ${formattedTranscript}`;
   const rawSteps = Array.isArray(raw?.steps) ? raw.steps : [];
   if (rawSteps.length < 2) return null;
 
+  const cueMap = new Map();
+  if (Array.isArray(cues)) {
+    for (const c of cues) {
+      if (c && c.id != null) cueMap.set(Number(c.id), c);
+    }
+  }
+
   const finalSteps = [];
   const stepTimes = [];
   const stepCues = [];
@@ -225,8 +232,9 @@ ${formattedTranscript}`;
     if (!text) continue;
     finalSteps.push(text);
     const cid = item?.cueId != null ? Number(item.cueId) : null;
-    const cue = cid != null && cues && cues[cid] ? cues[cid] : null;
-    const time = cue && Number.isFinite(cue.startSeconds) ? Math.round(cue.startSeconds * 10) / 10 : null;
+    const cue = cid != null && cueMap.has(cid) ? cueMap.get(cid) : null;
+    const rawSec = cue?.start ?? cue?.startSeconds;
+    const time = Number.isFinite(rawSec) ? Math.round(rawSec * 10) / 10 : null;
     stepTimes.push(time);
     stepCues.push(cue?.text ? cue.text.slice(0, 15) : null);
   }
