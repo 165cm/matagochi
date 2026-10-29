@@ -5,6 +5,7 @@ import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from 
 import { parseChapters, timesFromChapterIndexes, parseTimeValue } from "./chapters.js";
 import { refineStepTimes } from "./timecodeCheck.js";
 import { detectServings } from "./servings.js";
+import { formatTranscriptForPrompt } from "./transcript.js";
 
 const DEFAULT_CATEGORY = "その他";
 const NUTRITION = /kcal|キロカロリー|カロリー|糖質|たんぱく質|タンパク質|脂質|炭水化物|食物繊維|塩分|PFC|1人前あたり|1人分あたり/i;
@@ -57,11 +58,47 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     }
   }
   if (!hasDescription && !analyzedFrom.startsWith("video")) throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
+
+  // 字幕ハイブリッド生成：説明欄の材料があり、動画解析をしていない場合で、字幕が存在すれば動画の段取りに沿った手順とタイムコードを生成する
+  const rawSteps = normalizeSteps(analysis.steps);
+  const rawIngredients = normalizeIngredients(analysis.ingredients);
+  const shouldTryHybrid = !analyzedFrom.startsWith("video") && rawIngredients.length > 0 && typeof deps.buildHybridRecipeSteps === "function" && typeof deps.fetchYouTubeTranscript === "function";
+
+  if (shouldTryHybrid) {
+    const transcriptRes = await deps.fetchYouTubeTranscript(videoId).catch(() => null);
+    const items = transcriptRes?.status === "ok" && Array.isArray(transcriptRes?.items) ? transcriptRes.items : (Array.isArray(transcriptRes) ? transcriptRes : null);
+    if (items && items.length) {
+      const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
+      if (budgetOk) {
+        const { text, cues } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
+        const hybrid = await deps.buildHybridRecipeSteps({
+          title: analysis.title || snippet.title,
+          ingredients: rawIngredients,
+          steps: rawSteps,
+          formattedTranscript: text,
+          cues
+        }).catch(() => null);
+
+        if (hybrid && Array.isArray(hybrid.steps) && hybrid.steps.length >= 2) {
+          analysis = {
+            ...analysis,
+            steps: hybrid.steps,
+            stepTimes: hybrid.stepTimes
+          };
+          analyzedFrom = "description+transcript";
+          if (Array.isArray(hybrid.stepTimes) && hybrid.stepTimes.some((t) => t !== null)) {
+            analyzedTimes = "transcript";
+          }
+        }
+      }
+    }
+  }
+
   // 説明欄に投稿者のタイムスタンプがあれば、手順の時刻はそれに合わせる（AIが動画から探した時刻より正確）。
   const chapters = parseChapters(snippet.description);
   const finalSteps = normalizeSteps(analysis.steps);
-  // チャプターとの対応付けも AI の1回。枠がなければ、しないで進む（なくても困らない）。
-  const chaptersAllowed = chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function" && (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
+  // チャプターとの対応付けも AI の1回。字幕タイムコードがまだない場合のみ行う。
+  const chaptersAllowed = !analyzedTimes && chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function" && (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
   if (chaptersAllowed) {
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
     const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);

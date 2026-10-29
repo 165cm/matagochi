@@ -124,3 +124,98 @@ test("parseTimeValue and refineStepTimes handle MM:SS strings, coarse chapter du
   assert.ok(refinedBeyond[3] > 120 && refinedBeyond[3] < 300);
   assert.equal(checkStepTimes(st4, refinedBeyond, { durationSeconds: 300 }).status, "ok");
 });
+
+test("when transcript is available, description materials and transcript flow create hybrid detailed steps with timecodes", async () => {
+  let hybridCalled = false;
+  const snippet = {
+    title: "豚こま油淋トン",
+    description: "【材料】豚こま 300g、片栗粉 大さじ3\n【作り方】①揉み込んで片栗粉まぶす ②カリカリに焼く ③タレと和える",
+    channelTitle: "料理チャンネル",
+    durationSeconds: 360
+  };
+  const result = await importYouTubeRecipe("https://www.youtube.com/watch?v=yRCUGLTp9Vk", {
+    fetchYouTubeSnippet: async () => snippet,
+    analyzeRecipeDescription: async () => ({
+      title: "豚こま油淋トン",
+      ingredients: [
+        { name: "豚こま", amount: "300g", category: "肉" },
+        { name: "片栗粉", amount: "大さじ3", category: "調味料" }
+      ],
+      steps: [
+        "フライパンで豚こまに酒、塩こしょうを揉み片栗粉をまぶす。",
+        "油を回しかけ中火で3、4分ずつカリカリに焼く。",
+        "油淋ダレを混ぜ、豚こまを入れ和える。"
+      ]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [
+        { start: 60.5, dur: 5.0, text: "豚肉にお酒と塩こしょうを入れて揉み込みます" },
+        { start: 95.0, dur: 4.0, text: "全体に片栗粉をしっかりまぶしていきます" },
+        { start: 137.2, dur: 6.0, text: "油を回し入れて中火でじっくり焼きます" },
+        { start: 160.0, dur: 8.0, text: "お肉を焼いている間に油淋ダレを混ぜておきます" },
+        { start: 290.4, dur: 5.0, text: "焼き上がったお肉をタレに絡めて完成です" }
+      ]
+    }),
+    buildHybridRecipeSteps: async ({ title, ingredients, steps, formattedTranscript, cues }) => {
+      hybridCalled = true;
+      assert.equal(title, "豚こま油淋トン");
+      assert.equal(ingredients.length, 2);
+      assert.equal(steps.length, 3);
+      assert.ok(formattedTranscript.includes("揉み込みます"));
+      return {
+        steps: [
+          "豚肉に酒と塩こしょうを加えてよく揉み込む。",
+          "全体に片栗粉をまぶしてコーティングする。",
+          "フライパンに油を回し入れ、中火で両面を焼く。",
+          "焼いている間に、ボウルで油淋ダレの調味料を混ぜ合わせる。",
+          "焼き上がった豚肉に油淋ダレを絡めて器に盛る。"
+        ],
+        stepTimes: [60.5, 95.0, 137.2, 160.0, 290.4],
+        stepCues: ["豚肉にお酒と", "全体に片栗粉", "油を回し入れ", "お肉を焼いて", "焼き上がった"]
+      };
+    }
+  });
+
+  assert.equal(hybridCalled, true);
+  assert.equal(result.analyzedFrom, "description+transcript");
+  assert.equal(result.stepTimesFrom, "transcript");
+  assert.equal(result.steps.length, 5);
+  assert.deepEqual(result.stepTimes, [60.5, 95, 137.2, 160, 290.4]);
+  assert.equal(result.steps[3], "焼いている間に、ボウルで油淋ダレの調味料を混ぜ合わせる。");
+});
+
+test("falls back cleanly to description steps when transcript is unavailable or hybrid generation fails", async () => {
+  const snippet = {
+    title: "豚こま油淋トン",
+    description: "【材料】豚こま 300g\n【作り方】①揉む ②焼く ③和える",
+    channelTitle: "料理チャンネル"
+  };
+  // Case A: Transcript not available
+  const resultNoTranscript = await importYouTubeRecipe("https://www.youtube.com/watch?v=yRCUGLTp9Vk", {
+    fetchYouTubeSnippet: async () => snippet,
+    analyzeRecipeDescription: async () => ({
+      title: "豚こま油淋トン",
+      ingredients: [{ name: "豚こま", amount: "300g", category: "肉" }],
+      steps: ["揉む", "焼く", "和える"]
+    }),
+    fetchYouTubeTranscript: async () => null,
+    buildHybridRecipeSteps: async () => { throw new Error("must not be called"); }
+  });
+  assert.equal(resultNoTranscript.analyzedFrom, "description");
+  assert.equal(resultNoTranscript.steps.length, 3);
+
+  // Case B: Hybrid generator returns null
+  const resultFailedHybrid = await importYouTubeRecipe("https://www.youtube.com/watch?v=yRCUGLTp9Vk", {
+    fetchYouTubeSnippet: async () => snippet,
+    analyzeRecipeDescription: async () => ({
+      title: "豚こま油淋トン",
+      ingredients: [{ name: "豚こま", amount: "300g", category: "肉" }],
+      steps: ["揉む", "焼く", "和える"]
+    }),
+    fetchYouTubeTranscript: async () => ({ status: "ok", items: [{ start: 1, dur: 2, text: "こんにちは" }] }),
+    buildHybridRecipeSteps: async () => null
+  });
+  assert.equal(resultFailedHybrid.analyzedFrom, "description");
+  assert.equal(resultFailedHybrid.steps.length, 3);
+});
