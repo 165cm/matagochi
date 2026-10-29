@@ -31,3 +31,17 @@ test("starter dishes with raw meat say how long to heat it (center 75℃ for 1 m
     if (raw.length) assert.ok(r.steps.some((s) => /75℃/.test(s)), r.title);
   }
 });
+
+test("every quick starter dish has its illustration, listed the same in app.js and sw.js (offline)", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const root = path.join(__dirname, "..");
+  const list = (src, re) => JSON.parse(`[${src.match(re)[1]}]`);
+  const app = list(fs.readFileSync(path.join(root, "app.js"), "utf8"), /const STARTER_SHEET_PHOTOS = \[([^\]]*)\]/);
+  const sw = list(fs.readFileSync(path.join(root, "sw.js"), "utf8"), /\.\.\.\[([^\]]*)\]\.map\(n => `\.\/assets\/dishes\/starter-/);
+  assert.deepEqual(app, sw);
+  for (const r of Starter.recipes.filter((x) => x.minutes <= 10)) {
+    const n = r.id.replace("starter-", "");
+    assert.ok(app.includes(n), `${r.title}: no illustration`);
+    assert.ok(fs.existsSync(path.join(root, "assets/dishes", `${r.id}.webp`)), r.id);
+  }
+});
