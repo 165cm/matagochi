@@ -455,7 +455,13 @@
     if (w) box.append(meter(w.searchedToday || 0, w.searchPerDay || 60, "今日の広げ方の検索", `${w.searchedToday || 0} / ${w.searchPerDay || 60}回`));
     if (yt) box.append(meter(yt.used, yt.perDay, "YouTube の検索（全体・今日）", `${yt.used} / ${yt.perDay}回`));
     const m = (last.catalog?.cost || [])[0];
-    if (m) box.append(meter(m.yen, m.cap, "今月の費用（目安）", `${yen(m.yen)} / ${yen(m.cap)}`));
+    // 今月の費用は、実測のトークン数から合わせた1回の単価 × 回数（実測が少ない間は目安の単価。2026-10-29）。
+    if (m) {
+      const unit = Number.isFinite(m.yenPerAi) ? `1回 ${m.yenPerAi}円・${m.calibrated ? "実測から" : "目安"}` : "目安";
+      const row = meter(m.yen, m.cap, `今月の費用（${unit}）`, `${yen(m.yen)} / ${yen(m.cap)}`);
+      row.title = m.calibrated ? `実測 1回 ${m.measuredPerAi}円（${m.samples}回分）に 2割の余裕を足した単価。AI ${m.ai}回` : `実測がまだ少ないので、目安の単価で数えています。AI ${m.ai}回`;
+      box.append(row);
+    }
   }
   // ② いまの段階：数字の列と、候補のゆくえ（0円で外した → AI で読んだ → 料理になった）
   function renderStage() {
@@ -616,7 +622,7 @@
   function renderCatalog() {
     const data = last.catalog || {};
     const cost = document.getElementById("cost"); cost.textContent = "";
-    if ((data.cost || []).length) { const m = data.cost[0]; cost.append(meter(m.yen, m.cap, `${m.month} の新着集め（目安）`, `${yen(m.yen)} / ${yen(m.cap)}`)); const sc = scroll(table(["月", "目安の費用", "上限", "AI の回数"], data.cost.map((x) => [x.month, yen(x.yen), yen(x.cap), x.ai]), [1, 2, 3], null, { id: "cost", sort: [0, "desc"] })); sc.style.marginTop = "8px"; cost.append(sc); }
+    if ((data.cost || []).length) { const m = data.cost[0]; cost.append(meter(m.yen, m.cap, `${m.month} の新着集め（${m.calibrated ? "実測の単価" : "目安"}）`, `${yen(m.yen)} / ${yen(m.cap)}`)); const sc = scroll(table(["月", "費用", "上限", "AI の回数", "1回の単価"], data.cost.map((x) => [x.month, yen(x.yen), yen(x.cap), x.ai, Number.isFinite(x.yenPerAi) ? `${x.yenPerAi}円` : "—"]), [1, 2, 3], null, { id: "cost", sort: [0, "desc"] })); sc.style.marginTop = "8px"; cost.append(sc); }
     else cost.append(el("p", "まだありません。", "empty"));
     const ask = document.getElementById("ask"); ask.textContent = "";
     ask.append((data.askConsent || []).length ? table(["投稿者", "献立に入った回数", "動画"], data.askConsent.map((a) => [a.channelTitle || a.channelId, a.planned, a.videos]), [1, 2], null, { id: "ask", sort: [1, "desc"] }) : el("p", "いまはいません。", "empty"));
@@ -1089,7 +1095,7 @@
     ];
     return {
       items: rows.map(([title, shown, planned, cooked, channelTitle, kept, publicConsent], i) => ({ videoId: `demo${i}`, title, shown, planned, cooked, channelTitle, kept, publicConsent, rate: shown >= 5 ? Math.round((planned / shown) * 100) : null })),
-      cost: [{ month, yen: 412, cap: 1000, ai: 412 }, { month: prev, yen: 985, cap: 1000, ai: 985 }],
+      cost: [{ month, yen: 165, cap: 1000, ai: 412, yenPerAi: 0.4, calibrated: true, samples: 412, measuredPerAi: 0.333 }, { month: prev, yen: 985, cap: 1000, ai: 985, yenPerAi: 1 }],
       askConsent: [{ channelTitle: "サンプルごはんB", planned: 24, videos: 2 }, { channelTitle: "サンプル時短C", planned: 14, videos: 1 }],
     };
   }

@@ -10,7 +10,7 @@ const fs = require("node:fs");
 const MIN_VISIBLE = 200; // 見えている新着がこれより少なければ赤（目標は400品＝親料理80×子5品。docs/APP_MAP.md §46-7）
 const SOON_DAYS = 7; // この日数のうちに見えなくなる（28日を過ぎる）品数も出す
 const DAY = 86_400_000;
-const YEN_PER_AI = 1; // api/src/trends.js の TREND_YEN_PER_AI（月の費用の目安の単価）と同じ
+const YEN_PER_AI = 1; // api/src/trends.js の TREND_YEN_PER_AI（月の費用の目安の単価）と同じ。返事に yenPerAi（実測から合わせた単価）があればそちらを使う
 
 // 止まった理由（refresh の paused・limited）を、初めての人にも分かる言葉に。
 const STOPPED = {
@@ -81,7 +81,7 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
       resting: Number.isFinite(refresh?.revived?.resting) ? refresh.revived.resting : null,
       usable: Number.isFinite(refresh?.revived?.usable) ? refresh.revived.usable : null,
       // 新着集めの返事は補充の前の月の費用なので、この実行で補充が使った分を足す（review fix #171）
-      monthYen: Number.isFinite(ai.yen) ? ai.yen + Math.round(refillAi * YEN_PER_AI) : null,
+      monthYen: Number.isFinite(ai.yen) ? ai.yen + Math.round(refillAi * (Number(ai.yenPerAi) > 0 ? Number(ai.yenPerAi) : YEN_PER_AI)) : null,
       monthYenCap: Number.isFinite(ai.yenCap) ? ai.yenCap : null,
     },
   };
