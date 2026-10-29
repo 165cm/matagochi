@@ -95,8 +95,10 @@
   function profile(raw = {}) {
     return {
       detailedSetup: raw.detailedSetup === true,
-      // 初回設定の順番の版（2＝2026-09-30 の整理後）。途中の人の移し替えに使う（daily-ui.js migrateFunnel）。
-      ...(raw.funnelV === 2 ? { funnelV: 2 } : {}),
+      // 初回設定の順番の版（2＝2026-09-30 の整理後・3＝2026-10-28 の7画面）。途中の人の移し替えに使う（daily-ui.js migrateFunnel）。
+      ...([2, 3].includes(raw.funnelV) ? { funnelV: raw.funnelV } : {}),
+      // 初回設定の確認の画面で選んだ「今夜から（true）／明日から（false）」。選んでいなければ持たない（時刻で決める）。
+      ...(typeof raw.startTonight === "boolean" ? { startTonight: raw.startTonight } : {}),
       quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 20 ? raw.quickSetupIndex : null,
       picks: Array.isArray(raw.picks) ? raw.picks.filter((x) => typeof x === "string" && x.length < 40).slice(0, 12) : [],
       // はじめの質問（悩み・保存した動画・食費）。献立には使わず、案内の言葉と目安に使う。
@@ -122,6 +124,9 @@
       dislikes: list(raw.dislikes),
       tastes: list(raw.tastes),
       tasteVotes: Taste.normalize(raw.tasteVotes),
+      // 好きな料理（理想の12品から選んだもの・taste.js IDEAL）。選んだ時刻があれば、以前の味の答えより先に使う。
+      dishPicks: Taste.normalizePicks(raw.dishPicks),
+      ...(typeof raw.dishPicksAt === "string" && /^\d{4}-\d{2}-\d{2}T/.test(raw.dishPicksAt) ? { dishPicksAt: raw.dishPicksAt.slice(0, 30) } : {}),
       dinnerPriorities: Persona.normalize(raw.dinnerPriorities),
       tasteReturnStep: Number.isInteger(raw.tasteReturnStep) && raw.tasteReturnStep >= 0 && raw.tasteReturnStep <= 15 ? raw.tasteReturnStep : null,
       // 時計のダイヤルで5分きざみ（5〜60分）。
@@ -222,6 +227,8 @@
     if (minutes && meta.minutes > minutes || p.skill === "easy" && meta.easy === false) return false;
     return !meta.minutes || !meta.ingredientsVerified || !meta.conditionsConfirmed;
   }
+  // 腕前（★）より難しい料理の、上回る★ひとつごとに下げる点数（好きな味 8・使い切り 20 と同じくらいの重さ）。
+  const SKILL_PENALTY = 15;
   function fit(recipe, p, date) {
     const meta = recipe.planning;
     const names = (recipe.ingredients || []).map((x) => x.name);
@@ -256,14 +263,11 @@
     if (p.avoidTasks.length && !meta?.tasks)
       return { ok: false, reason: "調理作業が未確認です" };
     if (!meta?.ingredientsVerified || !meta.minutes || meta.easy == null || !meta.tasks || (!meta.noEquipment && !meta.equipment?.length) || meta.conditionsConfirmed === false) return {ok:false, needsReview:true, reason:"調理条件の確認が必要です"};
-    // Cooking skill: never above the cook's level; one step above only as a "challenge" when they want to grow.
+    // 料理の腕前（★）：難しい料理も外さず、並べる順を下げるだけ（2026-10-28 のユーザーの判断「並べ替えに」。候補を減らさない）。
+    // ★がひとつ上の料理には「ちょっと挑戦」の印。下げる幅は、上回る★ひとつごとに SKILL_PENALTY 点。
     const need = SkillDB()?.rate(recipe).level || 1;
-    let challenge = false;
-    if (p.skillLevel) {
-      if (need > p.skillLevel + 1 || (need === p.skillLevel + 1 && p.skillGrowth !== "grow"))
-        return { ok: false, reason: "料理スキルの設定より難しい料理です" };
-      challenge = need === p.skillLevel + 1;
-    }
+    const over = p.skillLevel ? Math.max(0, need - p.skillLevel) : 0;
+    const challenge = over > 0;
     const knownEquipment =
       meta?.noEquipment === true || !!meta?.equipment?.length &&
       meta.equipment.every((x) => p.equipment[x] === "have");
@@ -280,18 +284,28 @@
     // 残っている食材（確かめたもの）を使う料理。加点は「使い切りたい」と合わせて1回だけ。
     const leftover = (p.leftovers || []).find((x) => names.some((n) => matches(n, x)));
     if (leftover) reasons.push(`🧺 残りの${leftover}を使う`);
-    const votedTastes = Taste.preferredTastes(p.tasteVotes);
-    const taste = meta?.tastes?.some((x) => (Taste.normalize(p.tasteVotes).length ? votedTastes : p.tastes).includes(x));
-    const likedTitles = Taste.result(p.tasteVotes).likes.map(c => c.title);
-    const exactLike = likedTitles.includes(recipe.title);
-    if (exactLike) reasons.push("食べたいと選んだ一皿");
-    if (taste) reasons.push("好きな味");
+    // 好きな味：料理名の写真で選んだ料理（2026-10-28 から）。まだ選んでいない人は、以前の答え（8枚の写真・系統）のまま。
+    let tasteScore = 0;
+    if (p.dishPicksAt) {
+      const hit = Taste.pickScore(recipe, axes(recipe), p.dishPicks);
+      if (hit?.direct) reasons.push(`💛 選んだ${hit.label}`);
+      else if (hit?.axis >= 6) reasons.push("好きな味");
+      tasteScore = hit?.score || 0;
+    } else {
+      const votedTastes = Taste.preferredTastes(p.tasteVotes);
+      const taste = meta?.tastes?.some((x) => (Taste.normalize(p.tasteVotes).length ? votedTastes : p.tastes).includes(x));
+      const likedTitles = Taste.result(p.tasteVotes).likes.map(c => c.title);
+      const exactLike = likedTitles.includes(recipe.title);
+      if (exactLike) reasons.push("食べたいと選んだ一皿");
+      if (taste) reasons.push("好きな味");
+      tasteScore = (exactLike ? 12 : 0) + (taste ? 8 : 0);
+    }
     const priorities = Persona.planning(p.dinnerPriorities, meta, pantryCount);
     reasons.push(...priorities.reasons);
     return {
       ok: true,
       reasons,
-      score: priorities.score + (useUp || leftover ? 20 : 0) + (exactLike ? 12 : 0) + (taste ? 8 : 0) + pantryCount * 2,
+      score: priorities.score + (useUp || leftover ? 20 : 0) + tasteScore + pantryCount * 2 - over * SKILL_PENALTY,
       needsReview: !knownEquipment || !meta?.ingredientsVerified,
       challenge,
       skillNeed: need,
@@ -359,25 +373,7 @@
       }
     }
 
-    // 3. 料理スキル (skillLevel)
-    if (p.skillLevel && p.skillLevel < 5) {
-      const next = p.skillLevel + 1;
-      const p2 = { ...p, skillLevel: next };
-      const refDate = hasWd ? wdDate : weDate;
-      const okPlain = (r, prof, d) => {
-        const f = fit(r, prof, d);
-        return f.ok && !f.challenge;
-      };
-      const gain = dinners.filter((r) => !okPlain(r, p, refDate) && okPlain(r, p2, refDate)).length;
-      if (gain > 0) {
-        hints.push({
-          key: "skillLevel",
-          value: next,
-          gain,
-          label: `レベル★${next}まで（＋${gain}品）`,
-        });
-      }
-    }
+    // 3. 料理の腕前は献立から外さない（並べる順だけ）ので、広げる案は出さない（2026-10-28）。
 
     // 4. かんたん優先 (skill === "easy")
     if (p.skill === "easy") {
@@ -411,16 +407,24 @@
   ];
   // --- Rotation: remember what was eaten recently so dinners don't repeat by type ---
   const NOODLE = /パスタ|スパゲ|うどん|そば|ラーメン|焼きそば|そうめん|麺/;
+  // 主役の見分け方（2026-10-28：集まったレシピの棚卸しで見つかった間違いを直した）。
+  // ・魚はカタカナ・漢字の名前も（ブリ・鰤・カレイ・サーモン・サバ・鯖…）。
+  // ・だし・調味料に入っている魚や肉は、主役に数えない（かつお節・ほんだし・鶏ガラスープの素・コンソメ・魚醤 など）。
+  const MEAT_RE = /鶏|豚|牛(?!乳)|ひき肉|挽き肉|挽肉|合いびき|合挽|ささみ|手羽|チキン|ポーク|ビーフ|ハム|ベーコン|ウインナー|ソーセージ|ミンチ|レバー|砂肝|鴨|ラム肉|肉/;
+  const FISH_RE = /鮭|さけ|サケ|サーモン|さば|サバ|鯖|ぶり|ブリ|鰤|かれい|カレイ|鰈|たら(?!し)|タラ|鱈|あじ|アジ|鯵|いわし|イワシ|鰯|さんま|サンマ|秋刀魚|まぐろ|マグロ|鮪|かつお|カツオ|鰹|鯛|めかじき|かじき|カジキ|ひらめ|すずき|うなぎ|ししゃも|えび|エビ|海老|いか|イカ|たこ(?!焼)|タコ(?!ライス)|ほたて|ホタテ|帆立|あさり|アサリ|しじみ|かき|カキ|牡蠣|しらす|ちりめん|ツナ|明太|たらこ|かに(?!かま)|カニ(?!カマ)|蟹|白身|切り身|魚/;
+  const SEASONING_RE = /(かつお|カツオ|鰹)(節|ぶし|だし|風味)|削り節|花かつお|だしの素|ほんだし|顆粒だし|和風だし|白だし|めんつゆ|魚醤|ナンプラー|オイスター(ソース)?|えびせん|鶏ガラ|鶏がら|ガラスープ|コンソメ|ブイヨン|豚骨|とんこつ|牛脂|中華だし|ウェイパー|味の素/g;
+  const mainText = (s) => String(s || "").replace(SEASONING_RE, " ");
   function traits(recipe) {
     const title = String(recipe?.title || "");
-    const names = (recipe?.ingredients || []).map((i) => i.name).join(" ");
-    const text = title + " " + names;
+    const raw = (recipe?.ingredients || []).map((i) => i.name).join(" ");
+    const names = mainText(raw);
+    // 主食・系統は、調味料も手がかりにする（オイスターソース → 中華 など）。主役だけ、だし・調味料を除いて見る。
+    const text = title + " " + raw;
     const staple = NOODLE.test(text) ? "noodle"
       : /(?<!フライ)パン(?!粉)|トースト|サンド/.test(text) ? "bread"
       : /ごはん|米|丼|チャーハン|リゾット|カレー|ライス|おにぎり|雑炊|ビリヤニ/.test(text) ? "rice" : "other";
-    const protein = /鶏|豚|牛|ひき肉|合いびき|ハム|ベーコン|ウインナー|ソーセージ|肉/.test(names || title) ? "meat"
-      : /鮭|さけ|さば|ツナ|魚|えび|いか|たら|しらす|まぐろ|かつお|ぶり/.test(names || title) ? "fish"
-      : /卵|たまご|豆腐|厚揚げ|納豆|豆乳/.test(names || title) ? "eggtofu" : "veg";
+    const where = names.trim() ? names : mainText(title);
+    const protein = MEAT_RE.test(where) ? "meat" : FISH_RE.test(where) ? "fish" : /卵|たまご|玉子|豆腐|厚揚げ|油揚げ|納豆|豆乳/.test(where) ? "eggtofu" : "veg";
     const tastes = recipe?.planning?.tastes || recipe?.tags || [];
     const cuisine = tastes.includes("中華風") ? "chinese" : tastes.includes("洋風") ? "western" : tastes.includes("和風") ? "japanese"
       : /豆板醤|オイスター|キムチ|麻婆|担々|ナンプラー/.test(text) ? "chinese"
@@ -435,9 +439,10 @@
   ];
   const TAG_RULES = {
     chicken: /鶏|ささみ|手羽|チキン/, pork: /豚|ベーコン|ハム|ウインナー|ソーセージ/, beef: /牛(?!乳)/,
-    mince: /ひき肉|合いびき|そぼろ|つくね|ハンバーグ|小籠包/, fish: /鮭|さけ|さば|サバ|ツナ|魚|えび|いか|たら|しらす|ぶり|まぐろ|かつお/,
+    mince: /ひき肉|挽き肉|挽肉|合いびき|合挽|ミンチ|そぼろ|つくね|ハンバーグ|小籠包/, fish: FISH_RE,
     egg: /卵|たまご|玉子/, tofu: /豆腐|厚揚げ|油揚げ|納豆|豆乳|大豆/,
-    spicy: /辛|キムチ|豆板醤|コチュジャン|ラー油|担々|麻辣|一味|七味|ガパオ|カレー|ヤンニョム/,
+    // 「甘辛」「塩辛」「辛子（からし）」と、仕上げの一味・七味はピリ辛に数えない。
+    spicy: /(?<![甘塩])辛(?!子)|唐辛子|鷹の爪|キムチ|豆板醤|コチュジャン|ラー油|担々|坦々|麻辣|花椒|ガパオ|カレー|ヤンニョム|チリ|タバスコ|柚子胡椒|ゆずこしょう/,
     light: /ポン酢|酢|冷や|梅|レモン|しそ|大葉|おろし|蒸し/,
     rich: /バター|チーズ|マヨ|クリーム|カルボナーラ|揚げ|甘辛|照り焼き|ハンバーグ/,
     soup: /スープ|汁|麻辣湯/, ethnic: /ナンプラー|ガパオ|タコライス|ビリヤニ|ヤンニョム|コチュジャン|エスニック/,
@@ -448,14 +453,29 @@
     const text = [recipe.title, names, ...(recipe.steps || []), ...(recipe.planning?.equipment || [])].join(" ");
     const t = traits(recipe);
     const out = new Set([t.staple, t.cuisine]);
+    // 主役は料理名と材料から（だし・調味料の魚や肉は除く）。味（ピリ辛・さっぱり・こってり・汁もの）も料理名と材料から
+    // （作り方の「蒸し焼きにする」「お好みで七味」などで決めない）。作り方の道具（レンジ・鍋など）だけ作り方も見る。
+    const MAIN = ["chicken", "pork", "beef", "mince", "fish", "egg", "tofu"], MOOD = ["spicy", "light", "rich", "soup", "ethnic"];
     for (const [tag, re] of Object.entries(TAG_RULES)) {
-      const where = ["chicken", "pork", "beef", "mince", "fish", "egg", "tofu"].includes(tag) ? `${recipe.title} ${names}` : text;
+      const where = MAIN.includes(tag) ? mainText(`${recipe.title} ${names}`) : MOOD.includes(tag) ? `${recipe.title} ${names}` : text;
       if (re.test(where)) out.add(tag);
     }
     if (!["chicken", "pork", "beef", "mince", "fish"].some((x) => out.has(x))) out.add("veg");
     if (recipe.planning?.minutes && recipe.planning.minutes <= 10) out.add("quick");
     if (SkillDB()?.rate(recipe).level <= 2) out.add("easy");
     return [...out];
+  }
+  // 好きな味の3つの軸：主役（肉・魚・卵豆腐・野菜）・系統（和・洋・中華・エスニック）・味（ピリ辛・さっぱり・こってり・ふつう）。
+  // 料理名の写真の加点と、集まったレシピの棚卸し（scripts/catalog-taste.cjs）で同じ決め方を使う。
+  function axes(recipe) {
+    const t = traits(recipe);
+    const where = `${recipe?.title || ""} ${(recipe?.ingredients || []).map((x) => x.name).join(" ")}`;
+    const has = (k) => TAG_RULES[k].test(where);
+    return {
+      protein: t.protein,
+      cuisine: has("ethnic") ? "ethnic" : t.cuisine,
+      mood: has("spicy") ? "spicy" : has("light") && !has("rich") ? "light" : has("rich") ? "rich" : "plain",
+    };
   }
   const stapleLabel = { rice: "ごはんもの", noodle: "麺", bread: "パン", other: "おかず" };
   const proteinLabel = { meat: "肉", fish: "魚", eggtofu: "卵・豆腐", veg: "野菜" };
@@ -718,7 +738,7 @@
       const candidates = recipes
         .filter((r) => r.mealType === "dinner" && repeatScore(r) !== -Infinity && (!autoBlocked(r) || overrides[date] === r.id || pins[String(new Date(date + "T12:00:00").getDay())] === r.id))
         .map((recipe) => ({ recipe, ...fit(recipe, p, date) }))
-        .filter((x) => x.ok && (!x.challenge || challenges < 1))
+        .filter((x) => x.ok)
         .map((x) => ({
           ...x,
           rotation: rotation(x.recipe, date, timeline, between),
@@ -742,7 +762,9 @@
             freshScore(x.fresh, dayInRound(date, i)) +
             x.season.score +
             x.useUp.score +
-            (x.pref?.score || 0) +
+            (x.pref?.score || 0) -
+            // 直近6日に挑戦の料理があれば、次の挑戦はもう少し後ろへ（外さない）。
+            (x.challenge && challenges >= 1 ? SKILL_PENALTY : 0) +
             (p.savings
               ? (x.recipe.ingredients || []).filter((n) =>
                   ingredients.has(key(n.name)),
@@ -1752,6 +1774,7 @@
     curated,
     traits,
     tags,
+    axes,
     FACETS,
     rotation,
     repeatFit,

@@ -2139,6 +2139,7 @@ span.tile-photo { cursor: default; }
 .evidence-ask { font-size: 14px; }
 .evidence-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 6px; }
 .evidence-reflect .evidence-card { margin-top: 0; }
+.today-evidence .evidence-card { margin: 0; }
 .refl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
 .refl-stats p { margin: 0; padding: 12px 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
 .refl-stats strong { display: block; font-size: 24px; color: var(--tomato); }
@@ -2360,41 +2361,6 @@ span.tile-photo { cursor: default; }
 .flow-go { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 800; color: var(--tomato); cursor: pointer; white-space: nowrap; }
 
 /* ----- 週のボード（献立のリズム） ----- */
-.week-board { margin: 0 0 16px; padding: 12px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
-.wk-top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-.wk-top strong { font-size: 15px; min-width: 3.5em; text-align: center; }
-.wk-nav { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); font-size: 18px; font-weight: 800; color: var(--ink); cursor: pointer; }
-.wk-nav:disabled { opacity: .3; cursor: default; }
-.wk-loop { margin-left: auto; display: flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 800; color: var(--muted); }
-.wk-loop i { width: 7px; height: 7px; border-radius: 50%; background: #efe4d6; }
-.wk-loop i.on { background: var(--tomato); }
-.wk-head, .wk-grid, .wk-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-.wk-head span { text-align: center; font-size: 11px; font-weight: 800; color: var(--muted); }
-.wk-head span:first-child { color: #d4533a; }
-.wk-cell { position: relative; aspect-ratio: 1 / 1; padding: 0; border: 0; border-radius: 10px; background: var(--surface-soft); overflow: hidden; font: inherit; cursor: pointer; display: grid; place-items: center; }
-.wk-cell:disabled { cursor: default; }
-.wk-cell .dish-tile { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
-.wk-cell .dish-fallback small { display: none; }
-.wk-cell em { font-style: normal; font-size: 12px; font-weight: 800; color: #b9ab99; }
-.wk-num { position: absolute; left: 3px; top: 2px; z-index: 1; padding: 0 4px; border-radius: 6px; background: rgba(255, 253, 248, .88); font-size: 10px; font-weight: 800; line-height: 1.5; color: var(--ink); }
-.wk-shop { position: absolute; right: 1px; bottom: 0; z-index: 1; font-size: 14px; filter: drop-shadow(0 0 2px #fff); }
-.wk-check { position: absolute; right: 3px; top: 2px; z-index: 1; width: 16px; height: 16px; border-radius: 50%; background: var(--tomato); color: #fff; font-style: normal; font-size: 10px; display: grid; place-items: center; }
-.wk-cell.is-draft .dish-tile { opacity: .45; }
-.wk-cell.is-draft { outline: 1.5px dashed #d8c4ad; outline-offset: -1.5px; }
-.wk-cell.is-today { outline: 2.5px solid var(--tomato); outline-offset: -2.5px; }
-.wk-bars { margin-top: 5px; }
-.wk-bar { min-width: 0; padding: 3px 6px; border-radius: 999px; font-size: 10px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #efe4d6; color: var(--muted); }
-.wk-bar.is-open { background: var(--tomato); color: #fff; }
-.wk-bar.is-late { background: #fde3da; color: #b3261e; }
-.wk-bar.is-decided { background: #fff1dc; color: var(--ink); }
-.wk-bar.is-shopped { background: #f3ebe0; color: var(--muted); }
-.wk-pick { margin: 6px 2px 0; font-size: 13px; color: var(--muted); }
-.wk-pick b { color: var(--ink); }
-.wk-hint { margin: 8px 2px 0; font-size: 13px; line-height: 1.6; }
-.wk-hint b { color: var(--tomato); }
-.wk-hint .text-button { font-size: 13px; padding: 0; min-height: 0; }
-.wk-tools { display: flex; gap: 6px; margin-top: 6px; }
-.wk-tools .secondary-button { min-height: 34px; padding: 0 12px; font-size: 12px; }
 .block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 14px 4px 8px; font-size: 16px; }
 .block-head small { font-size: 12px; font-weight: 800; color: var(--muted); }
 .block-head.is-open small { color: var(--tomato); }
@@ -2566,7 +2532,6 @@ body.bars-hidden .playlist-footer, body.bars-hidden .cooking-primary { bottom: e
 .shop-menu > summary::-webkit-details-marker { display: none; }
 .shop-menu-list { position: absolute; right: 0; top: 42px; z-index: 5; display: grid; gap: 6px; width: 190px; padding: 10px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(60, 30, 10, .15); }
 .shop-menu-list button { width: 100%; min-height: 40px; font-size: 13px; }
-.shop-list { display: grid; gap: 0; border-radius: 14px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); }
 .aisle-group { display: grid; grid-template-columns: 22px 1fr; border-top: 1px solid var(--line); }
 .aisle-group:first-child { border-top: 0; }
 .aisle-tag { margin: 0; writing-mode: vertical-rl; text-orientation: upright; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; letter-spacing: 0; line-height: 1.05; padding: 2px 0; background: var(--surface-soft, #fff4e8); color: var(--muted); overflow: hidden; white-space: nowrap; }
@@ -2637,7 +2602,6 @@ body.has-page-title .page-title { display: block; }
 .plan-swap { grid-auto-flow: column; gap: 3px; min-width: 0; min-height: 34px; padding: 2px 8px; border-radius: 12px; }
 .plan-swap span:first-child { font-size: 15px; }
 .block-head { margin: 10px 4px 6px; font-size: 15px; }
-.week-board { margin: 0 0 8px; padding: 8px 10px; border-radius: 16px; }
 @media (max-width: 360px) { .plan-list .plan-card { grid-template-columns: 80px minmax(0, 1fr); } .plan-title { font-size: 15px; } }
 /* Recipes: smaller search, chips and tiles so more dishes show at once. */
 .search-pill { min-height: 40px; padding: 0 12px; }
@@ -2839,69 +2803,8 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .creator-row.is-editing .primary-button { min-height: 38px; padding: 0 16px; }
 .creator-note { margin: 6px 2px 0; }
 /* 🎟 チケットと、はじめての4週間チャレンジ */
-.ticket-chip { flex-shrink: 0; position: relative; display: inline-flex; align-items: center; gap: 3px; height: 36px; padding: 0 11px 0 9px; margin-right: 6px; border-radius: 999px; border: 1.5px solid #f3c27a; background: #fff7e8; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
-.ticket-chip[hidden] { display: none; }
-.ticket-chip b { font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; }
-.ticket-dot { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--tomato); border: 2px solid var(--surface); animation: tk-pulse 1.6s ease-in-out infinite; }
-.ticket-nudge { display: flex; align-items: center; gap: 8px; width: 100%; margin: 8px 0; padding: 8px 12px; border-radius: 14px; border: 1.5px solid #f3c27a; background: linear-gradient(90deg, #fff4dc, #fffaf0); font: inherit; font-size: 13px; color: var(--ink); text-align: left; cursor: pointer; }
-.ticket-nudge > span:nth-child(2) { flex: 1; min-width: 0; }
-.ticket-nudge b { color: #c2551f; font-weight: 900; white-space: nowrap; }
-.ticket-nudge i { font-style: normal; color: var(--muted); }
-.ticket-nudge-icon { font-size: 17px; display: inline-block; animation: tk-wiggle 3.2s ease-in-out infinite; }
-.ticket-sheet .quota-card { max-height: calc(100dvh - 24px); overflow-y: auto; }
-.tk-balance { display: flex; align-items: center; gap: 10px; }
-.tk-balance p { flex: 1; margin: 0; display: flex; align-items: baseline; gap: 4px; }
-.tk-balance p b { font-size: 34px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
-.tk-balance p small { font-size: 14px; font-weight: 800; }
-.tk-ticket { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: #fff0d2; font-size: 26px; transform: rotate(-8deg); }
 .tk-close { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--surface-soft); font-size: 20px; color: var(--muted); cursor: pointer; }
-.tk-what { margin: 0; color: var(--muted); }
-.tk-what b { color: var(--ink); }
-.tk-challenge { display: grid; gap: 8px; padding: 12px; border-radius: 18px; background: #fffaf0; border: 1.5px solid #f6dfb4; }
-.tk-title { margin: 0; display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
-.tk-title span { font-size: 12px; font-weight: 800; color: #c2551f; }
-.tk-meter { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-.tk-meter progress { flex: 1; height: 10px; border: 0; border-radius: 99px; overflow: hidden; background: #f3e6d2; appearance: none; }
-.tk-meter progress::-webkit-progress-bar { background: #f3e6d2; border-radius: 99px; }
-.tk-meter progress::-webkit-progress-value { background: linear-gradient(90deg, #f6b73c, var(--tomato)); border-radius: 99px; }
-.tk-meter progress::-moz-progress-bar { background: linear-gradient(90deg, #f6b73c, var(--tomato)); border-radius: 99px; }
-.tk-meter b { color: var(--ink); font-size: 14px; }
-.tk-next { margin: 0; font-size: 13px; }
-.tk-plus { display: inline-block; padding: 1px 7px; border-radius: 99px; background: var(--tomato); color: #fff; font-weight: 900; font-size: 12px; }
-.tk-weeks { display: grid; gap: 6px; }
-.tk-week { display: grid; gap: 2px; padding: 6px 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
-.tk-week.is-now { border: 1.5px solid #f3c27a; box-shadow: 0 2px 10px rgba(238, 106, 76, .12); }
-.tk-week.is-future { opacity: .55; }
-.tk-week.is-perfect { background: linear-gradient(135deg, #fffdf3, #fff1c9); }
-.tk-week-head { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.tk-week-head b { color: var(--ink); font-size: 13px; }
-.tk-week-head em { font-style: normal; padding: 0 6px; border-radius: 99px; background: var(--tomato); color: #fff; font-weight: 800; font-size: 11px; }
-.tk-week-head em.tk-crown { background: #f6cf5b; color: #5a3b00; }
-.tk-line { display: flex; align-items: center; gap: 6px; }
-.tk-kind { width: 5.2em; flex-shrink: 0; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.tk-dots { flex: 1; display: flex; gap: 3px; min-width: 0; }
-.tk-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; background: #efe4d6; }
-.tk-dot.on { background: #f29f3d; }
-.tk-dot.moon { background: #c9c2e8; }
-.tk-dot.today { outline: 2px solid var(--ink); outline-offset: 1px; }
-.tk-stamp { flex-shrink: 0; display: grid; place-items: center; width: 36px; height: 27px; border-radius: 9px; border: 1.5px dashed #e3c9a4; font-size: 10px; font-weight: 800; line-height: 1.05; color: var(--muted); }
-.tk-stamp small { font-size: 10px; }
-.tk-stamp.ready { border-style: solid; border-color: var(--tomato); color: var(--tomato); animation: tk-pulse 1.4s ease-in-out infinite; }
-.tk-stamp.got { border: 2px solid #d9442a; color: #d9442a; background: #fff1ec; transform: rotate(-10deg); font-size: 12px; }
 /* 達成の瞬間 */
-.ticket-party { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: rgba(40, 25, 15, .45); animation: tk-fade .2s ease-out; }
-.tp-card { position: relative; width: min(100%, 340px); display: grid; gap: 8px; justify-items: center; padding: 22px 18px 16px; border-radius: 26px; background: var(--surface); text-align: center; box-shadow: 0 20px 50px rgba(40, 25, 15, .3); animation: tk-pop .45s cubic-bezier(.2, 1.6, .4, 1); }
-.tp-kicker { margin: 0; font-size: 13px; font-weight: 800; color: #c2551f; }
-.tp-gain { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 800; }
-.tp-gain b { font-size: 48px; font-weight: 900; line-height: 1; color: var(--tomato); }
-.tp-ticket { font-size: 40px; display: inline-block; animation: tk-fly .7s cubic-bezier(.2, 1.4, .4, 1) both; }
-.tp-stamps { display: flex; gap: 10px; margin: 4px 0 8px; }
-.tp-stamp { width: 52px; height: 40px; font-size: 15px; animation: tk-stamp .5s .25s cubic-bezier(.3, 1.8, .5, 1) both; }
-.tp-what, .tp-next { margin: 0; font-size: 13px; }
-.tp-next b { color: #c2551f; }
-.tp-card .primary-button { margin-top: 6px; }
-.tp-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.tp-confetti i { position: absolute; top: -12px; left: calc(var(--i) * 7% + 2%); width: 8px; height: 13px; border-radius: 2px; background: hsl(calc(var(--i) * 47), 85%, 62%); animation: tk-fall calc(1.4s + var(--i) * .07s) calc(var(--i) * .04s) ease-in forwards; }
 @keyframes tk-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes tk-fade { from { opacity: 0; } }
 @keyframes tk-fly { from { transform: translateY(40px) rotate(-30deg) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -2911,14 +2814,7 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 @keyframes tk-wiggle { 0%, 80%, 100% { transform: none; } 85% { transform: rotate(-14deg); } 90% { transform: rotate(12deg); } 95% { transform: rotate(-6deg); } }
 .draft-video { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) {
-  .ticket-dot, .ticket-nudge-icon, .tk-stamp.ready, .tp-card, .tp-ticket, .tp-stamp, .ticket-party { animation: none; }
-  .tp-confetti { display: none; }
 }
-.tk-cost { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: #fffaf0; border: 1.5px solid #f6dfb4; }
-.tk-cost p { margin: 0; display: grid; font-size: 15px; }
-.tk-cost small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.tk-skip { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding: 4px 0; }
-.tk-skip input { width: 18px; height: 18px; accent-color: var(--tomato); }
 /* レシピの選択モード */
 .tabs-row { display: flex; align-items: center; gap: 8px; }
 .tabs-row .chip-tabs { flex: 1; min-width: 0; }
@@ -2946,7 +2842,6 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .google-login { min-height: 44px; }
 .login-row { display: flex; gap: 8px; }
 .login-row .input { flex: 1; min-width: 0; }
-.tk-login { text-align: left; font-size: 13px; }
 .google-login { font-size: 12px; color: var(--muted); }
 /* はじめの献立づくり（課金につながるオンボーディング） */
 .funnel-picks { display: grid; gap: 8px; }
@@ -3475,6 +3370,13 @@ body.has-page-title .brand-block { flex: 1 0 auto; }
 .child-name .src-mark, .folder-row .src-mark, .rank-prompt .src-mark { margin-right: 2px; }
 .tonight-title .child-name { font-size: 14px; }
 .swap-group { margin: 6px 0 0; font-size: 12px; font-weight: 800; color: var(--muted); }
+/* 「⇄ ほかの一皿」の理由（任意・1タップ） */
+.swap-why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.swap-why > span { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: 2px; }
+.swap-why-echo { margin: 0 0 8px; font-size: 13px; line-height: 1.6; }
+.swap-bought { padding: 12px; border-radius: 14px; background: #fff7ea; border: 1px dashed #f0c98f; }
+.swap-bought p { margin: 0 0 10px; font-size: 15px; line-height: 1.6; }
+.swap-bought-actions { display: grid; gap: 8px; }
 .swap-folder { margin: 0; font-size: 14px; }
 .swap-medal { margin-right: 4px; font-style: normal; }
 .rank-prompt { display: grid; gap: 8px; }
@@ -3675,69 +3577,12 @@ button.stamp { cursor: pointer; }
 .pw-perks { margin: 0 0 10px; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .pw-perks li { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 12px; background: var(--surface-soft); font-size: 13.5px; font-weight: 700; }
 .pw-perks li span { font-size: 18px; }
-.tk-plus-line { display: block; margin-top: 6px; }
 /* ⓘ：押すと吹き出し */
 .tip { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; vertical-align: middle; }
 .tip:focus::after, .tip:hover::after { content: attr(data-tip); position: absolute; z-index: 20; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 220px; padding: 7px 10px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.5; text-align: left; white-space: normal; box-shadow: var(--shadow); }
 .plan-foot { margin: 4px 0 0; text-align: right; }
-.tk-bonus { margin: 8px 0 0; padding: 8px 10px; border-radius: 12px; background: #fff4e6; font-size: 13px; }
-.tk-bonus .tk-dots { display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle; }
 /* チケットのページ */
-.tk-page { display: grid; gap: 6px; }
-.tk-hero { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 16px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
-.tk-hero p { margin: 0; display: flex; align-items: baseline; gap: 4px; }
-.tk-hero p b { font-size: 40px; line-height: 1; }
-.tk-exp { margin-left: auto; font-size: 12.5px; color: var(--muted); }
-.tk-h { margin: 14px 0 2px; font-size: 14px; color: var(--muted); }
-.tk-rules { margin: 0; padding: 0; list-style: none; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-.tk-rules li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-.tk-rules li:last-child { border-bottom: 0; }
-.tk-rules .tk-ic { font-size: 18px; text-align: center; }
-.tk-rules p { margin: 0; display: grid; gap: 2px; min-width: 0; }
-.tk-rules p b { font-size: 14px; }
-.tk-rules small { font-size: 12px; color: var(--muted); }
-.tk-rules em { font-style: normal; font-weight: 800; font-size: 14px; color: var(--sage-dark); white-space: nowrap; }
-.tk-rules li.is-now { background: #fff4e6; }
-.tk-rules li.is-done em, .tk-rules li.is-past { color: var(--muted); }
-.tk-rules li.is-past { opacity: .6; }
-.tk-rules .tk-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
-.tk-note { margin: 0; font-size: 13px; }
 /* チケットのページ：タブ・ミッション・ショップ */
-.tk-next-line { flex-basis: 100%; margin: 4px 0 0; padding: 6px 10px; border-radius: 10px; background: #fff4e6; font-size: 13px; }
-.tk-next-line b { color: var(--sage-dark); }
-.tk-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; padding: 4px; border-radius: 16px; background: var(--surface-soft); }
-.tk-tab { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 9px 4px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
-.tk-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 2px 8px rgba(90, 60, 30, .12); }
-.tk-panel { margin-top: 8px; }
-.ms-list, .shop-list { display: grid; gap: 8px; }
-.ms-card, .shop-card { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 12px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
-.ms-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--surface-soft); font-size: 22px; }
-.ms-body { display: grid; gap: 3px; min-width: 0; }
-.ms-body b { font-size: 15px; }
-.ms-body small { font-size: 12px; color: var(--muted); }
-.ms-bar { height: 8px; margin-top: 4px; border-radius: 99px; background: var(--surface-soft); overflow: hidden; }
-.ms-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #f6b24b, var(--sage)); }
-.ms-count { justify-self: end; margin-top: -2px; }
-.ms-week { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
-.ms-week .tk-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
-.ms-reward { display: grid; place-items: center; min-width: 56px; padding: 6px 8px; border-radius: 12px; background: #fff4e6; font-size: 13px; color: var(--sage-dark); }
-.ms-reward b { font-size: 17px; }
-.ms-stamp { font-style: normal; font-weight: 900; font-size: 13px; color: var(--sage-dark); border: 2px solid currentColor; border-radius: 8px; padding: 2px 6px; transform: rotate(-8deg); }
-.ms-card.is-now { box-shadow: inset 0 0 0 2px #f6c07a; }
-.ms-card.is-later, .ms-card.is-past { opacity: .6; }
-.ms-card.is-done { background: var(--surface-soft); }
-.ms-card.is-done .ms-reward { background: none; }
-.shop-card.is-best { box-shadow: inset 0 0 0 2px var(--sage); background: #fff7f2; }
-.shop-badge { position: absolute; top: -9px; left: 12px; padding: 1px 8px; border-radius: 99px; background: var(--sage); color: #fff; font-size: 11px; font-weight: 800; }
-.shop-price { display: grid; justify-items: center; min-width: 76px; padding: 8px 10px; border: 0; border-radius: 12px; background: var(--sage); color: #fff; font: inherit; font-weight: 900; font-size: 15px; cursor: pointer; }
-.shop-price small { font-size: 10.5px; font-weight: 700; opacity: .9; }
-.shop-price:disabled { background: var(--line); color: var(--muted); cursor: default; }
-.tk-history { margin: 0; padding: 0; list-style: none; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
-.tk-history li { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
-.tk-history li:last-child { border-bottom: 0; }
-.tk-history b { margin-left: auto; color: var(--sage-dark); }
-.tk-hero .tk-next-line b { font-size: inherit; line-height: inherit; }
-.shop-list { padding-top: 10px; }
 /* β版の「お気持ちありがとう」と意見フォーム */
 .fb-sheet .quota-card { display: grid; gap: 10px; }
 .fb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -3955,11 +3800,7 @@ i.g { font-style: normal; margin-left: 4px; opacity: .45; }
 .yohaku-tile { display: grid; place-items: center; background: var(--surface-soft); }
 .yohaku-tile .yohaku { width: 72%; height: 72%; }
 /* 今週のカレンダー：見出しの右の余白から、日付のすきまにひょっこり（高さは取らない） */
-.wk-top { position: relative; }
-.wk-yohaku { position: absolute; right: 6px; bottom: -9px; width: 46px; height: 46px; pointer-events: none; }
-.wk-yohaku .yohaku { width: 46px; height: 46px; animation: yh-pop .7s ease-out both, yh-float 3.6s ease-in-out .7s infinite; transform-origin: 50% 100%; }
 @keyframes yh-pop { from { transform: translateY(40%) scaleY(.7); opacity: 0; } to { transform: none; opacity: 1; } }
-.wk-loop { margin-right: 52px; }
 /* まとめて評価：右下で、もじもじ待つ */
 .rv-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 4px; }
 .rv-foot .yohaku-wait { width: 56px; height: 56px; flex: none; }
@@ -3998,8 +3839,6 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 #cook-mode .is-seen { position: relative; overflow: visible; outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--tomato) 30%, transparent), 0 0 20px color-mix(in srgb, var(--tomato) 60%, transparent); }
 #cook-mode .is-seen::after { content: ""; position: absolute; inset: -6px; left: -6px; bottom: -6px; width: auto; height: auto; padding: 3px; border-radius: 999px; background: conic-gradient(from -90deg, var(--tomato) calc(var(--hold, 0) * 360deg), transparent 0); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; transition: none; }
 /* 今週のカレンダー：見出しの下に線を引き、よはくはその線の上に手をのせる（すきまを作らない） */
-.wk-top { padding-bottom: 6px; border-bottom: 1.5px solid var(--line); }
-.wk-yohaku { bottom: -2px; }
 /* 買い物：直近の1つを元に戻す（画面の下） */
 .shop-undo { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 55; display: flex; align-items: center; gap: 8px; width: min(calc(100% - 32px), 420px); padding: 8px 8px 8px 14px; border-radius: 16px; background: #2b2825; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 14px; animation: fd-in .2s ease-out both; }
 .shop-undo span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4233,3 +4072,94 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .sync-save-panel p { margin: 4px 0; font-size: 13px; }
 .sync-plan-choice { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 12px; background: var(--surface-soft); }
 .sync-plan-choice button { white-space: normal; text-align: left; min-height: 44px; }
+
+/* 献立のリスト（2026-10-28 のユーザーの判断）：1行＝写真（動画のサムネイルと同じ16:9・黒い帯は切り落とす）＋日付の1行・料理名・ボタン。
+   買い物のひとかたまり（3日など）が1画面に入る高さに。リズムの時は、ひとかたまりを1ページにして横にスライド。 */
+.plan-list .plan-card.is-dish, .plan-list .plan-card.is-past { display: grid; grid-template-columns: 42% minmax(0, 1fr); align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-radius: 14px; box-shadow: 0 3px 10px rgba(90, 60, 30, 0.05); }
+.plan-list .plan-card.is-dish .plan-photo, .plan-list .plan-card.is-past .plan-photo { position: relative; display: block; width: 100%; min-height: 0; align-self: start; }
+.plan-list .plan-card.is-dish .plan-photo .dish-tile, .plan-list .plan-card.is-past .plan-photo .dish-tile { width: 100%; height: auto; min-height: 0; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 0; }
+.plan-list .plan-card.is-dish .plan-body, .plan-list .plan-card.is-past .plan-body { position: static; gap: 1px; padding: 6px 8px 6px 10px; }
+.plan-list .plan-card .plan-date { font-size: 11px; }
+.plan-list .plan-card.is-dish .plan-title, .plan-list .plan-card.is-past .plan-title { font-size: 14px; line-height: 1.3; padding-right: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.plan-list .plan-card.is-dish .plan-note { padding-right: 0; font-size: 11px; }
+.plan-list .plan-card.is-dish .plan-controls, .plan-list .plan-card.is-past .plan-controls { position: static; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin: 3px 0 0; }
+.plan-list .plan-card.is-dish .plan-controls .plan-staple-note { flex: 1 1 auto; margin: 0; gap: 4px; font-size: 11px; }
+.plan-list .plan-card.is-dish .plan-icon, .plan-list .plan-card.is-past .plan-icon { min-height: 32px; padding: 0 10px; font-size: 12px; }
+.plan-list .plan-card.is-dish .plan-controls .plan-more-btn { width: 32px; height: 32px; }
+.plan-list .plan-card.is-dish .plan-icon-label { display: inline; }
+.plan-list .plan-card.is-dish .plan-swap { display: inline-flex; align-items: center; gap: 3px; }
+/* 食べた日：✓ と評価 */
+.plan-list .plan-card.is-past { background: var(--surface-soft); }
+.plan-list .plan-card.is-past .plan-photo .dish-tile { filter: saturate(0.85); }
+.past-check { position: absolute; left: 6px; top: 6px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--tomato); color: #fff; font-style: normal; font-size: 12px; font-weight: 900; }
+.plan-rating { margin: 2px 0 0; font-size: 12px; font-weight: 700; }
+.plan-list .plan-card.is-off-row { grid-template-columns: 42% minmax(0, 1fr); }
+.plan-list .plan-card.is-off-row .plan-photo .dish-tile { aspect-ratio: 16 / 9; min-height: 0; font-size: 22px; }
+/* ページ（横スライド） */
+.plan-pages { display: grid; grid-auto-flow: column; grid-auto-columns: 100%; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -2px; padding: 0 2px; }
+.plan-pages::-webkit-scrollbar { display: none; }
+.plan-page { display: grid; align-content: start; gap: 8px; scroll-snap-align: start; min-width: 0; }
+.plan-page .block-head { margin: 0; }
+.plan-page .block-foot { margin-top: 2px; }
+.plan-dots { display: flex; justify-content: center; gap: 6px; margin: 0 0 8px; }
+.plan-dot { min-height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
+.plan-dot[aria-pressed="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+
+/* 好きな味：料理名の写真12枚（taste-ui.js renderDishPickGrid）。3列で1画面に収める。 */
+.dp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.dp-tile { position: relative; display: grid; gap: 4px; padding: 0 0 6px; border: 2px solid transparent; border-radius: 14px; background: var(--surface); font: inherit; color: var(--ink); cursor: pointer; overflow: hidden; box-shadow: 0 2px 8px rgba(40, 25, 15, .08); }
+.dp-photo { position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--surface-soft); overflow: hidden; }
+.dp-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fcf9ee; }
+.dp-emoji { font-size: 30px; line-height: 1; }
+.dp-name { padding: 0 4px; font-size: 12px; font-weight: 700; line-height: 1.3; text-align: center; }
+.dp-tile .pick-check { top: 5px; right: 5px; width: 22px; height: 22px; }
+.dp-tile[aria-pressed="true"] { border-color: var(--tomato); }
+.dp-tile[aria-pressed="true"] .pick-check { background: var(--tomato); }
+.dp-tile[aria-pressed="true"] .pick-check::after { content: ""; position: absolute; left: 5px; top: 2px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+.persona-likes .dp-emoji { display: grid; place-items: center; aspect-ratio: 1 / 1; font-size: 34px; }
+
+/* レシピの画面：上の ⋯ と「🗓 献立に入れる」（daily-ui.js renderRecipeDetail）。 */
+.detail-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.detail-top .detail-more { position: relative; }
+.detail-top .detail-more .plan-more-menu { right: 0; left: auto; min-width: 240px; z-index: 20; }
+.detail-place { margin: 12px 0 8px; }
+.detail-actions:empty { display: none; }
+/* 「◯◯を、いつ？」：下から出る日の一覧。 */
+.place-sheet { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
+.place-dim { position: absolute; inset: 0; border: 0; padding: 0; background: rgba(40, 30, 20, .45); cursor: pointer; }
+.place-card { position: relative; width: 100%; max-width: 560px; max-height: 80vh; overflow: auto; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; background: var(--surface); box-shadow: 0 -8px 30px rgba(0, 0, 0, .15); }
+.place-card h3 { margin: 0 0 4px; font-size: 18px; }
+.place-days { display: grid; gap: 8px; margin: 10px 0 6px; }
+.place-day { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.place-day span { display: grid; gap: 2px; font-size: 15px; font-weight: 700; }
+.place-day small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.place-day .place-unused { color: var(--sage-dark); }
+.place-day b { flex: none; color: var(--tomato); font-size: 13px; }
+.place-day.is-same, .place-day.is-off { cursor: default; background: var(--surface-soft); }
+.place-day.is-off span { color: var(--muted); }
+
+/* レシピタブ（2026-10-28 の整理：案①②）。タブ2つ・気分のボタン1行・好きな料理から・写真の一覧。 */
+.recipe-tabs { display: flex; margin: 10px 0; padding: 4px; border-radius: 999px; background: var(--surface-soft); }
+.recipe-tabs .chip-tab { flex: 1; min-height: 40px; border: 0; background: transparent; color: var(--muted); }
+.recipe-tabs .chip-tab[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+.recipe-tabs .chip-tab[aria-pressed="true"] small { color: var(--muted); }
+.quick-filters { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px 8px; padding: 0 16px 4px; scrollbar-width: none; }
+.quick-filters::-webkit-scrollbar { display: none; }
+.quick-chip, .quick-more { flex: 0 0 auto; white-space: nowrap; }
+.quick-more { color: var(--tomato); }
+.recipe-section { margin: 12px 0 8px; font-size: 15px; }
+.recipe-section small { margin-left: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.recipe-section-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pick-dish-row { display: flex; gap: 10px; overflow-x: auto; margin: 0 -16px 6px; padding: 0 16px 4px; scrollbar-width: none; }
+.pick-dish-row::-webkit-scrollbar { display: none; }
+.pick-dish { flex: 0 0 120px; display: grid; gap: 2px; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.pick-dish img, .pick-dish .dish-tile, .pick-dish-empty { width: 120px; height: 90px; aspect-ratio: auto; object-fit: cover; border-radius: 14px; background: var(--surface-soft); }
+.pick-dish-empty { display: grid; place-items: center; font-size: 28px; }
+.pick-dish b { font-size: 13px; line-height: 1.3; }
+.pick-dish small { color: var(--muted); font-size: 12px; }
+.tile-heart span { font-size: 18px; line-height: 1; }
+.recipe-note { margin: 10px 0; }
+/* ＋（レシピを追加）の画面の、動画の保存のしかた。 */
+.save-steps { margin: 4px 0 10px; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.paste-big { margin: 4px 0 6px; }
+.or-line { margin: 10px 0 4px; text-align: center; }

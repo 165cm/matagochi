@@ -1,6 +1,19 @@
-const CACHE_NAME = "ripigochi-v175";
-const APP_VERSION = "20261027-phone-backup";
+const CACHE_NAME = "ripigochi-v188";
+const APP_VERSION = "20261029-roles";
 const CORE_ASSETS = [
+  "./assets/dish-picks/shogayaki.webp",
+  "./assets/dish-picks/karaage.webp",
+  "./assets/dish-picks/hamburg.webp",
+  "./assets/dish-picks/nikujaga.webp",
+  "./assets/dish-picks/reishabu.webp",
+  "./assets/dish-picks/hoikoro.webp",
+  "./assets/dish-picks/mabo.webp",
+  "./assets/dish-picks/omurice.webp",
+  "./assets/dish-picks/salmonfoil.webp",
+  "./assets/dish-picks/sabamiso.webp",
+  "./assets/dish-picks/meuniere.webp",
+  "./assets/dish-picks/happosai.webp",
+
   "./assets/dishes/photo-unavailable-pot.webp",
   "./",
   "./index.html",

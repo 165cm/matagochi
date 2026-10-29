@@ -151,6 +151,7 @@
   .steps .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
   .steps input { width: 6.5em; padding: 6px 8px; }
   .steps input.is-bad { border-color: var(--tomato); }
+  .demo-banner { margin: 0 0 10px; padding: 10px 12px; border: 2px dashed var(--s4); border-radius: 12px; background: #fff6dc; }
   .sticky { position: sticky; bottom: 0; background: var(--surface); padding: 10px 0 0; border-top: 1px solid var(--line); }
 </style>
 </head>
@@ -159,11 +160,13 @@
   <div class="head">
     <h1>品ぞろえ（管理）</h1>
     <div class="row">
+      <a class="link small" href="help.html">❓ ヘルプ</a>
       <p id="status" class="meta" role="status" aria-live="polite"></p>
       <button type="button" class="link small" id="reload" hidden>再読み込み</button>
       <button type="button" class="link small" id="logout" hidden>合言葉を消す</button>
     </div>
   </div>
+  <p id="demo-banner" class="demo-banner" hidden>🧪 デモ：<b>サンプルの数字</b>です（本物のデータではありません・サーバーには何も送りません）。見られるのは「📈 採用率」と「🤝 投稿者」のタブだけです。<a href="catalog.html">デモを終わる</a></p>
   <section aria-label="合言葉" id="login-box">
     <form id="login" class="row">
       <input id="token" type="password" autocomplete="off" required placeholder="管理用の合言葉（RECIPE_ADMIN_TOKEN）" aria-label="管理用の合言葉" style="flex:1 1 260px">
@@ -229,7 +232,8 @@
   </div>
 
   <div id="panel-adopt" role="tabpanel" aria-labelledby="tab-adopt" hidden style="display:grid;gap:10px">
-    <section><div class="head"><h2>料理ごとの採用率（この月と前の月）</h2><span class="meta">行を押すとレシピ</span></div><div id="items" class="scroll" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div></section>
+    <section><div class="head"><h2>料理ごとの採用率（この月と前の月）</h2><span class="meta">行を押すとレシピ</span></div>
+      <details class="info"><summary>ⓘ 見方</summary><div><b>候補に出た</b>＝献立の候補として利用者の画面に出た回数／<b>献立に入った</b>＝その料理が献立に入った回数／<b>作った</b>＝「作った」を押した回数／<b>採用率</b>＝献立に入った ÷ 候補に出た（候補に出たのが少ないうちは「—」）／<b>残す</b>＝新着から献立に入ったので「みんなの定番」に残している／<b>同意</b>＝投稿者が「みんなが見る一覧に載せる」に同意している。どれも匿名の回数だけで、誰が選んだかは分かりません。くわしくは <a href="help.html#adopt">ヘルプ</a>。</div></details><div id="items" class="scroll" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div></section>
     <section><h2>月の費用（新着集め）</h2><div id="cost" style="margin-top:8px"><p class="empty">—</p></div></section>
   </div>
 
@@ -914,6 +918,8 @@
     return ytReady;
   }
   async function openRecipe(videoId) {
+    // デモの行はサンプルなので、レシピは開かない（サーバーに問い合わせない）。
+    if (DEMO) { status.textContent = "🧪 デモ：サンプルの行なので、レシピは開けません（本番では材料・手順・動画が開きます）。"; return; }
     const dlg = document.getElementById("recipe"), body = document.getElementById("recipe-body");
     body.textContent = ""; body.append(el("p", "読み込んでいます…", "meta"));
     if (!dlg.open) dlg.showModal();
@@ -1066,6 +1072,37 @@
     document.getElementById("token").value = "";
     load();
   });
+  // ── デモ（?demo=1）：サンプルの数字で「📈 採用率」「🤝 投稿者」の見え方を確かめる。サーバーには何も送らない（2026-10-28 のユーザーの要望）。 ──
+  const DEMO = new URLSearchParams(location.search).has("demo");
+  function demoCatalog() {
+    const month = new Date().toISOString().slice(0, 7);
+    const prev = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 15).toISOString().slice(0, 7);
+    const rows = [
+      ["豚こまキャベツのみそ炒め", 64, 21, 12, "サンプル料理チャンネルA", true, true],
+      ["鮭のバターしょうゆ焼き", 41, 15, 9, "サンプルごはんB", true, false],
+      ["鶏むねのレンジよだれ鶏", 58, 14, 6, "サンプル時短C", true, false],
+      ["厚揚げとなすの甘辛煮", 33, 6, 2, "サンプル料理チャンネルA", false, true],
+      ["ツナと小松菜のさっと煮", 27, 3, 1, "サンプル家庭料理D", false, false],
+      ["ひき肉と豆腐のそぼろ丼", 49, 9, 5, "サンプルごはんB", true, false],
+      ["さば缶の和風トマト煮", 12, 1, 0, "サンプル魚料理E", false, false],
+      ["ちくわと卵の照り焼き", 4, 1, 1, "サンプル節約F", false, false],
+    ];
+    return {
+      items: rows.map(([title, shown, planned, cooked, channelTitle, kept, publicConsent], i) => ({ videoId: `demo${i}`, title, shown, planned, cooked, channelTitle, kept, publicConsent, rate: shown >= 5 ? Math.round((planned / shown) * 100) : null })),
+      cost: [{ month, yen: 412, cap: 1000, ai: 412 }, { month: prev, yen: 985, cap: 1000, ai: 985 }],
+      askConsent: [{ channelTitle: "サンプルごはんB", planned: 24, videos: 2 }, { channelTitle: "サンプル時短C", planned: 14, videos: 1 }],
+    };
+  }
+  function startDemo() {
+    token = "";
+    last = { seed: null, catalog: demoCatalog() };
+    document.getElementById("demo-banner").hidden = false;
+    document.getElementById("login-box").hidden = true;
+    for (const t of ["seed", "recipes", "dishes"]) document.getElementById(`tab-${t}`).disabled = true;
+    renderCatalog();
+    showTab("adopt");
+    status.textContent = "🧪 デモ";
+  }
   document.getElementById("logout").addEventListener("click", () => {
     token = ""; try { sessionStorage.removeItem("ripigochi-admin"); } catch {}
     session += 1; stopAuto = true;
@@ -1081,7 +1118,7 @@
     document.getElementById("login-box").hidden = false; document.getElementById("reload").hidden = true;
     status.textContent = "合言葉を消しました。"; document.getElementById("logout").hidden = true;
   });
-  load();
+  if (DEMO) startDemo(); else load();
 </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
-import { createTicketBook, START_TICKETS } from "./tickets.js";
+import { createTicketBook, DAILY_USES } from "./tickets.js";
 import { createAuth } from "./auth.js";
 import { createTrendBook, SEED_QUERIES, TREND_YEN_PER_AI, waveStatus } from "./trends.js";
 import { createPopularBook } from "./popular.js";
@@ -38,7 +38,7 @@ export function createApp(env = process.env, deps = {}) {
   const photoStore = "photoStore" in deps ? deps.photoStore : createPhotoStore(env);
   const recipeStore = deps.recipeStore ?? createRecipeStore(env);
   const auth = createAuth(recipeStore, env, { sendMail: deps.sendMail, fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
-  const tickets = recipeStore ? createTicketBook(recipeStore, { now: deps.now || Date.now, startTickets: Number(env.START_TICKETS || START_TICKETS) }) : null;
+  const tickets = recipeStore ? createTicketBook(recipeStore, { now: deps.now || Date.now, limit: Number(env.DAILY_USES || DAILY_USES) }) : null;
   const catalog = createRecipeCatalog(recipeStore,
     deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
       analyzeRecipeVideo: env.VIDEO_ANALYSIS_ENABLED === "false" ? undefined : (videoUrl, snippet, videoOptions) => analyzeRecipeVideo(videoUrl, snippet, env, videoOptions),
@@ -66,7 +66,7 @@ export function createApp(env = process.env, deps = {}) {
   const rawSearch = deps.searchRecipes || ((q, o) => searchYouTubeRecipes(q, o, env));
   const guardedSearch = searchQuota.wrap(rawSearch, "trend");
   const trendBook = createTrendBook(recipeStore, { dishBook, nameDishes: deps.nameDishes || ((items) => nameDishes(items, env)), catalog, optedOut: () => creatorDesk.optedOut(), search: guardedSearch,
-    searchChannels: searchQuota.wrap(deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), "channel"), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), videoDetails: deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100),
+    searchChannels: searchQuota.wrap(deps.searchChannels || ((q) => searchYouTubeChannels(q, env)), "channel"), channelUploads: deps.channelUploads || ((id, o) => fetchChannelUploads(id, o, env)), channelIcons: deps.channelIcons || ((ids) => fetchChannelIcons(ids, env)), writeCatches: deps.writeCatches || (env.GOOGLE_CLOUD_PROJECT ? (items) => writeCatchCopies(items, env) : undefined), videoDetails: deps.videoDetails || (env.YOUTUBE_API_KEY ? (ids) => fetchYouTubeStatuses(ids, env) : null), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now, dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
     ...(Number(env.TREND_PER_DAY) > 0 ? { perDay: Number(env.TREND_PER_DAY) } : {}), ...(Number(env.TREND_WEEK_MAX) > 0 ? { weekMax: Number(env.TREND_WEEK_MAX) } : {}),
     ...(Number(env.TREND_AI_PER_DAY) > 0 ? { aiPerDay: Number(env.TREND_AI_PER_DAY) } : {}), ...(Number(env.TREND_AI_PER_WEEK) > 0 ? { aiPerWeek: Number(env.TREND_AI_PER_WEEK) } : {}),
     // 月の費用の上限（円）と、AI を1回呼ぶ費用の目安（円）。β版の間は月1,000円（docs/PERSONALIZE_PLAN.md §2）。
@@ -113,7 +113,7 @@ export function createApp(env = process.env, deps = {}) {
       models: { text: env.GEMINI_MODEL || "gemini-2.5-flash", video: env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash", menu: env.GEMINI_MENU_MODEL || "gemini-3.1-flash-image" } });
   });
 
-  // 家庭の識別子（同期ルームIDか端末ID）と、開発用コード。動画読み取りのチケットに使う。
+  // 家庭の識別子（同期ルームIDか端末ID）と、開発用コード。動画読み取りなどの1日の上限に使う。
   const devCode = String(env.DEV_UNLOCK_CODE || "886");
   const idOf = (value) => { const h = String(value || ""); return /^[\w-]{8,80}$/.test(h) ? h : ""; };
   const householdOf = (req) => idOf(req.get("x-household"));
@@ -226,13 +226,11 @@ export function createApp(env = process.env, deps = {}) {
     const quota = () => ticketsView(req);
     try {
       const result = await catalog.import(req.body?.url, { forceVideo: req.body?.mode === "video", household, unlimited });
-      // はじめの3日の取り込みボーナスのために、取り込んだ動画を数える。
-      if (tickets && household) await tickets.noteImport(household, result.videoId || (() => { try { return extractYouTubeVideoId(req.body?.url); } catch { return ""; } })());
       res.json({ ...result, tickets: await quota() });
     } catch (error) {
       // AI分析が失敗・上限・停止中でも、動画のタイトルと説明文は返す。材料はアプリ側で説明文から読み取る。
-      // チケットがない時は、そのことを知らせる（保存済みの結果には触れていない）。
-      if (!["invalid_url", "unsupported_url", "no_tickets"].includes(error.code)) {
+      // 1日の上限に達した時は、そのことを知らせる（保存済みの結果には触れていない）。
+      if (!["invalid_url", "unsupported_url", "daily_limit"].includes(error.code)) {
         console.error(JSON.stringify({ event: "youtube_import_failed", code: error.code || "unknown", message: String(error.message || "").slice(0, 200) }));
         try {
           const videoId = extractYouTubeVideoId(req.body?.url);
@@ -243,7 +241,7 @@ export function createApp(env = process.env, deps = {}) {
         }
       }
       const { status, body } = toErrorResponse(error);
-      res.status(status).json(error.code === "no_tickets" ? { ...body, tickets: await quota() } : body);
+      res.status(status).json(error.code === "daily_limit" ? { ...body, tickets: await quota() } : body);
     }
   });
 

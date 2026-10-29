@@ -3,10 +3,12 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./dishes.js";
+import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH } from "./ideal.js";
 import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 
-// 新着レシピ：YouTubeから選んで読み取り、28日で消す（YouTube APIのデータは30日を超えて持たない）。
+// 新着レシピ：YouTubeから選んで読み取り、28日見せる。28日を過ぎた料理は休ませ、決まりを満たす間は0円でもう一度並べる（§46-8）。
+// （YouTube APIのデータは30日を超えて持たない：説明文などは後片付けで取り直す。）
 // 集める処理と、見せる枠を分ける（docs/PERSONALIZE_PLAN.md §7.3・§12-7）：
 //   集める … GitHubの定期実行が毎日ノックする。1日に集めるのは TREND_PER_DAY 品まで、1週で TREND_WEEK_MAX 品まで。
 //            毎日、登録チャンネルの新着を見直す（週の初めに10品そろっても、その週の新しい動画を拾える）。毎日必ず新着があるとは限らない。
@@ -21,6 +23,16 @@ export const TREND_PER_WEEK = 10; // 以前の見せる枠（1週あたり）。
 // 月の費用の上限（β版の間、2026-10-01 のユーザーの判断で月1,000円）と、AI を1回呼ぶ費用の目安（円。実測で直す）。
 export const TREND_YEN_PER_MONTH = 1000;
 export const TREND_YEN_PER_AI = 1; // 2026-10-01 の実測（説明欄の読み取り1回 約0.86円）から。考える部分を使わない読み取りならもっと安い
+// 月の予算を月末まで均等に使う（2026-10-28 のユーザーの判断。§46-8 ②）：自動の新着集め・補充は、その日までに使ってよい分（上限 × 日 ÷ その月の日数）まで。
+// 使わなかった日の分は次の日へ持ち越す。手動の一括収集（運営が押す）は均等にしない。
+export function paceCap(cap, day) {
+  const [y, m, d] = String(day).split("-").map(Number);
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return Math.min(cap, Math.ceil((cap * d) / days));
+}
+// 利用者の読み取りの分を残す（§46-8 ②）：アプリ全体の AI の月の回数（AI_MONTHLY_LIMIT。利用者の取り込みと新着集めの合計）のうち、
+// この割合は利用者のために残し、新着集めは使わない。
+export const TREND_USER_SHARE = 0.3;
 // 手動の一括収集で、同時に読む本数（AI 1回に10秒ほどかかるので、1回押して集められる量を増やす）。
 export const SEED_PARALLEL = 3;
 // 説明欄にレシピが書いてありそうか（AI を呼ぶ前のふるい）：分量の書き方が3つ以上と、作り方の書き出しがある。
@@ -188,6 +200,14 @@ export const REFILL_TARGET = REFILL_PARENTS_MAX * REFILL_CHILDREN;
 export const REFILL_AI_PER_DAY = 25;
 export const REFILL_DISH_PER_DAY = 15;
 export const PARENT_REUSE_DAYS = 28;
+// 一度読んだ料理を、0円でもう一度並べる（2026-10-28 のユーザーの判断。docs/APP_MAP.md §46-8）。
+// 28日を過ぎた新着（と、以前に集める側が試した動画）を「休んでいる料理」（trends/index の retired）に残し、
+// 見えている新着が REVIVE_TARGET 品より少ない間、古く休んでいる順に新着へ戻す（AI も YouTube API も呼ばない。保存済みの読み取り結果だけ）。
+// 戻す料理も、ふだんの決まり（掲載停止・投稿者3%・親料理の子6品と30分以上1品・説明文が30日以内に取り直されている）を通す。
+export const REVIVE_TARGET = REFILL_TARGET;
+export const REVIVE_PER_DAY = 80; // 1日に戻す数（10月はじめにまとめて集めた分が同じ週に消えるので、1週間ほどで戻せる量）
+export const REVIVE_SCAN = 300; // 1回の実行で確かめる数（保存済みの結果の読み出しだけ）
+export const RETIRED_MAX = 5000;
 export const PARENT_FLAVORS = { quick: ["時短", "簡単", "10分", "レンジ", "フライパンひとつ", "人気"], long: ["本格", "人気"] };
 // ふつう30分以上かかる親料理（時短にしやすい料理を先に選ぶため、後ろへ回す）。
 export const LONG_PARENTS = new Set(["肉じゃが", "さばの味噌煮", "ぶり大根", "唐揚げ", "ロールキャベツ", "厚揚げの煮物", "ハンバーグ", "筑前煮", "かれいの煮付け", "豚汁", "豚の角煮", "ポトフ", "餃子", "酢豚", "カレー", "クリームシチュー",
@@ -215,20 +235,66 @@ export function stockOf(items = []) {
   }
   return by;
 }
-const QUICK_PER_PARENT = REFILL_CHILDREN - REFILL_LONG_PER_PARENT;
-const need = (st = {}) => ({ quick: Math.max(0, QUICK_PER_PARENT - (st.quick || 0)), long: Math.max(0, REFILL_LONG_PER_PARENT - (st.long || 0)) });
-// 子を入れてよいか（親1つで6品まで・30分以上は1品まで・20分以内は5品まで＝30分以上の1品の席を残す）。
-export const parentRoom = (st = {}, quick) => (st.total || 0) < REFILL_CHILDREN_MAX && (quick ? (st.quick || 0) < REFILL_CHILDREN_MAX - REFILL_LONG_PER_PARENT : (st.long || 0) < REFILL_LONG_PER_PARENT);
+// 理想の12品（ideal.js）は、子を IDEAL_CHILDREN 品まで（30分以上は IDEAL_LONG 品まで）。ほかの親は今までどおり6品まで（30分以上1品）。
+const IDEAL_KEYS = new Set(IDEAL_DISHES.map((d) => parentKeyOf(d.name)));
+export const isIdealParent = (key) => IDEAL_KEYS.has(key);
+export const limitsFor = (key) => (IDEAL_KEYS.has(key)
+  ? { quick: IDEAL_CHILDREN - IDEAL_LONG, long: IDEAL_LONG, max: IDEAL_CHILDREN }
+  : { quick: REFILL_CHILDREN - REFILL_LONG_PER_PARENT, long: REFILL_LONG_PER_PARENT, max: REFILL_CHILDREN_MAX });
+const need = (st = {}, key = "") => { const l = limitsFor(key); return { quick: Math.max(0, l.quick - (st.quick || 0)), long: Math.max(0, l.long - (st.long || 0)) }; };
+// 子を入れてよいか（親1つで6品まで・30分以上は1品まで・20分以内は5品まで＝30分以上の1品の席を残す。理想の12品は8品・30分以上2品）。
+export const parentRoom = (st = {}, quick, key = "") => { const l = limitsFor(key); return (st.total || 0) < l.max && (quick ? (st.quick || 0) < l.max - l.long : (st.long || 0) < l.long); };
 // 親の子がそろったか（数ではなく内訳で：20分以内4品以上・30分以上1品以上。review fix #135）。
-export const parentFilled = (st = {}) => { const n = need(st); return n.quick === 0 && n.long === 0; };
+export const parentFilled = (st = {}, key = "") => { const n = need(st, key); return n.quick === 0 && n.long === 0; };
+// 親料理の分野（主役）。定番の一覧（WAVE_CLASSIC_DISHES）と理想の12品から。分からない親は数えない。
+const GROUP_OF = (() => {
+  const m = {};
+  for (const [name, group] of WAVE_CLASSIC_DISHES) m[parentKeyOf(name)] = group;
+  for (const d of IDEAL_DISHES) m[parentKeyOf(d.name)] = d.group;
+  return m;
+})();
+// いまの割合（見えている新着から。分野の分かる親の料理だけで数える）と、目安との差（足りない分・0〜1）。
+export function shareGaps(items = []) {
+  const counts = {}; let known = 0, light = 0, named = 0;
+  for (const i of items) {
+    const k = i.dish?.key, name = i.dish?.name || "";
+    if (!k) continue;
+    named += 1;
+    if (LIGHT_DISH.test(name)) light += 1;
+    const g = GROUP_OF[k];
+    if (!g) continue;
+    known += 1;
+    counts[g] = (counts[g] || 0) + 1;
+  }
+  const gaps = {};
+  for (const [g, target] of Object.entries(TARGET_SHARES)) {
+    const share = g === "さっぱり" ? (named ? light / named : 0) : known ? (counts[g] || 0) / known : 0;
+    gaps[g] = { share, target, gap: Math.max(0, target - share) };
+  }
+  return gaps;
+}
+// 補充する親料理の順番（2026-10-28 のユーザーの判断：足りないものから）。
+//   ① 理想の12品 → ② 目安より少ない分野（魚・卵豆腐・野菜が主役・さっぱり）の親（足りない分の大きい順）→ ③ ほか（今までの順）。
+export function prioritizedParents(book = {}, items = []) {
+  const base = refillParents(book);
+  const removed = new Set(book.removed || []);
+  const ideal = IDEAL_DISHES.map((d) => ({ key: parentKeyOf(d.name), name: d.name })).filter((p) => !removed.has(p.key));
+  const gaps = shareGaps(items);
+  const gapOf = (p) => (gaps[GROUP_OF[p.key]]?.gap || 0) + (LIGHT_DISH.test(p.name) ? gaps["さっぱり"]?.gap || 0 : 0);
+  const rest = base.filter((p) => !IDEAL_KEYS.has(p.key)).map((p, i) => ({ ...p, i, g: gapOf(p) }));
+  const short = rest.filter((p) => p.g > 0).sort((a, b) => b.g - a.g || a.i - b.i).map(({ i, g, ...p }) => ({ ...p, tier: 1 }));
+  const others = rest.filter((p) => !(p.g > 0)).map(({ i, g, ...p }) => ({ ...p, tier: 2 }));
+  return [...ideal.map((p) => ({ ...p, tier: 0 })), ...short, ...others];
+}
 // 次に補充する親料理の検索（なければ null）。doc.waves.parents に、親ごとの言葉の位置と日を残す。
 export function nextParentWave(doc, parents, stock, nowMs) {
   const w = (doc.waves ||= { turn: 0, trend: 0, trendAt: {}, classic: 0, classicUsed: {}, words: {}, log: [], n: 0 });
   w.parents ||= {}; w.words ||= {}; w.log ||= [];
   const today = new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10);
   // 内訳が足りず、まだ6品に届いていない親（20分以内5・30分以上0なら、30分以上を探して6品目に）。
-  const order = parents.map((p, i) => ({ p, i, n: need(stock[p.key]) })).filter((x) => x.n.quick + x.n.long > 0 && (stock[x.p.key]?.total || 0) < REFILL_CHILDREN_MAX)
-    .sort((a, b) => (b.n.quick + b.n.long) - (a.n.quick + a.n.long) || a.i - b.i);
+  // 順番：理想の12品 → 足りない分野 → ほか（tier）。同じ段の中では、足りない子の多い親から。
+  const order = parents.map((p, i) => ({ p, i, n: need(stock[p.key], p.key) })).filter((x) => x.n.quick + x.n.long > 0 && (stock[x.p.key]?.total || 0) < limitsFor(x.p.key).max)
+    .sort((a, b) => (a.p.tier || 0) - (b.p.tier || 0) || (b.n.quick + b.n.long) - (a.n.quick + a.n.long) || a.i - b.i);
   for (const { p, n } of order) {
     const st = (w.parents[p.key] ||= { quick: 0, long: 0, at: {}, day: "" });
     if (st.day === today) continue; // 1つの親は1日1回まで
@@ -341,7 +407,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 
 // 1回の呼び出しで新しい動画を読み始めるのは、開始から2分半まで（動画は1本2分ほどかかるので、全体で5分に収める）。
 // AIの1日の上限（全体）のうち、人気レシピ集めが使うのは半分まで（利用者の取り込みを止めない）。
-export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, monthlyLimit = 1000, userShare = TREND_USER_SHARE, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
   const catches = { at: 0 };
@@ -428,15 +494,104 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     return { ...stage, added, ...(yenMeasured !== undefined ? { yenMeasured } : {}) };
   }
   const monthCapCalls = () => Math.max(0, Math.floor(yenPerMonth / Math.max(0.01, yenPerAi)));
+  // 新着集めが今月まだ使ってよい AI の回数（アプリ全体の月の回数から、利用者の分を残した残り。usage/YYYY-MM は UTC の月）。
+  async function trendRoom() {
+    const used = (await store.get(`usage/${new Date(now()).toISOString().slice(0, 7)}`))?.envelope.used || 0;
+    return Math.max(0, Math.floor(monthlyLimit * (1 - userShare)) - used);
+  }
   async function aiUsedToday() { return (await store.get(`usage/${new Date(now()).toISOString().slice(0, 10)}`))?.envelope.used || 0; }
   const fresh = (w) => now() - Date.parse(w.startedAt) < TREND_KEEP_DAYS * DAY;
+  // 保存されている一覧から、28日以内の週だけを持つ一覧を作る。28日を過ぎた週の料理は「休んでいる料理」（retired・古い順）へ移す（§46-8）。
+  const openIndex = (env = {}) => {
+    const weeks = (env.weeks || []).filter(fresh);
+    const live = new Set(weeks.flatMap((w) => w.items.map((i) => i.videoId)));
+    const gone = (env.weeks || []).filter((w) => !fresh(w)).flatMap((w) => w.items.map((i) => i.videoId));
+    const retired = [...new Set([...(env.retired || []), ...gone])].filter((v) => !live.has(v)).slice(-RETIRED_MAX);
+    return { weeks, retired, ...(env.retiredSeeded ? { retiredSeeded: true } : {}), ...(env.retiredOk ? { retiredOk: env.retiredOk } : {}), ...(env.revive ? { revive: env.revive } : {}), ...(env.refreshedOn ? { refreshedOn: env.refreshedOn } : {}) };
+  };
+  // 休んでいる料理を、0円で新着に戻す（§46-8）。戻した数と確かめた数を返す。index は呼んだ側が保存する。
+  async function revive(index, { excluded, port, list }) {
+    const today = dayOf(now());
+    // 初めての時だけ：以前に集める側（一括収集・補充）が試した動画も候補に入れる（この仕組みより前に28日を過ぎた料理を拾う）。
+    // 読み出しに失敗した時は移行済みにしない（次の実行でやり直す。記録がない＝null は、移行するものがないので済み。review fix #172）。
+    if (!index.retiredSeeded) {
+      let seedDoc, ok = true;
+      try { seedDoc = await store.get("trends/seed"); } catch { ok = false; }
+      if (ok) {
+        index.retired = [...new Set([...(seedDoc?.envelope?.tried || []), ...index.retired])].slice(-RETIRED_MAX);
+        index.retiredSeeded = true;
+      }
+    }
+    const day = index.revive?.on === today ? index.revive : { on: today, n: 0 };
+    index.revive = day;
+    const live = new Set(index.weeks.flatMap((w) => w.items.map((i) => i.videoId)));
+    index.retired = index.retired.filter((v) => !live.has(v));
+    // 確かめ済みで使える料理（retiredOk）：読み出せて、晩ごはんの料理。決まり（3%・親の子の数・説明文の取り直しなど）で今は戻せないものも含む。
+    const okSet = new Set((index.retiredOk || []).filter((v) => !live.has(v)));
+    const dead = (r) => !r || !isDinnerRecipe(r) || (r.caption && !TREND_MARKET.titleLooksLocal(r.caption));
+    const finish = (drop, scanned, revived) => {
+      index.retired = index.retired.filter((v) => !drop.has(v));
+      const inLine = new Set(index.retired);
+      index.retiredOk = [...okSet].filter((v) => inLine.has(v));
+      return { revived, scanned, usable: index.retiredOk.length, unchecked: index.retired.length - index.retiredOk.length };
+    };
+    const room = Math.min(REVIVE_PER_DAY - day.n, REVIVE_TARGET - (port?.total || 0));
+    if (!index.retired.length) return finish(new Set(), 0, 0);
+    if (room <= 0) {
+      // 戻す枠がない日：0円で、まだ確かめていない料理から古い順に確かめる（使えない料理を列から外し、使える数を数える）。
+      const drop = new Set();
+      let scanned = 0;
+      for (const v of index.retired) {
+        if (scanned >= REVIVE_SCAN) break;
+        if (okSet.has(v)) continue;
+        scanned += 1;
+        let r;
+        try { r = await peek(v); } catch { continue; } // 読み出せない時は、あとで
+        if (dead(r)) drop.add(v); else okSet.add(v);
+      }
+      return finish(drop, scanned, 0);
+    }
+    const items = (await list().catch(() => ({ items: [] }))).items || [];
+    const stock = stockOf(items);
+    const dbook = await (dishBook || createDishBook(store, { now })).book().catch(() => ({}));
+    let week = index.weeks.find((w) => w.revived && w.day === today);
+    if (!week) { week = { week: weekOf(now()), revived: true, day: today, startedAt: new Date(now()).toISOString(), items: [] }; index.weeks.push(week); }
+    const drop = new Set();
+    let scanned = 0, revived = 0;
+    // 戻す順は、日ごとに決まるランダムな順（2026-10-28 のユーザーの判断。同じ日は同じ順）。
+    const order = [...index.retired].sort((a, b) => dailyRank(today, a) - dailyRank(today, b));
+    for (const v of order) {
+      if (revived >= room || scanned >= REVIVE_SCAN) break;
+      scanned += 1;
+      let r;
+      try { r = await peek(v); } catch { continue; } // 読み出せない時は、あとで
+      // 読めない（削除・非公開・まだ読んでいない）・晩ごはんでない・日本語でない料理は、休みの列から外す。
+      if (dead(r)) { drop.add(v); continue; }
+      okSet.add(v);
+      // 次のどれかの時は、今日は戻さない（あとで条件が変われば戻せる）：
+      //   掲載停止／説明文が30日以内に取り直されていない（caption が空）／投稿者が3%に届いている／親料理の子がそろっている・30分以上がもうある／親のない30分以上
+      const quick = isQuickDish(r.planning?.minutes);
+      const pr = parentOf(r.title, dbook, r.dishName);
+      const st = pr ? (stock[pr.key] ||= { quick: 0, long: 0, total: 0 }) : null;
+      if (excluded.has(v) || (r.channelId && excluded.has(r.channelId)) || !r.caption || !portfolioRoom(port, r.channelId) || (st ? !parentRoom(st, quick, pr.key) : !quick)) continue;
+      if (st) { if (quick) st.quick += 1; else st.long += 1; st.total += 1; }
+      portAdd(port, r.channelId);
+      week.items.push({ videoId: v, day: today });
+      drop.add(v);
+      revived += 1;
+    }
+    day.n += revived;
+    if (!week.items.length) index.weeks = index.weeks.filter((w) => w !== week);
+    if (revived) cache = null;
+    return finish(drop, scanned, revived);
+  }
   async function lock() {
     const entry = await store.get("trends/lock");
     if (entry && entry.envelope.until > now()) return false;
     return !!(await store.put("trends/lock", { until: now() + budgetMs + 60_000 }, { ifGeneration: entry?.generation ?? 0 }));
   }
   async function unlock() { const entry = await store.get("trends/lock"); if (entry) await store.put("trends/lock", { until: 0 }, { ifGeneration: entry.generation }).catch(() => {}); }
-  // 1品読む：説明文で作り方がなければ、サーバーの分で動画も読む（利用者のチケットは使わない）。
+  // 1品読む：説明文で作り方がなければ、サーバーの分で動画も読む（利用者の1日の上限は使わない）。
   // AI の回数は、カタログが AI を呼ぶ直前ごと（説明欄・動画・チャプターの対応付け）に aiGate を通して数える。
   // 動画に切り替える時に説明欄をもう一度読む分も、その場で数える（取り込み1回＝1回ではない）。
   async function analyze(videoId, aiGate) {
@@ -498,12 +653,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const started = now();
       try {
         const entry = await readIndex();
-        const index = { weeks: (entry?.envelope.weeks || []).filter(fresh), ...(entry?.envelope.refreshedOn ? { refreshedOn: entry.envelope.refreshedOn } : {}) };
+        const index = openIndex(entry?.envelope);
         let stepPort = null;
         const stepExcluded = await optedOut();
         const getStepPort = async () => (stepPort ||= await countPortfolio(index.weeks, { generation: entry?.generation ?? 0, excluded: stepExcluded }));
         const week = weekOf(now()), today = dayOf(now());
-        let current = index.weeks.find((w) => w.week === week && !w.seed); // 手動の一括収集の分（seed）は別に持つ
+        let current = index.weeks.find((w) => w.week === week && !w.seed && !w.revived); // 手動の一括収集の分（seed）・戻した料理の分（revived）は別に持つ
         if (!current) {
           current = { week, startedAt: new Date(now()).toISOString(), candidates: [], tried: [], items: [], skipped: {} };
           index.weeks.unshift(current);
@@ -537,6 +692,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const skip = (reason) => { current.skipped[reason] = (current.skipped[reason] || 0) + 1; };
         const excluded = await optedOut();
         for (const id of excluded) delete channels.channels[id];
+        // 休んでいる料理を0円で新着に戻す（AI の枠・予算に関係なく、毎日。§46-8）。
+        const revived = await revive(index, { excluded, port: await getStepPort(), list: () => this.list({ promote: false }) }).catch(() => ({ revived: 0, scanned: 0, failed: true }));
         const quota = () => Math.min(perDay - (current.byDay[today] || 0), weekMax - current.items.length);
         const aiWeek = () => Object.values(current.aiByDay).reduce((a, b) => a + b, 0);
         // 月の費用：上限の回数＝月の上限（円）÷ 1回の目安（円）。AI を呼ぶ前に、この実行で使ってよい回数を trends/cost に**先に書いて予約**する
@@ -546,14 +703,16 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const writeCost = (change) => writeMonthCost(month, change);
         let reserved = 0, spent = 0, monthUsed = 0;
         const wanted = Math.max(0, Math.min(aiPerDay - (current.aiByDay[today] || 0), aiPerWeek - aiWeek()));
-        const after = await writeCost((used) => { monthUsed = used; reserved = Math.max(0, Math.min(wanted, monthCap - used)); return reserved ? used + reserved : null; });
+        // 月末まで均等に（pace）・利用者の分を残す（room）。§46-8 ②
+        const pace = paceCap(monthCap, today), room = await trendRoom();
+        const after = await writeCost((used) => { monthUsed = used; reserved = Math.max(0, Math.min(wanted, monthCap - used, pace - used, room)); return reserved ? used + reserved : null; });
         // 予約を書けなかった（保存先の失敗・競合）：この実行では AI を呼ばず、失敗として次の実行でやり直す（done にしない）。
         const reserveFailed = after === null && reserved > 0;
         if (after === null) reserved = 0;
         const canSpend = () => (current.aiByDay[today] || 0) < aiPerDay && aiWeek() < aiPerWeek && spent < reserved;
         const spend = () => { current.aiByDay[today] = (current.aiByDay[today] || 0) + 1; spent += 1; };
         const saveCost = async () => { if (reserved > spent) await writeCost((used) => Math.max(0, used - (reserved - spent))); };
-        const budgetReason = () => (monthUsed + spent >= monthCap ? "trend_month_budget" : "trend_ai_budget");
+        const budgetReason = () => (monthUsed + spent >= monthCap ? "trend_month_budget" : monthUsed + spent >= pace ? "trend_pace" : spent >= room ? "trend_user_reserve" : "trend_ai_budget");
         // 検索は1つずつ。失敗したものがあれば、その組は「済み」にしない（次の実行でやり直す。既出の動画は重ねない）。
         const fetchAll = async (calls) => { const out = []; let failed = 0; for (const c of calls) { try { out.push(...(await c())); } catch { failed += 1; } } return { out, failed }; };
         const addCandidates = (found, seen) => {
@@ -600,6 +759,14 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           current.tried.push(videoId);
           // 候補に入った後で外された動画・チャンネル（掲載停止・確認待ち・動画単位）は、読まずに飛ばす（AI も採用の枠も使わない）。
           if (excluded.has(videoId) || excluded.has(current.channelOf[videoId])) { skip("opted_out"); continue; }
+          // AI の前に、説明欄に作り方が書いてあるかを YouTube の情報で確かめる（AI の費用はかからない。§46-8 ③）。
+          // もう読んだ動画（0円）は確かめない。確かめられない時（通信）は、今までどおり読む。
+          if (videoDetails && !(await peek(videoId).catch(() => null))) {
+            let d;
+            try { d = (await videoDetails([videoId]))?.[videoId]; } catch { d = undefined; }
+            if (d && d.status !== "public") { learn(videoId, false); skip("not_public"); continue; }
+            if (d && !looksLikeRecipe(d.snippet?.description)) { learn(videoId, false); skip("description_not_recipe"); continue; }
+          }
           try {
             const r = await analyze(videoId, { allow: canSpend, used: spend });
             // 読んでみて分かったチャンネルが外されていたら、採用しない。
@@ -639,7 +806,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const exhausted = current.tried.length >= current.candidates.length && current.channelScan && current.kw >= SEARCH_ROUNDS.length;
         // done：今日はもう集めなくてよい（今日の分・今週の分がそろった／新着集めの AI の枠を使い切った／候補がもうない）。
         // 失敗（通信・一時的な失敗・AI全体の枠・設定の不足）で止めた時は done にしない（paused を見て、次の実行でやり直す）。
-        return { week, day: today, items: current.items.length, today: current.byDay[today] || 0, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds, skipped: current.skipped || {}, catches: catchesWritten,
+        return { week, day: today, items: current.items.length, today: current.byDay[today] || 0,
+          revived: { run: revived.revived, today: index.revive?.n || 0, scanned: revived.scanned, resting: (index.retired || []).length, usable: (index.retiredOk || []).length, ...(revived.failed ? { failed: true } : {}) }, tried: current.tried.length, candidates: current.candidates.length, rounds: current.rounds, skipped: current.skipped || {}, catches: catchesWritten,
           ai: { today: current.aiByDay[today] || 0, week: aiWeek(), perDay: aiPerDay, perWeek: aiPerWeek, month: monthUsed + spent, monthCap, yen: Math.round((monthUsed + spent) * yenPerAi), yenCap: yenPerMonth }, ...(paused ? { paused } : {}), ...(limited ? { limited } : {}),
           done: !paused && (quota() <= 0 || !!limited || exhausted) };
       } finally { await unlock(); }
@@ -650,7 +818,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // 晩ごはんでない題名は読まない／同じ投稿者は1回の検索で2本まで／動画そのものは読まない（費用が大きい）。
     // 集めた料理は、その段階の日から28日の新着（seed の週）。実際のトークン数から料金の目安も出す（usageYen）。
     // maxAi・maxAdd・timeMs：自動の補充（refill）で、1回の実行の AI の回数・増やす品数・時間を小さくする。
-    async seed({ yen = 100, axis = "both", maxAi = Infinity, maxAdd = Infinity, timeMs = budgetMs } = {}) {
+    async seed({ yen = 100, axis = "both", maxAi = Infinity, maxAdd = Infinity, timeMs = budgetMs, paced = false } = {}) {
       if (!WAVE_AXES.includes(axis)) axis = "both";
       required();
       if (!(await lock())) return { busy: true };
@@ -684,8 +852,10 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const skip = (why) => { stage.skipped[why] = (stage.skipped[why] || 0) + 1; };
         const allowed = Math.max(0, Math.min(Number(maxAi) >= 0 ? Number(maxAi) : Infinity, Math.floor(stage.yen / Math.max(0.01, yenPerAi)) - stage.ai));
         const monthCap = monthCapCalls();
+        // 自動の補充（paced）は月末まで均等に。手動の一括収集も含めて、利用者の分は残す（§46-8 ②）。
+        const pace = paced ? paceCap(monthCap, today) : monthCap, room = await trendRoom();
         let reserved = 0, spent = 0, monthUsed = 0;
-        const after = await writeMonthCost(month, (used) => { monthUsed = used; reserved = Math.max(0, Math.min(allowed, monthCap - used)); return reserved ? used + reserved : null; });
+        const after = await writeMonthCost(month, (used) => { monthUsed = used; reserved = Math.max(0, Math.min(allowed, monthCap - used, pace - used, room)); return reserved ? used + reserved : null; });
         let reserveFailed = after === null && reserved > 0;
         if (after === null) reserved = 0;
         // 段階の側も、AI を呼ぶ前に予約した回数を「使った」として先に保存する（保存できなければ AI を呼ばない）。
@@ -702,9 +872,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // 3本を同時に読むので、AI を呼んでよいかの確認（allow）の時点で1回分を確保する（確保したら、呼べなかった時も使った扱い＝多めに数える）。
         let claimed = 0;
         const gate = { allow: () => (claimed < reserved ? ((claimed += 1), true) : false), used: () => { spent += 1; } };
-        const why = () => (reserveFailed ? "cost_not_saved" : committed + claimed >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : "month_budget");
+        const why = () => (reserveFailed ? "cost_not_saved" : committed + claimed >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : monthUsed + claimed >= monthCap ? "month_budget" : monthUsed + claimed >= pace ? "pace_budget" : claimed >= room ? "user_reserve" : "month_budget");
         const ixEntry = await readIndex();
-        const index = { weeks: (ixEntry?.envelope.weeks || []).filter(fresh), ...(ixEntry?.envelope.refreshedOn ? { refreshedOn: ixEntry.envelope.refreshedOn } : {}) };
+        const index = openIndex(ixEntry?.envelope);
         let week = index.weeks.find((w) => w.seed && w.stage === stage.n);
         if (!week) { week = { week: weekOf(now()), seed: true, stage: stage.n, startedAt: stage.startedAt, candidates: [], tried: [], items: [], skipped: {} }; index.weeks.push(week); }
         const seen = new Set([...index.weeks.flatMap((w) => w.items.map((i) => i.videoId)), ...doc.tried]);
@@ -762,8 +932,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           doc.candidates.unshift(...back);
         }
         // 親料理ごとの子の数（見えている新着から。1回の実行で1回だけ読む）と、料理名の辞書。
-        let stock = null, dbook = null, runAdded = 0;
-        const getStock = async () => (stock ||= stockOf((await this.list({ promote: false }).catch(() => ({ items: [] }))).items || []));
+        let stock = null, dbook = null, runAdded = 0, listed = null;
+        const getItems = async () => (listed ||= (await this.list({ promote: false }).catch(() => ({ items: [] }))).items || []);
+        const getStock = async () => (stock ||= stockOf(await getItems()));
         const getDbook = async () => (dbook ||= await (dishBook || createDishBook(store, { now })).book().catch(() => ({})));
         while (now() - started < timeMs) {
           if (runAdded >= maxAdd) { reason = "refill_day"; break; }
@@ -799,7 +970,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               if (day >= WAVE_SEARCH_PER_DAY) { reason = "search_day_limit"; break; }
               const waveDoc = structuredClone(doc.waves);
               // 親料理ごとの補充：子が足りない親から（2026-10-03）。
-              if (axis === "parent") wave = nextParentWave(doc, refillParents(await getDbook()), await getStock(), now());
+              if (axis === "parent") wave = nextParentWave(doc, prioritizedParents(await getDbook(), await getItems()), await getStock(), now());
               else wave = await nextWave(doc, axis, now(), haveDish, { quick: needQuick(stage.added), longOk: longRoom(stage.added) });
               // 選んだ方向だけ使い切った時は、段階を終わりにしない（もう一方の方向で続けられる）。
               if (!wave) { reason = axis === "both" ? "exhausted" : "axis_exhausted"; break; }
@@ -881,7 +1052,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             // 親料理の子が6品そろっている時は読まない（読んでいる最中の同じ親も数える。試した扱いにしない）。
             if (c.wave && c.pk) {
               const st = (await getStock())[c.pk], same = batch.filter((x) => x.pk === c.pk).length;
-              if ((st?.total || 0) + same >= REFILL_CHILDREN_MAX) { if (same) { doc.candidates.unshift(c); break; } skip("parent_full"); continue; }
+              if ((st?.total || 0) + same >= limitsFor(c.pk).max) { if (same) { doc.candidates.unshift(c); break; } skip("parent_full"); continue; }
             }
             // 定番：その検索で料理が3品増えたら、残りは読まない（読んでいる最中の分も数える）。
             if (c.axis === "classic") {
@@ -943,7 +1114,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               const pr = parentOf(r.title, await getDbook(), r.dishName);
               if (pr) {
                 const st = (await getStock())[pr.key] || {};
-                if (!parentRoom(st, isQuickDish(r.planning?.minutes))) { skip((st.total || 0) >= REFILL_CHILDREN_MAX ? "parent_full" : "parent_long"); continue; }
+                if (!parentRoom(st, isQuickDish(r.planning?.minutes), pr.key)) { skip((st.total || 0) >= limitsFor(pr.key).max ? "parent_full" : "parent_long"); continue; }
                 pkey = pr.key;
               }
             }
@@ -1001,10 +1172,10 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     async parentStock() {
       const items = (await this.list({ promote: false }).catch(() => ({ items: [] }))).items || [];
       const stock = stockOf(items);
-      const parents = refillParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})));
-      const rows = parents.map((p) => ({ ...p, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
+      const parents = prioritizedParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})), items);
+      const rows = parents.map((p) => ({ ...p, ideal: IDEAL_KEYS.has(p.key), max: limitsFor(p.key).max, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
       const today = (await store.get("trends/refill"))?.envelope;
-      return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => parentFilled(r)).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX,
+      return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => parentFilled(r, r.key)).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX, gaps: shareGaps(items),
         today: today?.day === dayOf(now()) ? today : { day: dayOf(now()), ai: 0, added: 0 }, perDay: { ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY } };
     },
     // 自動の補充（毎日の新着集めの後に呼ぶ）：子が足りない親料理を、1日に料理15品・AI 25回まで埋める。
@@ -1025,7 +1196,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       try { ok = !!(await store.put("trends/refill", reservedDoc, { ifGeneration: cur?.generation ?? 0 })); } catch { ok = false; }
       if (!ok) return { skipped: "busy", done: false, ...today };
       // seed が例外（記録の保存の失敗など）の時は、AI を使った・料理を足したかが分からないので、予約は返さない（多めに数えたまま。review fix #135 r2）。
-      const r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs });
+      const r = await this.seed({ yen: 100, axis: "parent", maxAi: aiLeft, maxAdd: addLeft, timeMs, paced: true });
       const usedAi = r?.busy ? 0 : Math.min(aiLeft, r.ran?.ai || 0), usedAdd = r?.busy ? 0 : Math.min(addLeft, r.ran?.added || 0);
       // 予約のうち使わなかった分を返す（その間にほかの呼び出しが書いていても、差だけを返す）。
       let back = null;

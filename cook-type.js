@@ -179,13 +179,6 @@ function normalizeSkillPhoto(raw) {
   const img = (x, max) => typeof x === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(x) && x.length < max;
   return img(raw?.photo, 400_000) ? { photo: raw.photo, dish: String(raw.dish || "").slice(0, 40), level: [1, 2, 3, 4, 5].includes(raw.level) ? raw.level : null, at: String(raw.at || "") } : null;
 }
-// 献立に使う好みの味：選んだお店のジャンルから（和風・洋風・中華風）。
-function chainTastes(p) {
-  const map = { 牛丼: "和風", うどん: "和風", 定食: "和風", 寿司: "和風", とんかつ: "和風", 焼き鳥: "和風", 中華: "中華風", ラーメン: "中華風", 洋食: "洋風", バーガー: "洋風", カレー: "洋風" };
-  const counts = {};
-  (p.chains || []).forEach((id) => { const t = map[CHAIN_OF[id]?.genre]; if (t) counts[t] = (counts[t] || 0) + 1; });
-  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t]) => t);
-}
 // 結果のカード：アプリの色（生成り・テラコッタ）に合わせた、メニューカード風。アーチ窓の絵・判子の属性・明朝体の名前・S〜Gの成績表。
 const TYPE_NO = { RKQ: 1, RKS: 2, RAQ: 3, RAS: 4, CKQ: 5, CKS: 6, CAQ: 7, CAS: 8 };
 function renderCookTypeCard(r) {

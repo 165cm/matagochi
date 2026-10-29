@@ -7,7 +7,7 @@ function plans(value) {
   for (const [date, plan] of Object.entries(value)) if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (plan !== null && (typeof plan !== 'object' || Array.isArray(plan)))) fail('invalid_plans', '献立の確認データを確かめてください。');
   return value;
 }
-// 同じアカウントのブラウザを識別する。家族の役割・チケットの端末IDとは独立。
+// 同じアカウントのブラウザを識別する。家族の役割・1日の上限の端末IDとは独立。
 export function createSyncDevices(store) {
   return async (uid, code, body = {}) => {
     if (!code) fail('sync_not_ready', '先にアカウントの共有へ接続してください。', 409);

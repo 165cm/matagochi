@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { createTrendBook, weekOf, SEED_QUERIES, refillParents, nextParentWave, stockOf, parentRoom, LONG_PARENTS, REFILL_PARENTS_MAX, REFILL_TARGET, REFILL_DISH_PER_DAY, REFILL_AI_PER_DAY, PARENT_FLAVORS, PARENT_REUSE_DAYS } from '../src/trends.js';
+import { createTrendBook, weekOf, SEED_QUERIES, refillParents, nextParentWave, stockOf, parentRoom, LONG_PARENTS, REFILL_PARENTS_MAX, REFILL_TARGET, REFILL_DISH_PER_DAY, REFILL_AI_PER_DAY, PARENT_FLAVORS, PARENT_REUSE_DAYS, isIdealParent, limitsFor, prioritizedParents, shareGaps } from '../src/trends.js';
 
 // 2026-10-03：親料理ごとの補充（親80 × 子5・20分以内4：30分以上1・親1つ6品まで・毎日自動）。
 const DAY = 86_400_000;
@@ -74,18 +74,18 @@ test('refill: children per parent — at most 6, and at most 1 dish of 30 minute
 test('refill: a full parent is skipped before the AI, a second long child is not added, a quick child is', async () => {
   const store = createMemorySyncStore();
   const catalog = fakeCatalog();
-  // 八宝菜は20分以内3・30分以上1、生姜焼きは6品そろっている
-  await withList(store, catalog, [...times(3, ['八宝菜', 10]), ['八宝菜', 45], ...times(6, ['生姜焼き', 10]), ...times(40, ['ほかの料理', 10])]);
+  // 野菜炒めは20分以内3・30分以上1、揚げ出し豆腐は6品そろっている
+  await withList(store, catalog, [...times(3, ['野菜炒め', 10]), ['野菜炒め', 45], ...times(6, ['揚げ出し豆腐', 10]), ...times(40, ['ほかの料理', 10])]);
   // 段階には20分以内が4品（段階全体の「30分以上は2割まで」には余裕がある＝親の決まりだけを確かめる）
   await start(store, { stages: [{ n: 1, yen: 100, startedAt: new Date(NOW).toISOString(), ai: 0, input: 0, output: 0, added: times(4, { videoId: 'q', minutes: 10 }), skipped: {}, byQuery: {}, done: false }] });
   const [v1, v2, v3] = [vid(), vid(), vid()];
-  catalog.make.set(v1, recipe(v1, '最高の生姜焼き', 10)); catalog.make.set(v2, recipe(v2, '本格八宝菜', 45)); catalog.make.set(v3, recipe(v3, '時短八宝菜', 10));
+  catalog.make.set(v1, recipe(v1, '最高の揚げ出し豆腐', 10)); catalog.make.set(v2, recipe(v2, '本格野菜炒め', 45)); catalog.make.set(v3, recipe(v3, '時短野菜炒め', 10));
   const searched = [];
   const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
-    search: async (q) => { searched.push(q); return searched.length > 1 ? [] : [{ videoId: v1, channelId: 'c1', title: '最高の生姜焼き' }, { videoId: v2, channelId: 'c2', title: '本格八宝菜' }, { videoId: v3, channelId: 'c3', title: '時短八宝菜' }]; } });
+    search: async (q) => { searched.push(q); return searched.length > 1 ? [] : [{ videoId: v1, channelId: 'c1', title: '最高の揚げ出し豆腐' }, { videoId: v2, channelId: 'c2', title: '本格野菜炒め' }, { videoId: v3, channelId: 'c3', title: '時短野菜炒め' }]; } });
   const r = await book.seed({ yen: 10, axis: 'parent', maxAdd: 1 });
   assert.match(searched[0], new RegExp(`^.+ ${PARENT_FLAVORS.quick[0]} レシピ 材料$`), 'a parent with no child yet comes first (biggest gap)');
-  assert.ok(!searched[0].startsWith('八宝菜') && !searched[0].startsWith('生姜焼き'));
+  assert.ok(!searched[0].startsWith('野菜炒め') && !searched[0].startsWith('揚げ出し豆腐'));
   assert.ok(!catalog.calls.includes(v1), 'the full parent is not read');
   assert.equal(r.stage.skipped.parent_full, 1);
   assert.equal(r.stage.skipped.parent_long, 1);
@@ -113,7 +113,8 @@ test('refill: runs automatically up to 15 dishes and 25 AI calls a day, and does
   // 80の親がすべて5品 → 何もしない
   const full = createMemorySyncStore();
   const cat2 = fakeCatalog();
-  await withList(full, cat2, refillParents({}).flatMap((p) => [...times(4, [`かんたん${p.name}`, 10]), [`本格${p.name}`, 45]]));
+  // 理想の12品（ideal.js）は8品（20分以内6・30分以上2）でそろう
+  await withList(full, cat2, refillParents({}).flatMap((p) => isIdealParent(p.key) ? [...times(6, [`かんたん${p.name}`, 10]), ...times(2, [`本格${p.name}`, 45])] : [...times(4, [`かんたん${p.name}`, 10]), [`本格${p.name}`, 45]]));
   await start(full);
   let searched = 0;
   const b2 = createTrendBook(full, { catalog: cat2, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async () => { searched += 1; return []; } });
@@ -164,26 +165,26 @@ test('review fix (#135): a parent with 5 quick children and no long one is not d
   assert.equal(parentRoom(st.x, false), true);
   const store = createMemorySyncStore();
   const catalog = fakeCatalog();
-  // 八宝菜：20分以内5・30分以上0
-  await withList(store, catalog, [...times(5, ['八宝菜', 10]), ...times(40, ['ほかの料理', 10])]);
+  // 野菜炒め：20分以内5・30分以上0
+  await withList(store, catalog, [...times(5, ['野菜炒め', 10]), ...times(40, ['ほかの料理', 10])]);
   await start(store, { stages: [{ n: 1, yen: 100, startedAt: new Date(NOW).toISOString(), ai: 0, input: 0, output: 0, added: times(8, { videoId: 'q', minutes: 10 }), skipped: {}, byQuery: {}, done: false }] });
   const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async () => [] });
   const stock = await book.parentStock();
-  assert.equal(stock.parents.find((p) => p.name === '八宝菜').total, 5);
+  assert.equal(stock.parents.find((p) => p.name === '野菜炒め').total, 5);
   const filledBefore = stock.filled;
-  const v = vid(); catalog.make.set(v, recipe(v, '本格八宝菜', 45));
+  const v = vid(); catalog.make.set(v, recipe(v, '本格野菜炒め', 45));
   const b2 = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
-    search: async (q) => (q.startsWith('八宝菜 本格') ? [{ videoId: v, channelId: 'cv', title: '本格八宝菜' }] : []) });
-  // 八宝菜まで検索が回るように、ほかの親は1日1回の印を付けておく
+    search: async (q) => (q.startsWith('野菜炒め 本格') ? [{ videoId: v, channelId: 'cv', title: '本格野菜炒め' }] : []) });
+  // 野菜炒めまで検索が回るように、ほかの親は1日1回の印を付けておく
   const seedDoc = (await store.get('trends/seed'));
   const parentsAll = refillParents({});
   const today = new Date(NOW + 9 * 3_600_000).toISOString().slice(0, 10);
-  seedDoc.envelope.waves = { turn: 0, trend: 0, trendAt: {}, classic: 0, log: [], n: 0, parents: Object.fromEntries(parentsAll.filter((p) => p.name !== '八宝菜').map((p) => [p.key, { quick: 0, long: 0, at: {}, day: today }])) };
+  seedDoc.envelope.waves = { turn: 0, trend: 0, trendAt: {}, classic: 0, log: [], n: 0, parents: Object.fromEntries(parentsAll.filter((p) => p.name !== '野菜炒め').map((p) => [p.key, { quick: 0, long: 0, at: {}, day: today }])) };
   await store.put('trends/seed', seedDoc.envelope, { ifGeneration: seedDoc.generation });
   const r = await b2.seed({ yen: 5, axis: 'parent' });
   assert.ok(r.stage.added.some((a) => a.videoId === v), 'the long child is added as the 6th');
   const after = await b2.parentStock();
-  assert.equal(after.parents.find((p) => p.name === '八宝菜').total, 6);
+  assert.equal(after.parents.find((p) => p.name === '野菜炒め').total, 6);
   assert.equal(after.filled, filledBefore + 1);
 });
 
@@ -241,4 +242,50 @@ test('review fix (#135 r2): the workflow refills only after the daily collection
   assert.match(yml, /grep -q '"done":true' && \{ echo "done=true" >> "\$GITHUB_OUTPUT"; exit 0; \}/);
   assert.match(yml, /if: steps\.refresh\.outputs\.done == 'true'\n\s+run: \|\n[\s\S]*\/api\/trends\/refill/);
   assert.ok(!/ai_budget"' && \{[^}]*GITHUB_OUTPUT/.test(yml), 'the AI-budget stop does not mark done');
+});
+
+// 理想の品ぞろえ（2026-10-28 のユーザーの判断）：理想の12品 → 目安より少ない分野 → ほか、の順に補充する。理想の12品は8品まで。
+test('ideal: the 12 ideal dishes come first and fill to 8 (6 quick, 2 long); others stay at 6', async () => {
+  const { IDEAL_DISHES, IDEAL_CHILDREN } = await import('../src/ideal.js');
+  assert.equal(IDEAL_DISHES.length, 12);
+  const ps = prioritizedParents({}, []);
+  assert.deepEqual(ps.slice(0, 12).map((p) => p.name), IDEAL_DISHES.map((d) => d.name), 'ideal first, in order');
+  assert.ok(ps.slice(0, 12).every((p) => p.tier === 0));
+  const ideal = ps[0].key;
+  assert.deepEqual(limitsFor(ideal), { quick: 6, long: 2, max: IDEAL_CHILDREN });
+  assert.equal(limitsFor('ほかの料理').max, 6);
+  assert.equal(parentRoom({ quick: 5, long: 0, total: 5 }, true, ideal), true, 'a 6th quick child is fine for an ideal dish');
+  assert.equal(parentRoom({ quick: 6, long: 1, total: 7 }, true, ideal), false, 'the last seat is for a long one');
+  assert.equal(parentRoom({ quick: 6, long: 1, total: 7 }, false, ideal), true);
+  assert.equal(parentRoom({ quick: 6, long: 2, total: 8 }, false, ideal), false, '8 at most');
+  // 理想の料理名が6品そろっていても、まだ探す（ほかの親より先）。理想の中では、足りない子の多い料理名から。
+  const stock = Object.fromEntries(ps.slice(1, 12).map((p) => [p.key, { quick: 6, long: 2, total: 8 }]));
+  stock[ideal] = { quick: 5, long: 1, total: 6 };
+  const w = nextParentWave({}, ps, stock, NOW);
+  assert.equal(w.word, ps[0].name, 'the ideal dish with 6 is still searched before the other 68 names');
+  const fresh = nextParentWave({}, ps, { [ideal]: { quick: 5, long: 1, total: 6 } }, NOW);
+  assert.ok(ps.slice(1, 12).some((p) => p.name === fresh.word), 'an ideal dish with none comes before one with 6');
+});
+
+test('ideal: dish names in short groups (fish, egg/tofu, vegetables, light) come before the rest, biggest gap first', () => {
+  // 見えている新着：肉ばかり（魚・卵豆腐・野菜が主役が目安より少ない）
+  const items = Array.from({ length: 40 }, (_, i) => ({ dish: { key: `k${i}`, name: '生姜焼き' } })).map((x) => ({ dish: { key: prioritizedParents({}, [])[0].key, name: '生姜焼き' } }));
+  const gaps = shareGaps(items);
+  assert.ok(gaps['魚'].gap > 0 && gaps['卵・豆腐'].gap > 0 && gaps['野菜が主役'].gap > 0 && gaps['さっぱり'].gap > 0);
+  const ps = prioritizedParents({}, items);
+  const tier1 = ps.filter((p) => p.tier === 1);
+  assert.ok(tier1.length > 0 && tier1.every((p) => !isIdealParent(p.key)));
+  assert.ok(ps.findIndex((p) => p.tier === 1) < ps.findIndex((p) => p.tier === 2), 'short groups before the rest');
+  assert.ok(tier1.some((p) => /しゃぶ|ホイル|蒸し/.test(p.name)) || tier1.some((p) => ['さばの竜田揚げ', 'あじフライ', 'かに玉'].includes(p.name)));
+  // 目安に届いたら、その分野は先にしない
+  const enough = shareGaps([...Array.from({ length: 25 }, () => ({ dish: { key: prioritizedParents({}, [])[9].key, name: 'さばの味噌煮' } })), ...Array.from({ length: 75 }, () => ({ dish: { key: prioritizedParents({}, [])[0].key, name: '生姜焼き' } }))]);
+  assert.equal(enough['魚'].gap, 0);
+});
+
+test('ideal: the dictionary knows the ideal names and their usual spellings', async () => {
+  const { parentOf } = await import('../src/dishes.js');
+  assert.equal(parentOf('豚の生姜焼き 簡単')?.name, '生姜焼き');
+  assert.equal(parentOf('鶏の唐揚げ')?.name, '唐揚げ');
+  assert.equal(parentOf('冷しゃぶサラダ')?.name, '冷しゃぶ');
+  assert.equal(parentOf('鮭のホイル蒸し')?.name, '鮭のホイル焼き');
 });

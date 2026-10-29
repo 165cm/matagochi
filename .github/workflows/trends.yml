@@ -5,6 +5,8 @@ name: Weekly trend recipes
 # サーバー側は何回呼ばれても、採用数（1日2品・1週14品）と、新着集めが AI を呼ぶ回数（1日6回・1週30回：TREND_AI_PER_DAY・TREND_AI_PER_WEEK）の上限を超えない。
 # 続けて、親料理ごとの自動の補充（POST /api/trends/refill：1日に料理15品・AI 25回まで・月の上限の中）を done になるまで呼ぶ（docs/APP_MAP.md §46-7）。
 # 表示（GET /api/trends）は、ここで集めた結果を読み出すだけ。
+# 最後に健康診断（scripts/trends-health.cjs）：今日増えた数・見えている品数・止まった理由を実行の要約に書き、
+# 問題があれば実行を「失敗（赤）」にする＝GitHub からメールが届く（2026-10-28。以前は止まっていても「成功」だった）。
 # 手動で試す時は Actions → Weekly trend recipes → Run workflow。
 on:
   schedule:
@@ -19,6 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
+      - uses: actions/checkout@v4
+        with:
+          # scripts と、理想の品ぞろえ（api/src/ideal.js）。一番上の階のファイル（lifestyle.js など）はいつも入る。
+          sparse-checkout: |
+            scripts
+            api/src
       - name: Collect this week's trend recipes (until 10 are ready)
         id: refresh
         run: |
@@ -26,6 +34,7 @@ jobs:
             out=$(curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \
               https://matagochi-api-292190013809.us-central1.run.app/api/trends/refresh || echo '{}')
             echo "Round $i: $out"
+            echo "$out" > refresh.json
             # その日の分がそろった時だけ、次の「親料理の補充」へ進む（review fix #135）。
             echo "$out" | grep -q '"done":true' && { echo "done=true" >> "$GITHUB_OUTPUT"; exit 0; }
             # AI全体の枠・設定の不足は、今日はここまで。通信や一時的な失敗は、少し待ってやり直す（done にはならない）。
@@ -44,8 +53,19 @@ jobs:
             out=$(curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \
               https://matagochi-api-292190013809.us-central1.run.app/api/trends/refill || echo '{}')
             echo "Refill $i: $out"
+            echo "$out" >> refill.jsonl  # 1行に1回の返事（健康診断が、この実行で補充に使った AI の回数を足す）
             echo "$out" | grep -q '"done":true' && exit 0
             echo "$out" | grep -q '"reason":"wait"' && sleep 65
             sleep 5
           done
           echo "Refill not finished yet; the next run continues."
+      - name: Health check (fail when collecting stopped)
+        # 前の手順が失敗（設定の不足など）でも必ず診断する。一覧の読み出しは AI も YouTube API も使わない。
+        if: always()
+        run: |
+          curl -sS --max-time 120 https://matagochi-api-292190013809.us-central1.run.app/api/trends -o trends.json || echo '{}' > trends.json
+          node scripts/trends-health.cjs refresh.json refill.jsonl trends.json
+      - name: Progress toward the ideal recipe set
+        # 理想の12品・主役と味の割合の目安までの進み具合（api/src/ideal.js）。健康診断が赤の日も出す。AI は使わない。
+        if: always()
+        run: node scripts/catalog-taste.cjs trends.json --ideal || true

@@ -457,16 +457,26 @@ test("creators: channel names and TikTok handles group saved recipes and filter 
   run(`state.recipes.push({id:"t1",title:"A丼",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://www.tiktok.com/@kurashiru/video/1",author:""},{id:"t2",title:"B丼",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://www.youtube.com/watch?v=x",author:"リュウジ<b>"})`);
   assert.equal(run('authorOf(state.recipes.find(r=>r.id==="t1"))'),"@kurashiru");
   assert.equal(run('sourceOf(state.recipes.find(r=>r.id==="t2"))'),"youtube");
-  run('recipeTab="creators"');const html=run('renderCollection()');
+  const html=run('renderCreators(state.recipes)');
   assert.ok(html.includes("@kurashiru"));assert.ok(html.includes("リュウジ&lt;b&gt;"));assert.ok(!html.includes("リュウジ<b>"));
+  // 投稿者のタブはやめて、検索で探す（2026-10-28）。TikTok の @アカウント名でも見つかる。
+  run('state.searchText="kurashiru"');assert.ok(run('renderCollection()').includes("A丼"));
+  run('state.searchText="リュウジ"');const found=run('renderCollection()');assert.ok(found.includes("B丼")&&!found.includes("A丼"));
+  run('state.searchText=""');
   run('handleDailyAction("life-creator",{name:"@kurashiru"})');
   assert.equal(run('recipeFacets.author'),"@kurashiru");assert.equal(run('recipeTab'),"saved");
 });
-test("save guide: first visit shows steps, then a small paste strip stays; copied text becomes a draft",()=>{
+test("save guide: the steps and the paste button are on the ＋ screen (not on top of the recipe list); copied text becomes a draft",()=>{
   const run=app();run('state.onboarded=true;state.view="collection"');
-  assert.ok(run('renderCollection()').includes('class="save-guide"'));
-  run('saveGuideOpen=false');const html=run('renderCollection()');
-  assert.ok(html.includes('class="save-strip"'));assert.ok(!html.includes('class="save-guide"'));
+  const list=run('renderCollection()');
+  assert.ok(!list.includes('save-steps')&&!list.includes('paste-recipe-url'),"the list starts with the dishes");
+  run('state.view="register";state.editingRecipeId=null;state.draft={...clone(emptyDraft)}');const html=run('renderRecipeEntry()');
+  assert.ok(html.includes('class="save-steps"')&&html.includes('data-action="paste-recipe-url"'));
+  // 今日の「やること」に1回だけ。やってみる → ＋ の画面、もう出ない
+  run('state.skillProfile={level:2};talkProfile().dismissedAt="2026-10-01T00:00:00Z";state.foodProfile=Lifestyle.profile({servings:2,completed:true})');
+  assert.ok(run('renderTodayTodos()').includes("保存した動画を、献立に使えます"),"after the other questions, once");
+  run('handleDailyAction("life-save-guide",{})');assert.equal(run('state.view'),"register");
+  assert.ok(!run('renderTodayTodos()').includes("保存した動画を、献立に使えます"));
   assert.equal(run('startRecipeFromText("そぼろ丼 https://www.tiktok.com/@kurashiru/video/1")'),true);
   assert.equal(run('state.view'),"register");assert.equal(run('state.draft.shareTitle'),"そぼろ丼");assert.equal(run('state.draft.title'),"");assert.equal(run('state.draft.source'),"TikTok");
   assert.equal(run('startRecipeFromText("URLなし")'),false);
@@ -762,7 +772,7 @@ test("app: 3-day rhythm splits the week into 月火水／木金土 with Sunday o
   assert.equal(run("decidedUntil()"), "2026-09-26");
   run('handleDailyAction("life-block-shopped",{key:"2026-09-24"})');
   assert.equal(run('blockStatus(currentBlocks()[0])'), "shopped");
-  assert.ok(run("renderWeekBoard()").includes("wk-bar"));
+  assert.match(run("renderDailyPlan()"), /block-head is-shopped[\s\S]*買い物済み ✓/, "the page head shows it (the week calendar was removed on 2026-10-28)");
 });
 
 test("traits: パン粉 and フライパン do not make a dish a bread meal", () => {
@@ -837,7 +847,7 @@ test("app: tapping a recipe opens a read-only detail; starters can be hidden fro
   assert.equal(run("state.view"), "recipe");
   const html = run("renderRecipeDetail()");
   assert.ok(html.includes("材料") && html.includes("作り方") && html.includes("豚こま"));
-  assert.ok(html.includes("自分のレシピに保存"));
+  assert.ok(html.includes("🤍 保存") && html.includes("🗓 献立に入れる"));
   run('handleDailyAction("life-save-starter",{recipe:"starter-03"})');
   assert.ok(run("!detailRecipe().curated"), "detail follows the saved copy");
   assert.ok(run('renderRecipeDetail().includes("編集する")'));
@@ -862,34 +872,38 @@ test("skills: every starter gets a 1–5 skill level from its steps; titles and 
   assert.ok(!L.tags(byId("13")).includes("easy"));
 });
 
-test("skill quiz: answers give a level; the plan stays at that level, or adds one challenge when growing", () => {
+test("trivia quiz (2026-10-28): fun facts first, a ★ hint only — the plan uses it only when the person says so; harder dishes are ranked lower, never removed", () => {
   const run = app();
   const bank = JSON.parse(run("JSON.stringify(SKILL_BANK)"));
-  assert.ok(bank.length >= 50, "a bank of about 50 questions");
+  assert.ok(bank.length >= 40, "about 45 questions");
   assert.equal(new Set(bank.map((q) => q.id)).size, bank.length, "unique ids");
   for (const q of bank) { assert.equal(q.c.length, 4, q.id); assert.equal(new Set(q.c).size, 4, q.id); assert.ok(q.why && q.a >= 0 && q.a < 4, q.id); assert.ok(run(`!!SKILL_CATS["${q.cat}"]`), q.id); }
   for (const l of [1, 2, 3, 4, 5]) assert.ok(bank.filter((q) => q.level === l).length >= 7, `enough at ★${l}`);
-  const take = (rightWhen) => run(`startSkillQuiz();for(let i=0;i<10;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction("life-quiz-answer",{value:String((${rightWhen})(i,q)?q.a:(q.a+1)%4)});handleDailyAction("life-quiz-next",{})};JSON.stringify({...cbtResult(skillQuiz),done:skillQuiz.done,levels:skillQuiz.answers.map(a=>SKILL_BANK.find(q=>q.id===a.id).level),ids:new Set(skillQuiz.answers.map(a=>a.id)).size})`);
+  assert.ok(bank.filter((q) => q.cat === "food").length >= 8, "plenty of food trivia");
+  const take = (rightWhen) => run(`startSkillQuiz();for(let i=0;i<10;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction("life-quiz-answer",{value:String((${rightWhen})(i,q)?q.a:(q.a+1)%4)});handleDailyAction("life-quiz-next",{})};JSON.stringify({...cbtResult(skillQuiz),done:skillQuiz.done,ids:new Set(skillQuiz.answers.map(a=>a.id)).size})`);
   const top = JSON.parse(take("() => true"));
-  assert.deepEqual([top.score, top.star, top.kyu, top.done, top.ids], [1000, 5, "初段", true, 10], "all right: the top, no repeats");
-  assert.ok(JSON.parse(take("() => true")).levels.slice(-3).every((l) => l === 5), "right answers climb to ★5 questions");
+  assert.deepEqual([top.correct, top.star, top.done, top.ids], [10, 5, true, 10]);
   const low = JSON.parse(take("() => false"));
-  assert.deepEqual([low.score, low.star, low.kyu], [0, 1, "10級"]);
-  const mid = JSON.parse(take("(i) => i % 2 === 0"));
-  assert.ok(mid.score > 200 && mid.score < 700 && mid.star >= 2 && mid.star <= 4, `alternating lands in the middle: ${mid.score}`);
-  assert.deepEqual(JSON.parse(run("JSON.stringify([starOfScore(239),starOfScore(240),starOfScore(840),kyuOfScore(612),kyuOfScore(99)])")), [1, 2, 5, "4級", "10級"]);
+  assert.deepEqual([low.correct, low.star], [0, 1]);
+  // 結果：正解の数と★の目安だけ（点数・級・タイプの段々はない）。押さなければ献立は変わらない
+  run('state.onboarded=true;startSkillQuiz();skillQuiz.theta=3.4;skillQuiz.answers=Array(10).fill({id:"f1",ok:true});skillQuiz.done=true');
+  const html = run("renderSkillQuiz()");
+  assert.match(html, /10<\/b><small>\/ 10問 正解[\s\S]*★★★☆☆[\s\S]*この★3で献立を並べる/);
+  assert.ok(!/1000点|級|初段|昇級|いまここ/.test(html), "no score, rank or ladder");
+  run('handleDailyAction("life-quiz-close",{})');
+  assert.equal(run("state.skillProfile"), null, "closing does not change the plan");
+  run('startSkillQuiz();skillQuiz.theta=3.4;skillQuiz.answers=Array(10).fill({id:"f1",ok:true});skillQuiz.done=true;handleDailyAction("life-quiz-save",{})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.quizLevel,dailyProfile().skillLevel,skillQuiz])")), [3, 3, 3, null]);
+  // 献立：★より難しい料理も外さない（候補は同じ数）。並ぶ順は下がり、選ばれたら「ちょっと挑戦」
   const S = require("../skills.js");
-  const steady = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
-  assert.ok(steady.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 2), "routine keeps to ★2");
-  const grow = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2, skillGrowth: "grow" }), start, length: 7, addDays });
-  const hard = grow.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2);
-  assert.ok(hard.length <= 1, "at most one challenge per plan");
-  assert.ok(grow.every((d) => !d.candidate || S.rate(d.candidate.recipe).level <= 3));
-  if (hard.length) assert.match(hard[0].candidate.reasons[0], /^ちょっと挑戦/);
-  run('state.onboarded=true;startSkillQuiz();skillQuiz.theta=3.4;skillQuiz.answers=Array(10).fill({id:"m1",ok:true});skillQuiz.done=true');
-  assert.match(run("renderSkillQuiz()"), /580<\/b><small>\/ 1000点[\s\S]*5級[\s\S]*いまここ[\s\S]*★4「おうちシェフ」<\/b>へ[\s\S]*約\d+皿[\s\S]*life-quiz-save" data-value="grow"/, "score, rank, ladder, the way to the next star, then growth");
-  run('handleDailyAction("life-quiz-save",{value:"steady"})');
-  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.score,state.skillProfile.growth,dailyProfile().skillLevel,skillQuiz])")), [3, 580, "steady", 3, null]);
+  const fitAll = (lv) => L.curated.filter((r) => L.fit(r, L.profile({ skillLevel: lv }), start).ok).length;
+  assert.equal(fitAll(1), fitAll(0), "the same dishes stay in");
+  const hard = L.curated.find((r) => S.rate(r).level >= 3);
+  const easy = L.fit(hard, L.profile({}), start), ranked = L.fit(hard, L.profile({ skillLevel: 1 }), start);
+  assert.ok(ranked.ok && ranked.challenge && ranked.score < easy.score, "a harder dish is kept but ranked lower");
+  const plan = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
+  assert.ok(plan.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2).length <= 1, "with plenty of easier dishes, harder ones rarely come first");
+  for (const d of plan.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2)) assert.match(d.candidate.reasons[0], /^ちょっと挑戦/);
 });
 
 test("freshness: perishable, hard-to-freeze food goes first after shopping", () => {
@@ -1069,28 +1083,20 @@ test("選択: new recipes first, then the best three by rating", () => {
   assert.match(html, /ほかの候補を見る/);
 });
 
-test("cooking XP, levels, badges, the skill list and the promotion exam", () => {
+test("cooking skill (2026-10-28): just pick a ★ — no XP, levels, badges or exams; clearing goes back to the plain order", () => {
   const run = app();
-  const S = require("../skills.js");
-  run('state.onboarded=true;state.skillProfile={level:2,quizLevel:2,growth:"steady",diagnosed:true,updatedAt:nowIso()}');
-  assert.deepEqual(JSON.parse(run("JSON.stringify([cookStats().xp,cookStats().lv,earnedBadges().length])")), [0, 1, 1], "nothing cooked yet: only the test badge");
-  run(`const r=Lifestyle.curated[0]; for (let i=11;i>=0;i--) state.evaluations.unshift({id:"meal-"+addDays(today(),-i),recipeId:r.id,recipeTitle:r.title,cookedAt:addDays(today(),-i),mealType:"dinner",photo:i===0?"data:image/jpeg;base64,xx":"",familyRepeatCycles:{},memo:"",updatedAt:nowIso()})`);
-  const L = S.rate(require("../lifestyle.js").curated[0]).level;
-  const s = JSON.parse(run("JSON.stringify(cookStats())"));
-  assert.equal(s.xp, 12 * (10 + 5 * (L - 1)) + 10 + 5 + 11 * 5, "base + ★ + first time + photo + days in a row");
-  assert.deepEqual([s.count, s.kinds, s.streak, s.week, s.photos], [12, 1, 12, true, 1]);
-  assert.deepEqual(JSON.parse(run("JSON.stringify(earnedBadges().map(b=>b.id))")), ["first", "test", "photo", "streak3", "week", "d10", "regular", "streak7"]);
-  assert.equal(run("levelOfXp(39).lv+','+levelOfXp(40).lv+','+levelOfXp(100).lv+','+xpAtLv(4)"), "1,2,3,180");
-  assert.ok(s.lv >= 4 && run("examReady()"), "Lv4 opens the ★3 exam");
-  assert.match(run("renderSkillSettings()"), /lv-badge[\s\S]*昇級試験を受ける[\s\S]*身についたスキル[\s\S]*バッジ <small>8\/15/);
-  run("startSkillExam()");
-  const levels = JSON.parse(run('const out=[];for(let i=0;i<5;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);out.push(q.level);handleDailyAction("life-quiz-answer",{value:String(i===0?(q.a+1)%4:q.a)});handleDailyAction("life-quiz-next",{})};JSON.stringify(out)'));
-  assert.deepEqual(levels, [3, 3, 3, 3, 3], "the exam asks ★3 questions");
-  assert.match(run("renderSkillQuiz()"), /4<\/b> \/ 5 問正解[\s\S]*合格/);
-  run('handleDailyAction("life-exam-done",{})');
-  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.promoted,earnedBadges().some(b=>b.id==='promote'),examReady()])")), [3, 1, true, false], "★3 now; the ★4 exam waits for Lv7");
-  run("startSkillExam();for(let i=0;i<5;i++){const q=SKILL_BANK.find(x=>x.id===skillQuiz.current.id);handleDailyAction('life-quiz-answer',{value:String((q.a+1)%4)});handleDailyAction('life-quiz-next',{})};handleDailyAction('life-exam-done',{})");
-  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.examFailedOn===today()])")), [3, true], "a failed exam keeps the star; try again tomorrow");
+  run('state.onboarded=true');
+  let html = run("renderSkillSettings()");
+  assert.ok(!/lv-badge|バッジ|昇級|XP|経験値/.test(html), "no game parts");
+  assert.ok(html.includes("life-quick-skill") && html.includes("豆知識クイズ"), "pick a ★, or play the quiz");
+  run('handleDailyAction("life-quick-skill",{level:"2"})');
+  assert.deepEqual(JSON.parse(run("JSON.stringify([state.skillProfile.level,state.skillProfile.diagnosed,dailyProfile().skillLevel])")), [2, false, 2]);
+  assert.match(run("renderSkillSettings()"), /data-level="2" aria-pressed="true"/);
+  run('handleDailyAction("life-skill-clear",{})');
+  assert.equal(run("state.skillProfile"), null);
+  assert.equal(run("dailyProfile().skillLevel"), 0);
+  // 「作った」のあとに経験値の表示はない
+  assert.equal(run("typeof celebrateCook"), "undefined");
 });
 
 test("rhythm: starting mid-block begins at the next whole block; days before it are 'いつもどおり'", () => {
@@ -1129,10 +1135,10 @@ test("hidden starter recipes leave the list and the planner; bulk delete removes
   assert.ok(run("!!state.tombstones.recipes.own1 && !!state.tombstones.evaluations.e1"));
 });
 
-test("the first-run funnel (2026-09-30): no duplicate question, no pledge, no timed progress; the policy talk is inside; it ends on real facts and the first suggestion", () => {
+test("the first-run funnel (2026-10-28): seven screens — people, who eats, foods to avoid, time, rhythm, dishes, result — and it ends on real facts", () => {
   const run = app();
   const key = () => run("FUNNEL[state.onboardingDraft.quickSetupIndex]");
-  assert.deepEqual(JSON.parse(run("JSON.stringify(FUNNEL.filter((k) => ['pain','commit','building','ratio','staple','chains','priority','type'].includes(k)))")), [], "removed from the first run");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(FUNNEL)")), [0, "eaters", 4, 3, 1, "picks", "result"]);
   run(`handleDailyAction("life-quick",{})`);
   assert.equal(key(), 0, "how many people first");
   run(`handleDailyAction("life-servings",{count:"4"})`);
@@ -1140,90 +1146,59 @@ test("the first-run funnel (2026-09-30): no duplicate question, no pledge, no ti
   run(`handleDailyAction("life-eater",{value:"partner"}); handleDailyAction("life-eater",{value:"kids"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(key(), 4, "then foods to avoid");
   run(`state.onboardingDraft.restrictions=["えび"]; handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), "equipment");
-  run(`state.onboardingDraft.equipment = Lifestyle.equipmentDefaults(state.onboardingDraft.equipment); handleDailyAction("life-equipment-toggle",{name:"オーブン"}); handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), 3, "then the weeknight time");
+  assert.equal(key(), 3, "then the weeknight time (no kitchen tools, no skill)");
   run(`handleDailyAction("life-minutes",{minutes:"45"}); handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), 2, "then the skill");
-  run(`handleDailyAction("life-quick-skill",{level:"3"})`);
-  assert.equal(key(), "talk", "then the policy talk");
-  // 方針の会話（初回設定の中）
-  run("startTalkInFunnel()");
-  assert.equal(run("talkInFunnel()"), true);
-  let html = run("renderTalk()");
-  assert.ok(html.includes("夜ごはんで、いちばん大変なのは？") && html.includes("方針はあとで（次へ）"), "closing means: the policy later, go on");
-  assert.ok(!/data-action="life-talk-back" disabled/.test(html), "back goes to the previous setup screen");
-  run(`handleDailyAction("life-talk-pick",{q:"hard",value:"clean"}); handleDailyAction("life-talk-pick",{q:"want",value:"fish"}); handleDailyAction("life-talk-pick",{q:"why",value:"clean"})`);
-  assert.ok(run("renderTalk()").includes("魚を減らすより"), "the guess is asked back during setup too");
-  run(`handleDailyAction("life-talk-decide",{id:"fish-easy",status:"confirmed"}); handleDailyAction("life-talk-toggle",{q:"taste",value:"light"}); handleDailyAction("life-talk-multi-done",{q:"taste"})`);
-  assert.ok(run("renderTalk()").includes("休日の夜は、平日とちがう？"), "the deeper questions come next");
-  run(`handleDailyAction("life-talk-pick",{q:"weekend",value:"same"}); handleDailyAction("life-talk-pick",{q:"together",value:"same"})`);
-  html = run("renderTalk()");
-  assert.ok(html.includes("わが家のごはん方針（案）"));
-  assert.ok(html.includes("🚫 えび（食べられない）"), "the restrictions come from the setup draft (not saved yet)");
-  run(`handleDailyAction("life-talk-save",{})`);
-  assert.equal(key(), "picks", "saving the policy goes on to the next setup screen");
-  assert.equal(run("state.tasteProfile.snapshots.length"), 1);
-  assert.equal(run("state.tasteProfile.session"), null);
+  assert.equal(key(), 1, "then the rhythm");
   run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), "videos");
-  run(`handleDailyAction("life-funnel-pick",{field:"savedVideos",value:"few"})`);
-  assert.equal(key(), "demo");
-  run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), "loss");
-  assert.equal(run("nowCost(state.onboardingDraft).kg"), 76, "19kg a person a year");
-  run(`handleDailyAction("life-quick-next",{})`);
-  assert.equal(run("state.onboardingDraft.quickSetupIndex"), run("FUNNEL_PART2"), "part 2 starts with the goal");
-  run(`handleDailyAction("life-funnel-pick",{field:"goal",value:"save"}); handleDailyAction("life-quick-next",{})`);
   assert.equal(run("state.rhythm.preset"), "weekday", "the rhythm starts on weekdays");
-  assert.equal(key(), "remind");
+  assert.equal(key(), "picks", "then the dishes to try");
   run(`handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
   assert.equal(key(), "result", "a reload keeps the place");
   const lines = JSON.parse(run("JSON.stringify(resultLines(state.onboardingDraft))"));
-  assert.deepEqual(lines.slice(0, 4), ["🍽 4人分（パートナー・子どもと）", "🚫 えびは入れない", "⏱ 平日 45分以内", "🍳 基本の道具＋オーブン・★3まで"]);
-  assert.ok(lines.some((l) => l.startsWith("🐟 魚は好き")), "what the person confirmed in the talk");
+  assert.deepEqual(lines.slice(0, 4), ["🍽 4人分（パートナー・子どもと）", "🚫 えびは入れない", "⏱ 平日 45分以内", "🍳 基本の道具"]);
   assert.ok(!lines.some((l) => /しています/.test(l)), "no pretending to work");
   assert.equal(run("renderFunnelStep('result')[1].includes('life-finish')"), true);
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded"), true);
   assert.equal(run("state.servingCount"), 4);
-  assert.equal(run("state.view"), "talk", "it lands on the first dish and why");
-  assert.ok(run("renderTalk()").includes("この料理にした理由"));
+  assert.equal(run("state.view"), "plan", "no saved policy: the plan");
+  assert.ok(/料理の腕前|ごはん方針/.test(run("renderTodayTodos()")), "skill and policy are asked later, from today, one at a time");
 });
 
-test("first-run funnel: people part-way through the old order continue on the same (or next remaining) screen, once", () => {
+test("first-run funnel: people part-way through an older order continue on the same (or next remaining) screen, once", () => {
   const run = app();
-  const at = (oldKey) => {
-    run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: FUNNEL_V1.indexOf(${JSON.stringify(oldKey)}) }); state.onboardingDraft = normalizeState(JSON.parse(JSON.stringify(state))).onboardingDraft;`);
+  const at = (list, oldKey, v) => {
+    run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: ${list}.indexOf(${JSON.stringify(oldKey)}) })${v ? `; state.onboardingDraft.funnelV = ${v}` : ""}; state.onboardingDraft = normalizeState(JSON.parse(JSON.stringify(state))).onboardingDraft;`);
     return run("FUNNEL[profileDraft().quickSetupIndex]");
   };
-  assert.equal(at("pain"), 0);
-  assert.equal(at("eaters"), "eaters");
-  assert.equal(at("chains"), "talk", "the dinner-type steps move on to the policy talk");
-  assert.equal(at("type"), "talk");
-  assert.equal(at("remind"), "remind");
-  assert.equal(at(3), 3);
-  assert.equal(at("commit"), "result", "the pledge moves on to the result");
-  assert.equal(at("building"), "result");
-  // 移し替えは一度だけ（その後の「次へ」「戻る」で動いた位置を、もう一度読みかえない）。
-  run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: FUNNEL_V1.indexOf("staple") }); profileDraft(); handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
+  // 21段階（funnelV なし）
+  assert.equal(at("FUNNEL_V1", "pain"), 0);
+  assert.equal(at("FUNNEL_V1", "eaters"), "eaters");
+  assert.equal(at("FUNNEL_V1", "chains"), 1, "the dinner-type steps (then the talk) move on to the rhythm");
+  assert.equal(at("FUNNEL_V1", "remind"), "result");
+  assert.equal(at("FUNNEL_V1", 3), 3);
+  assert.equal(at("FUNNEL_V1", "building"), "result");
+  // 15画面（funnelV 2）
+  assert.equal(at("FUNNEL_V2", "equipment", 2), 3, "kitchen tools → the time");
+  assert.equal(at("FUNNEL_V2", 2, 2), 1, "skill → the rhythm");
+  assert.equal(at("FUNNEL_V2", "talk", 2), 1);
+  assert.equal(at("FUNNEL_V2", "loss", 2), 1);
+  assert.equal(at("FUNNEL_V2", "goal", 2), 1);
+  assert.equal(at("FUNNEL_V2", "picks", 2), "picks");
+  assert.equal(at("FUNNEL_V2", "remind", 2), "result");
+  // 移し替えは一度だけ
+  run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: FUNNEL_V2.indexOf("talk") }); state.onboardingDraft.funnelV = 2; profileDraft(); handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
   assert.equal(run("FUNNEL[profileDraft().quickSetupIndex]"), "picks");
-  assert.equal(run("state.onboardingDraft.funnelV"), 2);
+  assert.equal(run("state.onboardingDraft.funnelV"), 3);
 });
 
-test("first-run funnel: 'later' in the talk goes on without saving, and the talk can be finished from today", () => {
+test("the policy talk (no longer in the first run) can still be started and finished from today", () => {
   const run = app();
-  run(`handleDailyAction("life-quick",{}); state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("talk"); startTalkInFunnel(); handleDailyAction("life-talk-pick",{q:"hard",value:"time"}); handleDailyAction("life-talk-close",{})`);
-  assert.equal(run("FUNNEL[state.onboardingDraft.quickSetupIndex]"), "picks");
-  assert.equal(run("state.tasteProfile.snapshots.length"), 0);
-  assert.ok(run("state.tasteProfile.session"), "the talk stays open to continue later");
-  run(`state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("result"); handleDailyAction("life-finish",{})`);
-  assert.equal(run("state.view"), "plan", "no saved policy: the plan, as before");
-  assert.ok(run("renderTodayTodos()").includes("続きから"));
-  // 最初の質問からの「戻る」は、初回設定の前の画面へ。
-  const r2 = app();
-  r2(`handleDailyAction("life-quick",{}); state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("talk"); startTalkInFunnel(); handleDailyAction("life-talk-back",{})`);
-  assert.equal(r2("FUNNEL[state.onboardingDraft.quickSetupIndex]"), 2);
+  run(`handleDailyAction("life-quick",{}); state.onboardingDraft.quickSetupIndex = FUNNEL.indexOf("result"); handleDailyAction("life-finish",{})`);
+  assert.equal(run("talkInFunnel()"), false);
+  // 追加の質問は一度に1つ：腕前（スキル）を決めると、次はごはん方針。
+  run(`state.skillProfile = { level: 2, growth: "steady", diagnosed: false }`);
+  assert.ok(run("renderTodayTodos()").includes("ごはん方針"));
 });
 
 test("the dinner type (no longer in the first run) still scores the same", () => {
@@ -1236,7 +1211,8 @@ test("the dinner type (no longer in the first run) still scores the same", () =>
   assert.equal(run("state.onboardingDraft.chains.join()"), "ichiran,ohsho,sukiya", "three shops at most");
   assert.equal(run("cookTypeOf(state.onboardingDraft).code"), "CKQ");
   assert.match(run("renderCookTypeCard(cookTypeOf(state.onboardingDraft))"), /cs-grade g-[SABCDEFG]/);
-  assert.equal(run("chainTastes(state.onboardingDraft).join()"), "中華風,和風");
+  // お店からの系統の推し量りはやめた（2026-10-28。好きな味は料理名の写真12枚に一本化）。
+  assert.equal(run("typeof chainTastes"), "undefined");
   assert.equal(run("[combinedSkill(3, 4), combinedSkill(2, null), combinedSkill(null, 5)].join()"), "4,2,5");
 });
 

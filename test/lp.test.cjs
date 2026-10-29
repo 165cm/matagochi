@@ -53,9 +53,79 @@ test("all local images referenced in lp/index.html exist on disk and are non-emp
   assert.ok(fs.statSync(ogPath).size > 10000, "OGP image should be non-empty");
 });
 
-test("LP styles and waitlist script define required selectors", () => {
-  for (const cls of [".pill-beta", ".beta-perk-box", ".feature-spotlight", ".cookmode-section", ".sticky-cta"]) {
+test("LP styles and waitlist script define required selectors and interactive controls", () => {
+  for (const cls of [".pill-beta", ".beta-perk-box", ".feature-spotlight", ".cookmode-section", ".sticky-cta", ".tap-card", ".step-tabs", ".tile-grid"]) {
     assert.ok(css.includes(cls), `styles.css should define ${cls}`);
   }
   assert.match(waitlistJs, /\[data-cta="hero"\]/);
+  assert.match(waitlistJs, /activateStep/);
+});
+
+test("LP surface visible text is less than half of full LP text via progressive disclosure", () => {
+  const stripTags = (s) => s.replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+  const mainMatch = html.match(/<main[\s\S]*?<\/main>/);
+  assert.ok(mainMatch, "main element should exist");
+  const mainHtml = mainMatch[0];
+
+  const totalChars = stripTags(mainHtml).length;
+
+  // Extract surface visible HTML: only active step panel (<article ... hidden> is removed)
+  // and closed <details> only expose their direct <summary>
+  function extractSurface(raw) {
+    let out = "";
+    let i = 0;
+    const clean = raw.replace(/<article\b[^>]*\bhidden\b[^>]*>[\s\S]*?<\/article>/g, "")
+                     .replace(/<figure\s+aria-hidden="true">[\s\S]*?<\/figure>/g, "");
+    while (i < clean.length) {
+      const detailsIdx = clean.indexOf("<details", i);
+      if (detailsIdx === -1) {
+        out += clean.slice(i);
+        break;
+      }
+      out += clean.slice(i, detailsIdx);
+      const tagEnd = clean.indexOf(">", detailsIdx);
+      const tag = clean.slice(detailsIdx, tagEnd + 1);
+      const isOpen = /\bopen\b/.test(tag);
+      if (isOpen) {
+        out += tag;
+        i = tagEnd + 1;
+      } else {
+        const summaryStart = clean.indexOf("<summary", tagEnd);
+        let summaryText = "";
+        if (summaryStart !== -1 && summaryStart < clean.indexOf("</details>", tagEnd)) {
+          const summaryTagEnd = clean.indexOf(">", summaryStart);
+          const summaryEnd = clean.indexOf("</summary>", summaryTagEnd);
+          summaryText = clean.slice(summaryTagEnd + 1, summaryEnd);
+        }
+        out += " " + summaryText + " ";
+        let depth = 1;
+        let pos = tagEnd + 1;
+        while (depth > 0 && pos < clean.length) {
+          const nextOpen = clean.indexOf("<details", pos);
+          const nextClose = clean.indexOf("</details>", pos);
+          if (nextClose === -1) break;
+          if (nextOpen !== -1 && nextOpen < nextClose) {
+            depth++;
+            pos = clean.indexOf(">", nextOpen) + 1;
+          } else {
+            depth--;
+            pos = nextClose + "</details>".length;
+          }
+        }
+        i = pos;
+      }
+    }
+    return out;
+  }
+
+  const surfaceChars = stripTags(extractSurface(mainHtml)).length;
+  // Previously ~3,450 visible surface chars; now compressed to ~1,600 chars (over 50% reduction and < 25% of totalChars!)
+  assert.ok(
+    surfaceChars < 1650,
+    `expected surface visible chars (${surfaceChars}) to be < 1650 (train-stop glance)`,
+  );
+  assert.ok(
+    surfaceChars < totalChars * 0.35,
+    `expected surface visible chars (${surfaceChars}) to be < 35% of total (${totalChars})`,
+  );
 });
