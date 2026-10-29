@@ -202,23 +202,6 @@ function viewerBlocked(action) {
 function viewerNote() {
   return "";
 }
-function renderViewerPlanBanner(plan) {
-  if (!isViewer()) return "";
-  const open = plan.some((d) => d.candidate && !d.slot);
-  return open
-    ? '<section class="viewer-banner"><strong>買い物の前に、食べたいものを送ってね</strong><small>各日の「🙋 別のがいい」か、レシピの「🙋 食べたい」から。</small></section>'
-    : '<section class="viewer-banner is-done"><strong>今回の献立は決まりました</strong><small>🙋は次の献立に入ります。</small></section>';
-}
-function renderAskButton() {
-  const partner = partnerName();
-  if (!syncEnabled() || !partner || !isOwner()) return "";
-  return `<button type="button" class="secondary-button full-button ask-button" data-action="life-ask">💬 ${escapeHtml(partner)}に食べたいものを聞く</button>`;
-}
-async function askPartner() {
-  const url = `${location.origin}${location.pathname}#view=plan`;
-  const text = `献立を決める前に、食べたいものある？「🙋 別のがいい」で送ってね`;
-  await shareMessage(text, url);
-}
 // Owner side: "9/25 は ○○ がいい" on the day card, applied with one tap.
 function renderSwapRequests(date) {
   const list = openRequests().filter((q) => q.date === date);
@@ -240,8 +223,9 @@ function setRequest(id, status) {
 function completeRequests(recipe) {
   openRequests().filter((q) => Lifestyle.sameDish(requestRecipe(q), recipe)).forEach((q) => setRequest(q.id, "done"));
 }
+// 「🙋 食べたい」は、献立を変えられない人（共有している閲覧者）だけ。管理者・編集者は「🗓 献立に入れる」で直接入れる（2026-10-29 のユーザーの判断）。
 function requestButton(recipe) {
-  if (!requestsEnabled()) return "";
+  if (!isViewer()) return "";
   const q = openRequestFor(recipe);
   const mine = q && q.from === me();
   return `<button type="button" class="tile-request" data-action="life-request" data-recipe="${escapeAttr(recipe.id)}" aria-pressed="${!!mine}" aria-label="${escapeAttr(recipe.title)}を${mine ? "リクエスト中（取り消す）" : "食べたいとリクエスト"}">${mine ? "✓ リクエスト中" : q ? `${escapeHtml(q.from)}のリクエスト` : "🙋 食べたい"}</button>`;
@@ -361,7 +345,6 @@ function handleHouseholdAction(action, data) {
     }
     saveState(); render(); return true;
   }
-  if (action === "life-ask") { askPartner(); return true; }
   if (action === "life-become-owner") {
     if (Object.values(state.roles?.members || {}).includes("owner")) { showToast("管理者の変更は、現在の管理者にお願いしてください。"); return true; }
     state.roles = { members: Object.fromEntries(state.family.map((n) => [n, n === me() ? "owner" : "viewer"])), updatedAt: nowIso() };
@@ -634,23 +617,19 @@ async function copyMessage(kind) {
 }
 function renderRoundCard() {
   if (rhythmOn()) return "";
-  if (!syncEnabled() || isViewer() || !partnerName()) return "";
+  // 「食べたい」を送る人（閲覧者）がいる時だけ。編集者・管理者どうしは、お互いに献立を直接変えられる。
+  const asker = state.family.find((n) => n !== me() && roleOf(n) === "viewer");
+  if (!syncEnabled() || isViewer() || !asker) return "";
   const phase = roundPhase();
   const form = () => `<div class="round-form"><label>買い物に行く予定<input id="round-deadline" class="input" type="datetime-local" value="${escapeAttr(state.round?.deadline && phase !== "done" ? state.round.deadline : defaultDeadline())}"></label>
     <div class="round-actions">${dailyButton("life-round-start", phase === "none" || phase === "done" ? "受付を始めて知らせる" : "締切を変えて知らせる", "", true)}${phase === "open" || phase === "closed" ? `<button type="button" class="text-button" data-action="life-round-cancel-edit">やめる</button>` : ""}</div></div>`;
   if (phase === "none" || phase === "done" || roundEditing) {
-    return `<section class="round-card"><h3>🛒 リクエストを受け付ける</h3><p class="small">買い物の予定を決めると、${escapeHtml(partnerName())}がそれまでに「食べたい」「変えたい」を送れます。</p>${form()}</section>`;
+    return `<section class="round-card"><h3>🛒 リクエストを受け付ける</h3><p class="small">買い物の予定を決めると、${escapeHtml(asker)}がそれまでに「食べたい」「変えたい」を送れます。</p>${form()}</section>`;
   }
   const count = openRequests().filter((q) => !q.late).length;
   return `<section class="round-card is-${phase}"><h3>${phase === "open" ? "🙋 リクエスト受付中" : "⏰ 締切を過ぎました"}</h3>
     <p><b>${deadlineLabel()}</b> ${phase === "open" ? `まで（${timeLeftLabel()}）` : "の買い物"}・届いたリクエスト ${count}件</p>
     <div class="round-actions">${phase === "open" ? dailyButton("life-round-remind", "もう一度知らせる") : ""}${copyButton("round")}<button type="button" class="text-button" data-action="life-round-edit">${phase === "open" ? "締切を変える" : "延長する"}</button></div></section>`;
-}
-function renderRoundBanner() {
-  const phase = roundPhase();
-  if (phase === "open") return `<section class="viewer-banner"><strong>${deadlineLabel()}に買い物！</strong><small>それまでに🙋で送ってね（${timeLeftLabel()}）</small></section>`;
-  if (phase === "closed" || phase === "done") return `<section class="viewer-banner is-done"><strong>${phase === "done" ? "今回の買い物は終わりました" : "今回の締切は過ぎました"}</strong><small>食べたい気持ちは、いつでも🙋で伝えられます。</small></section>`;
-  return "";
 }
 function renderShoppingDone(items) {
   if (rhythmOn()) return renderBlockShoppingDone(items);

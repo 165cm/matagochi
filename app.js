@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261029-recipe-list";
+const APP_VERSION = "20261029-roles";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1698,6 +1698,8 @@ function renderPickedDishes(starters) {
   }).join("");
   return cards ? `<h3 class="recipe-section">💛 好きな料理から <small>写真で選んだ料理の作り方</small></h3><div class="pick-dish-row">${cards}</div>` : "";
 }
+// 家族と共有していると、保存したレシピは家族みんなのもの（2026-10-29 のユーザーの判断）。
+const mineLabel = () => (syncEnabled() ? "わが家のレシピ" : "わたしのレシピ");
 function renderCollection() {
   loadDiscover();
   if (!["starter", "saved", "folders"].includes(recipeTab)) recipeTab = "starter";
@@ -1736,11 +1738,11 @@ function renderCollection() {
   const shownStarters = query || filtering || selecting ? starters : starters.slice(0, starterShown);
   selectable = [...saved.map((r) => `r:${r.id}`), ...(mineTab ? [] : shownStarters.map((r) => `s:${r.id}`))];
   const tab = (id, label, count) => `<button class="chip-tab" type="button" role="tab" aria-selected="${recipeTab === id || (id === "saved" && recipeTab === "folders")}" aria-pressed="${recipeTab === id || (id === "saved" && recipeTab === "folders")}" data-action="life-recipe-tab" data-tab="${id}">${label}${count ? ` <small>${count}</small>` : ""}</button>`;
-  const head = `${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう。保存したレシピもリクエストになるよ</p>' : `<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
+  const head = `${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう</p>' : `<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料・投稿者で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderStarterHint()}
-    <div class="recipe-tabs" role="tablist" aria-label="表示するレシピ">${showStarters() ? tab("starter", "おすすめ") : ""}${tab("saved", "わたしのレシピ", state.recipes.length)}</div>`;
-  if (recipeTab === "folders" && !query) return `${head}<button type="button" class="text-button cooking-back" data-action="life-recipe-tab" data-tab="saved">‹ わたしのレシピ</button>${renderFolders()}`;
+    <div class="recipe-tabs" role="tablist" aria-label="表示するレシピ">${showStarters() ? tab("starter", "おすすめ") : ""}${tab("saved", mineLabel(), state.recipes.length)}</div>`;
+  if (recipeTab === "folders" && !query) return `${head}<button type="button" class="text-button cooking-back" data-action="life-recipe-tab" data-tab="saved">‹ ${mineLabel()}</button>${renderFolders()}`;
   const grid = (tiles, empty) => `<section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>`;
   if (mineTab) {
     const folders = folderList();
@@ -1750,8 +1752,8 @@ function renderCollection() {
       ...groups.slice(0, 8).map((g) => `<button type="button" class="pick-dish" data-action="life-dish-variants" data-dish="${escapeAttr(g.name)}">${g.kids[0] ? dishTile(g.kids[0]) : ""}<b>${escapeHtml(g.name)}</b><small>${g.kids.length}つ</small></button>`),
     ].join("");
     return `${head}
-      <h3 class="recipe-section">📁 わが家の定番 <small>同じ料理の作り方をまとめたもの</small></h3>
-      ${cards ? `<div class="pick-dish-row">${cards}</div>` : ""}<button type="button" class="text-button" data-action="life-recipe-tab" data-tab="folders">${cards ? "定番をまとめて見る・作る ›" : "＋ 定番を作る（食べ比べ・曜日の固定）"}</button>
+      ${cards || !isViewer() ? `<h3 class="recipe-section">📁 わが家の定番 <small>同じ料理の作り方をまとめたもの</small></h3>
+      ${cards ? `<div class="pick-dish-row">${cards}</div>` : ""}<button type="button" class="text-button" data-action="life-recipe-tab" data-tab="folders">${cards ? (isViewer() ? "定番をまとめて見る ›" : "定番をまとめて見る・作る ›") : "＋ 定番を作る（食べ比べ・曜日の固定）"}</button>` : ""}
       <div class="recipe-section-row"><h3 class="recipe-section">保存したレシピ</h3>${isViewer() || !saved.length ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>
       ${state.recipes.length >= 4 ? renderQuickFilters(allSaved) : ""}
       ${grid(saved.map(renderRecipeTile).join(""), renderEmpty("まだ保存したレシピはありません。おすすめの🤍で保存できます。"))}

@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-29（レシピタブの整理 PR 2：一覧）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-29（管理者・閲覧者の見えるものの整理）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -14,7 +14,8 @@
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
 | 好きな味の質問を一本化（1：料理名の写真＋3：行動から学ぶ） | 公開済み（#184。次：そろったら需要に合わせて集める） | claude/nice-shannon-6g1g5m | 理想の12品の補充（#182・#183 公開済み）→ **写真12枚の画面**（ごはん方針の③と詳しい設定の「好み」・同じ答え）・選んだ料理＋10／主役・系統・味＋3・以前の答えから先に選んでおく・記録からの提案に中華・洋風・卵豆腐 → 次：そろったら需要に合わせて集める | taste.js, taste-ui.js, lifestyle.js, profile-talk.js, talk-ui.js, daily-ui.js, cook-type.js, scripts/catalog-taste.cjs, styles.css, test/dish-picks.test.cjs, test/profile-talk.test.cjs, test/lifestyle.test.cjs, app.js, sw.js, index.html, version.json, docs/* |
-| レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | レビュー待ち（PR 2：一覧。PR 1 は #186 公開済み） | claude/nice-shannon-6g1g5m | PR 1：料理の画面に「🗓 献立に入れる」（#186）→ PR 2：タブを「おすすめ／わたしのレシピ」に・気分のボタン1行（残りは「もっと」）・💛 好きな料理から・合いそうな順で40品ずつ・写真まわりを軽く・投稿者タブをやめて検索に・保存のしかたは ＋ の画面と今日の「やること」1回 | app.js, daily-ui.js, styles.css, test/recipe-list.test.cjs, test/lifestyle.test.cjs, test/parents.test.cjs, sw.js, index.html, version.json, docs/* |
+| レシピタブの整理（2026-10-28 のユーザーの判断：初めての人がすぐ使える・案①〜⑤） | 公開済み（#186・#187） | claude/nice-shannon-6g1g5m | 料理の画面に「🗓 献立に入れる」（#186）・一覧の整理（#187） | — |
+| 管理者・編集者・閲覧者の見えるものの整理（2026-10-29 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 🙋 は閲覧者だけ・「リクエストを受け付ける」は閲覧者がいる時だけ・閲覧者のレシピタブの文言と定番づくり・使われていない古い部品を削除・共有中は「わが家のレシピ」 | household.js, app.js, test/roles-ui.test.cjs, sw.js, index.html, version.json, docs/* |
 | 音声操作の案内表記を実態に合わせて修正 | レビュー待ち | fix/cook-voice-privacy-notice | 料理モードの音声操作説明を「リピごちサーバーに音声は送信・保存されない」実態表記に改め、processLocally優先指定を追加 | cook-mode.js, docs/APP_MAP.md, test/cook-voice.test.cjs, app.js, sw.js, version.json, index.html, docs/CURRENT_TASK.md |
 
 ## 次のタスク（上から優先・`docs/PERSONALIZE_PLAN.md` §13）
