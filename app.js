@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261029-place-recipe";
+const APP_VERSION = "20261029-recipe-list";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "" };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1309,20 +1309,17 @@ async function pasteRecipeUrl() {
   globalThis.scrollTo?.({ top: 0, behavior: "instant" });
   setTimeout(() => document.querySelector('[data-action="fetch-caption"]:not([disabled])')?.click(), 60);
 }
-let saveGuideOpen = null;
-function saveGuideSeen() { try { return localStorage.getItem("ripigochi-save-guide") === "seen"; } catch { return false; } }
-function renderSaveGuide() {
-  const open = saveGuideOpen ?? !saveGuideSeen();
-  const strip = `<div class="save-strip"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button save-guide-link" data-action="save-guide" aria-expanded="${open}">${open ? "閉じる" : "保存のしかた"}</button></div>`;
-  if (!open) return strip + (pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : "");
+// 動画の保存のしかたを見たか（今日の「やること」に1回だけ出す）。保存できない端末でも、開いている間は覚えておく。
+let saveGuideMemo = false;
+function saveGuideSeen() { if (saveGuideMemo) return true; try { return localStorage.getItem("ripigochi-save-guide") === "seen"; } catch { return false; } }
+// ＋（レシピを追加）の画面の、動画の保存のしかた（2026-10-28 にレシピタブの上から移した）。
+function renderSaveSteps() {
   const ios = isIOSDevice();
-  const steps = ios
-    ? ["YouTubeで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"]
-    : isInstalledApp()
-      ? ["YouTubeで、動画の<b>「共有」</b>", "一覧から <b>リピごち</b> を選ぶ（「リンクをコピー」→ 📋 でもOK）", "材料と作り方を確かめて保存"]
-      : ["YouTubeで、動画の<b>「共有」→「リンクをコピー」</b>", "リピごちに戻って <b>📋 コピーしたURLから保存</b>", "材料と作り方を確かめて保存"];
+  const steps = ios || !isInstalledApp()
+    ? ["YouTubeで、動画の<b>「共有」→「リンクをコピー」</b>", "下の <b>📋 コピーしたURLから保存</b> を押す", "材料と作り方を確かめて保存"]
+    : ["YouTubeで、動画の<b>「共有」</b>", "一覧から <b>リピごち</b> を選ぶ（「リンクをコピー」→ 📋 でもOK）", "材料と作り方を確かめて保存"];
   const homeTip = !ios && !isInstalledApp() ? `<p class="save-guide-tip">${tip("ホーム画面に追加すると、YouTubeの共有メニューにリピごちが出ます")}</p>` : "";
-  return `<section class="save-guide" aria-label="レシピの保存のしかた"><p class="save-guide-title">📋 レシピ動画を保存</p><ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>${homeTip}<div class="save-guide-actions"><button type="button" class="paste-button" data-action="paste-recipe-url">📋 コピーしたURLから保存</button><button type="button" class="text-button" data-action="save-guide-done">わかった</button></div>${pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : ""}</section>`;
+  return `<ol class="save-steps">${steps.map((x) => `<li>${x}</li>`).join("")}</ol>${homeTip}`;
 }
 
 function setView(view) {
@@ -1432,12 +1429,12 @@ function renderRecipeEntry() {
         ${[["url", "リンク", "SNSの動画"], ["image", "画像", "スクショ"], ["manual", "手入力", "自分のレシピ"]].map(([method, label, hint]) => `<button type="button" data-action="entry-method" data-method="${method}" aria-pressed="${entryMethod === method}" ${busy ? "disabled" : ""}><strong>${label}</strong><small>${hint}</small></button>`).join("")}
       </div>
       <div ${entryMethod === "url" ? "" : "hidden"}>
+      ${state.draft.videoUrl ? "" : `${renderSaveSteps()}<button type="button" class="primary-button full-button paste-big" data-action="paste-recipe-url">📋 コピーしたURLから保存</button>${pasteNotice ? `<p class="notice small">${escapeHtml(pasteNotice)}</p>` : ""}<p class="muted small or-line">または、URLを貼りつけて</p>`}
       <div class="quick-url-row">
         <input id="recipe-url" class="input url-input" value="${escapeAttr(state.draft.videoUrl)}" placeholder="動画のURL（YouTube）" aria-label="動画のURL">
         <button class="primary-button fetch-button" type="button" data-action="fetch-caption" ${busy ? "disabled" : ""}>${isCaptionImporting ? "読み取り中…" : "読み取る"}</button>
       </div>
-      ${state.draft.videoUrl ? "" : '<button type="button" class="text-button paste-inline" data-action="paste-recipe-url">📋 コピーしたURLを貼る</button>'}
-      ${playlistAvailable ? '<button class="text-button paste-inline" type="button" data-action="go-view" data-view="playlist">📺 再生リストからまとめて追加</button>' : ""}
+      ${playlistAvailable && !state.draft.videoUrl ? '<button class="secondary-button full-button paste-inline" type="button" data-action="go-view" data-view="playlist">📺 再生リストから、まとめて追加</button>' : ""}
       </div>
       ${state.draft.readInfo && youtubeVideoId(state.draft.videoUrl) ? renderReadSteps(busy) : `${state.fetchStatus ? `<p class="notice small">${escapeHtml(state.fetchStatus)}</p>` : ""}
       ${canReadDraftVideo() ? `<button type="button" class="primary-button full-button draft-video" data-action="draft-video" ${busy ? "disabled" : ""}>${draftVideoBusy ? "動画を読んでいます…（最大2分）" : "🎬 動画から作り方を読む"}</button>` : ""}`}
@@ -1670,19 +1667,61 @@ function renderIngredientEditorRow(item, index) {
     </div>`;
 }
 
+// レシピタブ（2026-10-28 のユーザーの判断：初めての人がすぐ使える。案①②）。
+// タブは「おすすめ」「わたしのレシピ」の2つ。上は検索 → 気分のボタン1行 → 写真の一覧。保存のしかたは ＋ の画面へ。
+const QUICK_FILTERS = [
+  ["quick", "⏱ 10分以内", (t) => t.includes("quick")],
+  ["meat", "🍖 肉", (t) => ["chicken", "pork", "beef", "mince"].some((x) => t.includes(x))],
+  ["fish", "🐟 魚", (t) => t.includes("fish")],
+  ["eggtofu", "🥚 卵・豆腐", (t) => t.includes("egg") || t.includes("tofu")],
+  ["veg", "🥬 野菜", (t) => t.includes("veg")],
+  ["light", "🍋 さっぱり", (t) => t.includes("light")],
+  ["spicy", "🌶 ピリ辛", (t) => t.includes("spicy")],
+];
+let quickFilter = "", facetsOpen = false, starterShown = 40;
+const quickMatch = (r) => !quickFilter || !!QUICK_FILTERS.find((f) => f[0] === quickFilter)?.[2](recipeTags(r));
+function renderQuickFilters(pool) {
+  const chips = QUICK_FILTERS.map(([id, label, test]) => {
+    const n = pool.filter((r) => facetMatch(r) && test(recipeTags(r))).length;
+    return n || quickFilter === id ? `<button type="button" class="facet-chip quick-chip" data-action="life-quick-filter" data-value="${id}" aria-pressed="${quickFilter === id}">${label}</button>` : "";
+  }).join("");
+  const more = Object.values(recipeFacets).some(Boolean);
+  return `<div class="quick-filters" role="group" aria-label="気分で絞る">${chips}<button type="button" class="facet-chip quick-more" data-action="life-facets-toggle" aria-expanded="${facetsOpen}">${facetsOpen ? "閉じる ▴" : more ? "もっと ●" : "もっと ▾"}</button></div>${facetsOpen ? renderFacets(pool) : ""}`;
+}
+// 💛 好きな料理から：写真12枚で選んだ料理の、新着の作り方の数（押すとその料理名で探す）。
+function renderPickedDishes(starters) {
+  const p = dailyProfile();
+  if (!p.dishPicksAt || isViewer()) return "";
+  const cards = FoodTaste.normalizePicks(p.dishPicks).map((id) => FoodTaste.IDEAL_OF[id]).map((d) => {
+    const n = starters.filter((r) => FoodTaste.dishOf(r) === d).length;
+    return n ? `<button type="button" class="pick-dish" data-action="life-dish-variants" data-dish="${escapeAttr(d.name)}"><img src="${escapeAttr(dishPickPhoto(d))}" alt="" loading="lazy"><b>${escapeHtml(d.label)}</b><small>作り方 ${n}つ</small></button>` : "";
+  }).join("");
+  return cards ? `<h3 class="recipe-section">💛 好きな料理から <small>写真で選んだ料理の作り方</small></h3><div class="pick-dish-row">${cards}</div>` : "";
+}
 function renderCollection() {
   loadDiscover();
+  if (!["starter", "saved", "folders"].includes(recipeTab)) recipeTab = "starter";
+  // おすすめを隠している人は、わたしのレシピだけ。
+  if (recipeTab === "starter" && !showStarters()) recipeTab = "saved";
+  const query = state.searchText.trim();
   const allSaved = getFilteredRecipes({ allMeals: true });
-  // Photographed dishes first, so the grid opens with pictures.
-  // 今週の人気・みんなの定番（好みの順）を先に、写真のある定番を次に。
-  const allStarters = recipeTab === "saved" || recipeTab === "creators" ? [] : starterRecipeList().sort((a, b) => !!b.discover - !!a.discover || (!a.discover && !b.discover ? !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id] : 0));
-  const pool = [...(recipeTab === "starter" ? [] : allSaved), ...allStarters];
-  const saved = allSaved.filter((r) => facetMatch(r));
-  let starters = allStarters.filter((r) => facetMatch(r));
-  // 同じ親（料理名）の集めた料理は、絞り込んだあとで、いちばん上の1品にまとめる（条件に合う子が親ごと消えないように）。
-  // 「ほか◯つの作り方」で全部見られる。探している時はまとめない。
+  const profile = dailyProfile();
+  // おすすめ：好きな料理（写真12枚）に近い順。選んでいない人は今までの順（今週の人気・好みの順 → 写真のある定番）。
+  let allStarters = starterRecipeList().sort((a, b) => !!b.discover - !!a.discover || (!a.discover && !b.discover ? !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id] : 0));
+  if (profile.dishPicksAt) {
+    const score = new Map(allStarters.map((r) => [r.id, FoodTaste.pickScore(r, Lifestyle.axes(r), profile.dishPicks)?.score || 0]));
+    allStarters = allStarters.sort((a, b) => score.get(b.id) - score.get(a.id));
+  }
+  // 探している時は、わたしのレシピとおすすめの両方から。
+  const mineTab = recipeTab === "saved" && !query;
+  const showSaved = mineTab || !!query;
+  const showStartersHere = !mineTab;
+  const pool = [...(showSaved ? allSaved : []), ...(showStartersHere ? allStarters : [])];
+  const saved = showSaved ? allSaved.filter((r) => facetMatch(r) && quickMatch(r)) : [];
+  let starters = showStartersHere ? allStarters.filter((r) => facetMatch(r) && quickMatch(r)) : [];
+  // 同じ親（料理名）の集めた料理は、絞り込んだあとで、いちばん上の1品にまとめる（「ほか◯つの作り方」で全部見られる）。探している時はまとめない。
   starterVariants = new Map();
-  if (!state.searchText.trim()) {
+  if (!query) {
     const first = new Map();
     starters = starters.filter((r) => {
       const k = r.discover && r.dish ? parentKeyOf(r) : "";
@@ -1693,35 +1732,45 @@ function renderCollection() {
       return true;
     });
   }
-  const query = state.searchText.trim();
-  const filtering = Object.values(recipeFacets).some(Boolean);
-  const shownStarters = recipeTab === "starter" || starterShowAll || query || filtering || selecting ? starters : starters.slice(0, 6);
-  selectable = [...(recipeTab === "starter" ? [] : saved.map((r) => `r:${r.id}`)), ...shownStarters.map((r) => `s:${r.id}`)];
-  const tab = (id, label, count) => `<button class="chip-tab" type="button" aria-pressed="${recipeTab === id}" data-action="life-recipe-tab" data-tab="${id}">${label}${count != null ? ` <small>${count}</small>` : ""}</button>`;
-  const tiles = [
-    ...(recipeTab === "starter" ? [] : saved.map(renderRecipeTile)),
-    ...shownStarters.map(renderStarterTile),
-  ].join("");
-  const empty = query ? renderEmpty("一致するレシピはありません。") : recipeTab === "saved" ? renderEmpty("まだ保存したレシピはありません。おすすめの🔖で1タップ保存。") : "";
-  return `
-    ${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう。保存したレシピもリクエストになるよ</p>' : ""}${`<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
-    <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
-    ${renderSaveGuide()}
+  const filtering = !!quickFilter || Object.values(recipeFacets).some(Boolean);
+  const shownStarters = query || filtering || selecting ? starters : starters.slice(0, starterShown);
+  selectable = [...saved.map((r) => `r:${r.id}`), ...(mineTab ? [] : shownStarters.map((r) => `s:${r.id}`))];
+  const tab = (id, label, count) => `<button class="chip-tab" type="button" role="tab" aria-selected="${recipeTab === id || (id === "saved" && recipeTab === "folders")}" aria-pressed="${recipeTab === id || (id === "saved" && recipeTab === "folders")}" data-action="life-recipe-tab" data-tab="${id}">${label}${count ? ` <small>${count}</small>` : ""}</button>`;
+  const head = `${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう。保存したレシピもリクエストになるよ</p>' : `<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
+    <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料・投稿者で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderStarterHint()}
-    ${isViewer() ? "" : `<div class="tabs-row"><div class="chip-tabs" role="group" aria-label="表示するレシピ">${tab("all", "すべて")}${tab("saved", "保存した", state.recipes.length)}${tab("folders", "📁 定番", (folderList().length + autoDishGroups().length) || null)}${showStarters() ? tab("starter", "おすすめ") : ""}${creatorsIn(allSaved).length ? tab("creators", "投稿者") : ""}</div>${recipeTab === "creators" || recipeTab === "folders" ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>`}
-    ${recipeTab === "folders" ? renderFolders() : recipeTab === "creators" ? renderCreators(allSaved) : `${renderFacets(pool)}
-    <section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>
-    ${recipeTab !== "saved" && shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">おすすめをもっと見る（あと${starters.length - shownStarters.length}品）</button>` : ""}`}
-    ${playlistAvailable && !isViewer() ? `<section class="add-card">
-      <p class="hand">＼ 保存した動画を、まとめて ／</p>
-      <button class="secondary-button full-button" type="button" data-action="go-view" data-view="playlist">📺 YouTubeの再生リストから追加</button>
-    </section>` : ""}
-    ${renderBackupReminder()}
+    <div class="recipe-tabs" role="tablist" aria-label="表示するレシピ">${showStarters() ? tab("starter", "おすすめ") : ""}${tab("saved", "わたしのレシピ", state.recipes.length)}</div>`;
+  if (recipeTab === "folders" && !query) return `${head}<button type="button" class="text-button cooking-back" data-action="life-recipe-tab" data-tab="saved">‹ わたしのレシピ</button>${renderFolders()}`;
+  const grid = (tiles, empty) => `<section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>`;
+  if (mineTab) {
+    const folders = folderList();
+    const groups = autoDishGroups().filter((g) => g.savedCount);
+    const cards = [
+      ...folders.map((f) => { const top = folderRanking(f)[0] || folderMembers(f.key)[0]; const n = parentChildren(f.key).length || folderMembers(f.key).length; return `<button type="button" class="pick-dish" data-action="life-folder-open" data-folder="${f.key}">${top ? dishTile(top) : '<span class="pick-dish-empty">📁</span>'}<b>${escapeHtml(f.name)}</b><small>${n}つ</small></button>`; }),
+      ...groups.slice(0, 8).map((g) => `<button type="button" class="pick-dish" data-action="life-dish-variants" data-dish="${escapeAttr(g.name)}">${g.kids[0] ? dishTile(g.kids[0]) : ""}<b>${escapeHtml(g.name)}</b><small>${g.kids.length}つ</small></button>`),
+    ].join("");
+    return `${head}
+      <h3 class="recipe-section">📁 わが家の定番 <small>同じ料理の作り方をまとめたもの</small></h3>
+      ${cards ? `<div class="pick-dish-row">${cards}</div>` : ""}<button type="button" class="text-button" data-action="life-recipe-tab" data-tab="folders">${cards ? "定番をまとめて見る・作る ›" : "＋ 定番を作る（食べ比べ・曜日の固定）"}</button>
+      <div class="recipe-section-row"><h3 class="recipe-section">保存したレシピ</h3>${isViewer() || !saved.length ? "" : `<button type="button" class="select-toggle" data-action="life-select" aria-pressed="${selecting}">${selecting ? "完了" : "選択"}</button>`}</div>
+      ${state.recipes.length >= 4 ? renderQuickFilters(allSaved) : ""}
+      ${grid(saved.map(renderRecipeTile).join(""), renderEmpty("まだ保存したレシピはありません。おすすめの🤍で保存できます。"))}
+      ${saved.length && !isViewer() ? '<p class="muted small recipe-note">💡 🤍で保存したレシピは、献立に出やすくなります</p>' : ""}
+      ${renderSelectBar()}`;
+  }
+  const tiles = [...saved.map(renderRecipeTile), ...shownStarters.map(renderStarterTile)].join("");
+  const empty = query ? renderEmpty("一致するレシピはありません。") : renderEmpty("おすすめを読み込んでいます…");
+  return `${head}
+    ${renderQuickFilters(pool)}
+    ${query || filtering ? "" : renderPickedDishes(allStarters)}
+    ${query ? "" : `<h3 class="recipe-section">${profile.dishPicksAt ? "あなたに合いそうな順" : "おすすめ"} <small>${starters.length}品</small></h3>`}
+    ${grid(tiles, empty)}
+    ${shownStarters.length < starters.length ? `<button type="button" class="text-button full-button" data-action="life-starter-more">続きを見る（あと${starters.length - shownStarters.length}品）</button>` : ""}
     ${renderSelectBar()}
   `;
 }
 
-let recipeTab = "all";
+let recipeTab = "starter";
 // 選択モード：タイルをタップで選び、まとめて削除（保存したレシピ）・非表示（おすすめ）にする。
 let selecting = false, selectedRecipes = new Set(), selectable = [];
 function selectMark(key) {
@@ -1870,10 +1919,10 @@ function renderRecipeTile(recipe) {
   return `
     <article class="recipe-tile recipe-card${selecting ? " is-selecting" : ""}">${selectMark(`r:${recipe.id}`)}
       <button type="button" class="tile-photo" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}のレシピを見る">${dishTile(recipe)}${tileMinutes(recipe)}</button>
-      <span class="tile-mark is-saved" aria-label="保存済み"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></span>
+      <span class="tile-mark tile-heart is-saved" aria-label="保存済み"><span aria-hidden="true">❤️</span></span>
       <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
       ${requestButton(recipe)}
-      <div class="tile-foot"><small class="muted">${authorOf(recipe) ? `<span class="tile-creator">${creatorLabel(creatorName(recipe), sourceOf(recipe))}</span>` : escapeHtml(last === "はじめて" ? "まだ作っていない" : last)}</small>
+      <div class="tile-foot"><small class="muted">${(() => { const n = cookCount(recipe); return n ? `✓ ${n}回作った` : escapeHtml(last === "はじめて" ? "まだ作っていない" : last); })()}</small>
         ${isViewer() ? "" : `<details class="plan-more tile-more"><summary aria-label="${escapeAttr(recipe.title)}のメニュー">⋯</summary><div class="plan-more-menu">
           ${recipe.videoUrl ? `<a class="text-button" href="${escapeAttr(recipe.videoUrl)}" target="_blank" rel="noreferrer">動画を開く</a>` : ""}
           <button class="text-button" type="button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">編集</button>
@@ -1888,11 +1937,10 @@ function renderStarterTile(recipe) {
   return `
     <article class="recipe-tile is-starter${selecting ? " is-selecting" : ""}">${selectMark(`s:${recipe.id}`)}
       <button type="button" class="tile-photo" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}のレシピを見る">${dishTile(recipe)}${tileMinutes(recipe)}</button>
-      ${isViewer() ? "" : `<button type="button" class="tile-mark" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"/></svg></button>`}
+      ${isViewer() ? "" : `<button type="button" class="tile-mark tile-heart" data-action="life-save-starter" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}を保存"><span aria-hidden="true">🤍</span></button>`}
       <button type="button" class="tile-title" data-action="life-recipe-open" data-recipe="${escapeAttr(recipe.id)}">${escapeHtml(recipe.title)}</button>
       ${requestButton(recipe)}
-      ${v?.count ? `<button type="button" class="tile-variants" data-action="life-dish-variants" data-dish="${escapeAttr(v.dish)}">${escapeHtml(v.dish)}：ほか${v.count}つの作り方</button>` : ""}
-      ${isViewer() ? "" : `<div class="tile-foot"><small class="muted">${recipe.discover ? `<b class="discover-badge">${discoverLabel(recipe)}</b>${recipe.author ? ` · ${escapeHtml(shortCreatorName(recipe.author))}` : ""}` : `おすすめ${recipe.planning?.tastes?.length ? ` · ${escapeHtml(recipe.planning.tastes[0])}` : ""}`}</small></div>`}
+      ${v?.count ? `<button type="button" class="tile-variants" data-action="life-dish-variants" data-dish="${escapeAttr(v.dish)}">ほか${v.count}つの作り方</button>` : ""}
     </article>`;
 }
 
@@ -2827,8 +2875,6 @@ async function handleAction(event) {
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
   if (action === "paste-recipe-url") { await pasteRecipeUrl(); return; }
   if (action === "set-source-servings") { captureDraft(); const n = Number(event.currentTarget.dataset.count); state.draft.sourceServings = Number.isInteger(n) && n > 0 ? n : null; state.draft.servingsDetected = false; saveState(); render(); return; }
-  if (action === "save-guide") { saveGuideOpen = !(saveGuideOpen ?? !saveGuideSeen()); render(); return; }
-  if (action === "save-guide-done") { try { localStorage.setItem("ripigochi-save-guide", "seen"); } catch {} saveGuideOpen = false; render(); return; }
   if (handlePlaylistAction(action, event.currentTarget.dataset)) return;
 
   if (["image-up", "image-down", "image-remove", "clear-images", "cancel-images"].includes(action)) {
@@ -3957,7 +4003,7 @@ function getFilteredRecipes({ allMeals = false } = {}) {
       recipe.caption,
       recipe.note,
       recipe.source,
-      recipe.author,
+      authorOf(recipe),
       mealLabel(recipe.mealType),
       ...recipe.ingredients.map((item) => item.name)
     ].join(" ").toLowerCase();

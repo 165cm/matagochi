@@ -4137,3 +4137,29 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .place-day b { flex: none; color: var(--tomato); font-size: 13px; }
 .place-day.is-same, .place-day.is-off { cursor: default; background: var(--surface-soft); }
 .place-day.is-off span { color: var(--muted); }
+
+/* レシピタブ（2026-10-28 の整理：案①②）。タブ2つ・気分のボタン1行・好きな料理から・写真の一覧。 */
+.recipe-tabs { display: flex; margin: 10px 0; padding: 4px; border-radius: 999px; background: var(--surface-soft); }
+.recipe-tabs .chip-tab { flex: 1; min-height: 40px; border: 0; background: transparent; color: var(--muted); }
+.recipe-tabs .chip-tab[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+.recipe-tabs .chip-tab[aria-pressed="true"] small { color: var(--muted); }
+.quick-filters { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px 8px; padding: 0 16px 4px; scrollbar-width: none; }
+.quick-filters::-webkit-scrollbar { display: none; }
+.quick-chip, .quick-more { flex: 0 0 auto; white-space: nowrap; }
+.quick-more { color: var(--tomato); }
+.recipe-section { margin: 12px 0 8px; font-size: 15px; }
+.recipe-section small { margin-left: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.recipe-section-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pick-dish-row { display: flex; gap: 10px; overflow-x: auto; margin: 0 -16px 6px; padding: 0 16px 4px; scrollbar-width: none; }
+.pick-dish-row::-webkit-scrollbar { display: none; }
+.pick-dish { flex: 0 0 120px; display: grid; gap: 2px; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.pick-dish img, .pick-dish .dish-tile, .pick-dish-empty { width: 120px; height: 90px; aspect-ratio: auto; object-fit: cover; border-radius: 14px; background: var(--surface-soft); }
+.pick-dish-empty { display: grid; place-items: center; font-size: 28px; }
+.pick-dish b { font-size: 13px; line-height: 1.3; }
+.pick-dish small { color: var(--muted); font-size: 12px; }
+.tile-heart span { font-size: 18px; line-height: 1; }
+.recipe-note { margin: 10px 0; }
+/* ＋（レシピを追加）の画面の、動画の保存のしかた。 */
+.save-steps { margin: 4px 0 10px; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.paste-big { margin: 4px 0 6px; }
+.or-line { margin: 10px 0 4px; text-align: center; }

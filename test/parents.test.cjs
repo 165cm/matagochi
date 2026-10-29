@@ -48,7 +48,7 @@ test("collection: new dishes with the same parent show as one tile with 'ほか�
   await run("loadDiscover({ force: true })");
   const html = run("recipeTab='starter';renderCollection()");
   assert.equal((html.match(/data-action="life-dish-variants"/g) || []).length, 1);
-  assert.match(html, /八宝菜：ほか2つの作り方/);
+  assert.match(html, /ほか2つの作り方/);
   assert.equal((html.match(/八宝菜<\/button>/g) || []).length, 1, "only one 八宝菜 tile");
   assert.match(html, /お豆腐ふわふわ焼き/);
   run("handleDailyAction('life-dish-variants',{dish:'八宝菜'})");
@@ -78,7 +78,7 @@ test("review fix (#122): grouping happens after the filters (a child that matche
   assert.match(filtered, /陳健一さんの八宝菜/, "B's dish is shown when filtering by B");
   run("recipeFacets.author=''");
   const grouped = run("renderCollection()");
-  assert.match(grouped, /唐揚げ：ほか1つの作り方/);
+  assert.match(grouped, /data-dish="唐揚げ">ほか1つの作り方/);
   run("handleDailyAction('life-dish-variants',{dish:'唐揚げ'})");
   const found = run("renderCollection()");
   assert.match(found, /ジューシーからあげ/, "the child spelled からあげ is found by its parent name");

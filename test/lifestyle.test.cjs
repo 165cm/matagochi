@@ -457,16 +457,26 @@ test("creators: channel names and TikTok handles group saved recipes and filter 
   run(`state.recipes.push({id:"t1",title:"A丼",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://www.tiktok.com/@kurashiru/video/1",author:""},{id:"t2",title:"B丼",mealType:"dinner",ingredients:[],steps:[],videoUrl:"https://www.youtube.com/watch?v=x",author:"リュウジ<b>"})`);
   assert.equal(run('authorOf(state.recipes.find(r=>r.id==="t1"))'),"@kurashiru");
   assert.equal(run('sourceOf(state.recipes.find(r=>r.id==="t2"))'),"youtube");
-  run('recipeTab="creators"');const html=run('renderCollection()');
+  const html=run('renderCreators(state.recipes)');
   assert.ok(html.includes("@kurashiru"));assert.ok(html.includes("リュウジ&lt;b&gt;"));assert.ok(!html.includes("リュウジ<b>"));
+  // 投稿者のタブはやめて、検索で探す（2026-10-28）。TikTok の @アカウント名でも見つかる。
+  run('state.searchText="kurashiru"');assert.ok(run('renderCollection()').includes("A丼"));
+  run('state.searchText="リュウジ"');const found=run('renderCollection()');assert.ok(found.includes("B丼")&&!found.includes("A丼"));
+  run('state.searchText=""');
   run('handleDailyAction("life-creator",{name:"@kurashiru"})');
   assert.equal(run('recipeFacets.author'),"@kurashiru");assert.equal(run('recipeTab'),"saved");
 });
-test("save guide: first visit shows steps, then a small paste strip stays; copied text becomes a draft",()=>{
+test("save guide: the steps and the paste button are on the ＋ screen (not on top of the recipe list); copied text becomes a draft",()=>{
   const run=app();run('state.onboarded=true;state.view="collection"');
-  assert.ok(run('renderCollection()').includes('class="save-guide"'));
-  run('saveGuideOpen=false');const html=run('renderCollection()');
-  assert.ok(html.includes('class="save-strip"'));assert.ok(!html.includes('class="save-guide"'));
+  const list=run('renderCollection()');
+  assert.ok(!list.includes('save-steps')&&!list.includes('paste-recipe-url'),"the list starts with the dishes");
+  run('state.view="register";state.editingRecipeId=null;state.draft={...clone(emptyDraft)}');const html=run('renderRecipeEntry()');
+  assert.ok(html.includes('class="save-steps"')&&html.includes('data-action="paste-recipe-url"'));
+  // 今日の「やること」に1回だけ。やってみる → ＋ の画面、もう出ない
+  run('state.skillProfile={level:2};talkProfile().dismissedAt="2026-10-01T00:00:00Z";state.foodProfile=Lifestyle.profile({servings:2,completed:true})');
+  assert.ok(run('renderTodayTodos()').includes("保存した動画を、献立に使えます"),"after the other questions, once");
+  run('handleDailyAction("life-save-guide",{})');assert.equal(run('state.view'),"register");
+  assert.ok(!run('renderTodayTodos()').includes("保存した動画を、献立に使えます"));
   assert.equal(run('startRecipeFromText("そぼろ丼 https://www.tiktok.com/@kurashiru/video/1")'),true);
   assert.equal(run('state.view'),"register");assert.equal(run('state.draft.shareTitle'),"そぼろ丼");assert.equal(run('state.draft.title'),"");assert.equal(run('state.draft.source'),"TikTok");
   assert.equal(run('startRecipeFromText("URLなし")'),false);
