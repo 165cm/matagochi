@@ -828,6 +828,8 @@ function renderTodayTodos() {
   const talk = renderTalkTodo();
   if (talk) more.push([!!talkProfile().session, talk]);
   if (!state.foodProfile?.completed) more.push([!!state.onboardingDraft, `<div class="todo-row"><span>✍️</span><p>好み・常備品まで教えると、提案があなた向けに（2分）</p>${dailyButton("life-profile", state.onboardingDraft ? "続きから" : "教える")}</div>`]);
+  // 動画の保存のしかた（レシピタブの上から ＋ の画面へ移した。まだ動画を保存していない人に1回だけ。2026-10-28）。
+  if (!isViewer() && !saveGuideSeen() && !state.recipes.some((r) => r.videoUrl)) more.push([false, `<div class="todo-row"><span>📋</span><p><b>保存した動画を、献立に使えます</b>　YouTubeのレシピ動画を1本入れてみよう（1分）</p>${dailyButton("life-save-guide", "やってみる")}<button type="button" class="todo-x" data-action="life-save-guide-x" aria-label="閉じる">×</button></div>`]);
   // 記録からの提案（「また食べたい」とごはん方針の差）を、追加の質問より先に1件だけ（2026-10-28：行動から学ぶのを主に）。
   const ev = isViewer() ? [] : talkEvidence(1);
   const next = ev.length ? [false, `<div class="today-evidence">${renderTalkEvidence(ev)}</div>`] : more.find(([started]) => started) || more[0];
@@ -1803,9 +1805,16 @@ function handleDailyAction(action, data) {
     trackDaily("swap_why", { kind: data.kind });
   }
   if (action === "life-swap-more") swapShowAll = true;
-  if (action === "life-starter-more") starterShowAll = true;
+  if (action === "life-save-guide" || action === "life-save-guide-x") {
+    try { localStorage.setItem("ripigochi-save-guide", "seen"); } catch {}
+    saveGuideMemo = true;
+    if (action === "life-save-guide") { state.view = "register"; state.editingRecipeId = null; entryMethod = "url"; }
+  }
+  if (action === "life-starter-more") starterShown += 40;
+  if (action === "life-quick-filter") quickFilter = quickFilter === data.value ? "" : data.value || "";
+  if (action === "life-facets-toggle") facetsOpen = !facetsOpen;
   // 同じ親の作り方を並べて見る（料理名で探す）。
-  if (action === "life-dish-variants" && data.dish) { state.searchText = String(data.dish).slice(0, 20); recipeTab = "all"; folderOpen = ""; state.view = "collection"; }
+  if (action === "life-dish-variants" && data.dish) { state.searchText = String(data.dish).slice(0, 20); recipeTab = "starter"; folderOpen = ""; state.view = "collection"; }
   // 食べ比べ：空いている日に、同じ親の別の作り方を入れる（自分で選んだ日として。入れ替えで戻せる）。
   if (action === "life-dish-compare" && data.parent && !isViewer()) {
     const n = dishCompare(data.parent);
@@ -1822,7 +1831,7 @@ function handleDailyAction(action, data) {
   if (action === "life-facet-clear") recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
   if (action === "life-refl-view") { reflView = data.view === "grid" ? "grid" : "cal"; try { localStorage.setItem("ripigochi-refl-view", reflView); } catch {} }
   if (action === "life-month") reflMonth = Math.min(0, reflMonth + (Number(data.delta) || 0));
-  if (action === "life-recipe-tab") { recipeTab = ["saved", "starter", "creators", "folders"].includes(data.tab) ? data.tab : "all"; folderOpen = ""; }
+  if (action === "life-recipe-tab") { recipeTab = ["saved", "starter", "folders"].includes(data.tab) ? data.tab : "starter"; folderOpen = ""; quickFilter = ""; starterShown = 40; if (data.tab !== "folders") state.searchText = ""; }
   if (action === "life-creator") { recipeFacets = { home: "", staple: "", main: "", style: "", author: data.name || "" }; recipeTab = "saved"; }
   if (action === "life-creator-edit") { creatorEditing = data.key || ""; globalThis.setTimeout?.(() => document.querySelector("#creator-alias")?.select?.(), 30); }
   if (action === "life-creator-save" && data.key) {
@@ -2759,7 +2768,6 @@ async function analyzeCookingRecipe(date) {
   }
 }
 
-let starterShowAll = false;
 // Starter recipes are browsable and searchable from the Recipes tab, one tap to save.
 function starterRecipeList() {
   if (!showStarters()) return [];
@@ -2772,7 +2780,7 @@ function starterRecipeList() {
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => (r.discover ? discoverSafe(r) : Lifestyle.fit(r, dailyProfile(), today()).ok))
     // 親の料理名（dish）でも探せる（表記ゆれでまとめた子も「ほか◯つの作り方」から見られるように）。
-    .filter((r) => !query || [r.title, r.dish || "", ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
+    .filter((r) => !query || [r.title, r.dish || "", r.author || "", ...r.ingredients.map((i) => i.name), ...(r.planning?.tastes || [])].join(" ").toLowerCase().includes(query));
 }
 
 // ----- レシピの詳細（閲覧が基本。編集は「編集する」から） -----
