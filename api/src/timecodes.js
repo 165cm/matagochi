@@ -64,13 +64,13 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   async function fromChapters(key, videoId, list, cached, household, info) {
     if (cached?.envelope.chaptersChecked || typeof matchChapters !== "function") return null;
     const chapters = parseChapters(info?.description);
-    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), chaptersChecked: true }, cached); return null; }
+    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
     const done = await countTry(household);
     await reserveBudget();
     const raw = await matchChapters(list, chapters).catch(() => null);
     const stepTimes = refineStepTimes(list, cleanTimes(timesFromChapterIndexes(raw?.chapterIndex, chapters, list.length), list), { durationSeconds: info?.durationSeconds });
-    if (!found(stepTimes)) { await save(key, { ...(cached?.envelope || {}), chaptersChecked: true }, cached); return null; }
-    await save(key, { stepTimes, source: "chapters", chaptersChecked: true }, cached);
+    if (!found(stepTimes)) { await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, chaptersChecked: true }, cached); return null; }
+    await save(key, { stepTimes, source: "chapters", transcriptChecked: true, chaptersChecked: true }, cached);
     await done();
     return { stepTimes, source: "chapters", cacheHit: false };
   }
@@ -120,7 +120,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
         if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
         // seenSeconds：AI が見た長さ（点検で「見ていない後半に時刻がない」を見分ける）。
-        await save(key, { stepTimes, source: "video", chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
+        await save(key, { stepTimes, source: "video", transcriptChecked: true, chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
         await done();
         return { stepTimes, source: "video", cacheHit: false };
       }

@@ -201,8 +201,8 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart
 // 以前に読み取ったレシピには時刻がないので、開いた時にサーバーに探してもらう（一度探した動画は全員で使い回し）。
 const timecodes = new Map();
 const timecodeKey = (recipe) => `${youtubeVideoId(recipe?.videoUrl)}|${(recipe?.steps || []).join("\n")}`;
-// 確かさの順：だれかが直した時刻・説明欄のタイムスタンプ（サーバーから）→ レシピに入っている時刻 → AIが動画から探した時刻。
-const TRUSTED_TIMES = new Set(["fix", "chapters"]);
+// 確かさの順：だれかが直した時刻・YouTubeの字幕・説明欄のタイムスタンプ（サーバーから）→ レシピに入っている時刻 → AIが動画から探した時刻。
+const TRUSTED_TIMES = new Set(["fix", "transcript", "chapters"]);
 let timeFix = null; // 時刻を直している間：{ key, recipeId, times }
 function isTimecodeFixed(recipe) {
   const key = timecodeKey(recipe);
@@ -251,6 +251,7 @@ function timecodeHint(recipe) {
   if (entry?.status === "loading") return "▶ の場面を探しています…";
   if (entry?.status === "none") return `▶ の場面は付けられませんでした（${entry.reason}）`;
   if (entry?.source === "fix") return "▶ はみんなで直した時刻です";
+  if (entry?.source === "transcript") return "▶ は動画の字幕から合わせた時刻です";
   if (entry?.source === "chapters") return "▶ は投稿者のタイムスタンプです";
   return "";
 }

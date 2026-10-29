@@ -139,3 +139,27 @@ test('transcript wins over chapters and video, with fallback when missing', asyn
   assert.equal(fallbackResult.source, 'chapters');
   assert.equal(chapterCalls, 1);
 });
+
+test('review fix: after falling back to video, transcriptChecked is preserved so transcript is not re-checked', async () => {
+  let transcriptCalls = 0, videoCalls = 0;
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '説明文', durationSeconds: 120 }),
+    fetchTranscript: async () => { transcriptCalls++; return [{ start: 5, duration: 2, text: '無関係な発話' }]; },
+    matchTranscript: async () => ({ stepTimes: [null, null] }), // マッチせずフォールバック
+    analyze: async () => { videoCalls++; return { stepTimes: [10, 50] }; }
+  });
+
+  const ask = { url: 'https://www.youtube.com/watch?v=fallbackvid', steps: ['切る', '焼く'] };
+  const first = await book.find(ask, 'home-tc-4');
+  assert.equal(first.source, 'video');
+  assert.deepEqual(first.stepTimes, [10, 50]);
+  assert.equal(transcriptCalls, 1);
+  assert.equal(videoCalls, 1);
+
+  // 2回目：保存された video の結果を返す際、再度字幕照合をしない
+  const second = await book.find(ask, 'home-tc-4');
+  assert.equal(second.source, 'video');
+  assert.equal(transcriptCalls, 1, 'transcript must not be re-checked');
+});

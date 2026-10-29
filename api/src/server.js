@@ -440,14 +440,14 @@ export function createApp(env = process.env, deps = {}) {
     }
     return out;
   }
-  // レシピに付いた時刻の出どころ：運営が直した → fix／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
+  // レシピに付いた時刻の出どころ：運営が直した → fix／字幕から読んだ → transcript／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
   // 説明欄から読んだレシピの時刻は、説明欄の章からしか付かない（importRecipe.js）。出どころを残す前（#136 より前）に読んだものも章とみなす。
-  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
-  // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・説明欄の章（timecodes/* の fix・cleared・chapters）
+  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "transcript" ? "transcript" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
+  // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・YouTube字幕・説明欄の章（timecodes/* の fix・cleared・transcript・chapters）
   // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
   async function timesOf(url, r) {
     const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
-    if (st && (st.cleared || ["fix", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
+    if (st && (st.cleared || ["fix", "transcript", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
     if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
     return { times: st?.stepTimes || [], source: st?.source || "", ...(st?.seenSeconds ? { seenSeconds: st.seenSeconds } : {}) };
   }
