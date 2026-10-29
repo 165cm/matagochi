@@ -389,8 +389,10 @@ const CookMode = (() => {
       : seg.end;
 
     const minSec = isStart ? 0 : seg.start + 1;
-    const nextKnown = times.slice(targetIdx + 1).find((t) => Number.isFinite(t));
-    const maxSec = nextKnown != null ? Math.max(minSec, nextKnown - 1) : 35_999;
+    const nextLimit = isStart
+      ? (seg?.end != null ? seg.end : times.slice(targetIdx + 1).find((t) => Number.isFinite(t) && t > cur))
+      : times.slice(targetIdx + 1).find((t) => Number.isFinite(t) && t > cur);
+    const maxSec = nextLimit != null ? Math.max(minSec, nextLimit - 1) : 35_999;
 
     let nextSec = cur;
     if (kind === "time-minus") {

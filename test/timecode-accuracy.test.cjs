@@ -139,6 +139,23 @@ test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s
   CookMode.nudgeTime("time-plus");
   assert.deepEqual(uncalFixes.at(-1), [0, 5], "uncalibrated recipe must allow adjusting start timestamp");
   CookMode.closeMode();
+
+  // 7. 字幕由来などで隣り合う手順が同じ時刻を持つ場合でも開始の「+5秒」が逆戻りしないこと（review fix）
+  const dupFixes = [];
+  CookMode.setRecipe({
+    title: "重複時刻レシピ",
+    steps: ["準備", "加熱", "盛付"],
+    timesOf: () => [20, 20, 60],
+    timesFixed: true,
+    videoId: "duptimes1",
+    ingredients: [],
+    onTimeFix: (idx, sec) => dupFixes.push([idx, sec]),
+  });
+  CookMode.openMode();
+  assert.deepEqual(CookMode.segment(0), { start: 20, end: 60 });
+  CookMode.nudgeTime("time-plus");
+  assert.deepEqual(dupFixes.at(-1), [0, 25], "start time +5s advances forward instead of shrinking to next duplicate");
+  CookMode.closeMode();
 });
 
 test("daily-ui & discover: already-saved recipes refine coarse times, guide steps inherit non-null member times, and saveQuickTimeFix persists & shares", async () => {
