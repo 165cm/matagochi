@@ -379,22 +379,24 @@ const CookMode = (() => {
     const isStart = timeTarget === "start" || seg?.end == null;
     const targetIdx = isStart ? at : at + 1;
     if (targetIdx >= (recipe?.steps?.length || 0)) return;
+    const times = currentTimes();
     const cur = isStart
       ? (seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0))
       : (seg?.end != null ? seg.end : (Number.isFinite(videoTime) ? Math.floor(videoTime) : (seg ? seg.start + 1 : 1)));
+
+    const minSec = isStart ? 0 : (seg ? seg.start + 1 : 0);
+    const nextKnown = times.slice(targetIdx + 1).find((t) => Number.isFinite(t));
+    const maxSec = nextKnown != null ? Math.max(minSec, nextKnown - 1) : 35_999;
+
     let nextSec = cur;
     if (kind === "time-minus") {
-      nextSec = isStart ? Math.max(0, cur - 5) : (seg ? Math.max(seg.start + 1, cur - 5) : Math.max(0, cur - 5));
+      nextSec = Math.max(minSec, Math.min(maxSec, cur - 5));
     } else if (kind === "time-plus") {
-      nextSec = isStart
-        ? (seg?.end != null ? Math.min(seg.end - 1, cur + 5) : Math.min(35_999, cur + 5))
-        : Math.min(35_999, cur + 5);
+      nextSec = Math.min(maxSec, Math.max(minSec, cur + 5));
     } else if (kind === "time-here") {
       if (Number.isFinite(videoTime)) {
         const floorTime = Math.max(0, Math.floor(videoTime) - 1);
-        nextSec = isStart
-          ? (seg?.end != null ? Math.min(seg.end - 1, floorTime) : floorTime)
-          : (seg ? Math.max(seg.start + 1, floorTime) : floorTime);
+        nextSec = Math.max(minSec, Math.min(maxSec, floorTime));
       } else {
         nextSec = cur;
       }
@@ -584,7 +586,8 @@ const CookMode = (() => {
     if (cmd.act === "prev") return modeOp("prev");
     if (cmd.act === "close") return modeOp("close");
     if (cmd.act === "repeat") return seekTo(at);
-    if (cmd.act === "time-minus" || cmd.act === "time-plus" || cmd.act === "time-here") return nudgeTime(cmd.act);
+    if (cmd.act === "time-minus" || cmd.act === "time-plus") return nudgeTime(cmd.act);
+    if (cmd.act === "time-here") { timeTarget = "start"; return nudgeTime("time-here"); }
     if (cmd.act === "time-here-end") { timeTarget = "end"; return nudgeTime("time-here"); }
     if (cmd.act === "toggle-uses") return modeOp(showAll ? "uses" : "all");
     if (cmd.act === "timer") {

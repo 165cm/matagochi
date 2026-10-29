@@ -95,6 +95,18 @@ test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s
   for (let i = 0; i < 15; i++) CookMode.nudgeTime("time-minus");
   assert.equal(CookMode.segment(0).end, 60);
 
+  // 3. 終了時刻を +5秒 していった場合、後続手順の時刻（120）- 1 = 119 を超えない（次の区間の保護）
+  for (let i = 0; i < 20; i++) CookMode.nudgeTime("time-plus");
+  assert.equal(CookMode.segment(0).end, 119);
+
+  // 4. 音声操作で「ここを終わりに」後に「ここを始まりに」と言った場合に対象が開始に戻ること
+  CookMode._hear("ここを終わりに");
+  assert.equal(CookMode._mode().timeTarget, "end");
+  assert.equal(fixes.at(-1)[0], 1);
+  CookMode._hear("ここを始まりに");
+  assert.equal(CookMode._mode().timeTarget, "start");
+  assert.equal(fixes.at(-1)[0], 0);
+
   CookMode.closeMode();
   assert.equal(CookMode._mode().timeTarget, "start");
   CookMode._clearTimers();
