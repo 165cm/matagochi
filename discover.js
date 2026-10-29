@@ -280,11 +280,14 @@ function ensureTimecodes(recipe) {
       const times = stepTimesFor(recipe.steps, data?.stepTimes);
       if (peek) timecodes.set(key, { status: "done", at: Date.now(), times, source: times.length ? data.source : "" });
       else timecodes.set(key, { status: times.length ? "done" : "none", at: Date.now(), times, source: data?.source || "", reason: times.length ? "" : data?.error || "動画の中に場面が見つかりませんでした" });
-      // 自分のレシピなら、見つけた時刻を保存しておく（次からは探さない）。
+      // 自分のレシピなら、見つけた時刻を出所（fix や transcript）とともに保存しておく（再起動後も正しく保護）。
       const own = state.recipes.find((r) => r.id === recipe.id && timecodeKey(r) === key);
       if (own && times.length && (!peek || TRUSTED_TIMES.has(data.source))) {
         own.stepTimes = times;
-        if (data.source === "fix") own.stepTimesFrom = "fix";
+        if (data.source === "fix" || data.source === "transcript") {
+          own.stepTimesFrom = data.source;
+          recipe.stepTimesFrom = data.source;
+        }
         saveState();
       }
       // 画面全体は描き直さない（再生中の動画が最初に戻らないように）。▶ と案内だけ差し替える。
