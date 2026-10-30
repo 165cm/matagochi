@@ -170,7 +170,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     write();
     return {
       update({ stage, detail = "" }) { state = { ...state, stage: Math.max(state.stage, stage), label: PROGRESS_LABEL[Math.max(state.stage, stage)], detail }; write(); },
-      finish(outcome, message) { state = { ...state, status: outcome === "updated" ? "done" : "failed", outcome, detail: message, label: outcome === "updated" ? "完了" : PROGRESS_LABEL[state.stage] }; return write(); }
+      finish(outcome, message) { state = { ...state, status: outcome === "updated" ? "done" : "failed", outcome, detail: outcome === "updated" || !state.detail ? message : `${message}（直前：${state.detail}）`, label: outcome === "updated" ? "完了" : PROGRESS_LABEL[state.stage] }; return write(); }
     };
   }
   // 読み直しの鍵：10分より古い鍵は止まった読み直しのものなので取り直してよい。

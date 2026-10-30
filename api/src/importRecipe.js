@@ -67,16 +67,20 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const rawIngredients = normalizeIngredients(analysis.ingredients);
   const shouldTryHybrid = !analyzedFrom.startsWith("video") && rawIngredients.length > 0 && typeof deps.buildHybridRecipeSteps === "function" && typeof deps.fetchYouTubeTranscript === "function";
 
+  if (!shouldTryHybrid && !analyzedFrom.startsWith("video")) {
+    progress(1, rawIngredients.length ? "字幕での整理ができない設定です（サーバーの設定）" : "説明欄から材料を読み取れなかったため、字幕での整理をスキップしました");
+  }
   if (shouldTryHybrid) {
     progress(1, "字幕を取得中");
     const transcriptRes = await deps.fetchYouTubeTranscript(videoId).catch(() => null);
     const items = transcriptRes?.status === "ok" && Array.isArray(transcriptRes?.items) ? transcriptRes.items : (Array.isArray(transcriptRes) ? transcriptRes : null);
-    progress(1, items && items.length ? `字幕を取得しました（${items.length}行）` : `字幕を取得できませんでした（${transcriptRes?.status || "なし"}）。説明欄だけで続けます`);
+    progress(1, items && items.length ? `字幕を取得しました（${items.length}行）` : `字幕を取得できませんでした（${transcriptRes?.status || "応答なし"}${transcriptRes?.reason || transcriptRes?.error ? `：${transcriptRes.reason || transcriptRes.error}` : ""}）。説明欄だけで続けます`);
     if (items && items.length) {
       const { text, cues, truncated } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
       // 字幕が文字数や動画尺上限で途中で切れており、かつ説明欄に元の手順がない場合（rawSteps.length < 2）、
       // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
       const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
+      if (skipTruncatedWithoutSteps) progress(1, "字幕が長すぎて途中までしか使えず、説明欄にも手順がないため、字幕での整理をスキップしました");
       if (!skipTruncatedWithoutSteps) {
         const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
         if (!budgetOk) progress(2, "AI の予算の上限のため、字幕での整理をスキップしました");
@@ -103,9 +107,12 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
               stepTimes: hybrid.stepTimes
             };
             analyzedFrom = "description+transcript";
+            progress(2, "字幕に沿った整理結果を採用しました");
             if (Array.isArray(hybrid.stepTimes) && hybrid.stepTimes.some((t) => t !== null)) {
               analyzedTimes = "transcript";
             }
+          } else {
+            progress(2, hybrid ? `AI の整理結果を採用しませんでした（${Array.isArray(hybrid.steps) ? hybrid.steps.length : 0}工程${isComplete ? "" : "・字幕が途中までで不完全"}）` : "AI の整理が失敗しました（応答なし・エラー）");
           }
         }
       }
