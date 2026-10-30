@@ -1001,15 +1001,35 @@
     const mainNote = el("span", "", "meta");
     const rr = el("button", "✨ 手順と時刻を自動生成（説明欄＋字幕 / 約1円）", "small"); rr.type = "button";
     rr.addEventListener("click", async () => {
-      rr.disabled = true; mainNote.textContent = "自動生成しています…（説明欄の材料と字幕の段取りを統合）";
+      rr.disabled = true;
+      const started = Date.now();
+      let last = null, polling = true;
+      const OUT = { kept_old: "前の結果を残しました", conflict: "ほかの更新と重なりました", failed: "失敗しました" };
+      // サーバーに残った実際の処理段階を2秒おきに見て表示する（経過時間からの推測ではない）。
+      const show = () => {
+        const secs = Math.floor((Date.now() - started) / 1000);
+        mainNote.textContent = last && last.status === "running"
+          ? `${last.stage}/${last.total} ${last.label}中｜${last.detail || ""}｜経過${secs}秒`
+          : `1/5 素材を取得中｜リクエスト送信｜経過${secs}秒`;
+      };
+      const poll = async () => {
+        while (polling) {
+          try { const r = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (r.progress && Date.parse(r.progress.startedAt) >= started - 5000) last = r.progress; } catch { /* 表示だけ */ }
+          show();
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      };
+      const ticker = setInterval(show, 1000);
+      poll();
       try {
         const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread`, {});
-        mainNote.textContent = `✓ 手順 ${x.before} → ${x.after}${x.analyzedFrom === "description+transcript" ? "（字幕ハイブリッド）" : ""} に更新しました。開き直します…`;
+        mainNote.textContent = `✓ 5/5 完了｜手順 ${x.before} → ${x.after}${x.analyzedFrom === "description+transcript" ? "（字幕ハイブリッド）" : ""} に更新しました。開き直します…`;
         setTimeout(() => openRecipe(videoId), 600);
       } catch (error) {
-        mainNote.textContent = error.message;
+        const where = last && last.status !== "done" ? `（${last.stage}/${last.total} ${last.label}で止まりました）` : "";
+        mainNote.textContent = `${OUT[last?.outcome] ? `${OUT[last.outcome]}：` : ""}${error.message}${where}`;
         rr.disabled = false;
-      }
+      } finally { polling = false; clearInterval(ticker); }
     });
     mainActionRow.append(rr, mainNote);
     body.append(mainActionRow);

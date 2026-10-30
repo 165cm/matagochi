@@ -517,3 +517,16 @@ test("ingredient groups are passed to hybrid generator, and truncated transcript
   assert.equal(resultFallback.analyzedFrom, "description");
   assert.deepEqual(resultFallback.steps, ["もむ", "焼く", "和える"]);
 });
+
+test("importYouTubeRecipe reports its real stages to onProgress (and a failing listener never stops the import)", async () => {
+  const stages = [];
+  const deps = {
+    fetchYouTubeSnippet: async () => ({ title: "豚こま炒め", description: "【材料】豚こま 300g\n【作り方】①炒める ②盛る", durationSeconds: 300 }),
+    analyzeRecipeDescription: async () => ({ title: "豚こま炒め", ingredients: [{ name: "豚こま", amount: "300g" }], steps: ["炒める", "盛る"] }),
+    fetchYouTubeTranscript: async () => ({ status: "ok", items: [{ start: 1, duration: 2, text: "炒めます" }] }),
+    buildHybridRecipeSteps: async () => ({ steps: ["豚こまを炒める", "盛り付ける"], stepTimes: [1, 20], stepsComplete: true })
+  };
+  const r = await importYouTubeRecipe("https://www.youtube.com/watch?v=abcdefghijk", deps, { onProgress: (p) => { stages.push(p.stage); if (stages.length === 1) throw new Error("listener broke"); } });
+  assert.equal(r.analyzedFrom, "description+transcript");
+  assert.deepEqual([...new Set(stages)], [1, 2]);
+});

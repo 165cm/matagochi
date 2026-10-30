@@ -564,6 +564,14 @@ export function createApp(env = process.env, deps = {}) {
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
     send(res, rereadOne(videoId));
   });
+  // 管理：読み直しの処理段階（画面が数秒おきに見る。保存先の実状態を返し、経過時間から進み具合を推測しない）。
+  app.get("/api/admin/recipes/:videoId/reread/progress", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
+    send(res, catalog.rereadProgress(canonicalYouTubeUrl(videoId)).then((progress) => ({ progress })));
+  });
   // 管理：手順がちょうど10個（説明欄から読んだ・まだ読み直していない）新着を、1回に max 品まで読み直す。left：残り。
   app.post("/api/admin/reread/steps10", (req, res) => {
     res.setHeader("Cache-Control", "no-store");

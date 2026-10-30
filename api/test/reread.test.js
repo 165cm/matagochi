@@ -211,3 +211,25 @@ test('review fix (#138 r2): older saves without seenSeconds count as "watched th
   assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 700], { source: 'video', durationSeconds: 1200, seenSeconds: 1200 })), []);
   assert.deepEqual(codes(checkStepTimes(['手順1', '手順2'], [10, 300], { source: 'video', durationSeconds: 400 })), []);
 });
+
+test('admin reread: the real processing stage is saved and readable (needs the token); failures keep the stage where it stopped', async (t) => {
+  const store = createMemorySyncStore();
+  const v = 'progressvid';
+  await store.put(`youtube-${v}`, { status: 'ready', result: { title: '料理', videoUrl: `https://www.youtube.com/watch?v=${v}`, channelTitle: 'ch', ingredients: [{ name: '豚肉' }], steps: steps(5), analyzedFrom: 'description', snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 } } }, { ifGeneration: 0 });
+  let fail = false;
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'tok' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [],
+    importRecipe: async (url, o) => { o.onProgress({ stage: 2, detail: '字幕に沿って整理中（AI応答待ち）' }); if (fail) throw Object.assign(new Error('AI down'), { code: 'ai_down' }); return { title: '料理', ingredients: [{ name: '豚肉' }], steps: steps(6) }; } });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const h = { Authorization: 'Bearer tok', 'Content-Type': 'application/json' };
+  assert.equal((await fetch(`${base}/api/admin/recipes/${v}/reread/progress`)).status, 403);
+  assert.equal((await (await fetch(`${base}/api/admin/recipes/${v}/reread/progress`, { headers: h })).json()).progress, null);
+  assert.equal((await fetch(`${base}/api/admin/recipes/${v}/reread`, { method: 'POST', headers: h, body: '{}' })).status, 200);
+  const done = (await (await fetch(`${base}/api/admin/recipes/${v}/reread/progress`, { headers: h })).json()).progress;
+  assert.equal(done.status, 'done'); assert.equal(done.total, 5); assert.match(done.detail, /5 → 6/);
+  fail = true;
+  await fetch(`${base}/api/admin/recipes/${v}/reread`, { method: 'POST', headers: h, body: '{}' });
+  const bad = (await (await fetch(`${base}/api/admin/recipes/${v}/reread/progress`, { headers: h })).json()).progress;
+  assert.equal(bad.status, 'failed'); assert.equal(bad.stage, 2); assert.match(bad.detail, /AI down/);
+});
