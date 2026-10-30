@@ -604,3 +604,17 @@ test('a transcript result is not rejected because the old times were beyond the 
   assert.equal(r.source, 'transcript');
   assert.deepEqual(r.stepTimes, [10, null]);
 });
+
+test('admin reanalyze reserves the AI budget again before the video call that follows a subtitle match', async () => {
+  let reserved = 0, videoCalls = 0;
+  const book = createTimecodeBook(createMemorySyncStore(), {
+    reserveBudget: async () => { reserved++; if (reserved > 1) throw new Error('budget'); },
+    snippet: async () => ({ description: '', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '玉ねぎ' }],
+    matchTranscript: async () => ({ stepTimes: [null, null], stepCues: ['', ''] }),
+    matchChapters: async () => null,
+    analyze: async () => { videoCalls++; return { stepTimes: [1, 2] }; }
+  });
+  await assert.rejects(book.reanalyze({ url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['玉ねぎを切る', '炒める'] }), /budget/);
+  assert.equal(reserved, 2); assert.equal(videoCalls, 0);
+});

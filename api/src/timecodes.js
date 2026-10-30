@@ -84,16 +84,18 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
     return await store.put(key, { ...entry, at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 }).catch(() => null);
   }
   // 保存はせず、字幕と照合した時刻だけを返す（管理の探し直し用）。字幕なし・照合失敗・時刻なしなら null。
+  // 戻り値：{ result, usedAi }。usedAi は字幕照合で AI を呼んだ印（呼んだ後に動画解析へ進む時は、予算をもう1回通す）。
   async function transcriptTimesOnly(videoId, list, duration) {
-    if (typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return null;
+    if (typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return { result: null, usedAi: false };
     const res = await fetchTranscript(videoId).catch(() => null);
     const items = res?.status === "ok" && Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : null);
-    if (!items || !items.length) return null;
+    if (!items || !items.length) return { result: null, usedAi: false };
     const { text, cues } = formatTranscriptForPrompt(items, { maxSeconds: duration || maxSeconds });
-    const raw = await matchTranscript(list, text);
+    let raw;
+    try { raw = await matchTranscript(list, text); } catch { return { result: null, usedAi: true }; }
     const { stepTimes: rawTimes, stepCues } = resolveTranscriptTimes(cues, raw);
     const stepTimes = verifyTranscriptTimes(rawTimes, list.length, duration);
-    return found(stepTimes) ? { stepTimes, stepCues } : null;
+    return { result: found(stepTimes) ? { stepTimes, stepCues } : null, usedAi: true };
   }
   // YouTubeのタイムスタンプ付き字幕から（高精度・低コスト）。実在する字幕発話と照合し、架空の補間は行わない。
   async function fromTranscript(key, videoId, list, cached, household, info) {
@@ -272,8 +274,10 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         const info = await snippet(videoId).catch(() => null);
         const seconds = info?.durationSeconds;
         // まず字幕と照合する（実在する発話に根拠のある時刻だけを採用。見つからない・字幕がない時は動画から探す）。
-        const fromSubs = await transcriptTimesOnly(videoId, list, seconds && seconds > 0 ? seconds : null).catch(() => null);
-        if (fromSubs) return { ...fromSubs, source: "transcript", seenSeconds: null };
+        const subs = await transcriptTimesOnly(videoId, list, seconds && seconds > 0 ? seconds : null);
+        if (subs.result) return { ...subs.result, source: "transcript", seenSeconds: null };
+        // 字幕照合で AI を1回使った後に動画解析へ進む時は、動画解析の分の予算も別に通す（上限なら、ここで止める）。
+        if (subs.usedAi) await reserveBudget();
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
         const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, durationSeconds: seconds, beforeRetry: reserveBudget });
         const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
