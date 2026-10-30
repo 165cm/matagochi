@@ -86,6 +86,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         if (!budgetOk) progress(2, "AI の予算の上限のため、字幕での整理をスキップしました");
         if (budgetOk) {
           progress(2, "字幕に沿って調理ブロックを整理中（AI応答待ち）");
+          let hybridErr = null;
           const hybrid = await deps.buildHybridRecipeSteps({
             title: analysis.title || snippet.title,
             ingredients: rawIngredients,
@@ -93,7 +94,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
             formattedTranscript: text,
             cues
           }).catch((err) => {
-            console.error(JSON.stringify({ event: "hybrid_recipe_failed", videoId, message: String(err?.message || err).slice(0, 300) }));
+            hybridErr = String(err?.message || err);
+            console.error(JSON.stringify({ event: "hybrid_recipe_failed", videoId, message: hybridErr.slice(0, 300) }));
             return null;
           });
 
@@ -112,7 +114,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
               analyzedTimes = "transcript";
             }
           } else {
-            progress(2, hybrid ? `AI の整理結果を採用しませんでした（${Array.isArray(hybrid.steps) ? hybrid.steps.length : 0}工程${isComplete ? "" : "・字幕が途中までで不完全"}）` : "AI の整理が失敗しました（応答なし・エラー）");
+            progress(2, hybrid ? `AI の整理結果を採用しませんでした（${Array.isArray(hybrid.steps) ? hybrid.steps.length : 0}工程${isComplete ? "" : "・字幕が途中までで不完全"}）` : `AI の整理が失敗しました（${hybridErr || "応答なし"}）`);
           }
         }
       }

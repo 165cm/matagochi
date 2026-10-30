@@ -233,3 +233,25 @@ test('admin reread: the real processing stage is saved and readable (needs the t
   const bad = (await (await fetch(`${base}/api/admin/recipes/${v}/reread/progress`, { headers: h })).json()).progress;
   assert.equal(bad.status, 'failed'); assert.equal(bad.stage, 2); assert.match(bad.detail, /AI down/);
 });
+
+test('admin reread: stores an array of execution logs so earlier details are not lost', async (t) => {
+  const store = createMemorySyncStore();
+  const v = 'logcheckvid';
+  await store.put(`youtube-${v}`, { status: 'ready', result: { title: '料理', videoUrl: `https://www.youtube.com/watch?v=${v}`, ingredients: [{ name: '豚肉' }], steps: steps(5), snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 } } }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'tok' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [],
+    importRecipe: async (url, o) => {
+      o.onProgress({ stage: 1, detail: '字幕を取得しました（120行）' });
+      o.onProgress({ stage: 2, detail: 'AI の整理が失敗しました（quota exceeded）' });
+      return { title: '料理', ingredients: [{ name: '豚肉' }], steps: steps(2) }; // 手順が減るので reread_worse
+    } });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const h = { Authorization: 'Bearer tok', 'Content-Type': 'application/json' };
+  await fetch(`${base}/api/admin/recipes/${v}/reread`, { method: 'POST', headers: h, body: '{}' });
+  const p = (await (await fetch(`${base}/api/admin/recipes/${v}/reread/progress`, { headers: h })).json()).progress;
+  assert.equal(p.status, 'failed');
+  assert.ok(Array.isArray(p.logs));
+  assert.ok(p.logs.some((l) => l.includes('字幕を取得しました')));
+  assert.ok(p.logs.some((l) => l.includes('quota exceeded')));
+});

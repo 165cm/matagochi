@@ -1026,11 +1026,15 @@
         mainNote.textContent = `✓ 5/5 完了｜手順 ${x.before} → ${x.after}${x.analyzedFrom === "description+transcript" ? "（字幕ハイブリッド）" : ""} に更新しました。開き直します…`;
         setTimeout(() => openRecipe(videoId), 600);
       } catch (error) {
-        const where = last && last.status !== "done" ? `（${last.stage}/${last.total} ${last.label}で止まりました）` : "";
-        // サーバーに残った最後の様子（字幕が取れたか・AI の結果を採用しなかった理由など）も出す。
-        let lastDetail = last?.detail || "";
-        try { const f = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (f.progress?.detail) lastDetail = f.progress.detail; } catch { /* 表示だけ */ }
-        mainNote.textContent = `${OUT[last?.outcome] ? `${OUT[last.outcome]}：` : ""}${error.message}${where}${lastDetail ? `｜${lastDetail}` : ""}`;
+        let finalProgress = last;
+        try { const f = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (f.progress) finalProgress = f.progress; } catch { /* 表示だけ */ }
+        const where = finalProgress && finalProgress.status !== "done" ? `（${finalProgress.stage}/${finalProgress.total} ${finalProgress.label}で止まりました）` : "";
+        const logsList = Array.isArray(finalProgress?.logs) && finalProgress.logs.length ? `
+【処理の履歴】
+・${finalProgress.logs.join("
+・")}` : "";
+        mainNote.style.whiteSpace = "pre-wrap";
+        mainNote.textContent = `${OUT[finalProgress?.outcome] ? `${OUT[finalProgress.outcome]}：` : ""}${error.message}${where}${logsList ? logsList : (finalProgress?.detail ? `｜${finalProgress.detail}` : "")}`;
         rr.disabled = false;
       } finally { polling = false; clearInterval(ticker); }
     });
