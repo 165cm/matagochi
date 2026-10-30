@@ -21,6 +21,23 @@ const cleanTimes = (raw, list) => {
   return list.map((step, i) => (!step ? null : parseTimeValue(times[i])));
 };
 
+// 字幕で確かめた時刻：動画の長さを超える・順番が逆の時刻は null（不明）のままにする。補間はしない。
+function verifyTranscriptTimes(rawTimes, count, duration) {
+  const out = Array.from({ length: count }, (_, idx) => {
+    const t = rawTimes?.[idx];
+    if (!Number.isFinite(t)) return null;
+    if (duration !== null && t >= duration) return null;
+    return t;
+  });
+  let lastValid = -1;
+  for (let i = 0; i < out.length; i++) {
+    if (out[i] === null) continue;
+    if (lastValid >= 0 && out[i] < out[lastValid]) out[i] = null;
+    else lastValid = i;
+  }
+  return out;
+}
+
 export function createTimecodeBook(store, { analyze, matchChapters, matchTranscript = null, fetchTranscript = async () => null, snippet = async () => null, reserveBudget, maxSeconds = 600, now = Date.now } = {}) {
   const required = () => { if (!store) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   const inFlight = new Map();
@@ -66,6 +83,20 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   async function save(key, entry, cached) {
     return await store.put(key, { ...entry, at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 }).catch(() => null);
   }
+  // 保存はせず、字幕と照合した時刻だけを返す（管理の探し直し用）。字幕なし・照合失敗・時刻なしなら null。
+  // 戻り値：{ result, usedAi }。usedAi は字幕照合で AI を呼んだ印（呼んだ後に動画解析へ進む時は、予算をもう1回通す）。
+  async function transcriptTimesOnly(videoId, list, duration) {
+    if (typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return { result: null, usedAi: false };
+    const res = await fetchTranscript(videoId).catch(() => null);
+    const items = res?.status === "ok" && Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : null);
+    if (!items || !items.length) return { result: null, usedAi: false };
+    const { text, cues } = formatTranscriptForPrompt(items, { maxSeconds: duration || maxSeconds });
+    let raw;
+    try { raw = await matchTranscript(list, text); } catch { return { result: null, usedAi: true }; }
+    const { stepTimes: rawTimes, stepCues } = resolveTranscriptTimes(cues, raw);
+    const stepTimes = verifyTranscriptTimes(rawTimes, list.length, duration);
+    return { result: found(stepTimes) ? { stepTimes, stepCues } : null, usedAi: true };
+  }
   // YouTubeのタイムスタンプ付き字幕から（高精度・低コスト）。実在する字幕発話と照合し、架空の補間は行わない。
   async function fromTranscript(key, videoId, list, cached, household, info) {
     if (cached?.envelope.transcriptChecked || typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return null;
@@ -100,27 +131,12 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
 
     // 順序の逆転や動画尺超過の不正値は null にする（実字幕の根拠がないものは null のまま残す。架空の按分補間は行わない）
     const duration = info?.durationSeconds && info.durationSeconds > 0 ? info.durationSeconds : null;
-    const verifiedTimes = list.map((_, idx) => {
-      const t = rawTimes[idx];
-      if (!Number.isFinite(t)) return null;
-      if (duration !== null && t >= duration) return null;
-      return t;
-    });
-    // 単調増加チェック：前の有効時刻より小さい場合は null にする
-    let lastValid = -1;
-    for (let i = 0; i < verifiedTimes.length; i++) {
-      if (verifiedTimes[i] !== null) {
-        if (lastValid >= 0 && verifiedTimes[i] < verifiedTimes[lastValid]) {
-          verifiedTimes[i] = null;
-        } else {
-          lastValid = i;
-        }
-      }
-    }
+    const verifiedTimes = verifyTranscriptTimes(rawTimes, list.length, duration);
 
     // 既存の完全な時刻を欠損結果（1手順のみ等）で上書きしないよう、網羅率を比較
     const existingTimes = cached?.envelope.stepTimes || [];
-    const existingValidCount = existingTimes.filter(Number.isFinite).length;
+    // 動画の長さを超える時刻は「有効」に数えない（誤った時刻が多いほど、正しい字幕の結果が拒否されるのを防ぐ）
+    const existingValidCount = existingTimes.filter((t) => Number.isFinite(t) && (duration === null || t < duration)).length;
     const newValidCount = verifiedTimes.filter(Number.isFinite).length;
 
     if (newValidCount === 0 || (existingValidCount > 0 && newValidCount < existingValidCount)) {
@@ -255,7 +271,13 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       if (!lock) throw new ApiError(409, "reanalyze_pending", "この動画は探し直している途中です。");
       try {
         await reserveBudget();
-        const seconds = (await snippet(videoId).catch(() => null))?.durationSeconds;
+        const info = await snippet(videoId).catch(() => null);
+        const seconds = info?.durationSeconds;
+        // まず字幕と照合する（実在する発話に根拠のある時刻だけを採用。見つからない・字幕がない時は動画から探す）。
+        const subs = await transcriptTimesOnly(videoId, list, seconds && seconds > 0 ? seconds : null);
+        if (subs.result) return { ...subs.result, source: "transcript", seenSeconds: null };
+        // 字幕照合で AI を1回使った後に動画解析へ進む時は、動画解析の分の予算も別に通す（上限なら、ここで止める）。
+        if (subs.usedAi) await reserveBudget();
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
         const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, durationSeconds: seconds, beforeRetry: reserveBudget });
         const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
@@ -274,7 +296,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       return entry ? { stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
     },
     // すでに保存済みの時刻（AI・章）を0円で補正して保存し直す（だれかが直した時刻 fix や消した時刻 cleared は触らない）。
-    async repair({ url, steps, stepTimes, source = "video", durationSeconds = null, fillGaps = true }) {
+    async repair({ url, steps, stepTimes, source = "video", durationSeconds = null, fillGaps = true, allowEmpty = false }) {
       required();
       const videoId = extractYouTubeVideoId(url);
       const list = normalize(steps);
@@ -284,7 +306,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       const entry = cached?.envelope;
       if (entry?.cleared || entry?.source === "fix") return { stepTimes: cleanTimes(entry.stepTimes, list), source: "fix", skipped: true };
       const baseTimes = cleanTimes(stepTimes ?? entry?.stepTimes, list);
-      if (!found(baseTimes)) return null;
+      // allowEmpty：補正で全部が「不明」になった結果も保存する（根拠のない誤時刻を残さない）。
+      if (!found(baseTimes) && !allowEmpty) return null;
       const refined = refineStepTimes(list, baseTimes, { durationSeconds, fillGaps });
       const effectiveSource = entry?.source || (source === "chapters" ? "chapters" : "video");
       const saved = await store.put(key, {

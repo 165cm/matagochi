@@ -488,7 +488,7 @@ export function createApp(env = process.env, deps = {}) {
       const refined = refineStepTimes(full.steps, normBefore, { durationSeconds, fillGaps: true });
       if (JSON.stringify(refined) === JSON.stringify(normBefore) && JSON.stringify(refined) === JSON.stringify(full.stepTimes)) return { videoId, changed: false, stepTimes: refined, source };
       // 共有時刻を先に保存。カタログ保存に失敗しても元のレシピ時刻から再試行できる。
-      const repaired = await timecodeBook.repair({ url, steps: full.steps, stepTimes: refined, source, durationSeconds, fillGaps: true });
+      const repaired = await timecodeBook.repair({ url, steps: full.steps, stepTimes: refined, source, durationSeconds, fillGaps: true, allowEmpty: true });
       if (repaired?.skipped) return { videoId, changed: false, skipped: true, source: "fix" };
       if (!repaired) throw new Error("timecodes not saved");
       partial = true;

@@ -81,7 +81,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const fromVideo = String(current?.envelope.result?.analyzedFrom || "").startsWith("video");
     if (current?.envelope.status === "ready" && current.envelope.result?.unavailable) throw unavailableError(current.envelope.result);
     if (reread && current?.envelope.status !== "ready") throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
-    if (reread && fromVideo) throw new ApiError(409, "reread_not_description", "動画から読んだレシピは、説明欄から読み直せません。");
+    // 動画から読んだレシピも、運営は「説明欄＋字幕」で読み直せる（説明欄がなければ下の読み取りが失敗し、前の結果が残る）。
     if (current?.envelope.status === "ready" && fresh && (!forceVideo || fromVideo) && !reread) {
       const result = await refreshed(key, current);
       if (result.unavailable) throw unavailableError(result);
@@ -116,7 +116,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       const before = current?.envelope.status === "ready" ? current.envelope.result : null;
       if (before?.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
       // 読み直しで手順が減る（説明欄が変わった・読めなかった）時は、前の結果を残す。
-      if (reread && before && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
+      // 字幕と照合して作り直した時（description+transcript）は「作業のまとまり」に整理するので、工程数が減っても採用する。
+      if (reread && before && result.analyzedFrom !== "description+transcript" && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
       if (reread) result.rereadAt = new Date(now()).toISOString();
       // 動画から作り方を読めなかったら、回数は戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();

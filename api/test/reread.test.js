@@ -55,7 +55,7 @@ test('admin re-analyze: does not save, does not use the household quota, but goe
 
 const recipe = (n, extra = {}) => ({ title: '豚の炒め物', ingredients: [{ name: '豚肉' }], steps: steps(n), ...extra });
 
-test('catalog reread: reads the description again (not the cache), keeps the old result when steps get fewer, refuses video-read recipes', async () => {
+test('catalog reread: reads the description again (not the cache), keeps the old result when steps get fewer, rereads video-read recipes', async () => {
   const store = createMemorySyncStore();
   let answer = recipe(10), calls = 0;
   const cat = createRecipeCatalog(store, async () => { calls++; return answer; });
@@ -70,11 +70,16 @@ test('catalog reread: reads the description again (not the cache), keeps the old
   await assert.rejects(cat.import(url, { reread: true }), { code: 'reread_worse' });
   const kept = await cat.peek(url);
   assert.equal(kept.steps.length, 14); assert.ok(kept.rereadAt);
-  // 動画から読んだレシピは説明欄から読み直さない
+  // 動画から読んだレシピも、運営は読み直せる（説明欄＋字幕。時刻の誤りを直す入口）
   const vurl = 'https://www.youtube.com/watch?v=videovideo1';
   answer = recipe(5, { analyzedFrom: 'video' });
   await cat.import(vurl);
-  await assert.rejects(cat.import(vurl, { reread: true }), { code: 'reread_not_description' });
+  answer = recipe(6, { analyzedFrom: 'description+transcript' });
+  const vr = await cat.import(vurl, { reread: true });
+  assert.equal(vr.analyzedFrom, 'description+transcript'); assert.equal(vr.steps.length, 6);
+  // 字幕で整理し直して工程が減っても採用する（工程数だけでは採否を決めない）
+  answer = recipe(4, { analyzedFrom: 'description+transcript' });
+  assert.equal((await cat.import(vurl, { reread: true })).steps.length, 4);
 
   // 字幕ハイブリッド（description+transcript）のレシピは説明欄から再度読み直せる
   const hurl = 'https://www.youtube.com/watch?v=hybridreci1';
@@ -116,7 +121,8 @@ test('admin: re-read the 10-step description recipes in batches; video re-analyz
   assert.deepEqual([a.done.length, a.left, b.done.length, b.left], [2, 1, 1, 0]);
   assert.deepEqual(asked.sort(), [ids[0], ids[1], ids[2]], 'video-read, already re-read and 7-step recipes are left alone');
   // 1品だけ読み直す
-  assert.equal((await fetch(`${base}/api/admin/recipes/${ids[3]}/reread`, { method: 'POST', headers: admin })).status, 409);
+  // 動画から読んだレシピも、管理画面のメインボタン（reread）で読み直せる（以前は 409 で字幕まで進まなかった）
+  assert.equal((await fetch(`${base}/api/admin/recipes/${ids[3]}/reread`, { method: 'POST', headers: admin })).status, 200);
   // 動画から時刻を探し直す（保存しない）
   const re = await (await fetch(`${base}/api/admin/recipes/${ids[5]}/timecodes/reanalyze`, { method: 'POST', headers: admin, body: '{}' })).json();
   assert.deepEqual(re.stepTimes, [0, 60, 120, 180, 240, 300, 360]); assert.equal(re.seenSeconds, 1200);

@@ -29,9 +29,10 @@ export function stepWeight(step) {
   return 10 + Math.min(60, s.length) + action;
 }
 
-// 0円の自動補正：順番の逆転（order）・同じ時刻の重複（same/coarse）・動画長超過（beyond）・30秒内の密集（cluster）・空白（fillGaps時）を
+// 0円の補正：動画の長さを超える時刻と順番が逆の外れ値は null（不明）にする。interpolate: true の時だけ、さらに下の按分補間もする。
+// （以下は interpolate 指定時の動作）順番の逆転（order）・同じ時刻の重複（same/coarse）・動画長超過（beyond）・30秒内の密集（cluster）・空白（fillGaps時）を
 // 前後の確かな時刻と手順の重み（文字量・動作）から按分して滑らかに整える。
-export function refineStepTimes(steps = [], times = [], { durationSeconds = null, fillGaps = false } = {}) {
+export function refineStepTimes(steps = [], times = [], { durationSeconds = null, fillGaps = false, interpolate = false } = {}) {
   const list = (Array.isArray(steps) ? steps : []).map((s) => String(s || "").trim());
   const n = list.length;
   if (!n) return [];
@@ -82,6 +83,10 @@ export function refineStepTimes(steps = [], times = [], { durationSeconds = null
       }
     }
   }
+
+  // 根拠のない時刻は作らない（2026-10-30）：動画の長さを超える時刻・順番が逆の外れ値は「不明（null）」にするだけで、
+  // 文字数などからの按分補間はしない（interpolate: true を明示した時だけ、従来の補間を使う）。
+  if (!interpolate) return t;
 
   // 3. 4手順以上が30秒未満に密集している場合（cluster）、後ろに十分な余地（後続アンカーまたは動画長）がある時だけ先頭アンカーを残して広げる
   const afterOrder = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);

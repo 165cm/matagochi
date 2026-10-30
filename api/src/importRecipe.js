@@ -87,7 +87,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
           });
 
           const isComplete = hybrid?.stepsComplete !== false;
-          const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= rawSteps.length);
+          // 工程数が減ること自体は悪くない（作業のまとまりに整理するため）。説明欄の半分未満まで減った時だけ、抜けを疑って採用しない。
+          const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= Math.ceil(rawSteps.length / 2));
           if (hybrid && Array.isArray(hybrid.steps) && hybrid.steps.length >= 2 && isComplete && isBetterOrCoarse) {
             analysis = {
               ...analysis,
