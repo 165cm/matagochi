@@ -15,6 +15,9 @@ const VIDEO_MAX_SECONDS = 600;
 // まず説明文（安い）。作り方か材料が取れない時だけ、短い動画を映像ごと読む。
 export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const videoId = extractYouTubeVideoId(rawUrl);
+  // 管理画面に見せる処理段階（1〜5。表示の失敗で取り込みを止めない）。
+  const progress = (stage, detail = "") => { try { options.onProgress?.({ stage, detail }); } catch { /* 表示だけの通知 */ } };
+  progress(1, "動画情報・説明欄を取得中");
   const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId);
   const videoUrl = canonicalYouTubeUrl(videoId, rawUrl);
   const hasDescription = !!String(snippet.description || "").trim();
@@ -65,8 +68,10 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const shouldTryHybrid = !analyzedFrom.startsWith("video") && rawIngredients.length > 0 && typeof deps.buildHybridRecipeSteps === "function" && typeof deps.fetchYouTubeTranscript === "function";
 
   if (shouldTryHybrid) {
+    progress(1, "字幕を取得中");
     const transcriptRes = await deps.fetchYouTubeTranscript(videoId).catch(() => null);
     const items = transcriptRes?.status === "ok" && Array.isArray(transcriptRes?.items) ? transcriptRes.items : (Array.isArray(transcriptRes) ? transcriptRes : null);
+    progress(1, items && items.length ? `字幕を取得しました（${items.length}行）` : `字幕を取得できませんでした（${transcriptRes?.status || "なし"}）。説明欄だけで続けます`);
     if (items && items.length) {
       const { text, cues, truncated } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
       // 字幕が文字数や動画尺上限で途中で切れており、かつ説明欄に元の手順がない場合（rawSteps.length < 2）、
@@ -74,7 +79,9 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
       if (!skipTruncatedWithoutSteps) {
         const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
+        if (!budgetOk) progress(2, "AI の予算の上限のため、字幕での整理をスキップしました");
         if (budgetOk) {
+          progress(2, "字幕に沿って調理ブロックを整理中（AI応答待ち）");
           const hybrid = await deps.buildHybridRecipeSteps({
             title: analysis.title || snippet.title,
             ingredients: rawIngredients,
@@ -111,6 +118,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   // チャプターとの対応付けも AI の1回。字幕タイムコードがまだない場合のみ行う。
   const chaptersAllowed = !analyzedTimes && chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function" && (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
   if (chaptersAllowed) {
+    progress(3, "説明欄の章と照合中（AI応答待ち）");
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
     const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);
     if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }

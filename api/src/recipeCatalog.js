@@ -100,12 +100,14 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     // 読み直しは、保存済みのレシピを「分析中」で置き換えない（途中で失敗・停止しても、前のレシピを読める）。
     // 別の鍵で同時の読み直しを止め（世代つきの書き込みで1つだけ）、最後に保存済みの版が変わっていない時だけ書く（review fix #138）。
     const lock = reread ? await claimRereadLock(id) : null;
+    const tracker = reread ? createProgress(id) : null;
     const claim = reread ? { generation: current.generation } : await store.put(key, { status: "pending", startedAt: new Date(now()).toISOString() }, { ifGeneration: current?.generation ?? 0 });
     if (!claim) { await refund(); throw new ApiError(409, "analysis_pending", "このURLは分析中です。しばらくしてから再取得してください。"); }
     try {
       // 説明欄の読み取り・動画の読み取り・チャプターとの対応付けの、それぞれの直前に gate を通す。
       await gate();
-      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo, reread });
+      const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, forceVideo, reread, ...(tracker ? { onProgress: tracker.update } : {}) });
+      tracker?.update({ stage: 4, detail: "手順・時刻・材料を確認中" });
       const validAnalyzedFrom = ["video", "video-clip", "description+transcript"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description";
       const result = { ...normalizeImportResult(raw), analyzedFrom: validAnalyzedFrom };
       // 時刻の出どころ（説明欄の章・YouTube字幕）も残す（管理の点検で、AI が動画から探した時刻と分ける。review fix #136）。
@@ -126,6 +128,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         const error = new ApiError(422, "incomplete_recipe", "材料や手順を読み取れませんでした。手動入力をご利用ください。");
         throw error;
       }
+      tracker?.update({ stage: 5, detail: "保存中" });
       result.catalog = { id: key, revision: randomUUID(), analyzedAt: new Date(now()).toISOString(), model, extractorVersion: EXTRACTOR_VERSION };
       result.snippetFetchedAt = result.catalog.analyzedAt;
       // 履歴には説明文の原文を残さない（30日ルール）。
@@ -133,8 +136,10 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!revision) throw new Error("Revision collision");
       const written = await store.put(key, { status: "ready", result }, { ifGeneration: claim.generation });
       if (!written) throw new ApiError(409, "catalog_conflict", "分析結果が更新されました。再取得してください。");
+      await tracker?.finish("updated", `手順 ${(before?.steps || []).length} → ${(result.steps || []).length} に更新しました`);
       return { ...structuredClone(result), cacheHit: false, videoSkipped: !!raw?.videoSkipped, ticketUsed: spent };
     } catch (error) {
+      await tracker?.finish(error.code === "catalog_conflict" ? "conflict" : ["reread_worse", "incomplete_recipe", "analysis_uncertain"].includes(error.code) ? "kept_old" : "failed", error.message || "失敗しました");
       await refund();
       // 読み直して手順が減る・読めない・レシピでないと言われた時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
       // 読み直しでは保存済みのレシピを置き換えていないので、ほかの失敗では何も書かない。
@@ -150,6 +155,24 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (lock) await store.remove(lock.key, { ifGeneration: lock.generation }).catch(() => {});
     }
   }
+  // 管理画面に見せる読み直しの処理段階を、保存先に残す（複数のサーバーでも追える。表示だけなので、保存に失敗しても読み直しは止めない）。
+  const PROGRESS_LABEL = { 1: "素材を取得", 2: "調理ブロックを整理", 3: "字幕・章と照合", 4: "品質を確認", 5: "保存" };
+  function createProgress(id) {
+    const key = `reread-progress/${id}`;
+    const startedAt = new Date(now()).toISOString();
+    let chain = Promise.resolve();
+    let state = { status: "running", stage: 1, total: 5, label: PROGRESS_LABEL[1], detail: "開始しました", startedAt };
+    const write = () => {
+      const snapshot = { ...state, updatedAt: new Date(now()).toISOString() };
+      chain = chain.then(async () => { const cur = await store.get(key); await store.put(key, snapshot, { ifGeneration: cur?.generation ?? 0 }); }).catch(() => {});
+      return chain;
+    };
+    write();
+    return {
+      update({ stage, detail = "" }) { state = { ...state, stage: Math.max(state.stage, stage), label: PROGRESS_LABEL[Math.max(state.stage, stage)], detail }; write(); },
+      finish(outcome, message) { state = { ...state, status: outcome === "updated" ? "done" : "failed", outcome, detail: message, label: outcome === "updated" ? "完了" : PROGRESS_LABEL[state.stage] }; return write(); }
+    };
+  }
   // 読み直しの鍵：10分より古い鍵は止まった読み直しのものなので取り直してよい。
   async function claimRereadLock(id) {
     const lockKey = `reread-lock/${id}`;
@@ -161,6 +184,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   }
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
+    // 管理：読み直しの処理段階（なければ null）。
+    async rereadProgress(rawUrl) { required(); return (await store.get(`reread-progress/${extractYouTubeVideoId(rawUrl)}`))?.envelope || null; },
     async import(rawUrl, { forceVideo = false, household = "", unlimited = false, aiGate = null, reread = false } = {}) {
       const id = extractYouTubeVideoId(rawUrl);
       const key = forceVideo ? `${id}:video:${household}` : reread ? `${id}:reread` : id;
