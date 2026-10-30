@@ -161,16 +161,32 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const key = `reread-progress/${id}`;
     const startedAt = new Date(now()).toISOString();
     let chain = Promise.resolve();
-    let state = { status: "running", stage: 1, total: 5, label: PROGRESS_LABEL[1], detail: "開始しました", startedAt };
+    const logs = [];
+    let state = { status: "running", stage: 1, total: 5, label: PROGRESS_LABEL[1], detail: "開始しました", startedAt, logs };
     const write = () => {
-      const snapshot = { ...state, updatedAt: new Date(now()).toISOString() };
+      const snapshot = { ...state, logs: [...logs], updatedAt: new Date(now()).toISOString() };
       chain = chain.then(async () => { const cur = await store.get(key); await store.put(key, snapshot, { ifGeneration: cur?.generation ?? 0 }); }).catch(() => {});
       return chain;
     };
     write();
     return {
-      update({ stage, detail = "" }) { state = { ...state, stage: Math.max(state.stage, stage), label: PROGRESS_LABEL[Math.max(state.stage, stage)], detail }; write(); },
-      finish(outcome, message) { state = { ...state, status: outcome === "updated" ? "done" : "failed", outcome, detail: outcome === "updated" || !state.detail ? message : `${message}（直前：${state.detail}）`, label: outcome === "updated" ? "完了" : PROGRESS_LABEL[state.stage] }; return write(); }
+      update({ stage, detail = "" }) {
+        const curStage = Math.max(state.stage, stage);
+        if (detail && !logs.includes(detail)) logs.push(`${curStage}/5 ${detail}`);
+        state = { ...state, stage: curStage, label: PROGRESS_LABEL[curStage], detail: detail || state.detail };
+        write();
+      },
+      finish(outcome, message) {
+        if (message && !logs.includes(message)) logs.push(message);
+        state = {
+          ...state,
+          status: outcome === "updated" ? "done" : "failed",
+          outcome,
+          detail: message,
+          label: outcome === "updated" ? "完了" : PROGRESS_LABEL[state.stage]
+        };
+        return write();
+      }
     };
   }
   // 読み直しの鍵：10分より古い鍵は止まった読み直しのものなので取り直してよい。
