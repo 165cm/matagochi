@@ -296,7 +296,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       return entry ? { stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
     },
     // すでに保存済みの時刻（AI・章）を0円で補正して保存し直す（だれかが直した時刻 fix や消した時刻 cleared は触らない）。
-    async repair({ url, steps, stepTimes, source = "video", durationSeconds = null, fillGaps = true }) {
+    async repair({ url, steps, stepTimes, source = "video", durationSeconds = null, fillGaps = true, allowEmpty = false }) {
       required();
       const videoId = extractYouTubeVideoId(url);
       const list = normalize(steps);
@@ -306,7 +306,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       const entry = cached?.envelope;
       if (entry?.cleared || entry?.source === "fix") return { stepTimes: cleanTimes(entry.stepTimes, list), source: "fix", skipped: true };
       const baseTimes = cleanTimes(stepTimes ?? entry?.stepTimes, list);
-      if (!found(baseTimes)) return null;
+      // allowEmpty：補正で全部が「不明」になった結果も保存する（根拠のない誤時刻を残さない）。
+      if (!found(baseTimes) && !allowEmpty) return null;
       const refined = refineStepTimes(list, baseTimes, { durationSeconds, fillGaps });
       const effectiveSource = entry?.source || (source === "chapters" ? "chapters" : "video");
       const saved = await store.put(key, {

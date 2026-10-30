@@ -220,3 +220,16 @@ test('review: timecode repair rejects a lost generation update', async () => {
   const book=createTimecodeBook({get:async()=>null,put:async()=>null});
   await assert.rejects(book.repair({url:'https://www.youtube.com/watch?v=repairtest1',steps:steps(4),stepTimes:[10,90,90,180],durationSeconds:360}),error=>error.code==='timecode_conflict');
 });
+
+test('review: a repair that leaves every time unknown is still saved (shared store and catalog), so wrong times are not kept', async (t) => {
+  const memory = createMemorySyncStore();
+  const st = steps(2), videoId = 'allbeyond11';
+  await memory.put(`youtube-${videoId}`, { status: 'ready', result: { title: '料理', videoUrl: `https://www.youtube.com/watch?v=${videoId}`, ingredients: [{ name: '豚肉' }, { name: 'キャベツ' }, { name: '塩' }], steps: st, stepTimes: [500, 600], analyzedFrom: 'video', planning: { minutes: 10 }, snippetFetchedAt: new Date().toISOString(), catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 } } }, { ifGeneration: 0 });
+  await memory.put('trends/index', { weeks: [{ week: weekOf(Date.now()), startedAt: new Date().toISOString(), candidates: [], tried: [], items: [{ videoId }], skipped: {} }] }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'test' }, { recipeStore: memory, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], videoDetails: async (ids) => Object.fromEntries(ids.map((id) => [id, { status: 'public', durationSeconds: 300 }])) });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const r = await (await fetch(`http://127.0.0.1:${server.address().port}/api/admin/recipes/${videoId}/timecodes/repair`, { method: 'POST', headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' }, body: '{}' })).json();
+  assert.equal(r.changed, true);
+  assert.deepEqual((await memory.get(`youtube-${videoId}`)).envelope.result.stepTimes, [null, null]);
+});
