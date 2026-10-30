@@ -569,3 +569,38 @@ test('review fix: concurrent release conflicts are retried until reserved is 0, 
   assert.equal(healedQuota.envelope.used, 20);
   assert.equal(healedQuota.envelope.reserved ?? 0, 0);
 });
+
+test('admin reanalyze uses the subtitles first (no video AI call), and falls back to the video when there are none', async () => {
+  let videoCalls = 0;
+  const mk = (items) => createTimecodeBook(createMemorySyncStore(), {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '', durationSeconds: 300 }),
+    fetchTranscript: async () => items,
+    matchTranscript: async () => ({ stepTimes: ['00:10', '00:45'], stepCues: ['玉ねぎ', '炒め'] }),
+    matchChapters: async () => null,
+    analyze: async () => { videoCalls++; return { stepTimes: [100, 200] }; }
+  });
+  const ask = { url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['玉ねぎを切る', '炒める'] };
+  const subs = [{ start: 10, duration: 3, text: '玉ねぎを薄切りにします' }, { start: 45, duration: 4, text: 'フライパンで強火で炒めます' }];
+  const a = await mk(subs).reanalyze(ask);
+  assert.equal(a.source, 'transcript'); assert.deepEqual(a.stepTimes, [10, 45]); assert.equal(videoCalls, 0);
+  const b = await mk(null).reanalyze(ask);
+  assert.equal(b.source, 'video'); assert.equal(videoCalls, 1);
+});
+
+test('a transcript result is not rejected because the old times were beyond the video (they are not counted as valid)', async () => {
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '', durationSeconds: 300 }),
+    fetchTranscript: async () => [{ start: 10, duration: 3, text: '玉ねぎを薄切りにします' }],
+    matchTranscript: async () => ({ stepTimes: ['00:10', null], stepCues: ['玉ねぎ', ''] }),
+    matchChapters: async () => null,
+    analyze: async () => ({ stepTimes: [] })
+  });
+  const ask = { url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['玉ねぎを切る', '炒める'] };
+  await book.repair({ url: ask.url, steps: ask.steps, stepTimes: [500, 600], durationSeconds: null }).catch(() => null);
+  const r = await book.find(ask, 'home-x');
+  assert.equal(r.source, 'transcript');
+  assert.deepEqual(r.stepTimes, [10, null]);
+});

@@ -992,7 +992,7 @@
       for (const x of ck.issues) warn.lastChild.append(el("li", `${ck.labels?.[x.code] || x.code}${Number.isInteger(x.step) ? `（手順${x.step + 1}）` : ""}`));
       body.append(warn);
     }
-    const SRCL = { recipe: "読み取りの時刻", fix: "運営が直した時刻", chapters: "説明欄の章からの時刻", video: "AI が動画から探した時刻" };
+    const SRCL = { recipe: "読み取りの時刻", fix: "運営が直した時刻", chapters: "説明欄の章からの時刻", transcript: "字幕と照合した時刻", video: "AI が動画から探した時刻" };
     if (r.stepTimesSource) body.append(el("p", `いまの時刻：${SRCL[r.stepTimesSource] || r.stepTimesSource}${r.durationSeconds ? `・動画の長さ ${sec(r.durationSeconds)}` : ""}`, "meta"));
     const badSteps = new Set((ck.issues || []).filter((x) => Number.isInteger(x.step)).map((x) => x.step));
 

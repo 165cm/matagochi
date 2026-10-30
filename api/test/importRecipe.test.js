@@ -104,25 +104,23 @@ test("parseTimeValue and refineStepTimes handle MM:SS strings, coarse chapter du
   assert.equal(parseTimeValue({ time: "01:30", cue: "炒める" }), 90);
   assert.equal(parseTimeValue("2:99"), null);
 
-  // Coarse chapters where multiple steps point to the same chapter timestamp are subdivided proportionally
+  // Coarse chapters (several steps share one chapter time) are kept as they are: no invented times (2026-10-30)
   const st5 = ["野菜を切る", "豚肉を炒める", "野菜を加えてさらに炒める", "調味料を入れる", "盛り付ける"];
-  const refinedCoarse = refineStepTimes(st5, [10, 90, 90, 90, 180], { durationSeconds: 240 });
-  assert.equal(refinedCoarse[0], 10);
-  assert.equal(refinedCoarse[1], 90);
+  assert.deepEqual(refineStepTimes(st5, [10, 90, 90, 90, 180], { durationSeconds: 240 }), [10, 90, 90, 90, 180]);
+  // The old proportional interpolation is only used when asked for explicitly
+  const refinedCoarse = refineStepTimes(st5, [10, 90, 90, 90, 180], { durationSeconds: 240, interpolate: true });
   assert.ok(refinedCoarse[2] > 90 && refinedCoarse[2] < refinedCoarse[3]);
-  assert.ok(refinedCoarse[3] > refinedCoarse[2] && refinedCoarse[3] < 180);
-  assert.equal(refinedCoarse[4], 180);
-  assert.equal(checkStepTimes(st5, refinedCoarse, { source: "chapters", durationSeconds: 240 }).coarse, undefined);
 
-  // Out-of-order and beyond-duration timestamps are repaired cleanly
+  // Out-of-order and beyond-duration timestamps become "unknown" (null); nothing is made up from text length
   const st4 = ["手順1", "手順2", "手順3", "手順4"];
   const refinedOrder = refineStepTimes(st4, [10, 200, 100, 300], { durationSeconds: 350 });
-  assert.deepEqual(refinedOrder, [10, 55, 100, 300]);
-  assert.equal(checkStepTimes(st4, refinedOrder, { durationSeconds: 350 }).status, "ok");
+  assert.equal(refinedOrder.filter((x) => x === null).length, 1);
+  assert.ok(refinedOrder.every((x) => x === null || [10, 200, 100, 300].includes(x)));
+  assert.equal(checkStepTimes(st4, refinedOrder, { durationSeconds: 350 }).issues.some((i) => i.code === "order"), false);
 
-  const refinedBeyond = refineStepTimes(st4, [10, 60, 120, 400], { durationSeconds: 300 });
-  assert.ok(refinedBeyond[3] > 120 && refinedBeyond[3] < 300);
-  assert.equal(checkStepTimes(st4, refinedBeyond, { durationSeconds: 300 }).status, "ok");
+  assert.deepEqual(refineStepTimes(st4, [10, 60, 120, 400], { durationSeconds: 300 }), [10, 60, 120, null]);
+  // times beyond the video are never replaced by invented ones (reported video: 13:56 / 15:19 / 15:35 in an 11:15 video)
+  assert.deepEqual(refineStepTimes(st4, [10, 836, 919, 935], { durationSeconds: 675 }), [10, null, null, null]);
 });
 
 test("when transcript is available, description materials and transcript flow create hybrid detailed steps with timecodes", async () => {

@@ -182,11 +182,11 @@ test('admin: POST /api/admin/timecodes/repair repairs already-saved past videos 
   const admin = { Authorization: 'Bearer admin-test-token', 'Content-Type': 'application/json' };
   const rep = await (await fetch(`${base}/api/admin/timecodes/repair`, { method: 'POST', headers: admin, body: '{}' })).json();
   assert.equal(rep.checked, 3);
-  assert.equal(rep.repaired, 2);
-  assert.equal(rep.coarseFixed, 1);
+  assert.equal(rep.repaired, 1, 'only the inverted video changes; coarse chapter times are kept as they are');
+  assert.equal(rep.coarseFixed, 0);
   const checkAfter = await (await fetch(`${base}/api/admin/timecodes/check`, { headers: admin })).json();
   assert.equal(checkAfter.warn, 1, 'only adminfixeda (source=fix, kept untouched) has duplicate warning');
-  assert.equal(checkAfter.coarse, 0, 'coarse chapter duplicates were subdivided');
+  assert.equal(checkAfter.coarse, 1, 'coarse chapter duplicates are not subdivided with invented times');
 });
 
 test('review: repair reports failed and partially saved videos, and retries them', async (t) => {
@@ -198,7 +198,7 @@ test('review: repair reports failed and partially saved videos, and retries them
     return memory.put(key,...args);
   }};
   const st=steps(4),videoId='repairtest1';
-  await memory.put(`youtube-${videoId}`,{status:'ready',result:{title:'料理',videoUrl:`https://www.youtube.com/watch?v=${videoId}`,ingredients:[{name:'豚肉'},{name:'キャベツ'},{name:'塩'}],steps:st,stepTimes:[10,90,90,180],stepTimesFrom:'chapters',planning:{minutes:10},snippetFetchedAt:new Date().toISOString(),catalog:{analyzedAt:new Date().toISOString(),extractorVersion:99}}},{ifGeneration:0});
+  await memory.put(`youtube-${videoId}`,{status:'ready',result:{title:'料理',videoUrl:`https://www.youtube.com/watch?v=${videoId}`,ingredients:[{name:'豚肉'},{name:'キャベツ'},{name:'塩'}],steps:st,stepTimes:[10,500,90,180],stepTimesFrom:'chapters',planning:{minutes:10},snippetFetchedAt:new Date().toISOString(),catalog:{analyzedAt:new Date().toISOString(),extractorVersion:99}}},{ifGeneration:0});
   await memory.put('trends/index',{weeks:[{week:weekOf(Date.now()),startedAt:new Date().toISOString(),candidates:[],tried:[],items:[{videoId}],skipped:{}}]},{ifGeneration:0});
   const app=createApp({RECIPE_ADMIN_TOKEN:'test'},{recipeStore:store,syncStore:null,photoStore:null,resolveChannel:async()=>null,searchRecipes:async()=>[],videoDetails:async ids=>Object.fromEntries(ids.map(id=>[id,{status:'public',durationSeconds:360}]))});
   const server=app.listen(0,'127.0.0.1');await once(server,'listening');
@@ -213,7 +213,7 @@ test('review: repair reports failed and partially saved videos, and retries them
   failure='';
   const third=await post(`/api/admin/recipes/${videoId}/timecodes/repair`);
   assert.equal(third.changed,true);
-  assert.notDeepEqual((await memory.get(`youtube-${videoId}`)).envelope.result.stepTimes,[10,90,90,180]);
+  assert.deepEqual((await memory.get(`youtube-${videoId}`)).envelope.result.stepTimes,[10,null,90,180]);
 });
 
 test('review: timecode repair rejects a lost generation update', async () => {
