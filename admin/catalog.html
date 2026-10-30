@@ -1027,7 +1027,10 @@
         setTimeout(() => openRecipe(videoId), 600);
       } catch (error) {
         const where = last && last.status !== "done" ? `（${last.stage}/${last.total} ${last.label}で止まりました）` : "";
-        mainNote.textContent = `${OUT[last?.outcome] ? `${OUT[last.outcome]}：` : ""}${error.message}${where}`;
+        // サーバーに残った最後の様子（字幕が取れたか・AI の結果を採用しなかった理由など）も出す。
+        let lastDetail = last?.detail || "";
+        try { const f = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (f.progress?.detail) lastDetail = f.progress.detail; } catch { /* 表示だけ */ }
+        mainNote.textContent = `${OUT[last?.outcome] ? `${OUT[last.outcome]}：` : ""}${error.message}${where}${lastDetail ? `｜${lastDetail}` : ""}`;
         rr.disabled = false;
       } finally { polling = false; clearInterval(ticker); }
     });

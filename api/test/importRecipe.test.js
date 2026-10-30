@@ -530,3 +530,13 @@ test("importYouTubeRecipe reports its real stages to onProgress (and a failing l
   assert.equal(r.analyzedFrom, "description+transcript");
   assert.deepEqual([...new Set(stages)], [1, 2]);
 });
+
+test("importYouTubeRecipe tells why the subtitle organizing did not happen (no subtitles / rejected result)", async () => {
+  const base = {
+    fetchYouTubeSnippet: async () => ({ title: "豚こま炒め", description: "【材料】豚こま 300g\n【作り方】①炒める ②盛る ③食べる ④洗う ⑤拭く ⑥片づける", durationSeconds: 300 }),
+    analyzeRecipeDescription: async () => ({ title: "豚こま炒め", ingredients: [{ name: "豚こま", amount: "300g" }], steps: ["炒める", "盛る", "食べる", "洗う", "拭く", "片づける"] })
+  };
+  const run = async (extra) => { const d = []; await importYouTubeRecipe("https://www.youtube.com/watch?v=abcdefghijk", { ...base, ...extra }, { onProgress: (p) => d.push(p.detail) }); return d.join(" | "); };
+  assert.match(await run({ fetchYouTubeTranscript: async () => ({ status: "not_available", reason: "no_captions" }), buildHybridRecipeSteps: async () => null }), /not_available：no_captions/);
+  assert.match(await run({ fetchYouTubeTranscript: async () => ({ status: "ok", items: [{ start: 1, duration: 2, text: "炒めます" }] }), buildHybridRecipeSteps: async () => ({ steps: ["炒める", "盛る"], stepTimes: [1, 2], stepsComplete: true }) }), /採用しませんでした（2工程/);
+});
