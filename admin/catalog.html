@@ -998,61 +998,26 @@
     if (r.stepTimesSource) body.append(el("p", `いまの時刻：${SRCL[r.stepTimesSource] || r.stepTimesSource}${r.durationSeconds ? `・動画の長さ ${sec(r.durationSeconds)}` : ""}`, "meta"));
     const badSteps = new Set((ck.issues || []).filter((x) => Number.isInteger(x.step)).map((x) => x.step));
 
-    // メインの自動生成ボタン：説明欄＋字幕から、手順と時刻を一括で最新化（推奨アクション）
-    const mainActionRow = el("div", undefined, "row"); mainActionRow.style.margin = "8px 0";
-    const mainNote = el("span", "", "meta");
-    const rr = el("button", "✨ 手順と時刻を自動生成（説明欄＋字幕 / 約1円）", "small"); rr.type = "button";
-    rr.addEventListener("click", async () => {
-      rr.disabled = true;
-      const started = Date.now();
-      let last = null, polling = true;
-      const OUT = { kept_old: "前の結果を残しました", conflict: "ほかの更新と重なりました", failed: "失敗しました" };
-      // サーバーに残った実際の処理段階を2秒おきに見て表示する（経過時間からの推測ではない）。
-      const show = () => {
-        const secs = Math.floor((Date.now() - started) / 1000);
-        mainNote.textContent = last && last.status === "running"
-          ? `${last.stage}/${last.total} ${last.label}中｜${last.detail || ""}｜経過${secs}秒`
-          : `1/5 素材を取得中｜リクエスト送信｜経過${secs}秒`;
-      };
-      const poll = async () => {
-        while (polling) {
-          try { const r = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (r.progress && Date.parse(r.progress.startedAt) >= started - 5000) last = r.progress; } catch { /* 表示だけ */ }
-          if (!polling) break;
-          show();
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-      };
-      const ticker = setInterval(show, 1000);
-      poll();
-      try {
-        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread`, {});
-        mainNote.textContent = `✓ 5/5 完了｜手順 ${x.before} → ${x.after}${x.analyzedFrom === "description+transcript" ? "（字幕ハイブリッド）" : ""} に更新しました。開き直します…`;
-        setTimeout(() => openRecipe(videoId), 600);
-      } catch (error) {
-        let finalProgress = last;
-        try { const f = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (f.progress) finalProgress = f.progress; } catch { /* 表示だけ */ }
-        const where = finalProgress && finalProgress.status !== "done" ? `（${finalProgress.stage}/${finalProgress.total} ${finalProgress.label}で止まりました）` : "";
-        const logsList = Array.isArray(finalProgress?.logs) && finalProgress.logs.length ? `
-【処理の履歴】
-・${finalProgress.logs.join("\n・")}` : "";
-        mainNote.style.whiteSpace = "pre-wrap";
-        mainNote.textContent = `${OUT[finalProgress?.outcome] ? `${OUT[finalProgress.outcome]}：` : ""}${error.message}${where}${logsList ? logsList : (finalProgress?.detail ? `｜${finalProgress.detail}` : "")}`;
-        rr.disabled = false;
-      } finally { polling = false; clearInterval(ticker); }
-    });
-    mainActionRow.append(rr, mainNote);
-    body.append(mainActionRow);
-
-    // 候補（作る → 見比べる → 採用。APP_MAP §52-6）：字幕が取れない・説明欄に手順がない時の道。採用するまで保存済みのレシピは変わらない。
-    const candRow = el("div", undefined, "row"); candRow.style.margin = "4px 0 8px";
-    const candNote = el("span", "", "meta"); candNote.style.whiteSpace = "pre-wrap";
-    const candBox = el("div");
-    const cAuto = el("button", "🧩 候補を作る（説明欄＋字幕 → だめなら動画）", "quiet small"); cAuto.type = "button";
-    const cVideo = el("button", "🎬 動画から候補を作る（約5〜10円）", "quiet small"); cVideo.type = "button";
+    // 手順と時刻は3つのまとまりに分ける（2026-10-31 のユーザーの判断：初めての人でも動きが予想できるように）。
+    // ① 作り直す：ボタンは1つ。安い作り方（説明欄＋字幕＋章）で候補を作り、見立てが悪い時だけ、次の作り方（字幕の貼り付け・動画）を候補の枠の中で勧める。
+    // ② 手で直す：手順の文・時刻。③ その他：たたんでおく。どれも、保存する前に見比べる。
+    const part = (text) => { const x = el("p", text); x.style.cssText = "font-weight:700;margin:14px 0 2px"; return x; };
     // 作る画面と同じ保存（timecodes）に入れられなかった時の知らせ（握りつぶさない）。
     const SHARED_FAIL = "（作る画面の ▶ の時刻は更新できませんでした。「時刻を保存」をもう一度押してください）";
     const TFROM = { chapters: "説明欄の章", transcript: "字幕", video: "動画", description: "説明欄" };
     const FROMC = { video: "動画（最後まで）", "video-clip": "動画（途中まで）", "description+transcript": "説明欄＋字幕", description: "説明欄" };
+    const WHY = { times_few: "時刻が半分の手順にもありません", duplicates: "同じ時刻の手順があります（説明欄の章がおおまか）", goes_back: "前に戻る時刻がありました" };
+    const candRow = el("div", undefined, "row"); candRow.style.margin = "4px 0 8px";
+    const candNote = el("span", "", "meta"); candNote.style.whiteSpace = "pre-wrap";
+    const candBox = el("div");
+    const rebuild = el("button", "🔄 手順と時刻を作り直す（約1〜2円）", "small"); rebuild.type = "button";
+    let videoLeft = null;
+    // 貼った字幕は、作り直しに失敗しても次の貼り付け欄に残す（もう一度 YouTube からコピーしなくてよい）。
+    let lastPasted = "";
+    // 処理中に押せなくするボタン：いつもあるもの＋いま出ている候補の枠のもの（枠を作り直すたびに入れ替える）。
+    const busyButtons = new Set([rebuild]);
+    let panelButtons = new Set();
+    const setBusy = (on) => [...busyButtons, ...panelButtons].forEach((b) => { b.disabled = on || b.dataset.off === "1"; });
     const progressText = (p, started) => {
       const secs = Math.floor((Date.now() - started) / 1000);
       return p && p.status === "running" ? `${p.stage}/${p.total} ${p.label}中｜${p.detail || ""}｜経過${secs}秒` : `1/5 素材を取得中｜リクエスト送信｜経過${secs}秒`;
@@ -1069,44 +1034,76 @@
       })();
       return { stop: () => { on = false; }, last: () => last };
     };
-    const makeCandidate = async (mode) => {
-      const msg = mode === "video"
-        ? "AI に動画を最後まで見せて、手順と時刻の候補を作ります（約5〜10円・1日10回まで・30分までの動画）。保存済みのレシピは、見比べて「この候補で保存」を押すまで変わりません。"
-        : "説明欄と字幕で候補を作ります（約1円）。字幕で作れず説明欄にも手順がない時は、動画を最後まで読みます（約5〜10円・1日10回まで）。保存済みのレシピは、見比べて「この候補で保存」を押すまで変わりません。";
-      if (!confirm(msg)) return;
-      cAuto.disabled = cVideo.disabled = true; candBox.textContent = "";
+    // mode："basic"（作り直すの1段目）／"transcript"（貼り付けた字幕）／"video"（動画）。保存済みのレシピは、候補を保存するまで変わらない。
+    const makeCandidate = async (mode, extra = {}) => {
+      setBusy(true); candBox.textContent = ""; panelButtons = new Set();
       const started = Date.now();
       const w = watch(started);
       try {
-        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`, { mode });
-        w.stop(); candNote.textContent = "✓ 候補ができました。下で見比べて、よければ「この候補で保存」を押してください。";
+        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`, { mode, ...extra });
+        w.stop(); candNote.textContent = "";
+        if (Number.isFinite(x.videoLeft)) videoLeft = x.videoLeft;
         renderCandidate(x.candidate);
       } catch (error) {
         w.stop();
         let p = w.last();
         try { const f = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (f.progress) p = f.progress; } catch { /* 表示だけ */ }
-        const logs = Array.isArray(p?.logs) && p.logs.length ? `\n【処理の履歴】\n・${p.logs.join("\n・")}` : "";
-        candNote.textContent = `候補を作れませんでした：${error.message}${logs}`;
-      } finally { cAuto.disabled = cVideo.disabled = false; }
+        try { const g = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`); if (Number.isFinite(g.videoLeft)) videoLeft = g.videoLeft; } catch { /* 表示だけ */ }
+        candNote.textContent = "";
+        const box = el("div", undefined, "warnbox");
+        box.append(el("b", "⚠ 候補を作れませんでした"), el("p", error.message));
+        if (Array.isArray(p?.logs) && p.logs.length) { const d = el("details"); d.append(el("summary", "処理の履歴"), el("p", `・${p.logs.join("\n・")}`, "meta")); d.lastChild.style.whiteSpace = "pre-wrap"; box.append(d); }
+        box.append(nextSteps({ lastMode: mode }));
+        candBox.append(box);
+      } finally { setBusy(false); }
     };
-    cAuto.addEventListener("click", () => makeCandidate("auto"));
-    cVideo.addEventListener("click", () => makeCandidate("video"));
+    rebuild.addEventListener("click", () => makeCandidate("basic"));
+    // 次の作り方（候補の枠の中）：📋 字幕を貼り付ける（約1円）／🎬 動画で作り直す（約5〜10円・1日の回数）。
+    function nextSteps({ lastMode }) {
+      const wrap = el("div"); wrap.style.cssText = "display:grid;gap:8px;margin-top:8px";
+      wrap.append(el("p", "次の作り方を選べます（安い順）：", "meta"));
+      const row = el("div", undefined, "row");
+      const paste = el("button", "📋 字幕を貼り付けて作り直す（約1円）", "quiet small"); paste.type = "button";
+      const video = el("button", `🎬 動画で作り直す（約5〜10円${Number.isFinite(videoLeft) ? `・今日はあと${videoLeft}回` : ""}）`, "quiet small"); video.type = "button";
+      if (videoLeft === 0) { video.dataset.off = "1"; video.disabled = true; }
+      panelButtons.add(paste); panelButtons.add(video);
+      row.append(paste);
+      if (lastMode !== "video") row.append(video);
+      const area = el("div"); area.hidden = true; area.style.cssText = "display:grid;gap:6px";
+      const how = el("p", "パソコンの YouTube でこの動画を開き、説明欄の下の「文字起こしを表示」を押します。右に出た文字起こしを最初から最後まで選んでコピーし、ここに貼り付けてください（時刻の行ごと）。字幕のない動画では使えません。", "meta");
+      const ta = el("textarea"); ta.id = `transcript-${videoId}`; ta.rows = 6; ta.value = lastPasted; ta.placeholder = "0:16\n鶏むね肉を開いていきます\n0:21\n…"; ta.setAttribute("aria-label", "貼り付ける字幕"); ta.style.cssText = "width:100%;font:inherit;padding:8px;box-sizing:border-box";
+      const go = el("button", "この字幕で作り直す", "small"); go.type = "button"; panelButtons.add(go);
+      const yt = el("a", "YouTube で開く"); yt.href = r.videoUrl; yt.target = "_blank"; yt.rel = "noopener";
+      const goRow = el("div", undefined, "row"); goRow.append(go, yt);
+      area.append(how, ta, goRow);
+      // 前に貼った字幕がある時は、貼り付け欄を開いておく。
+      if (lastPasted) area.hidden = false;
+      paste.addEventListener("click", () => { area.hidden = !area.hidden; if (!area.hidden) ta.focus(); });
+      go.addEventListener("click", () => { if (!ta.value.trim()) { ta.focus(); return; } lastPasted = ta.value; makeCandidate("transcript", { transcript: ta.value }); });
+      video.addEventListener("click", () => makeCandidate("video"));
+      wrap.append(row, area);
+      return wrap;
+    }
     function renderCandidate(c) {
-      candBox.textContent = "";
+      candBox.textContent = ""; panelButtons = new Set();
       if (!c) return;
       const times = (c.stepTimes || []).filter((t) => Number.isFinite(t)).length;
       const oldTimes = (r.stepTimes || []).filter((t) => Number.isFinite(t) && (!r.durationSeconds || t < r.durationSeconds)).length;
+      const check = c.check || { ok: true, reasons: [] };
       const box = el("div", undefined, "warnbox"); box.style.background = "transparent";
       box.append(el("b", "🧩 候補（まだ保存していません）"));
+      // 見立て：よければ保存を、よくなければ次の作り方を勧める。
+      const verdict = el("p", check.ok ? "✅ よさそうです：手順の時刻がそろっていて、重なりもありません。" : `⚠ ${check.reasons.map((x) => WHY[x] || x).join("・")}`);
+      verdict.style.fontWeight = "700";
+      box.append(verdict);
       const dups = c.duplicateTimes || [];
       box.append(el("p", [`読んだ元：${FROMC[c.analyzedFrom] || c.analyzedFrom}`, c.timesFrom ? `時刻：${TFROM[c.timesFrom] || c.timesFrom}から` : "", `手順 ${(r.steps || []).length} → ${c.steps.length}`, `有効な時刻 ${oldTimes} → ${times}個`,
-        dups.length ? `前と同じ時刻の手順 ${dups.length}個は「要確認」（${c.timesFrom === "chapters" ? "章がおおまか" : "同じ時刻"}。採用しても、確かめるまでアプリでは使いません）` : "",
+        dups.length ? `前と同じ時刻の手順 ${dups.length}個は「要確認」（保存しても、確かめるまでアプリでは使いません）` : "",
         c.droppedTimes ? `動画の外・順番が逆の${c.droppedTimes}個は「不明」にしました` : "", c.carriedAdminTimes ? `運営が直した時刻を${c.carriedAdminTimes}個引き継ぎ（同じ文の手順だけ）` : "",
-        (c.suspectTimes || []).filter((i) => !dups.includes(i)).length ? `前に戻る時刻の手前の${c.suspectTimes.filter((i) => !dups.includes(i)).length}個は「要確認」（採用しても、確かめるまでアプリでは使いません）` : "",
+        (c.suspectTimes || []).filter((i) => !dups.includes(i)).length ? `前に戻る時刻の手前の${c.suspectTimes.filter((i) => !dups.includes(i)).length}個は「要確認」（保存しても、確かめるまでアプリでは使いません）` : "",
         `材料 ${(c.ingredients || []).length}`, `費用 ${c.yenUnknown ? "不明（AI の返事に使用量がない）" : `約${c.yen}円`}・AI ${c.aiCalls}回`, `期限 ${new Date(c.expiresAt).toLocaleString("ja-JP")}`].filter(Boolean).join("・"), "meta"));
-      if (r.guide) box.append(el("p", "採用すると、覚えやすい手順（書き直し）は外れます（あとで書き直し直せます）。", "meta"));
-      // 時刻が重なる時は、動画から作ると手順ごとの時刻になる（費用がかかるので、自動では読まない）。
-      if (dups.length && !String(c.analyzedFrom).startsWith("video")) box.append(el("p", "💡 時刻が重なっています。「🎬 動画から候補を作る」（約5〜10円）で、手順ごとの時刻にできます（おおまかな章では上書きしません）。", "meta"));
+      if (r.guide) box.append(el("p", "保存すると、覚えやすい手順（書き直し）は外れます（あとで書き直し直せます）。", "meta"));
+      if (String(c.analyzedFrom).startsWith("video")) box.append(el("p", "動画から作った候補は、手順の文も動画から読み直しています（言い回しが少し変わります）。", "meta"));
       const ol = el("ol", undefined, "steps");
       c.steps.forEach((step, i) => {
         const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
@@ -1120,8 +1117,10 @@
         right.append(tools); li.append(right); ol.append(li);
       });
       box.append(ol);
-      const row = el("div", undefined, "row");
-      const adopt = el("button", "✅ この候補で保存", "small"); adopt.type = "button";
+      if (!check.ok) box.append(nextSteps({ lastMode: c.mode }));
+      const row = el("div", undefined, "row"); row.style.marginTop = "8px";
+      const adopt = el("button", check.ok ? "✅ この内容で保存" : "このまま保存", check.ok ? "small" : "quiet small"); adopt.type = "button";
+      const drop = el("button", "やめる", "quiet small"); drop.type = "button";
       const an = el("span", "", "meta");
       adopt.addEventListener("click", async () => {
         if (!confirm(`いまのレシピ（手順 ${(r.steps || []).length}）を、この候補（手順 ${c.steps.length}）に置き換えます。前の版は履歴に残ります。よろしいですか？`)) return;
@@ -1129,32 +1128,38 @@
         try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate/adopt`, { candidateId: c.candidateId }); an.textContent = `✓ 手順 ${x.before} → ${x.after} に保存しました${x.guideRemoved ? "（書き直しは外しました）" : ""}${x.pending ? `・要確認の時刻 ${x.pending}個` : ""}${x.sharedTimes === "failed" ? SHARED_FAIL : ""}。開き直します…`; setTimeout(() => openRecipe(videoId), x.sharedTimes === "failed" ? 4000 : 600); }
         catch (error) { an.textContent = error.message; adopt.disabled = false; }
       });
-      row.append(adopt, an); box.append(row);
+      // やめる：候補を捨てる（開き直しても出ない）。いまのレシピはそのまま。
+      drop.addEventListener("click", async () => {
+        drop.disabled = true;
+        try { await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate/discard`, { candidateId: c.candidateId }); candBox.textContent = ""; candNote.textContent = "候補を捨てました（いまのレシピのままです）。"; }
+        catch (error) { an.textContent = error.message; drop.disabled = false; }
+      });
+      row.append(adopt, drop, an); box.append(row);
       candBox.append(box);
     }
-    candRow.append(cAuto, cVideo, candNote);
-    body.append(el("p", "字幕が取れない・説明欄に手順がない時は、候補を作って見比べてから保存します。", "meta"), candRow, candBox);
+    candRow.append(rebuild, candNote);
+    body.append(part("① 作り直す"), el("p", "まず安い作り方（説明欄＋字幕＋章）で候補を作ります。よくない時は、候補の中に次の作り方が出ます。保存するまで、いまのレシピは変わりません。", "meta"), candRow, candBox);
     // 開き直した時：まだ期限内の候補を出す。候補づくりの途中（2分以内に動きがあった）なら、終わるまで段階を見せる。
-    api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`).then((x) => renderCandidate(x.candidate)).catch(() => {});
+    api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`).then((x) => { if (Number.isFinite(x.videoLeft)) videoLeft = x.videoLeft; renderCandidate(x.candidate); }).catch(() => {});
     api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`).then(async (x) => {
       const p = x.progress;
       if (!p || p.status !== "running" || Date.now() - Date.parse(p.updatedAt || p.startedAt) > 120_000) return;
-      cAuto.disabled = cVideo.disabled = true;
+      setBusy(true);
       const started = Date.parse(p.startedAt);
       for (let i = 0; i < 300 && document.getElementById("recipe").open; i++) {
         let cur = null;
         try { cur = (await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`)).progress; } catch { /* 表示だけ */ }
-        if (!cur || cur.status !== "running") { candNote.textContent = cur?.detail || ""; if (cur?.outcome === "candidate") api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`).then((y) => renderCandidate(y.candidate)).catch(() => {}); break; }
+        if (!cur || cur.status !== "running") { candNote.textContent = cur?.detail || ""; if (cur?.outcome === "candidate") api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`).then((y) => { if (Number.isFinite(y.videoLeft)) videoLeft = y.videoLeft; renderCandidate(y.candidate); }).catch(() => {}); break; }
         candNote.textContent = `処理中です（別の画面で始めた分）：${progressText(cur, started)}`;
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-      cAuto.disabled = cVideo.disabled = false;
+      setBusy(false);
     }).catch(() => {});
 
     // その他の修正ツール（折りたたんで迷いをなくす）
     const moreDetails = el("details", undefined, "more");
     moreDetails.style.margin = "6px 0 10px";
-    moreDetails.append(el("summary", "その他の修正ツール（手動補正・動画から探すなど）"));
+    moreDetails.append(el("summary", "③ その他（最初から動画で作る・0円の補正・時刻だけ探し直す・要約）"));
     const moreBody = el("div", undefined, "row");
     moreBody.style.marginTop = "8px";
     const moreNote = el("span", "", "meta");
@@ -1189,7 +1194,10 @@
       } catch (error) { moreNote.textContent = error.message; }
       finally { ra.disabled = false; }
     });
-    moreBody.append(rp, ra);
+    // 説明欄・字幕では無理だと分かっている動画は、最初から動画で候補を作れる（結果は ① の候補の枠に出る）。
+    const rv = el("button", "🎬 最初から動画で作る（約5〜10円）", "quiet small"); rv.type = "button"; busyButtons.add(rv);
+    rv.addEventListener("click", () => { moreDetails.open = false; makeCandidate("video"); candRow.scrollIntoView?.({ block: "nearest" }); });
+    moreBody.append(rv, rp, ra);
 
     if (!r.guide) {
       const gdRun = el("button", "✍ 手順を要約する（約1円）", "quiet small"); gdRun.type = "button";
@@ -1202,8 +1210,8 @@
     }
     moreBody.append(moreNote);
     moreDetails.append(moreBody);
-    body.append(moreDetails);
     // 手順の文を直す（APP_MAP §52-7）：1行＝「文＋時刻＋要確認」の1組で動かし、まとめて保存する。
+    body.append(part("② 手で直す"), el("p", "手順の文は「✏ 手順の文を直す」、時刻は下の欄に入れて「時刻を保存」。", "meta"));
     const pending = r.stepTimesPending || [];
     if (pending.some((t) => Number.isFinite(t))) body.append(el("p", "点線の時刻は「要確認」（文を直した手順の前の時刻）です。▶ で確かめて「時刻を保存」を押すと確定します（それまでアプリでは使いません）。", "meta"));
     const editRow = el("div", undefined, "row"); editRow.style.margin = "4px 0 8px";
@@ -1226,7 +1234,7 @@
       now.addEventListener("click", () => { if (player?.getCurrentTime) { input.value = sec(Math.floor(player.getCurrentTime())); input.classList.remove("is-bad"); } });
       tools.append(input, play, now); right.append(tools); li.append(right); ol.append(li);
     });
-    body.append(ol);
+    body.append(ol, moreDetails);
     editBtn.addEventListener("click", () => {
       editBtn.disabled = true;
       let seq = 0;

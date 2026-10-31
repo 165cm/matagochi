@@ -286,3 +286,40 @@ function parseTimeStringToSeconds(val) {
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
+
+// 運営が貼り付けた字幕（パソコンの YouTube の「文字起こしを表示」をコピーしたもの）を [{ start, duration, end, text }] にする（2026-10-31）。
+// 本番のサーバーからは字幕を取れないことがあるので、管理画面から貼れるようにする。読める形：
+// 「0:16」の行の次に文の行／「0:16 文」の1行／SRT・VTT（00:00:16,000 --> 00:00:18,000）。時刻のない行は前の発話の続きとして読む。
+const PASTED_TIME = /^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?(?:\s*-->\s*\S+)?\s*(.*)$/;
+// YouTube の文字起こしをコピーすると、時刻の下に読み上げ用の「16秒」「1分2秒」「16 seconds」の行が入ることがある（話の中身ではないので外す）。
+const SPOKEN_TIME = /^(?:\d+\s*(?:時間|分|秒)\s*)+$|^(?:\d+\s*(?:hours?|minutes?|seconds?)[,\s]*)+$/i;
+export function parseTranscriptText(text = "", { maxChars = 400_000, maxCues = 5000 } = {}) {
+  const lines = String(text || "").slice(0, maxChars).replace(/\r/g, "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const cues = [];
+  let cur = null;
+  for (const [i, line] of lines.entries()) {
+    // SRT の番号（次の行が「-->」の時刻だけ。数字だけの発話「150」は残す）・VTT の見出し・読み上げ用の時刻の行。
+    if ((/^\d+$/.test(line) && /-->/.test(lines[i + 1] || "")) || /^WEBVTT/i.test(line) || SPOKEN_TIME.test(line)) continue;
+    const m = line.match(PASTED_TIME);
+    if (m) {
+      const start = Math.round(((Number(m[1] || 0) * 3600) + Number(m[2]) * 60 + Number(m[3]) + (m[4] ? Number(`0.${m[4]}`) : 0)) * 10) / 10;
+      if (cur?.text) cues.push(cur);
+      if (cues.length >= maxCues) { cur = null; break; }
+      cur = { start, text: decodeEntities(m[5] || "").trim() };
+      continue;
+    }
+    if (cur) cur.text = cur.text ? `${cur.text} ${line}` : line;
+  }
+  if (cur?.text && cues.length < maxCues) cues.push(cur);
+  // 時刻は前から順に進むものだけ（貼り間違いで前に戻る行は外す）。
+  const items = [];
+  for (const c of cues) {
+    if (items.length && c.start < items[items.length - 1].start) continue;
+    items.push(c);
+  }
+  return items.map((c, i) => {
+    const next = items[i + 1]?.start;
+    const duration = Math.round(Math.max(0.1, Number.isFinite(next) ? next - c.start : 5) * 10) / 10;
+    return { start: c.start, duration, end: Math.round((c.start + duration) * 10) / 10, text: c.text.replace(/\s+/g, " ") };
+  });
+}

@@ -450,3 +450,105 @@ test('Codex review #210: a duplicate that the carried admin times resolve is not
   assert.deepEqual(saved.stepTimes, [10, 20, 30]);
   assert.equal(saved.stepTimesPending, undefined);
 });
+
+// ── 作り直しを1つのボタンに・字幕の貼り付け（2026-10-31 のユーザーの判断：A案＋貼り付け） ──
+const { parseTranscriptText } = await import('../src/transcript.js');
+
+test('pasted subtitles: YouTube "transcript" copy (time line + text line), one-line form, and SRT are read; times going back are skipped', () => {
+  assert.deepEqual(parseTranscriptText('0:16\n鶏むね肉を開きます\n続けて塩\n2:01\n焼きます').map((x) => [x.start, x.text]), [[16, '鶏むね肉を開きます 続けて塩'], [121, '焼きます']]);
+  assert.deepEqual(parseTranscriptText('0:16 開きます\n1:02:03 盛ります').map((x) => x.start), [16, 3723]);
+  assert.deepEqual(parseTranscriptText('WEBVTT\n\n1\n00:00:16,000 --> 00:00:18,500\n切ります').map((x) => [x.start, x.text]), [[16, '切ります']]);
+  assert.deepEqual(parseTranscriptText('0:30 a\n0:10 b\n0:40 c').map((x) => x.start), [30, 40]);
+  assert.deepEqual(parseTranscriptText('字幕ではない文'), []);
+});
+
+const pastedDeps = (hybrid, count) => ({
+  fetchYouTubeSnippet: async () => ({ ...onlyIngredients, durationSeconds: 400 }),
+  analyzeRecipeDescription: describe,
+  fetchYouTubeTranscript: async () => { count.fetch++; return { status: 'not_available', reason: 'unplayable' }; },
+  buildHybridRecipeSteps: async (args) => { count.hybrid++; assert.ok(args.formattedTranscript.includes('ゆでます')); return hybrid; },
+  analyzeRecipeVideo: async () => { count.video++; return fromVideo; }
+});
+const pasted = parseTranscriptText('0:10\nパスタをゆでます\n1:40\nソースを作ります\n4:20\n和えます\n6:00\n盛り付けます');
+
+test('transcript mode: the pasted subtitles are used instead of fetching from YouTube; no video is read', async () => {
+  const store = createMemorySyncStore();
+  await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
+  const count = { fetch: 0, hybrid: 0, video: 0 };
+  const catalog = createRecipeCatalog(store, (url, o) => importYouTubeRecipe(url, pastedDeps({ steps: ['パスタをゆでる', 'ソースを作る', '和える', '盛り付ける'], stepTimes: [10, 100, 260, 360], stepsComplete: true }, count), o));
+  const c = await catalog.makeCandidate(URL_, { mode: 'transcript', transcriptItems: pasted });
+  assert.deepEqual(count, { fetch: 0, hybrid: 1, video: 0 });
+  assert.equal(c.analyzedFrom, 'description+transcript');
+  assert.equal(c.timesFrom, 'transcript');
+  assert.deepEqual(c.stepTimes, [10, 100, 260, 360]);
+  assert.deepEqual(c.check, { ok: true, reasons: [] });
+  // 時刻つきの行が少なすぎる／字幕で手順を作れなかった時は、はっきり断る
+  await assert.rejects(catalog.makeCandidate(URL_, { mode: 'transcript', transcriptItems: pasted.slice(0, 2) }), { code: 'transcript_unreadable' });
+  const rejected = createRecipeCatalog(store, (url, o) => importYouTubeRecipe(url, pastedDeps(null, count), o));
+  await assert.rejects(rejected.makeCandidate(URL_, { mode: 'transcript', transcriptItems: pasted }), { code: 'transcript_unused' });
+});
+
+test('basic mode (the one "rebuild" button): never reads the video by itself; the result says what to try next', async () => {
+  const store = createMemorySyncStore();
+  await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
+  const count = { fetch: 0, hybrid: 0, video: 0 };
+  const noSteps = createRecipeCatalog(store, (url, o) => importYouTubeRecipe(url, pastedDeps(null, count), o));
+  await assert.rejects(noSteps.makeCandidate(URL_, { mode: 'basic' }), { code: 'incomplete_recipe' });
+  assert.equal(count.video, 0);
+  // 章がおおまか → 見立ては「重なる」
+  const coarse = createRecipeCatalog(store, async () => ({ ...structuredClone(videoAnswer), analyzedFrom: 'description', stepTimesFrom: 'chapters', stepTimes: [16, 16, 121, null] }));
+  const c = await coarse.makeCandidate(URL_, { mode: 'basic' });
+  assert.deepEqual(c.check, { ok: false, reasons: ['duplicates'] });
+  const few = createRecipeCatalog(store, async () => ({ ...structuredClone(videoAnswer), analyzedFrom: 'description', stepTimes: [16, null, null, null] }));
+  assert.deepEqual((await few.makeCandidate(URL_, { mode: 'basic' })).check.reasons, ['times_few']);
+});
+
+test('server: pasted subtitles (larger than the usual 64KB) are accepted, and the remaining video reads for today are shown', async (t) => {
+  let seen = null;
+  const { call } = await serve(t, { importRecipe: async (url, o) => { seen = o; return { ...structuredClone(videoAnswer), analyzedFrom: 'description+transcript', stepTimesFrom: 'transcript' }; }, env: { CANDIDATE_VIDEO_PER_DAY: '3' } });
+  const long = Array.from({ length: 3000 }, (_, i) => `${Math.floor(i / 60)}:${String(i % 60).padStart(2, '0')}\n鶏むね肉を焼いていきます`).join('\n');
+  assert.ok(Buffer.byteLength(long) > 64 * 1024);
+  const r = await call(`/api/admin/recipes/${V}/candidate`, { mode: 'transcript', transcript: long });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(seen.transcriptItems.length, 3000);
+  assert.equal(r.body.videoLeft, 3);
+  assert.equal((await call(`/api/admin/recipes/${V}/candidate`)).body.videoLeft, 3);
+});
+
+// ── Claude のコードレビュー（PR #211）の指摘への対応 ──
+test('review #211: spoken-time label lines ("16秒", "42 seconds") are dropped, but a number-only utterance ("150") is kept', () => {
+  assert.deepEqual(parseTranscriptText('0:16\n16秒\n鶏むね肉を開きます\n0:42\n42 seconds\n150\n1:02\n1分2秒\n焼きます').map((x) => [x.start, x.text]), [[16, '鶏むね肉を開きます'], [42, '150'], [62, '焼きます']]);
+});
+
+test('review #211: subtitles from another video (running past the video length) are refused before any AI call; the log says they were read, not fetched', async () => {
+  const count = { fetch: 0, hybrid: 0, video: 0 };
+  const deps = pastedDeps({ steps: ['a', 'b'], stepTimes: [10, 100], stepsComplete: true }, count);
+  const long = parseTranscriptText('0:10\nパスタをゆでます\n5:00\nソース\n9:00\n和えます');
+  await assert.rejects(importYouTubeRecipe(URL_, deps, { transcriptItems: long }), { code: 'transcript_mismatch' });
+  assert.equal(count.hybrid, 0);
+  const logs = [];
+  await importYouTubeRecipe(URL_, deps, { transcriptItems: pasted, onProgress: (p) => logs.push(p.detail) });
+  assert.ok(logs.some((x) => /字幕を読み取りました（4行）/.test(x)), logs.join(' | '));
+});
+
+test('review #211: pasted subtitles are shown to the AI up to 60,000 characters, and a cut is reported', async () => {
+  const seen = [];
+  const lines = Array.from({ length: 1500 }, (_, i) => `${Math.floor(i / 6)}:${String((i % 6) * 10).padStart(2, '0')}\n鶏むね肉をこんがりと焼いていきますね、ここで火を少し弱めます`).join('\n');
+  const items = parseTranscriptText(lines);
+  const logs = [];
+  await importYouTubeRecipe(URL_, { ...pastedDeps(null, { fetch: 0, hybrid: 0, video: 0 }), fetchYouTubeSnippet: async () => ({ ...onlyIngredients, durationSeconds: 15100 }),
+    analyzeRecipeDescription: async () => ({ title: '鶏むね', ingredients: [{ name: '鶏むね肉', amount: '1枚' }], steps: ['焼く', '盛る'] }),
+    buildHybridRecipeSteps: async (a) => { seen.push(a.formattedTranscript.length); return null; } }, { transcriptItems: items, onProgress: (p) => logs.push(p.detail) });
+  assert.ok(seen[0] > 24000, `shown ${seen[0]} chars`);
+  assert.ok(seen[0] <= 60000);
+  assert.ok(logs.some((x) => /字幕が長いため、最初の/.test(x)), logs.join(' | '));
+});
+
+test('review #211: "やめる" really discards the candidate (it does not come back), but not one that was rebuilt meanwhile', async (t) => {
+  const { call } = await serve(t, { importRecipe: async () => structuredClone(videoAnswer) });
+  const a = (await call(`/api/admin/recipes/${V}/candidate`, { mode: 'video' })).body.candidate;
+  const b = (await call(`/api/admin/recipes/${V}/candidate`, { mode: 'video' })).body.candidate;
+  assert.equal((await call(`/api/admin/recipes/${V}/candidate/discard`, { candidateId: a.candidateId })).body.error.code, 'candidate_changed');
+  assert.deepEqual((await call(`/api/admin/recipes/${V}/candidate/discard`, { candidateId: b.candidateId })).body, { discarded: true });
+  assert.equal((await call(`/api/admin/recipes/${V}/candidate`)).body.candidate, null);
+});
