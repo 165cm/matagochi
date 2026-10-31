@@ -21,6 +21,17 @@ const cleanTimes = (raw, list) => {
   return list.map((step, i) => (!step ? null : parseTimeValue(times[i])));
 };
 
+// 字幕を「確かめ済み」とみなすか。字幕と照合まで進んだ（transcriptMatched）時は確定。
+// 字幕を取れなかった時（本番のサーバーで断られた・一覧が空）は、期限（transcriptRetryAt）まで。期限のない以前の印は、もう一度試す。
+const TRANSCRIPT_RETRY_MS = { unplayable: 86_400_000, no_captions: 7 * 86_400_000 };
+export function transcriptDone(entry, nowMs) {
+  if (!entry?.transcriptChecked) return false;
+  if (entry.transcriptMatched) return true;
+  return (Date.parse(entry.transcriptRetryAt || 0) || 0) > nowMs;
+}
+// 新しく作り直す保存に、字幕の確かめの印を引き継ぐ。
+const transcriptMarks = (entry) => Object.fromEntries(Object.entries({ transcriptChecked: Boolean(entry?.transcriptChecked), transcriptMatched: entry?.transcriptMatched, transcriptRetryAt: entry?.transcriptRetryAt, transcriptReason: entry?.transcriptReason }).filter(([, v]) => v !== undefined));
+
 // 字幕で確かめた時刻：動画の長さを超える・順番が逆の時刻は null（不明）のままにする。補間はしない。
 function verifyTranscriptTimes(rawTimes, count, duration) {
   const out = Array.from({ length: count }, (_, idx) => {
@@ -106,13 +117,15 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   }
   // YouTubeのタイムスタンプ付き字幕から（高精度・低コスト）。実在する字幕発話と照合し、架空の補間は行わない。
   async function fromTranscript(key, videoId, list, cached, household, info) {
-    if (cached?.envelope.transcriptChecked || typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return null;
+    if (transcriptDone(cached?.envelope, now()) || typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return null;
     const res = await fetchTranscript(videoId).catch(() => null);
     // 一時エラー（429やタイムアウト等）は transcriptChecked: true を保存せず、次回再試行可能にする
     if (res?.status === "retryable_error") return null;
     const items = res?.status === "ok" && Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : null);
     if (!items || !items.length) {
-      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
+      // 取れなかった理由ごとの期限つき（断られた時は1日・一覧が空の時は7日。永久の「字幕なし」にしない）。
+      const reason = res?.reason === "unplayable" ? "unplayable" : "no_captions";
+      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, transcriptMatched: undefined, transcriptReason: reason, transcriptRetryAt: new Date(now() + TRANSCRIPT_RETRY_MS[reason]).toISOString() }, cached);
       return null;
     }
     let done = null;
@@ -147,12 +160,12 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
     const newValidCount = verifiedTimes.filter(Number.isFinite).length;
 
     if (newValidCount === 0 || (existingValidCount > 0 && newValidCount < existingValidCount)) {
-      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true }, cached);
+      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, transcriptMatched: true }, cached);
       await done(false);
       return null;
     }
 
-    const saved = await save(key, { stepTimes: verifiedTimes, stepCues, source: "transcript", transcriptChecked: true, chaptersChecked: true }, cached);
+    const saved = await save(key, { stepTimes: verifiedTimes, stepCues, source: "transcript", transcriptChecked: true, transcriptMatched: true, chaptersChecked: true }, cached);
     await done(true);
 
     // 保存競合時（手動修正 fix や全消去 cleared などが先行して入った場合）、最新の保存レコードを優先して返す
@@ -172,8 +185,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   async function fromChapters(key, videoId, list, cached, household, info) {
     if (cached?.envelope.chaptersChecked || typeof matchChapters !== "function") return null;
     const chapters = parseChapters(info?.description);
-    const transcriptChecked = Boolean(cached?.envelope?.transcriptChecked);
-    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), transcriptChecked, chaptersChecked: true }, cached); return null; }
+    const marks = transcriptMarks(cached?.envelope);
+    if (!chapters.length) { await save(key, { ...(cached?.envelope || {}), ...marks, chaptersChecked: true }, cached); return null; }
     let done = null;
     try {
       done = await countTry(household);
@@ -187,11 +200,11 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
     const raw = await matchChapters(list, chapters).catch(() => null);
     const stepTimes = refineStepTimes(list, cleanTimes(timesFromChapterIndexes(raw?.chapterIndex, chapters, list.length), list), { durationSeconds: info?.durationSeconds });
     if (!found(stepTimes)) {
-      await save(key, { ...(cached?.envelope || {}), transcriptChecked, chaptersChecked: true }, cached);
+      await save(key, { ...(cached?.envelope || {}), ...marks, chaptersChecked: true }, cached);
       await done(false);
       return null;
     }
-    await save(key, { stepTimes, source: "chapters", transcriptChecked, chaptersChecked: true }, cached);
+    await save(key, { stepTimes, source: "chapters", ...marks, chaptersChecked: true }, cached);
     await done(true);
     return { stepTimes, source: "chapters", cacheHit: false };
   }
@@ -214,10 +227,10 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
           info = await snippet(videoId).catch(() => null);
           return info?.durationSeconds ?? null;
         })());
-        const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && entry?.transcriptChecked);
+        const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && transcriptDone(entry, now()));
         if (found(entry?.stepTimes) && isFullyChecked) return answer(entry, true, dur);
         if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
-        if (!entry?.transcriptChecked) {
+        if (!transcriptDone(entry, now())) {
           info = await snippet(videoId).catch(() => null);
           const transcriptRes = await fromTranscript(key, videoId, list, cached, household, info);
           if (transcriptRes) return transcriptRes;
@@ -263,9 +276,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
           await done(false);
           throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
         }
-        const transcriptChecked = Boolean(cached?.envelope?.transcriptChecked);
         // seenSeconds：AI が見た長さ（点検で「見ていない後半に時刻がない」を見分ける）。
-        await save(key, { stepTimes, source: "video", transcriptChecked, chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
+        await save(key, { stepTimes, source: "video", ...transcriptMarks(cached?.envelope), chaptersChecked: true, seenSeconds: clipSeconds || seconds || null }, cached);
         await done(true);
         return { stepTimes, source: "video", cacheHit: false };
       }

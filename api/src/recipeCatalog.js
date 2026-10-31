@@ -147,7 +147,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       await tracker?.finish("updated", `手順 ${(before?.steps || []).length} → ${(result.steps || []).length} に更新しました`);
       return { ...structuredClone(result), cacheHit: false, videoSkipped: !!raw?.videoSkipped, ticketUsed: spent };
     } catch (error) {
-      await tracker?.finish(error.code === "catalog_conflict" ? "conflict" : ["reread_worse", "incomplete_recipe", "analysis_uncertain"].includes(error.code) ? "kept_old" : "failed", error.message || "失敗しました");
+      await tracker?.finish(error.code === "catalog_conflict" ? "conflict" : ["reread_worse", "reread_lost_timecodes", "incomplete_recipe", "analysis_uncertain"].includes(error.code) ? "kept_old" : "failed", error.message || "失敗しました");
       await refund();
       // 読み直して手順が減る・読めない・レシピでないと言われた時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
       // 読み直しでは保存済みのレシピを置き換えていないので、ほかの失敗では何も書かない。
