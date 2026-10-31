@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-29（説明欄の材料と字幕の段取りを統合したハイブリッド手順・タイムコード生成 #196 公開）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-31（字幕が取れない動画のレシピ復旧をレビュー待ちに。#207 は公開済み）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,8 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 作業中 | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）②工程削減時の時間・数値乖離の機械的検出③AIに見せていない範囲（clipSeconds）の時刻の無効化④キャッシュされた異常時刻（尺外）の読み出し時クランプ⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護 | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
+| Claude：字幕が取れない動画のレシピ復旧（失敗理由の記録・候補を作る→見比べる→採用・手順の文の手直し） | レビュー待ち | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-10-31 のユーザーの判断（Codex・Gemini と確認したプラン）。字幕の失敗理由を分けて期限つきに／管理画面で候補を作り（説明欄＋字幕→だめなら動画を最後まで）、見比べてから採用／手順の文を「文＋時刻＋要確認」の1組で直す。手元の字幕の取り込み（PR4）は保留。APP_MAP §52-5〜7 | api/src/transcript.js, timecodes.js, recipeCatalog.js, importRecipe.js, analyzer.js, aiUsage.js, server.js, admin/catalog.html, api/test/*, docs/* |
+| レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 公開済み（#207） | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）②工程削減時の時間・数値乖離の機械的検出③AIに見せていない範囲（clipSeconds）の時刻の無効化④キャッシュされた異常時刻（尺外）の読み出し時クランプ⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護 | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
 | 管理画面の文法エラー修正と構文テスト追加 | 公開済み（#206） | fix/admin-syntax-error | PR #205 の履歴 join に含まれていた実改行による構文エラーを修正。管理 HTML 内の全インラインスクリプトを検査するテストを追加し、遅延ポーリングによる完了表示の上書きも防止 | admin/catalog.html, test/admin-syntax.test.cjs, docs/CURRENT_TASK.md |
 | 管理画面の読み直しの処理段階表示（5段階：素材取得／調理ブロック整理／字幕・章と照合／品質確認／保存） | 作業中 | feat/admin-reread-progress | サーバーが保存先（`reread-progress/<id>`）に実際の段階を残し、管理画面が2秒おきに見て「3/5 字幕・章と照合中｜…｜経過42秒」と表示。AI内部の進み具合は分からないので「AI応答待ち」と出す。終了時は 完了／前の結果を残した／競合／失敗 を区別 | api/src/importRecipe.js, recipeCatalog.js, server.js, admin/catalog.html, api/test/*, docs/CURRENT_TASK.md |
 | 動画のタイミングとレシピがずれる問題の修正（架空補間の停止・管理画面の読み直し経路の統一） | 公開済み（#201。Codex は2回目のレビュー途中で上限停止＝最終 commit は未レビュー） | fix/no-fake-times-admin-reread | ①動画の長さを超える／順番が逆の時刻は「不明（null）」にし、文字数からの補間はしない（`refineStepTimes` は `interpolate:true` の時だけ補間）②管理画面「手順と時刻を自動生成」が動画由来レシピでも動く（409 をやめる）③字幕ハイブリッドで工程が減っても採用（説明欄の半分未満の時だけ拒否）④管理の「動画から探し直す」はまず字幕と照合⑤字幕結果が、動画の長さを超えた古い誤時刻のせいで拒否されない。**未対応（次のPR）**：管理画面の処理段階表示（5段階）・料理モードの独立した開始/終了位置・作業ブロックの安定ID | api/src/timecodeCheck.js, timecodes.js, recipeCatalog.js, importRecipe.js, admin/catalog.html, api/test/*, docs/CURRENT_TASK.md |

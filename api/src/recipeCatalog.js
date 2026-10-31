@@ -434,6 +434,40 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
       return { guide: result.guide || null };
     },
+    // 管理：手順の文を直す・足す・消す・並べ替える（APP_MAP §52-7）。1行＝「手順の文＋時刻＋要確認」の1組で受け取り、まとめて1回で保存する（途中で食い違わない）。
+    // 要確認（pending）の時刻は stepTimesPending に置き、stepTimes は null（確かめるまでアプリの ▶・繰り返しに使わない）。
+    // baseRevision：編集を始めた時のレシピの版（違えば断る）。書き直し（guide）は元の手順が変わるので外す。前の版は履歴に残す。
+    async setSteps(rawUrl, { rows, baseRevision = "", durationSeconds = null } = {}) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      const before = current.envelope.result;
+      if (String(baseRevision || "") !== String(before.catalog?.revision || "")) throw new ApiError(409, "catalog_conflict", "編集を始めた後にレシピが変わりました。開き直してください。");
+      const list = Array.isArray(rows) ? rows : [];
+      if (list.length < 2 || list.length > 30) throw new ApiError(400, "invalid_steps", "手順は2〜30個にしてください。");
+      const limit = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 36_000;
+      const clean = list.map((row, i) => {
+        const text = String(row?.text ?? "").replace(/\s+/g, " ").trim();
+        if (!text || text.length > 300) throw new ApiError(400, "invalid_steps", `手順${i + 1}の文を1〜300字にしてください。`);
+        const raw = row?.time;
+        const time = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+        if (time !== null && (!Number.isFinite(time) || time < 0 || time >= limit)) throw new ApiError(400, "invalid_steps", `手順${i + 1}の時刻が動画の外です。`);
+        return { text, time: time === null ? null : Math.floor(time), pending: row?.pending === true && time !== null };
+      });
+      const at = new Date(now()).toISOString();
+      const result = structuredClone(before);
+      result.steps = clean.map((x) => x.text);
+      result.stepTimes = clean.map((x) => (x.pending ? null : x.time));
+      if (clean.some((x) => x.pending)) result.stepTimesPending = clean.map((x) => (x.pending ? x.time : null)); else delete result.stepTimesPending;
+      result.stepTimesFrom = "admin";
+      result.stepsEditedAt = at;
+      delete result.guide;
+      result.catalog = { ...(before.catalog || {}), revision: randomUUID() };
+      await store.put(`versions/${randomUUID()}`, { ...before, caption: "", channelTitle: "", replacedAt: at, replacedBy: result.catalog.revision }, { ifGeneration: 0 }).catch(() => null);
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。開き直してください。");
+      return { steps: result.steps, stepTimes: result.stepTimes, stepTimesPending: result.stepTimesPending || [], revision: result.catalog.revision, guideRemoved: !!before.guide };
+    },
     async setStepTimes(rawUrl, stepTimes, { from = "admin" } = {}) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
@@ -444,6 +478,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       const raw = Array.isArray(stepTimes) ? stepTimes : [];
       result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : Math.floor(Number(t)); });
       if (from) result.stepTimesFrom = from;
+      // 運営が時刻を保存した＝要確認だった時刻も確かめた（▶ で見て保存した）。
+      delete result.stepTimesPending;
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
       return { stepTimes: result.stepTimes };
     },

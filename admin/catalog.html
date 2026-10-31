@@ -65,6 +65,8 @@
   tr.dim td { color: var(--n1); }
   .warnbox { border: 1.5px solid var(--s2); border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .warnbox ul { margin: 4px 0 0; padding-left: 1.2em; }
   input.is-new { border-color: var(--s3); background: #eefaf3; }
+  input.is-pending { border-color: var(--s2); border-style: dashed; }
+  .steps textarea { width: 100%; min-height: 3.2em; font: inherit; padding: 6px 8px; box-sizing: border-box; }
   ol.guide-cmp { padding-left: 1.4em; margin: 6px 0; } ol.guide-cmp li { margin: 6px 0; } ol.guide-cmp li .meta { font-size: 12px; }
   ol.steps li.warn { outline: 2px solid var(--s2); outline-offset: 2px; border-radius: 6px; }
   .run-status { font-weight: 700; margin: 0; font-size: 14px; } .run-status:empty { display: none; }
@@ -1191,6 +1193,12 @@
     moreBody.append(moreNote);
     moreDetails.append(moreBody);
     body.append(moreDetails);
+    // 手順の文を直す（APP_MAP §52-7）：1行＝「文＋時刻＋要確認」の1組で動かし、まとめて保存する。
+    const pending = r.stepTimesPending || [];
+    if (pending.some((t) => Number.isFinite(t))) body.append(el("p", "点線の時刻は「要確認」（文を直した手順の前の時刻）です。▶ で確かめて「時刻を保存」を押すと確定します（それまでアプリでは使いません）。", "meta"));
+    const editRow = el("div", undefined, "row"); editRow.style.margin = "4px 0 8px";
+    const editBtn = el("button", "✏ 手順の文を直す（足す・消す・並べ替え）", "quiet small"); editBtn.type = "button";
+    editRow.append(editBtn); body.append(editRow);
     const ol = el("ol", undefined, "steps");
     const inputs = [];
     (r.steps || []).forEach((step, i) => {
@@ -1198,7 +1206,9 @@
       if (badSteps.has(i)) li.classList.add("warn");
       const right = el("div"); right.append(el("div", step));
       const tools = el("div", undefined, "tools");
-      const input = el("input"); input.value = sec(r.stepTimes?.[i] ?? null); input.placeholder = "なし"; input.setAttribute("aria-label", `手順${i + 1}の時刻`); inputs.push(input);
+      const isPending = !Number.isFinite(r.stepTimes?.[i]) && Number.isFinite(pending[i]);
+      const input = el("input"); input.value = sec(isPending ? pending[i] : r.stepTimes?.[i] ?? null); input.placeholder = "なし"; input.setAttribute("aria-label", `手順${i + 1}の時刻${isPending ? "（要確認）" : ""}`); inputs.push(input);
+      if (isPending) { input.classList.add("is-pending"); input.title = "要確認：文を直した手順の前の時刻"; }
       input.addEventListener("input", () => input.classList.toggle("is-bad", Number.isNaN(parseSec(input.value))));
       const play = el("button", "▶", "quiet small"); play.type = "button"; play.setAttribute("aria-label", `手順${i + 1}の時刻から再生`);
       play.addEventListener("click", () => { const t = parseSec(input.value); if (player?.seekTo && Number.isFinite(t)) { player.seekTo(t, true); player.playVideo?.(); } });
@@ -1207,6 +1217,59 @@
       tools.append(input, play, now); right.append(tools); li.append(right); ol.append(li);
     });
     body.append(ol);
+    editBtn.addEventListener("click", () => {
+      editBtn.disabled = true;
+      let seq = 0;
+      // 行は編集画面だけの一時ID（key）で持つ。並べ替え・削除で、別の手順に時刻がずれない。
+      const rows = (r.steps || []).map((text, i) => {
+        const isP = !Number.isFinite(r.stepTimes?.[i]) && Number.isFinite(pending[i]);
+        return { key: ++seq, text, orig: text, time: isP ? pending[i] : (Number.isFinite(r.stepTimes?.[i]) ? r.stepTimes[i] : null), pending: isP };
+      });
+      const ed = el("div");
+      const list = el("ol", undefined, "steps");
+      const enote = el("span", "", "meta");
+      const draw = () => {
+        list.textContent = "";
+        rows.forEach((row, i) => {
+          const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
+          const right = el("div");
+          const ta = el("textarea"); ta.value = row.text; ta.setAttribute("aria-label", `手順${i + 1}の文`); ta.maxLength = 300;
+          const tools = el("div", undefined, "tools");
+          const ti = el("input"); ti.value = sec(row.time); ti.placeholder = "なし"; ti.setAttribute("aria-label", `手順${i + 1}の時刻`);
+          const pl = el("label", undefined, "meta"); const pc = el("input"); pc.type = "checkbox"; pc.checked = row.pending; pc.style.width = "auto"; pl.append(pc, document.createTextNode(" 要確認"));
+          // 文を変えた手順に時刻があれば、要確認にする（前の文の時刻なので。外すこともできる）。
+          ta.addEventListener("input", () => { row.text = ta.value; if (row.orig !== null && ta.value.trim() !== row.orig && row.time !== null && !row.autoPending) { row.pending = true; row.autoPending = true; pc.checked = true; } });
+          ti.addEventListener("input", () => { const t = parseSec(ti.value); ti.classList.toggle("is-bad", Number.isNaN(t)); if (!Number.isNaN(t)) row.time = t; });
+          pc.addEventListener("change", () => { row.pending = pc.checked; });
+          const play = el("button", "▶", "quiet small"); play.type = "button"; play.addEventListener("click", () => { if (player?.seekTo && Number.isFinite(row.time)) { player.seekTo(row.time, true); player.playVideo?.(); } });
+          const nowB = el("button", "⏱", "quiet small"); nowB.type = "button"; nowB.setAttribute("aria-label", "いまの時刻"); nowB.addEventListener("click", () => { if (player?.getCurrentTime) { row.time = Math.floor(player.getCurrentTime()); ti.value = sec(row.time); ti.classList.remove("is-bad"); } });
+          const up = el("button", "↑", "quiet small"); up.type = "button"; up.disabled = i === 0; up.setAttribute("aria-label", `手順${i + 1}を上へ`); up.addEventListener("click", () => { [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]]; draw(); });
+          const down = el("button", "↓", "quiet small"); down.type = "button"; down.disabled = i === rows.length - 1; down.setAttribute("aria-label", `手順${i + 1}を下へ`); down.addEventListener("click", () => { [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]]; draw(); });
+          const del = el("button", "✕", "quiet small"); del.type = "button"; del.setAttribute("aria-label", `手順${i + 1}を消す`); del.addEventListener("click", () => { rows.splice(i, 1); draw(); });
+          tools.append(ti, play, nowB, pl, up, down, del);
+          right.append(ta, tools); li.append(right); list.append(li);
+        });
+      };
+      draw();
+      const add = el("button", "＋ 手順を足す", "quiet small"); add.type = "button"; add.addEventListener("click", () => { rows.push({ key: ++seq, text: "", orig: null, time: null, pending: false }); draw(); });
+      const saveS = el("button", "手順を保存", "small"); saveS.type = "button";
+      const cancel = el("button", "やめる", "quiet small"); cancel.type = "button"; cancel.addEventListener("click", () => openRecipe(videoId));
+      saveS.addEventListener("click", async () => {
+        if (list.querySelector("input.is-bad")) { enote.textContent = "「分:秒」の形で入れてください（赤い枠）。"; return; }
+        if (rows.length < 2 || rows.some((x) => !x.text.trim())) { enote.textContent = "手順は2つ以上、空の手順がないようにしてください。"; return; }
+        if (r.guide && !confirm("手順の文を変えると、覚えやすい手順（書き直し）は外れます。よろしいですか？")) return;
+        saveS.disabled = true; enote.textContent = "保存しています…";
+        try {
+          const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/steps`, { baseRevision: r.revision || "", rows: rows.map((x) => ({ text: x.text, time: x.time, pending: x.pending })) }, "PUT");
+          enote.textContent = `✓ 手順 ${x.steps.length} を保存しました${x.guideRemoved ? "（書き直しは外しました）" : ""}。開き直します…`;
+          setTimeout(() => openRecipe(videoId), 600);
+        } catch (error) { enote.textContent = error.message; saveS.disabled = false; }
+      });
+      const erow = el("div", undefined, "row"); erow.append(add, saveS, cancel, enote);
+      ed.append(el("p", "文を直した手順の時刻は「要確認」になります（確かめるまでアプリでは使いません）。並べ替え・削除では、時刻も手順と一緒に動きます。", "meta"), list, erow);
+      ol.replaceWith(ed);
+      foot.hidden = true;
+    });
     const foot = el("div", undefined, "sticky row");
     const save = el("button", "時刻を保存"); save.type = "button";
     const note = el("span", "", "meta");

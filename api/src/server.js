@@ -427,7 +427,7 @@ export function createApp(env = process.env, deps = {}) {
       const { times, source, seenSeconds } = await timesOf(url, r);
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const check = checkStepTimes(r.steps || [], times, { durationSeconds, source, seenSeconds });
-      return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
+      return { videoId, revision: r.catalog?.revision || "", stepTimesPending: r.stepTimesPending || [], title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
         // 書き直した手順（APP_MAP §49）と、その時間の上限。
         guide: listedGuide(r), guideLimit: guideLimit(r.planning?.minutes), guideLabels: GUIDE_ISSUE_LABEL };
     }));
@@ -708,6 +708,18 @@ export function createApp(env = process.env, deps = {}) {
         }
       }
       return { done, left: Math.max(0, targets.length - max) };
+    })());
+  });
+  // 管理：手順の文を直す（APP_MAP §52-7）。確かめ済みの時刻だけを、作る画面と同じ「運営が直した時刻」にも使う（要確認の時刻は使わない）。
+  app.put("/api/admin/recipes/:videoId/steps", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    send(res, (async () => {
+      const url = canonicalYouTubeUrl(videoId);
+      const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
+      const saved = await catalog.setSteps(url, { rows: req.body?.rows, baseRevision: req.body?.baseRevision, durationSeconds });
+      if (saved.stepTimes.some((t) => Number.isFinite(t))) await timecodeBook.fix({ url, steps: saved.steps, stepTimes: saved.stepTimes }, "", { admin: true }).catch(() => {});
+      trendBook.clearCache(); popularBook.clearCache();
+      return saved;
     })());
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {

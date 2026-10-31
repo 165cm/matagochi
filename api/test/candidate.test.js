@@ -184,3 +184,34 @@ test('admin candidate (video mode): when the video gives no steps, it fails inst
   await assert.rejects(catalog.makeCandidate(URL_, { mode: 'video' }), { code: 'video_analysis_failed' });
   assert.equal(await catalog.candidate(URL_), null);
 });
+
+// ── 手順の文を直す（APP_MAP §52-7） ──
+test('admin steps edit: rows (text + time + needs-check) are saved together; needs-check times are kept aside and not used until confirmed', async (t) => {
+  const { store, call } = await serve(t);
+  const got = (await call(`/api/admin/recipes/${V}`)).body;
+  assert.equal(got.revision, 'r-old');
+  // 版が違えば断る
+  assert.equal((await call(`/api/admin/recipes/${V}/steps`, { baseRevision: 'r-other', rows: [{ text: 'a' }, { text: 'b' }] }, 'PUT')).body.error.code, 'catalog_conflict');
+  assert.equal((await call(`/api/admin/recipes/${V}/steps`, { baseRevision: 'r-old', rows: [{ text: 'a' }] }, 'PUT')).body.error.code, 'invalid_steps');
+  const rows = [{ text: '古い手順2', time: 40 }, { text: 'パスタを  ゆでる（直した）', time: 5, pending: true }, { text: '新しい手順', time: null }];
+  const saved = await call(`/api/admin/recipes/${V}/steps`, { baseRevision: 'r-old', rows }, 'PUT');
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.deepEqual(saved.body.steps, ['古い手順2', 'パスタを ゆでる（直した）', '新しい手順']);
+  assert.deepEqual(saved.body.stepTimes, [40, null, null]);
+  assert.deepEqual(saved.body.stepTimesPending, [null, 5, null]);
+  assert.equal(saved.body.guideRemoved, true);
+  const r = (await store.get(`youtube-${V}`)).envelope.result;
+  assert.equal(r.guide, undefined); assert.equal(r.stepTimesFrom, 'admin'); assert.notEqual(r.catalog.revision, 'r-old');
+  // 作る画面の ▶ にも、確かめ済みの時刻だけ（要確認の 5秒 は入らない）
+  const view = (await call(`/api/admin/recipes/${V}`)).body;
+  assert.deepEqual(view.stepTimes, [40, null, null]);
+  assert.deepEqual(view.stepTimesPending, [null, 5, null]);
+  // 運営が時刻を保存したら、要確認は確定（なくなる）
+  await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: [40, 5, null] }, 'PUT');
+  const after = (await store.get(`youtube-${V}`)).envelope.result;
+  assert.deepEqual(after.stepTimes, [40, 5, null]);
+  assert.equal(after.stepTimesPending, undefined);
+  // 前の版は履歴に残っている
+  const names = (await store.list('versions/', { max: 10 })).names;
+  assert.ok((await Promise.all(names.map((k) => store.get(k)))).some((x) => x.envelope.catalog?.revision === 'r-old'));
+});
