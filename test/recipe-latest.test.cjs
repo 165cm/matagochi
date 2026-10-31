@@ -145,3 +145,34 @@ test("review #212: every saved copy is checked (50 at a time); a failed check do
   await run("refreshSavedRecipes()");
   assert.deepEqual(JSON.parse(run("JSON.stringify(__asked)")), [], "then the 6-hour pause");
 });
+
+// ── Claude のコードレビュー（PR #213）の指摘への対応 ──
+test("review #213: meal-plan copies of the user's own or imported recipes are never replaced automatically", async () => {
+  const { run, asked } = app(() => ({ [V]: { ...newer, ingredients: item.ingredients } }));
+  run(`globalThis.d1 = today(); globalThis.d2 = addDays ? addDays(today(), 1) : today();`);
+  run(`state.mealSlots[d1] = { date: d1, recipe: { id: "r-mine", title: "自分の", videoUrl: "${item.videoUrl}", ingredients: [], steps: ["自分の手順1", "自分の手順2"], stepTimes: [] }, status: "planned" }`);
+  run(`state.mealSlots["2999-01-01"] = { date: "2999-01-01", recipe: { id: "r-imp", catalog: { id: "youtube-${V}", revision: "r0" }, title: "取り込み", videoUrl: "${item.videoUrl}", ingredients: ${JSON.stringify(item.ingredients)}, steps: ["直した1", "直した2"], stepTimes: [] }, status: "planned" }`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.mealSlots[d1].recipe.steps)")), ["自分の手順1", "自分の手順2"], "the user's own recipe is never touched");
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.mealSlots["2999-01-01"].recipe.steps)')), ["直した1", "直した2"]);
+  assert.equal(run('state.mealSlots["2999-01-01"].recipe.sourcePending.revision'), "r2", "an imported one waits for the button");
+  // 使う人のレシピを開いても、問い合わせない
+  const before = asked.length;
+  run(`ensureLatest(state.mealSlots[d1].recipe)`);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(asked.length, before);
+});
+
+test("review #213: a failed check is retried only once", async () => {
+  const { run } = app(() => ({}));
+  run(`globalThis.__n = 0; const f0 = globalThis.fetch; globalThis.fetch = (url, o) => String(url).endsWith("/api/recipes/latest") ? (__n++, Promise.resolve({ ok: false, json: async () => ({}) })) : f0(url, o);
+    globalThis.__timers = []; globalThis.setTimeout = (fn, ms) => { if (ms === 120000) __timers.push(fn); return { unref() {} }; }`);
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend"))`);
+  await run("refreshSavedRecipes()");
+  assert.equal(run("__timers.length"), 1, "one retry scheduled");
+  run("__timers.shift()()");
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(run("__n"), 2);
+  assert.equal(run("__timers.length"), 0, "no endless retries");
+});

@@ -202,7 +202,8 @@ const latestAsked = new Map(); // レシピを開いた時の問い合わせ（�
 function sourcePrint(r) {
   return stepsKey([...(r?.steps || []), "\u0001", ...(r?.stepTimes || []).map((t) => (Number.isFinite(t) ? String(t) : "")), "\u0001", ...(r?.ingredients || []).map((i) => `${i?.name || ""}|${i?.amount || ""}`)]);
 }
-const sourceKind = (r) => (/^(trend|pop)-/.test(String(r?.starterId || "")) ? "copy" : r?.catalog?.id ? "import" : "");
+// 写しの種類：新着・みんなの定番の写し（starterId、または献立の枠に入った時のおすすめの番号が trend-/pop-）／取り込みで作ったレシピ（catalog.id）／それ以外は使う人のレシピ（入れ替えない）。
+const sourceKind = (r) => (/^(trend|pop)-/.test(String(r?.starterId || "")) || /^(trend|pop)-/.test(String(r?.id || "")) ? "copy" : r?.catalog?.id ? "import" : "");
 // アプリが自分で書いた時刻（動画・字幕から探した時刻、運営が消した時刻）は、使う人が直したことにしない（指紋を合わせ直す。Claude review #212）。
 function keepSourceBaseline(own, change) {
   const clean = !!own?.sourcePrint && sourcePrint(own) === own.sourcePrint;
@@ -213,7 +214,8 @@ const ingredientsPrint = (list) => (list || []).map((i) => `${i?.name || ""}|${i
 // これからの献立（作る前）の枠。枠は、その時のレシピの写しを自分で持っている（作る画面・料理モード・買い物はこちらを見る）。
 // 保存したレシピとはレシピの番号で結ばれていないことがあるので、動画で見つける（2026-10-31・作る画面だけ古いままだった）。
 const videoOfRecipe = (r) => youtubeVideoId(r?.videoUrl);
-const upcomingSlotsOf = (vid) => Object.values(state.mealSlots || {}).filter((sl) => sl?.recipe && sl.date >= today() && !["cooked", "off"].includes(sl.status) && videoOfRecipe(sl.recipe) === vid);
+const upcomingSlots = () => Object.values(state.mealSlots || {}).filter((sl) => sl?.recipe && sl.date >= today() && !["cooked", "off"].includes(sl.status) && sourceKind(sl.recipe) && videoOfRecipe(sl.recipe));
+const upcomingSlotsOf = (vid) => upcomingSlots().filter((sl) => videoOfRecipe(sl.recipe) === vid);
 function latestFields(item) {
   const steps = (item.steps || []).map((x) => String(x || "").trim()).filter(Boolean);
   const ingredients = normalizeImportedIngredients(item.ingredients || []);
@@ -245,7 +247,8 @@ function updateCopy(r, item, slot = null) {
   if (fresh.steps.length < 2) return false;
   // 中身が同じなら、版だけ覚える（知らせない）。
   if (sourcePrint({ ...r, ...fresh }) === sourcePrint(r)) { r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); if (r.catalog?.id) r.catalog = { ...r.catalog, revision: item.revision }; delete r.sourcePending; return true; }
-  const edited = (!slot && sourceKind(r) === "import") || (!!r.sourcePrint && sourcePrint(r) !== r.sourcePrint);
+  // 取り込みで作ったレシピ（とその献立の枠の写し）は、使う人が直したかもしれないのでボタンにする。
+  const edited = sourceKind(r) === "import" || (!!r.sourcePrint && sourcePrint(r) !== r.sourcePrint);
   const planned = !!slot && slot.status === "confirmed" && ingredientsPrint(fresh.ingredients) !== ingredientsPrint(r.ingredients);
   if (!edited && !planned) { applyLatest(r, item.revision, fresh); if (slot) slot.updatedAt = nowIso(); return true; }
   if (r.sourcePending?.revision === item.revision) return false;
@@ -254,14 +257,15 @@ function updateCopy(r, item, slot = null) {
 }
 // 料理モードで作っている最中は入れ替えない（手順の番号がずれる）。
 const cookingNow = () => { const el = typeof document !== "undefined" ? document.getElementById?.("cook-mode") : null; return !!el && !el.hidden && !el.classList?.contains("is-closed"); };
-let latestRetry = null;
+let latestRetry = null, latestRetried = false;
 // videos：この動画だけ確かめる（レシピ・作る画面を開いた時）。ないときは、保存した写しと、これからの献立の枠の全部（6時間に1回）。
 async function refreshSavedRecipes({ videos = null, force = false } = {}) {
+  const askedAt = Date.now();
   if (!API_BASE_URL || (typeof isViewer === "function" && isViewer()) || cookingNow()) return false;
   if (!videos && !force) { try { if (Date.now() - Number(localStorage.getItem(LATEST_KEY) || 0) < LATEST_EVERY_MS) return false; } catch {} }
   const copies = [
     ...state.recipes.filter((r) => sourceKind(r) && videoOfRecipe(r)).map((r) => ({ r, slot: null })),
-    ...Object.values(state.mealSlots || {}).filter((sl) => sl?.recipe && sl.date >= today() && !["cooked", "off"].includes(sl.status) && videoOfRecipe(sl.recipe)).map((sl) => ({ r: sl.recipe, slot: sl })),
+    ...upcomingSlots().map((sl) => ({ r: sl.recipe, slot: sl })),
   ].filter((x) => !videos || videos.includes(videoOfRecipe(x.r)));
   const ids = [...new Set(copies.map((x) => videoOfRecipe(x.r)))];
   if (!ids.length) return false;
@@ -270,25 +274,32 @@ async function refreshSavedRecipes({ videos = null, force = false } = {}) {
   for (let i = 0; i < ids.length; i += 50) {
     const data = await fetchWithTimeout(`${API_BASE_URL}/api/recipes/latest`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ videoIds: ids.slice(i, i + 50) }) }, 15_000).then((x) => (x.ok ? x.json() : null)).catch(() => null);
     if (!data?.items) {
-      if (!videos && !latestRetry) { latestRetry = setTimeout(() => { latestRetry = null; refreshSavedRecipes({ force: true }); }, 120_000); latestRetry?.unref?.(); }
+      // もう一度だけ（その答えも取れなければ、次にアプリを開いた時まで待つ）。
+      if (!videos && !latestRetry && !latestRetried) { latestRetried = true; latestRetry = setTimeout(() => { latestRetry = null; refreshSavedRecipes({ force: true }); }, 120_000); latestRetry?.unref?.(); }
       return false;
     }
     Object.assign(items, data.items);
   }
-  if (!videos) { try { localStorage.setItem(LATEST_KEY, String(Date.now())); } catch {} }
+  if (!videos) { latestRetried = false; try { localStorage.setItem(LATEST_KEY, String(Date.now())); } catch {} }
   if (cookingNow()) return false;
   let changed = false;
   for (const { r, slot } of copies) {
     const item = items[videoOfRecipe(r)];
     if (item?.revision && updateCopy(r, item, slot)) changed = true;
   }
-  if (changed) { saveState(); if (["recipe", "plan", "collection", "today", "cooking"].includes(state.view)) render(); }
+  if (changed) {
+    saveState();
+    // 作る画面は、開いてすぐ（5秒以内）なら描き直す。それより後は、再生中の動画が最初に戻らないよう描き直さず知らせる。
+    if (state.view === "cooking") { if (Date.now() - askedAt < 5000) render(); else showToast?.("📝 作り方が新しくなりました。献立から開き直すと反映されます"); }
+    else if (["recipe", "plan", "collection", "today"].includes(state.view)) render();
+  }
   return changed;
 }
 // レシピ・作る画面を開いた時：その動画だけ、10分に1回まで最新を確かめる。
 function ensureLatest(r) {
   const vid = videoOfRecipe(r);
-  if (!vid) return;
+  // 新着・定番の写しと取り込みのレシピだけ（使う人のレシピは聞かない）。
+  if (!vid || !sourceKind(r)) return;
   const last = latestAsked.get(vid) || 0;
   if (Date.now() - last < 10 * 60_000) return;
   latestAsked.set(vid, Date.now());
