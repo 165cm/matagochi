@@ -618,3 +618,41 @@ test('admin reanalyze reserves the AI budget again before the video call that fo
   await assert.rejects(book.reanalyze({ url: 'https://www.youtube.com/watch?v=abcdefghijk', steps: ['玉ねぎを切る', '炒める'] }), /budget/);
   assert.equal(reserved, 2); assert.equal(videoCalls, 0);
 });
+
+test('cached timecodes filter out timestamps exceeding video durationSeconds', async () => {
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '', durationSeconds: 675 }),
+    fetchTranscript: async () => null,
+    matchTranscript: async () => null,
+    matchChapters: async () => null,
+    analyze: async () => ({ stepTimes: [10, 60] })
+  });
+  const ask = { url: 'https://www.youtube.com/watch?v=beyondcache', steps: ['a', 'b'] };
+  // キャッシュに動画尺(675s)を超える 999s をセット
+  await book.repair({ url: ask.url, steps: ask.steps, stepTimes: [10, 999], durationSeconds: null });
+  const res = await book.find(ask, 'home-1');
+  assert.equal(res.cacheHit, true);
+  // 999s は null にフィルタリングされること
+  assert.deepEqual(res.stepTimes, [10, null]);
+});
+
+test('video stepTimes beyond clipSeconds are clamped to null', async () => {
+  const store = createMemorySyncStore();
+  const book = createTimecodeBook(store, {
+    reserveBudget: async () => {},
+    snippet: async () => ({ description: '', durationSeconds: 1200 }),
+    maxSeconds: 600,
+    fetchTranscript: async () => null,
+    matchTranscript: async () => null,
+    matchChapters: async () => null,
+    analyze: async (url, list, opts) => {
+      assert.equal(opts.clipSeconds, 600);
+      return { stepTimes: [10, 650] }; // AI が見た範囲(600s)を超えている
+    }
+  });
+  const ask = { url: 'https://www.youtube.com/watch?v=clipcheck11', steps: ['a', 'b'] };
+  const res = await book.find(ask, 'home-1');
+  assert.deepEqual(res.stepTimes, [10, null]);
+});

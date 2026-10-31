@@ -43,7 +43,14 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   const inFlight = new Map();
   const keyOf = (videoId, list) => `timecodes/${videoId}-${createHash("sha256").update(list.join("\n")).digest("hex").slice(0, 16)}`;
   const dayKeyOf = (household) => `timecodes-quota/${new Date(now()).toISOString().slice(0, 10)}/${household || "anon"}`;
-  const answer = (entry, cacheHit) => ({ stepTimes: entry.stepTimes, source: entry.source || "video", cacheHit });
+  const answer = (entry, cacheHit, duration = null) => {
+    let times = entry.stepTimes;
+    // 人が手動で直した fix 以外で、動画の長さを超えている時刻は null にする
+    if (entry.source !== "fix" && duration !== null && Array.isArray(times)) {
+      times = times.map((t) => (Number.isFinite(t) && t >= duration ? null : t));
+    }
+    return { stepTimes: times, source: entry.source || "video", cacheHit };
+  };
   // 1家庭1日：見つかった本数は20まで、失敗も含めた試しは40まで（同時実行の枠予約・競合再試行で上限を厳格に保護）。
   // 予約枠（reserved）のセルフヒーリングは、動画解析の全接続先の最長待機時間（REANALYZE_LOCK_MS）を超えた孤立枠のみを対象とする。
   async function countTry(household) {
@@ -201,16 +208,20 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       const work = (async () => {
         const cached = await store.get(key);
         const entry = cached?.envelope;
-        // fix または transcript、もしくは字幕確認済みの chapters は最優先キャッシュとして即座に返す
-        const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && entry?.transcriptChecked);
-        if (found(entry?.stepTimes) && isFullyChecked) return answer(entry, true);
-        if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         let info = null;
+        const dur = (await (async () => {
+          if (entry?.source === "fix") return null;
+          info = await snippet(videoId).catch(() => null);
+          return info?.durationSeconds ?? null;
+        })());
+        const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && entry?.transcriptChecked);
+        if (found(entry?.stepTimes) && isFullyChecked) return answer(entry, true, dur);
+        if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         if (!entry?.transcriptChecked) {
           info = await snippet(videoId).catch(() => null);
           const transcriptRes = await fromTranscript(key, videoId, list, cached, household, info);
           if (transcriptRes) return transcriptRes;
-          if (found(entry?.stepTimes)) return answer(entry, true);
+          if (found(entry?.stepTimes)) return answer(entry, true, info?.durationSeconds);
         }
         const afterTranscript = await store.get(key);
         if (!afterTranscript?.envelope?.chaptersChecked) {
@@ -226,7 +237,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       return work;
 
       async function findFromVideo(key, videoId, list, cached, household, info) {
-        if (found(cached?.envelope.stepTimes)) return peek ? { stepTimes: [], source: "none", cacheHit: true } : answer(cached.envelope, true);
+        if (found(cached?.envelope.stepTimes)) return peek ? { stepTimes: [], source: "none", cacheHit: true } : answer(cached.envelope, true, info?.durationSeconds);
         if (peek) return { stepTimes: [], source: "none", cacheHit: false };
         const done = await countTry(household);
         try {
@@ -245,7 +256,9 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
           await done(false);
           throw err;
         }
-        const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
+        const effectiveLimit = clipSeconds ?? seconds ?? null;
+        const rawClean = cleanTimes(raw?.stepTimes, list).map((t) => (effectiveLimit !== null && Number.isFinite(t) && t >= effectiveLimit ? null : t));
+        const stepTimes = refineStepTimes(list, rawClean, { durationSeconds: seconds });
         if (!found(stepTimes)) {
           await done(false);
           throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
@@ -275,12 +288,18 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         const seconds = info?.durationSeconds;
         // まず字幕と照合する（実在する発話に根拠のある時刻だけを採用。見つからない・字幕がない時は動画から探す）。
         const subs = await transcriptTimesOnly(videoId, list, seconds && seconds > 0 ? seconds : null);
-        if (subs.result) return { ...subs.result, source: "transcript", seenSeconds: null };
+        const subValidCount = (subs.result?.stepTimes || []).filter(Number.isFinite).length;
+        // 字幕で過半数（または2件以上）の手順の時刻が判明した場合のみ、字幕照合結果を採用する（10工程中1件などの場合は動画解析に進む）
+        if (subs.result && (subValidCount >= Math.ceil(list.length / 2) || subValidCount >= 2)) {
+          return { ...subs.result, source: "transcript", seenSeconds: null };
+        }
         // 字幕照合で AI を1回使った後に動画解析へ進む時は、動画解析の分の予算も別に通す（上限なら、ここで止める）。
         if (subs.usedAi) await reserveBudget();
         const clipSeconds = !seconds || seconds > maxSeconds ? maxSeconds : null;
         const raw = await analyze(canonicalYouTubeUrl(videoId), list, { clipSeconds, durationSeconds: seconds, beforeRetry: reserveBudget });
-        const stepTimes = refineStepTimes(list, cleanTimes(raw?.stepTimes, list), { durationSeconds: seconds });
+        const effectiveLimit = clipSeconds ?? seconds ?? null;
+        const rawClean = cleanTimes(raw?.stepTimes, list).map((t) => (effectiveLimit !== null && Number.isFinite(t) && t >= effectiveLimit ? null : t));
+        const stepTimes = refineStepTimes(list, rawClean, { durationSeconds: seconds });
         if (!found(stepTimes)) throw new ApiError(404, "timecodes_not_found", "動画の中に場面が見つかりませんでした。");
         return { stepTimes, source: "video", seenSeconds: clipSeconds || seconds || null };
       } finally {

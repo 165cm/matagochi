@@ -237,8 +237,9 @@ const CookMode = (() => {
     const action = /(切る|炒める|焼く|煮る|揚げる|茹でる|ゆでる|蒸す|混ぜる|こねる|包む|盛る|漬ける|冷やす|温める)/.test(s) ? 15 : 0;
     return 10 + Math.min(60, s.length) + action;
   }
-  // 保存済みレシピや大まかな章時刻の自動補正：逆転（order）・重複（same/coarse）・密集（cluster）を按分補間する。
-  function refineTimes(steps = [], rawTimes = [], { durationSeconds = null } = {}) {
+  // 保存済みレシピや大まかな章時刻の補正：動画の長さを超える時刻と順番が逆の外れ値は null（不明）にする。
+  // 根拠のない架空の時刻補間は行わない（interpolate: true が指定された時のみ従来の補間を実施）。
+  function refineTimes(steps = [], rawTimes = [], { durationSeconds = null, interpolate = false } = {}) {
     const n = Math.max(Array.isArray(steps) ? steps.length : 0, Array.isArray(rawTimes) ? rawTimes.length : 0);
     if (!n) return [];
     const dur = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.floor(durationSeconds) : null;
@@ -267,6 +268,9 @@ const CookMode = (() => {
         for (const idx of validIdx) if (!keep.has(idx)) { t[idx] = null; needsFill.add(idx); }
       }
     }
+    // 根拠のない時刻は作らない（2026-10-31）：動画長超過・順番逆転を null にするだけで、架空の按分補間はしない
+    if (!interpolate) return t;
+
     const afterOrder = t.map((x, i) => (x !== null ? i : -1)).filter((i) => i >= 0);
     const maxKnown = afterOrder.length ? Math.max(...afterOrder.map((i) => t[i])) : 0;
     for (let k = 0; k + 3 < afterOrder.length; k++) {

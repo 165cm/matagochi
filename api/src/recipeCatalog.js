@@ -120,6 +120,14 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 読み直しで手順が減る（説明欄が変わった・読めなかった）時は、前の結果を残す。
       // 字幕と照合して作り直した時（description+transcript）は「作業のまとまり」に整理するので、工程数が減っても採用する。
       if (reread && before && result.analyzedFrom !== "description+transcript" && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
+
+      // 字幕ハイブリッド（description+transcript）で再生成した際に、既存レシピにあった多くの有効時刻が全損（0件）してしまう場合は採用を見送る
+      const duration = before?.durationSeconds || result?.durationSeconds || null;
+      const beforeValidTimes = (before?.stepTimes || []).filter((t) => Number.isFinite(t) && (duration === null || t < duration)).length;
+      const newValidTimes = (result?.stepTimes || []).filter((t) => Number.isFinite(t) && (duration === null || t < duration)).length;
+      if (reread && result.analyzedFrom === "description+transcript" && beforeValidTimes >= 3 && newValidTimes === 0) {
+        throw new ApiError(422, "reread_lost_timecodes", "読み直すと有効な時刻が失われるため、前の結果を残しました。");
+      }
       if (reread) result.rereadAt = new Date(now()).toISOString();
       // 動画から作り方を読めなかったら、回数は戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
@@ -144,7 +152,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 読み直して手順が減る・読めない・レシピでないと言われた時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
       // 読み直しでは保存済みのレシピを置き換えていないので、ほかの失敗では何も書かない。
       if (reread) {
-        if (["reread_worse", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) await store.put(key, { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } }, { ifGeneration: claim.generation }).catch(() => {});
+        if (["reread_worse", "reread_lost_timecodes", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) await store.put(key, { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } }, { ifGeneration: claim.generation }).catch(() => {});
         throw error;
       }
       // 読み直しに失敗しても、保存済みの結果は消さない（レシピでないと言われた時も。review fix #138）。
@@ -165,7 +173,24 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     let state = { status: "running", stage: 1, total: 5, label: PROGRESS_LABEL[1], detail: "開始しました", startedAt, logs };
     const write = () => {
       const snapshot = { ...state, logs: [...logs], updatedAt: new Date(now()).toISOString() };
-      chain = chain.then(async () => { const cur = await store.get(key); await store.put(key, snapshot, { ifGeneration: cur?.generation ?? 0 }); }).catch(() => {});
+      const task = async () => {
+        let timedOut = false;
+        try {
+          const timer = new Promise((_, reject) => setTimeout(() => { timedOut = true; reject(new Error("timeout")); }, 1500));
+          await Promise.race([
+            (async () => {
+              const cur = await store.get(key);
+              // タイムアウトしていた場合や、既に done/failed で完了している場合は古い進捗で上書きしない
+              if (timedOut) return;
+              // 同じ実行回（startedAt が同一）で、既に完了（done/failed）している場合は古い途中の進捗で上書きしない
+              if (cur?.envelope?.startedAt === snapshot.startedAt && cur?.envelope?.status === "done" && snapshot.status !== "done") return;
+              await store.put(key, snapshot, { ifGeneration: cur?.generation ?? 0 });
+            })(),
+            timer
+          ]);
+        } catch { /* 表示用の保存失敗・遅延は無視 */ }
+      };
+      chain = chain.then(task);
       return chain;
     };
     write();

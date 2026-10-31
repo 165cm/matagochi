@@ -540,3 +540,30 @@ test("importYouTubeRecipe tells why the subtitle organizing did not happen (no s
   assert.match(await run({ fetchYouTubeTranscript: async () => ({ status: "not_available", reason: "no_captions" }), buildHybridRecipeSteps: async () => null }), /not_available：no_captions/);
   assert.match(await run({ fetchYouTubeTranscript: async () => ({ status: "ok", items: [{ start: 1, duration: 2, text: "炒めます" }] }), buildHybridRecipeSteps: async () => ({ steps: ["炒める", "盛る"], stepTimes: [1, 2], stepsComplete: true }) }), /採用しませんでした（2工程/);
 });
+
+test("validateNumbersConsistency understands fractional hours like 0.5時間 as equivalent to 30分", async () => {
+  const result = await importYouTubeRecipe("https://www.youtube.com/watch?v=halfhour001", {
+    fetchYouTubeSnippet: async () => ({
+      title: "漬け込み料理",
+      description: "【材料】豚肉 200g\n【作り方】①タレに0.5時間漬ける ②フライパンで焼く",
+      channelTitle: "プロ"
+    }),
+    analyzeRecipeDescription: async () => ({
+      title: "漬け込み料理",
+      ingredients: [{ name: "豚肉", amount: "200g" }],
+      steps: ["タレに0.5時間漬ける", "フライパンで焼く"]
+    }),
+    fetchYouTubeTranscript: async () => ({
+      status: "ok",
+      items: [{ start: 10, dur: 5, text: "タレに30分漬けます" }]
+    }),
+    buildHybridRecipeSteps: async () => ({
+      steps: ["タレに30分漬ける", "フライパンで焼く"],
+      stepTimes: [10, 30],
+      stepsComplete: true
+    })
+  });
+  // 0.5時間 と 30分 が同等秒数と認識され、ハイブリッド手順が採用されること
+  assert.equal(result.analyzedFrom, "description+transcript");
+  assert.deepEqual(result.steps, ["タレに30分漬ける", "フライパンで焼く"]);
+});
