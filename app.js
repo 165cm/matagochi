@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261031-coarse-chapters";
+const APP_VERSION = "20261031-latest-recipes";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -4719,6 +4719,8 @@ document.addEventListener("visibilitychange", () => {
   refreshTickets();
   loadAuth();
   loadDiscover();
+  // 端末に保存した新着・定番の写しを、運営が直した最新の版に（6時間に1回。APP_MAP §52-9）。
+  setTimeout(() => refreshSavedRecipes(), 3000);
 })();
 // Like a browser toolbar: bars slide away while scrolling down, come back on scroll up.
 (() => {

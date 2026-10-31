@@ -1291,6 +1291,8 @@ function saveOwnRecipe(recipe) {
     updatedAt: nowIso(),
     catalog: null,
   };
+  // 受け取った時の中身の指紋（運営があとで直した時、使う人が直していなければ自動で入れ替える。APP_MAP §52-9）。
+  if (own.sourceRevision) own.sourcePrint = sourcePrint(own);
   state.recipes.unshift(own);
   return own;
 }
@@ -1892,6 +1894,7 @@ function handleDailyAction(action, data) {
   if (action === "life-video-close") { closeVideoDock(); return true; }
   if (action.startsWith("life-time-") && handleTimeFixAction(action, data)) return true;
   if (action === "life-reread") { withDailyLimit(() => rereadRecipe(data.recipe)); return true; }
+  if (action === "life-source-apply") { if (applySourcePending(data.recipe)) { showToast("新しい作り方にしました"); render(); } return true; }
   if (action === "life-fill-video") { withDailyLimit(() => fillRecipeFromVideo(data.recipe)); return true; }
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
@@ -2800,6 +2803,7 @@ function servingsUnknownBanner(recipe, canEdit) {
 function renderRecipeDetail() {
   const r = detailRecipe();
   ensureTimecodes(r);
+  if (r && !r.curated) ensureLatest(r);
   if (!r) return `<section class="panel"><p>レシピが見つかりません。</p>${dailyButton("go-view", "レシピ一覧へ", 'data-view="collection"')}</section>`;
   const saved = !r.curated;
   const servings = dailyProfile().servings;
@@ -2832,6 +2836,7 @@ function renderRecipeDetail() {
     ${actions}
     ${pLine ? `<div class="dish-group-box">${pLine}</div>` : ""}
     ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? "🎬 作り方がおかしい？動画から読み直す" : "🎬 動画から読み取る"}</button></div>` : ""}
+    ${renderSourceNote(r, saved && edit)}
     ${servingsUnknownBanner(r, saved && edit)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
     ${cook.ingredients}
@@ -2840,6 +2845,14 @@ function renderRecipeDetail() {
     <div class="yohaku-corner">${yohaku("wave")}</div>
     ${renderPlaceSheet(r)}
   </section>`;
+}
+// 運営が作り方を直した時の知らせ（APP_MAP §52-9）：入れ替えた時は7日だけ小さく。使う人が直していた時は「新しい作り方にする」。
+function renderSourceNote(r, canEdit) {
+  if (!r) return "";
+  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : "いまの作り方は、あなたが直したものなので、そのままにしています。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}">新しい作り方にする</button></div>`;
+  const at = Date.parse(r.sourceUpdatedAt || "");
+  if (Number.isFinite(at) && Date.now() - at < 7 * 86_400_000) return `<p class="source-note muted small" role="note">📝 作り方が新しくなりました（${escapeHtml(formatDate(new Date(at).toISOString().slice(0, 10)))}）</p>`;
+  return "";
 }
 // ----- 🗓 献立に入れる（レシピの画面から・2026-10-28 のユーザーの判断） -----
 // これからの献立の日（作らない日・作った日・始まる前の日は除く）を並べ、選んだ日の料理と入れかえる。決めた日は決めた料理のまま入れかえる。

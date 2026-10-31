@@ -283,6 +283,24 @@ export function createApp(env = process.env, deps = {}) {
     catch (error) { const { status, body } = toErrorResponse(error); res.status(status).json(body); }
   });
 
+  // 端末に保存したレシピ（新着・みんなの定番の写し・取り込み）の最新の版をまとめて返す（読み出すだけ。AI は使わない。2026-10-31）。
+  // アプリは版（revision）が変わっていれば、手順・時刻・材料を入れ替える（使う人が直していない時）。
+  app.post("/api/recipes/latest", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const ids = [...new Set((Array.isArray(req.body?.videoIds) ? req.body.videoIds : []).map(String).filter((x) => /^[\w-]{11}$/.test(x)))].slice(0, 50);
+    send(res, (async () => {
+      const items = {};
+      // 10件ずつまとめて読む（50件を1件ずつ読むと遅く、アプリの待ち時間を超えることがある。Claude review #212）。
+      const read = [];
+      for (let i = 0; i < ids.length; i += 10) read.push(...await Promise.all(ids.slice(i, i + 10).map((videoId) => catalog.peek(canonicalYouTubeUrl(videoId)).catch(() => null).then((r) => [videoId, r]))));
+      for (const [videoId, r] of read) {
+        if (!r?.catalog?.revision || !(r.steps || []).length) continue;
+        items[videoId] = { revision: r.catalog.revision, title: r.title || "", sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps, stepTimes: r.stepTimes || [], planning: r.planning || null,
+          ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}) };
+      }
+      return { items };
+    })());
+  });
   app.get("/api/recipes/:id", async (req, res) => {
     try { res.json(await catalog.get(req.params.id)); }
     catch (error) { const { status, body } = toErrorResponse(error); res.status(status).json(body); }
@@ -297,6 +315,12 @@ export function createApp(env = process.env, deps = {}) {
     }
   });
 
+  // 運営がレシピ（手順・時刻・料理名・書き直し）を変えた時：このサーバーの一覧の作り置きを捨て、共通の保存先に「変えた時刻」を残す
+  // （ほかのサーバーも、次の一覧の読み出しで作り直す。新着・みんなの定番に、すぐ届くように。2026-10-31）。
+  function catalogChanged() {
+    trendBook.clearCache(); popularBook.clearCache();
+    catalog.markChanged?.().catch?.(() => {});
+  }
   const isAdmin = (req) => {
     const expected = Buffer.from(env.RECIPE_ADMIN_TOKEN || "");
     const supplied = Buffer.from(String(req.headers.authorization || "").replace(/^Bearer /, ""));
@@ -413,7 +437,7 @@ export function createApp(env = process.env, deps = {}) {
     const raw = req.body?.dishName;
     // 文字列だけを受けつける（空にするのは明示的な "" の時だけ。{}・null・数値・欠落は断る）。
     if (typeof raw !== "string" || (raw !== "" && !cleanDishName(raw))) return res.status(400).json({ error: { code: "invalid_dish_name", message: "料理名は改行なしの20字までの文字で送ってください（空にする時は \"\"）。" } });
-    send(res, catalog.setDishName(canonicalYouTubeUrl(videoId), raw, { from: "admin" }).then((r) => { trendBook.clearCache(); popularBook.clearCache(); return r; }));
+    send(res, catalog.setDishName(canonicalYouTubeUrl(videoId), raw, { from: "admin" }).then((r) => { catalogChanged(); return r; }));
   });
   // 管理：読み取り済みのレシピを見る（材料・手順・手順の時刻）と、手順の時刻を直す。読み出すだけで AI は呼ばない。
   app.get("/api/admin/recipes/:videoId", (req, res) => {
@@ -539,8 +563,7 @@ export function createApp(env = process.env, deps = {}) {
         }
       }
       if (rows.length || failures.some((r) => r.partial)) {
-        trendBook.clearCache();
-        popularBook.clearCache();
+        catalogChanged();
       }
       return { checked: ids.length, repaired: rows.length, failed: failures.length, failures, coarseFixed, rows };
     })());
@@ -553,7 +576,7 @@ export function createApp(env = process.env, deps = {}) {
     send(res, (async () => {
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const out = await repairTimecodesOne(videoId, durationSeconds);
-      if (out.changed || out.partial) { trendBook.clearCache(); popularBook.clearCache(); }
+      if (out.changed || out.partial) { catalogChanged(); }
       return out;
     })());
   });
@@ -562,7 +585,7 @@ export function createApp(env = process.env, deps = {}) {
     const url = canonicalYouTubeUrl(videoId);
     const before = await catalog.peek(url).catch(() => null);
     const after = await usage.run({ lite: true }, () => catalog.import(url, { reread: true }));
-    trendBook.clearCache(); popularBook.clearCache();
+    catalogChanged();
     return { videoId, before: (before?.steps || []).length, after: (after?.steps || []).length, analyzedFrom: after?.analyzedFrom, stepTimesFrom: after?.stepTimesFrom };
   };
   app.post("/api/admin/recipes/:videoId/reread", (req, res) => {
@@ -621,7 +644,7 @@ export function createApp(env = process.env, deps = {}) {
         console.error(JSON.stringify({ event: "candidate_shared_times_failed", videoId, message: String(error?.message || "").slice(0, 200) }));
         sharedTimes = "failed";
       }
-      trendBook.clearCache(); popularBook.clearCache();
+      catalogChanged();
       return { before: r.before, after: r.after, analyzedFrom: r.analyzedFrom, guideRemoved: r.guideRemoved, times: r.times, pending: r.stepTimesPending.filter((t) => Number.isFinite(t)).length, sharedTimes };
     })());
   });
@@ -687,7 +710,7 @@ export function createApp(env = process.env, deps = {}) {
       const guide = await usage.run(collector, () => rewriteGuide(r, { write: writeGuide, beforeRetry: () => catalog.reserveAnalysisBudget() }));
       // 書き直しを頼んだ時の元の手順の指紋を添える（保存の時に変わっていたら断る）。
       const saved = await catalog.setGuide(url, { ...guide, of: stepsKey(r.steps), model: collector.model || "" });
-      trendBook.clearCache(); popularBook.clearCache();
+      catalogChanged();
       return { videoId, before: (r.steps || []).length, after: guide.steps.length, limit: guide.limit, tries: guide.tries, yen: Math.round(usageYen(collector, env) * 100) / 100, guide: saved.guide };
     } finally {
       await recipeStore.remove(lockKey, { ifGeneration: lock.generation }).catch(() => {});
@@ -718,7 +741,7 @@ export function createApp(env = process.env, deps = {}) {
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     const videoId = String(req.params.videoId || "");
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
-    send(res, catalog.setGuide(canonicalYouTubeUrl(videoId), null).then((x) => { trendBook.clearCache(); popularBook.clearCache(); return x; }));
+    send(res, catalog.setGuide(canonicalYouTubeUrl(videoId), null).then((x) => { catalogChanged(); return x; }));
   });
   // 管理：お試し（新着から、まだ書き直していない料理を max 品。手順が上限より多い料理から）。left：候補の残り。
   app.post("/api/admin/guide/pilot", (req, res) => {
@@ -753,7 +776,7 @@ export function createApp(env = process.env, deps = {}) {
       const saved = await catalog.setSteps(url, { rows: req.body?.rows, baseRevision: req.body?.baseRevision, durationSeconds });
       // 時刻が全部「要確認」・なしでも保存する（null の手順は探し直さず、古い時刻も戻らない）。
       const sharedTimes = await shareFixed(url, saved.steps, saved.stepTimes, saved.revision);
-      trendBook.clearCache(); popularBook.clearCache();
+      catalogChanged();
       return { ...saved, sharedTimes };
     })());
   });
@@ -767,6 +790,7 @@ export function createApp(env = process.env, deps = {}) {
       // 開いた時の版（baseRevision）がいる（古い画面から、別のタブの手直しを上書きしない）。
       if (typeof req.body?.baseRevision !== "string") throw new ApiError(400, "revision_required", "画面を開き直してから保存してください。");
       const saved = await catalog.setStepTimes(url, req.body?.stepTimes, { baseRevision: req.body.baseRevision });
+      catalogChanged();
       // 作る画面の「▶ 2:15」（同じ動画・同じ手順を見る全員）にも、運営が直した時刻として使う。
       const r = await catalog.peek(url);
       // すべて消した時も同じように反映する（管理の画面と作る画面を一致させる）。

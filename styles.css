@@ -4170,3 +4170,7 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .save-steps { margin: 4px 0 10px; padding-left: 20px; font-size: 14px; line-height: 1.7; }
 .paste-big { margin: 4px 0 6px; }
 .or-line { margin: 10px 0 4px; text-align: center; }
+/* 運営が作り方を直した時の知らせ（APP_MAP §52-9） */
+.source-note { margin: 8px 0; }
+div.source-note { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 10px 12px; border-radius: 12px; background: #f1f7f3; border: 1.5px solid #8bbf9f; }
+div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.5; }

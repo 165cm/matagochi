@@ -421,6 +421,8 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, monthlyLimit = 1000, userShare = TREND_USER_SHARE, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, calibrate = true, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
+  // 運営がレシピを変えた時刻（recipeCatalog.changedAt）。読めない時は 0（作り置きを使う）。
+  const changedAt = async () => (typeof catalog?.changedAt === "function" ? await catalog.changedAt().catch(() => 0) : 0);
   const catches = { at: 0 };
   async function readIndex() { return (await store.get("trends/index")) || null; }
   // 新着全体（28日以内）の投稿者ごとの品数（保存済みの読み取り結果のチャンネルから。0円）。titles は料理名の比較用（定番の「もう2品ある」）。
@@ -1349,8 +1351,10 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const day = new Date(now() + 9 * 3_600_000).toISOString().slice(0, 10);
       // 日ごとの順なので、日本時間の日付が変わったらキャッシュも使わない。
       // 表示用のキャッシュは、格上げする読み出し（公開の GET）だけで使う。補充の在庫の確認（promote: false）は毎回読み直す（ほかのインスタンスが足した子を見落とさない。review fix #135）。
-      if (promote && cache && cache.until > now() && cache.day === day) return cache.value;
+      // 運営がレシピを変えた後に作った作り置きだけ使う（ほかのサーバーで変えた時も。2026-10-31）。
+      if (promote && cache && cache.until > now() && cache.day === day && (await changedAt()) <= cache.at) return cache.value;
       const keep = promote; // 格上げしない読み出しの結果は、キャッシュに入れない（公開の GET で格上げされるように）
+      const builtAt = now(); // 作り始めた時刻（作っている間にレシピが変わったら、次の読み出しで作り直す）
       const entry = await readIndex();
       const excluded = await optedOut();
       const saved = (await store.get("trends/catches"))?.envelope || {};
@@ -1365,7 +1369,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             if ((r.channelId && excluded.has(r.channelId)) || excluded.has(videoId)) continue; // 掲載停止（確認待ち・動画単位を含む）
             const c = r.catch || saved[videoId];
             items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
-              title: r.title, channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              title: r.title, ...(r.catalog?.revision ? { revision: r.catalog.revision } : {}), channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
               ...(c ? { catch: c } : {}), ...(r.dishName ? { dishName: r.dishName } : {}), sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}), tags: r.tags || [], planning: r.planning || null });
           } catch {}
         }
@@ -1378,7 +1382,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       items.forEach((i) => { if (dishes[i.videoId]) i.dish = dishes[i.videoId]; });
       items.sort((a, b) => dailyRank(day, a.videoId) - dailyRank(day, b.videoId));
       const value = { items, updatedAt: new Date(now()).toISOString() };
-      if (keep) cache = { value, until: now() + 10 * 60_000, day };
+      if (keep) cache = { value, until: now() + 10 * 60_000, day, at: builtAt };
       return value;
     }
   };

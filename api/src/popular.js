@@ -22,6 +22,8 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   const recent = new Map(); // 同じ接続元・同じ動画は1日1回だけ数える
   let cache = new Map();
+  // 運営がレシピを変えた時刻（recipeCatalog.changedAt）。読めない時は 0（作り置きを使う）。
+  const changedAt = async () => (typeof catalog?.changedAt === "function" ? await catalog.changedAt().catch(() => 0) : 0);
   async function keep(videoId) {
     for (let attempt = 0; attempt < 4; attempt++) {
       const entry = await store.get(KEPT);
@@ -81,7 +83,9 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
       required();
       const seg = SEGMENT.test(segment) ? segment : "any-0";
       const hit = cache.get(seg);
-      if (hit && hit.until > now()) return hit.value;
+      // 運営がレシピを変えた後に作った作り置きだけ使う（ほかのサーバーで変えた時も。2026-10-31）。
+      if (hit && hit.until > now() && (await changedAt()) <= hit.at) return hit.value;
+      const builtAt = now();
       const months = thisAndLastMonth(now());
       const totals = {};
       for (const m of months) {
@@ -102,13 +106,13 @@ export function createPopularBook(store, { catalog, now = Date.now, optedOut = a
           // 表示の GET では読み出すだけ（まだ読んでいない動画を、ここで新しくAIに読ませない）。
           const r = await catalog.peek(canonicalYouTubeUrl(videoId));
           if (!r || !r.ingredients?.length || !r.steps?.length || (r.channelId && excluded.has(r.channelId)) || excluded.has(videoId)) continue;
-          items.push({ videoId, score: t.same * 3 + t.all, ...(t.kept ? { kept: true } : {}), title: r.title, ...(r.dishName ? { dishName: r.dishName } : {}), channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}), tags: r.tags || [], planning: r.planning || null });
+          items.push({ videoId, score: t.same * 3 + t.all, ...(t.kept ? { kept: true } : {}), title: r.title, ...(r.catalog?.revision ? { revision: r.catalog.revision } : {}), ...(r.dishName ? { dishName: r.dishName } : {}), channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}), tags: r.tags || [], planning: r.planning || null });
         } catch {}
       }
       // 親の料理名（APP_MAP §48。格上げは新着の側で行う）。
       if (dishBook) { const dishes = await dishBook.classify(items).catch(() => ({})); items.forEach((i) => { if (dishes[i.videoId]) i.dish = dishes[i.videoId]; }); }
       const value = { items, minimum: POPULAR_MIN };
-      cache.set(seg, { value, until: now() + 10 * 60_000 });
+      cache.set(seg, { value, until: now() + 10 * 60_000, at: builtAt });
       return value;
     }
   };
