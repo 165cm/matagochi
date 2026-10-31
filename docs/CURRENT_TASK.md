@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-31（字幕が取れない動画のレシピ復旧をレビュー待ちに。#207 は公開済み）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-31（字幕が取れない動画のレシピ復旧 #209 公開。おおまかな章の時刻の重なりをレビュー待ちに）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：字幕が取れない動画のレシピ復旧（失敗理由の記録・候補を作る→見比べる→採用・手順の文の手直し） | レビュー待ち | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-10-31 のユーザーの判断（Codex・Gemini と確認したプラン）。字幕の失敗理由を分けて期限つきに／管理画面で候補を作り（説明欄＋字幕→だめなら動画を最後まで）、見比べてから採用／手順の文を「文＋時刻＋要確認」の1組で直す。手元の字幕の取り込み（PR4）は保留。APP_MAP §52-5〜7 | api/src/transcript.js, timecodes.js, recipeCatalog.js, importRecipe.js, analyzer.js, aiUsage.js, server.js, admin/catalog.html, api/test/*, docs/* |
+| Claude：おおまかな章で候補の時刻が重なる問題（oWLCye3SXu4） | レビュー待ち | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-10-31 のユーザーの依頼（Gemini・Codex と原因を確認）。動画の時刻をおおまかな章で上書きしない／重なる時刻を要確認に／候補の画面に時刻の出どころ・重なり・動画の勧め／料理モードの終わりの微調整が別の手順に書き込まない。APP_MAP §52-6 | api/src/importRecipe.js, recipeCatalog.js, admin/catalog.html, cook-mode.js, app.js, sw.js, index.html, version.json, api/test/*, test/*, docs/* |
 | レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 公開済み（#207） | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）②工程削減時の時間・数値乖離の機械的検出③AIに見せていない範囲（clipSeconds）の時刻の無効化④キャッシュされた異常時刻（尺外）の読み出し時クランプ⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護 | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
 | 管理画面の文法エラー修正と構文テスト追加 | 公開済み（#206） | fix/admin-syntax-error | PR #205 の履歴 join に含まれていた実改行による構文エラーを修正。管理 HTML 内の全インラインスクリプトを検査するテストを追加し、遅延ポーリングによる完了表示の上書きも防止 | admin/catalog.html, test/admin-syntax.test.cjs, docs/CURRENT_TASK.md |
 | 管理画面の読み直しの処理段階表示（5段階：素材取得／調理ブロック整理／字幕・章と照合／品質確認／保存） | 作業中 | feat/admin-reread-progress | サーバーが保存先（`reread-progress/<id>`）に実際の段階を残し、管理画面が2秒おきに見て「3/5 字幕・章と照合中｜…｜経過42秒」と表示。AI内部の進み具合は分からないので「AI応答待ち」と出す。終了時は 完了／前の結果を残した／競合／失敗 を区別 | api/src/importRecipe.js, recipeCatalog.js, server.js, admin/catalog.html, api/test/*, docs/CURRENT_TASK.md |
@@ -40,6 +40,8 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 字幕が取れない動画のレシピ復旧（#209、公開済み。Codex 4回・Gemini 2回のレビューで OK）：字幕の失敗理由（`unplayable`／`no_captions`）を分けて期限つきで試し直す／管理画面で「候補を作る（説明欄＋字幕 → だめなら動画を最後まで）→ 見比べる → 採用」／手順の文を「文＋時刻＋要確認」の1組で手直し。公開後、`UsOqhEG-7hY` で手順と時刻が正しく作れた（2026-10-31 のユーザーの確認）。`oWLCye3SXu4` で時刻が重なり、上の行で対応中。手元の字幕の取り込み（PR4）は保留。APP_MAP §52-5〜7
 
 - 説明欄の材料と字幕の段取りを統合したハイブリッド手順・タイムコード生成（#196、公開済み）：説明欄の正確な材料・分量と動画の字幕発話順・調理の段取りを組み合わせ、ざっくり要約された粗い手順（3工程以下等）を動画の実際の作業進行に沿った4〜7工程のわかりやすい手順へ自動再構成。各手順のタイムコードも字幕発話時刻から高精度に紐づけ。未完結手順の上書き防止、材料グループ記号（A・タレ等）の保持、長文手順の完全保持、字幕省略時のAI枠無駄消費防止、おすすめ（新着・人気）配信・取り込み時の字幕出所保護（`stepTimesFrom: "transcript"`）を実装。版 `20261029-hybrid-steps`（キャッシュ `ripigochi-v193`）。APP_MAP §52。
 

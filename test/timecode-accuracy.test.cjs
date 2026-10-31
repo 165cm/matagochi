@@ -385,3 +385,23 @@ test("cook-mode refineTimes does not invent fake interpolated times for dense ti
   // 架空の按分 [10.5, 46, 81, 116] ではなく、元の根拠ある時刻がそのまま維持されること
   assert.deepEqual(refined, [10.5, 15.5, 20.5, 25.5]);
 });
+
+test("review fix (2026-10-31): adjusting the end moves the step that actually ends the segment, not a step with no time or a duplicate", () => {
+  const fixes = [];
+  const open = (times, videoId) => {
+    CookMode.setRecipe({ title: "鶏むね", steps: ["下ごしらえ", "野菜を切る", "焼く", "炒める"], timesOf: () => times, timesFixed: true, videoId, ingredients: [], onTimeFix: (idx, sec) => fixes.push([idx, sec]) });
+    CookMode.openMode();
+    CookMode.setTimeTarget("end");
+  };
+  // 途中の手順に時刻がない（要確認）：終わり（121）は手順3の時刻。手順2には書き込まない
+  open([16, null, 121, 200], "oWLCye3SXu4");
+  assert.deepEqual(CookMode.segment(0), { start: 16, end: 121 });
+  CookMode.nudgeTime("time-minus");
+  assert.deepEqual(fixes.at(-1), [2, 116]);
+  assert.deepEqual(CookMode.segment(0), { start: 16, end: 116 });
+  assert.equal(CookMode.segment(1), null);
+  // 同じ時刻が並ぶ（章がおおまか）：終わり（121）を決めているのは手順3
+  open([16, 16, 121, 200], "oWLCye3SXu5");
+  CookMode.nudgeTime("time-plus");
+  assert.deepEqual(fixes.at(-1), [2, 126]);
+});

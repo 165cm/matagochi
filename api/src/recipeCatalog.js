@@ -32,19 +32,21 @@ const CANDIDATE_LOCK_MS = VIDEO_TIMEOUT_MS * VIDEO_CLIENTS_MAX + 10 * 60_000;
 const CANDIDATE_MAX_AI_CALLS = 6;
 // 候補の時刻：動画の長さの外・手順の順番より前に戻る時刻は「不明（null）」。補間はしない。
 // 前に戻る時刻があった時は、残した側（その前の時刻）も正しいとは限らないので「要確認」（suspects：手順の番号）にする。
+// 前と同じ時刻（章がおおまか・同じ発話など）の手順も「要確認」にする（duplicates。料理モードで同じ区間をくり返さない。2026-10-31・review）。
 export function cleanCandidateTimes(times, count, limit = null) {
   let dropped = 0, last = -1, lastIndex = -1;
-  const suspects = new Set();
+  const suspects = new Set(), duplicates = new Set();
   const out = Array.from({ length: count }, (_, i) => {
     const raw = Array.isArray(times) ? times[i] : null;
     if (raw === null || raw === undefined || raw === "") return null;
     const t = Number(raw);
     if (Number.isFinite(t) && t >= 0 && (limit === null || t < limit) && t < last) { dropped += 1; suspects.add(lastIndex); return null; }
     if (!Number.isFinite(t) || t < 0 || (limit !== null && t >= limit)) { dropped += 1; return null; }
+    if (lastIndex >= 0 && t === last) { duplicates.add(i); suspects.add(i); return Math.round(t * 10) / 10; }
     last = t; lastIndex = i;
     return Math.round(t * 10) / 10;
   });
-  return { stepTimes: out, dropped, suspects: [...suspects].sort((a, b) => a - b) };
+  return { stepTimes: out, dropped, suspects: [...suspects].sort((a, b) => a - b), duplicates: [...duplicates].sort((a, b) => a - b) };
 }
 const UNAVAILABLE = { not_found: ["video_not_found", 404, "YouTube動画が見つかりませんでした。"], non_public: ["non_public_video", 422, "この動画はいま公開されていません。"] };
 export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true, tickets = null, refreshSnippet = null, checkVideos = null, candidateMaxSeconds = 1800, candidateVideoPerDay = 10 } = {}) {
@@ -280,7 +282,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   }
   const candidateView = (c) => c && { candidateId: c.candidateId, mode: c.mode, createdAt: c.createdAt, expiresAt: c.expiresAt, analyzedFrom: c.result.analyzedFrom, stepTimesFrom: c.result.stepTimesFrom || "",
     title: c.result.title, dishName: c.result.dishName || "", ingredients: c.result.ingredients, steps: c.result.steps, stepTimes: c.result.stepTimes || [], durationSeconds: c.durationSeconds ?? null,
-    droppedTimes: c.droppedTimes || 0, suspectTimes: c.suspectTimes || [], carriedAdminTimes: c.carriedAdminTimes || 0, aiCalls: c.aiCalls || 0, yen: c.yen ?? null, yenUnknown: !!c.yenUnknown, logs: c.logs || [] };
+    droppedTimes: c.droppedTimes || 0, suspectTimes: c.suspectTimes || [], duplicateTimes: c.duplicateTimes || [], timesFrom: c.timesFrom || "", carriedAdminTimes: c.carriedAdminTimes || 0, aiCalls: c.aiCalls || 0, yen: c.yen ?? null, yenUnknown: !!c.yenUnknown, logs: c.logs || [] };
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
     // 管理：レシピの候補を作る（保存済みのレシピは上書きしない）。mode："auto"＝説明欄＋字幕 → だめなら動画／"video"＝動画から。
@@ -312,9 +314,11 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         if (["chapters", "transcript"].includes(raw?.stepTimesFrom)) result.stepTimesFrom = raw.stepTimesFrom;
         const before = current.envelope.result;
         const durationSeconds = Number.isFinite(raw?.durationSeconds) ? raw.durationSeconds : null;
-        const { stepTimes, dropped, suspects } = checkCandidate(result, durationSeconds);
+        const { stepTimes, dropped, suspects, duplicates } = checkCandidate(result, durationSeconds);
         result.stepTimes = stepTimes;
         if (!stepTimes.some(Number.isFinite)) delete result.stepTimesFrom;
+        // 時刻の出どころ（候補の画面に出す）：説明欄の章・字幕・動画・説明欄の読み取り。
+        const timesFrom = !stepTimes.some(Number.isFinite) ? "" : ["chapters", "transcript"].includes(raw?.stepTimesFrom) ? raw.stepTimesFrom : analyzedFrom.startsWith("video") ? "video" : analyzedFrom === "description+transcript" ? "transcript" : "description";
         // 運営が直した料理名は引き継ぐ。運営が直した時刻は、文がまったく同じ手順（前にも候補にも1つだけ）の分だけ引き継ぐ（別の作業に時刻を付けない）。
         if (before.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
         let carried = 0;
@@ -327,12 +331,12 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
             if (j >= 0 && oldCount.get(step) === 1 && newCount.get(step) === 1 && Number.isFinite(t) && (durationSeconds === null || t < durationSeconds)) { result.stepTimes[i] = t; carried += 1; }
           });
           // 引き継いだ時刻で順番が逆になったら、もう一度確かめる
-          if (carried) { const again = cleanCandidateTimes(result.stepTimes, result.steps.length, durationSeconds); result.stepTimes = again.stepTimes; again.suspects.forEach((i) => suspects.push(i)); }
+          if (carried) { const again = cleanCandidateTimes(result.stepTimes, result.steps.length, durationSeconds); result.stepTimes = again.stepTimes; again.suspects.forEach((i) => suspects.push(i)); again.duplicates.forEach((i) => duplicates.push(i)); }
         }
         const yen = typeof cost === "function" ? cost() : null;
         const createdAt = new Date(now()).toISOString();
         const record = { candidateId: randomUUID(), videoId: id, mode, createdAt, expiresAt: new Date(now() + CANDIDATE_TTL_MS).toISOString(),
-          base: { generation: current.generation, revision: before.catalog?.revision || "" }, result, durationSeconds, droppedTimes: dropped, suspectTimes: [...new Set(suspects)].sort((a, b) => a - b), carriedAdminTimes: carried, aiCalls,
+          base: { generation: current.generation, revision: before.catalog?.revision || "" }, result, durationSeconds, droppedTimes: dropped, suspectTimes: [...new Set(suspects)].sort((a, b) => a - b), duplicateTimes: [...new Set(duplicates)].sort((a, b) => a - b), timesFrom, carriedAdminTimes: carried, aiCalls,
           yen: Number.isFinite(yen) ? Math.round(yen * 100) / 100 : null, yenUnknown: !Number.isFinite(yen) };
         const candKey = `reread-candidate/${id}`;
         const old = await store.get(candKey);

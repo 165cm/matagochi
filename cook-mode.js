@@ -385,9 +385,11 @@ const CookMode = (() => {
       flash("🔁 最後の手順は動画の終わりまで再生されます");
       return;
     }
-    const targetIdx = isStart ? at : at + 1;
-    if (targetIdx >= (recipe?.steps?.length || 0)) return;
     const times = currentTimes();
+    // 終わり＝区間の終わりを決めている手順（次に時刻がある手順）の始まり。すぐ次の手順に時刻がない（要確認など）時に、
+    // その手順へ時刻を書き込まない（2026-10-31・review）。
+    const targetIdx = isStart ? at : times.findIndex((t, j) => j > at && Number.isFinite(t) && t === seg.end);
+    if (targetIdx < 0 || targetIdx >= (recipe?.steps?.length || 0)) return;
     const cur = isStart
       ? (seg ? seg.start : (Number.isFinite(videoTime) ? Math.floor(videoTime) : 0))
       : seg.end;

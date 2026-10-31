@@ -63,6 +63,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   let analysis = hasDescription ? await deps.analyzeRecipeDescription(snippet) : {};
   let analyzedFrom = "description";
   let analyzedTimes = "";
+  let videoTimes = false;
   // 説明文に本当の手順がない（AIの判定・手順が1つ以下）なら、説明文の「手順」は使わず動画を読む。
   if (analysis.stepsInDescription === false || normalizeSteps(analysis.steps).length < 2) analysis = { ...analysis, steps: [] };
   const weak = options.forceVideo || !normalizeSteps(analysis.steps).length || !normalizeIngredients(analysis.ingredients).length;
@@ -101,6 +102,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         planning: videoSteps.length && video.planning ? video.planning : analysis.planning || video.planning
       };
       if (videoSteps.length) analyzedFrom = clipSeconds ? "video-clip" : "video";
+      // 動画から手順ごとの時刻が取れた印（あとで、おおまかな章でまとめて上書きしない。2026-10-31・review）。
+      if (videoSteps.length && (analysis.stepTimes || []).some((t) => parseTimeValue(t) !== null)) videoTimes = true;
       progress(2, videoSteps.length ? `動画から${videoSteps.length}手順を読み取りました` : `動画から作り方を読み取れませんでした${complete ? "" : "（途中までしか作っていない）"}`);
     } catch (error) {
       // 「読めたがレシピではなかった」（analysis_uncertain）だけは、説明欄の結果で続ける。
@@ -189,7 +192,13 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
     const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);
     // 管理の候補づくり（videoFullOnly）では、章の時刻も直さずに渡す（前に戻る時刻の「要確認」を候補の検査で判断する）。
-    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: options.videoFullOnly ? times : refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }
+    // 章がおおまか（いくつかの手順が同じ章の時刻になる）で、動画から手順ごとの時刻が取れている時は、動画の時刻を残す。
+    const coarse = times.some((t, i) => t !== null && times.indexOf(t) !== i);
+    if (times.some((t) => t !== null) && !(coarse && videoTimes)) { analysis = { ...analysis, stepTimes: options.videoFullOnly ? times : refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }
+    else if (coarse && videoTimes) {
+      progress(3, "説明欄の章がおおまかなため、動画から探した手順ごとの時刻を残しました");
+      if (!options.videoFullOnly) analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, analysis.stepTimes, { durationSeconds: duration }) };
+    }
   } else if (!analyzedTimes && Array.isArray(analysis.stepTimes) && finalSteps.length >= 2 && !options.videoFullOnly) {
     // 管理の候補づくり（videoFullOnly）では直さずに渡す（候補の検査 cleanCandidateTimes で、前に戻る時刻と「要確認」を一度に判断する）。
     analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, analysis.stepTimes, { durationSeconds: duration }) };
