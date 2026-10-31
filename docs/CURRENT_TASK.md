@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-10-31（作り直しを1つのボタンに #211 公開。運営が直したレシピを届ける作業をレビュー待ちに）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-10-31（運営が直したレシピを届ける #212 公開。献立の枠の写しの直しをレビュー待ちに）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：運営が直したレシピを一覧と端末の写しに届ける | レビュー待ち | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-10-31 のユーザーの依頼・判断（直していなければ自動・直していたらボタン・以前の写しは自動・知らせは小さく）。一覧の作り置きを全サーバーで捨てる印／一覧に版／最新の版をまとめて返す API／端末の写しの入れ替え。APP_MAP §52-9 | api/src/server.js, recipeCatalog.js, trends.js, popular.js, discover.js, daily-ui.js, app.js, styles.css, sw.js, index.html, version.json, api/test/*, test/*, docs/* |
+| Claude：献立の枠の写しも最新の作り方にする（作る画面だけ10工程のまま） | レビュー待ち | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-10-31 のユーザーの報告：#212 の公開後、保存したレシピ・新着は7工程になったが、作る画面（献立の枠の写し）は10工程のまま。枠の写しを動画で見つけて確かめる・作る画面でも確かめてボタンを出す・失敗したら2分後に確かめ直す。APP_MAP §52-9 | discover.js, daily-ui.js, app.js, sw.js, index.html, version.json, test/recipe-latest.test.cjs, docs/* |
 | レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 公開済み（#207） | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）②工程削減時の時間・数値乖離の機械的検出③AIに見せていない範囲（clipSeconds）の時刻の無効化④キャッシュされた異常時刻（尺外）の読み出し時クランプ⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護 | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
 | 管理画面の文法エラー修正と構文テスト追加 | 公開済み（#206） | fix/admin-syntax-error | PR #205 の履歴 join に含まれていた実改行による構文エラーを修正。管理 HTML 内の全インラインスクリプトを検査するテストを追加し、遅延ポーリングによる完了表示の上書きも防止 | admin/catalog.html, test/admin-syntax.test.cjs, docs/CURRENT_TASK.md |
 | 管理画面の読み直しの処理段階表示（5段階：素材取得／調理ブロック整理／字幕・章と照合／品質確認／保存） | 作業中 | feat/admin-reread-progress | サーバーが保存先（`reread-progress/<id>`）に実際の段階を残し、管理画面が2秒おきに見て「3/5 字幕・章と照合中｜…｜経過42秒」と表示。AI内部の進み具合は分からないので「AI応答待ち」と出す。終了時は 完了／前の結果を残した／競合／失敗 を区別 | api/src/importRecipe.js, recipeCatalog.js, server.js, admin/catalog.html, api/test/*, docs/CURRENT_TASK.md |
@@ -40,6 +40,8 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- 運営が直したレシピを、新着の一覧と端末の写しに届ける（#212、公開済み。Codex は利用上限のため Claude のコードレビューで8件を直して公開）：一覧の作り置きを全サーバーで捨てる印／一覧に版／`POST /api/recipes/latest`／写しの自動の入れ替えと「新しい作り方にする」。公開後、作る画面（献立の枠の写し）だけ古いままと分かり、上の行で対応中。APP_MAP §52-9
 
 - 手順と時刻の作り直しを1つのボタンに・字幕の貼り付け（#211、公開済み。Codex は利用上限のため Claude のコードレビューで8件を直して公開）：① 作り直す（見立て・次の作り方を候補の枠に）② 手で直す ③ その他。パソコンの YouTube の文字起こしを貼って約1円で作れる。公開後、oWLCye3SXu4 で7工程の手順と時刻ができた（2026-10-31 のユーザーの確認）。APP_MAP §52-8
 

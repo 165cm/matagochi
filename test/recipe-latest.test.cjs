@@ -86,7 +86,7 @@ test("the recipe screen shows the notice above the ingredients", async () => {
   const { run } = app(() => ({ [V]: newer }));
   run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend"))`);
   await run("refreshSavedRecipes({ force: true })");
-  run("recipeDetailId = own.id; latestAsked.set(own.id, Date.now())");
+  run("recipeDetailId = own.id; latestAsked.set(videoOfRecipe(own), Date.now())");
   const html = run("renderRecipeDetail()");
   assert.match(html, /source-note[^>]*>📝 作り方が新しくなりました/);
   assert.ok(html.indexOf("source-note") < html.indexOf("材料"), "shown before the ingredients");
@@ -102,21 +102,33 @@ test("review #212: times the app found by itself do not count as the user's edit
   assert.equal(run("own.sourcePending"), undefined);
 });
 
-test("review #212: the planned meal's own copy is updated too (cook screen); with changed ingredients in a decided meal, the button is shown instead", async () => {
+test("review #212: the planned meal's own copy is updated too (cook screen); with changed ingredients in a decided meal, that copy waits for the button", async () => {
   const sameIngredients = { ...newer, ingredients: item.ingredients };
   let latest = { [V]: sameIngredients };
   const { run } = app(() => latest);
-  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); const d = today(); state.mealSlots[d] = { date: d, recipe: clone(own), status: "confirmed" }; globalThis.slot = state.mealSlots[d]`);
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: clone(own), status: "confirmed" }; globalThis.slot = state.mealSlots[d]`);
   await run("refreshSavedRecipes({ force: true })");
   assert.deepEqual(JSON.parse(run("JSON.stringify(slot.recipe.steps)")), newer.steps, "the cook screen reads this copy");
   latest = { [V]: { ...newer, revision: "r3", steps: [...newer.steps, "盛る"] } };
   await run("refreshSavedRecipes({ force: true })");
-  assert.equal(run("own.sourcePending.planned"), true, "ingredients change while the meal is decided");
+  assert.equal(run("own.steps.length"), 5, "the saved recipe does not drive the shopping list, so it updates");
+  assert.equal(run("slot.recipe.sourcePending.planned"), true, "ingredients change while the meal is decided");
   assert.equal(run("slot.recipe.ingredients.length"), 1, "the shopping list does not change by itself");
-  assert.match(run("renderSourceNote(own, true)"), /決めた献立と買い物リスト/);
+  assert.match(run("renderSourceNote(slot.recipe, true, d)"), /決めた献立と買い物リスト.*data-date=/s);
   run("applySourcePending(own.id)");
   assert.equal(run("slot.recipe.ingredients.length"), 2);
   assert.equal(run("slot.recipe.steps.length"), 5);
+});
+
+test("2026-10-31 report: a meal-plan copy that is not linked to any saved recipe (different id) is found by its video and updated; the cook screen checks too", async () => {
+  const { run, asked } = app(() => ({ [V]: { ...newer, ingredients: item.ingredients } }));
+  run(`globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: { id: "trend-${V}", title: "鶏", videoUrl: "${item.videoUrl}", ingredients: ${JSON.stringify(item.ingredients)}, steps: Array.from({ length: 10 }, (_, i) => "古い手順" + i), stepTimes: [] }, status: "confirmed" }`);
+  run("cookingDate = d; state.view = 'cooking'");
+  run("renderCooking()");
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(asked, [[V]], "opening the cook screen asks for this video");
+  assert.equal(run("state.mealSlots[d].recipe.steps.length"), 4);
+  assert.match(run("renderCooking()"), /📝 作り方が新しくなりました/);
 });
 
 test("review #212: every saved copy is checked (50 at a time); a failed check does not start the 6-hour pause", async () => {
@@ -132,4 +144,35 @@ test("review #212: every saved copy is checked (50 at a time); a failed check do
   run("__asked = []");
   await run("refreshSavedRecipes()");
   assert.deepEqual(JSON.parse(run("JSON.stringify(__asked)")), [], "then the 6-hour pause");
+});
+
+// ── Claude のコードレビュー（PR #213）の指摘への対応 ──
+test("review #213: meal-plan copies of the user's own or imported recipes are never replaced automatically", async () => {
+  const { run, asked } = app(() => ({ [V]: { ...newer, ingredients: item.ingredients } }));
+  run(`globalThis.d1 = today(); globalThis.d2 = addDays ? addDays(today(), 1) : today();`);
+  run(`state.mealSlots[d1] = { date: d1, recipe: { id: "r-mine", title: "自分の", videoUrl: "${item.videoUrl}", ingredients: [], steps: ["自分の手順1", "自分の手順2"], stepTimes: [] }, status: "planned" }`);
+  run(`state.mealSlots["2999-01-01"] = { date: "2999-01-01", recipe: { id: "r-imp", catalog: { id: "youtube-${V}", revision: "r0" }, title: "取り込み", videoUrl: "${item.videoUrl}", ingredients: ${JSON.stringify(item.ingredients)}, steps: ["直した1", "直した2"], stepTimes: [] }, status: "planned" }`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.mealSlots[d1].recipe.steps)")), ["自分の手順1", "自分の手順2"], "the user's own recipe is never touched");
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.mealSlots["2999-01-01"].recipe.steps)')), ["直した1", "直した2"]);
+  assert.equal(run('state.mealSlots["2999-01-01"].recipe.sourcePending.revision'), "r2", "an imported one waits for the button");
+  // 使う人のレシピを開いても、問い合わせない
+  const before = asked.length;
+  run(`ensureLatest(state.mealSlots[d1].recipe)`);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(asked.length, before);
+});
+
+test("review #213: a failed check is retried only once", async () => {
+  const { run } = app(() => ({}));
+  run(`globalThis.__n = 0; const f0 = globalThis.fetch; globalThis.fetch = (url, o) => String(url).endsWith("/api/recipes/latest") ? (__n++, Promise.resolve({ ok: false, json: async () => ({}) })) : f0(url, o);
+    globalThis.__timers = []; globalThis.setTimeout = (fn, ms) => { if (ms === 120000) __timers.push(fn); return { unref() {} }; }`);
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend"))`);
+  await run("refreshSavedRecipes()");
+  assert.equal(run("__timers.length"), 1, "one retry scheduled");
+  run("__timers.shift()()");
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(run("__n"), 2);
+  assert.equal(run("__timers.length"), 0, "no endless retries");
 });
