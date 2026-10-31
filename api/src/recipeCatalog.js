@@ -31,17 +31,20 @@ const CANDIDATE_LOCK_MS = VIDEO_TIMEOUT_MS * VIDEO_CLIENTS_MAX + 10 * 60_000;
 // 1つの候補で AI を呼ぶ回数の上限（説明欄1・字幕1・章1・動画は接続先を切り替えて3まで）。
 const CANDIDATE_MAX_AI_CALLS = 6;
 // 候補の時刻：動画の長さの外・手順の順番より前に戻る時刻は「不明（null）」。補間はしない。
+// 前に戻る時刻があった時は、残した側（その前の時刻）も正しいとは限らないので「要確認」（suspects：手順の番号）にする。
 export function cleanCandidateTimes(times, count, limit = null) {
-  let dropped = 0, last = -1;
+  let dropped = 0, last = -1, lastIndex = -1;
+  const suspects = new Set();
   const out = Array.from({ length: count }, (_, i) => {
     const raw = Array.isArray(times) ? times[i] : null;
     if (raw === null || raw === undefined || raw === "") return null;
     const t = Number(raw);
-    if (!Number.isFinite(t) || t < 0 || (limit !== null && t >= limit) || t < last) { dropped += 1; return null; }
-    last = t;
+    if (Number.isFinite(t) && t >= 0 && (limit === null || t < limit) && t < last) { dropped += 1; suspects.add(lastIndex); return null; }
+    if (!Number.isFinite(t) || t < 0 || (limit !== null && t >= limit)) { dropped += 1; return null; }
+    last = t; lastIndex = i;
     return Math.round(t * 10) / 10;
   });
-  return { stepTimes: out, dropped };
+  return { stepTimes: out, dropped, suspects: [...suspects].sort((a, b) => a - b) };
 }
 const UNAVAILABLE = { not_found: ["video_not_found", 404, "YouTube動画が見つかりませんでした。"], non_public: ["non_public_video", 422, "この動画はいま公開されていません。"] };
 export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true, tickets = null, refreshSnippet = null, checkVideos = null, candidateMaxSeconds = 1800, candidateVideoPerDay = 10 } = {}) {
@@ -244,6 +247,12 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     if (!put) throw new ApiError(409, "analysis_pending", "このレシピは読み直している途中です。");
     return { key: lockKey, generation: put.generation };
   }
+  // 置き換える前の版を履歴に残す（説明文の原文は残さない）。残せなかったら止める（「前の版は履歴に残る」を守る）。
+  async function keepVersion(before, at, replacedBy) {
+    let saved = null;
+    try { saved = await store.put(`versions/${randomUUID()}`, { ...before, caption: "", channelTitle: "", replacedAt: at, replacedBy }, { ifGeneration: 0 }); } catch { saved = null; }
+    if (!saved) throw new ApiError(503, "history_failed", "前の版を履歴に残せなかったため、保存を止めました。もう一度お試しください。");
+  }
   // 世代つきの書き込みで取る鍵（複数のサーバーでも1つだけ）。maxAge より古い鍵は止まったものなので取り直してよい。
   async function claimLock(lockKey, maxAge, message) {
     const held = await store.get(lockKey);
@@ -271,7 +280,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   }
   const candidateView = (c) => c && { candidateId: c.candidateId, mode: c.mode, createdAt: c.createdAt, expiresAt: c.expiresAt, analyzedFrom: c.result.analyzedFrom, stepTimesFrom: c.result.stepTimesFrom || "",
     title: c.result.title, dishName: c.result.dishName || "", ingredients: c.result.ingredients, steps: c.result.steps, stepTimes: c.result.stepTimes || [], durationSeconds: c.durationSeconds ?? null,
-    droppedTimes: c.droppedTimes || 0, carriedAdminTimes: c.carriedAdminTimes || 0, aiCalls: c.aiCalls || 0, yen: c.yen ?? null, yenUnknown: !!c.yenUnknown, logs: c.logs || [] };
+    droppedTimes: c.droppedTimes || 0, suspectTimes: c.suspectTimes || [], carriedAdminTimes: c.carriedAdminTimes || 0, aiCalls: c.aiCalls || 0, yen: c.yen ?? null, yenUnknown: !!c.yenUnknown, logs: c.logs || [] };
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
     // 管理：レシピの候補を作る（保存済みのレシピは上書きしない）。mode："auto"＝説明欄＋字幕 → だめなら動画／"video"＝動画から。
@@ -302,7 +311,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         if (["chapters", "transcript"].includes(raw?.stepTimesFrom)) result.stepTimesFrom = raw.stepTimesFrom;
         const before = current.envelope.result;
         const durationSeconds = Number.isFinite(raw?.durationSeconds) ? raw.durationSeconds : null;
-        const { stepTimes, dropped } = checkCandidate(result, durationSeconds);
+        const { stepTimes, dropped, suspects } = checkCandidate(result, durationSeconds);
         result.stepTimes = stepTimes;
         if (!stepTimes.some(Number.isFinite)) delete result.stepTimesFrom;
         // 運営が直した料理名は引き継ぐ。運営が直した時刻は、文がまったく同じ手順（前にも候補にも1つだけ）の分だけ引き継ぐ（別の作業に時刻を付けない）。
@@ -317,12 +326,12 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
             if (j >= 0 && oldCount.get(step) === 1 && newCount.get(step) === 1 && Number.isFinite(t) && (durationSeconds === null || t < durationSeconds)) { result.stepTimes[i] = t; carried += 1; }
           });
           // 引き継いだ時刻で順番が逆になったら、もう一度確かめる
-          if (carried) result.stepTimes = cleanCandidateTimes(result.stepTimes, result.steps.length, durationSeconds).stepTimes;
+          if (carried) { const again = cleanCandidateTimes(result.stepTimes, result.steps.length, durationSeconds); result.stepTimes = again.stepTimes; again.suspects.forEach((i) => suspects.push(i)); }
         }
         const yen = typeof cost === "function" ? cost() : null;
         const createdAt = new Date(now()).toISOString();
         const record = { candidateId: randomUUID(), videoId: id, mode, createdAt, expiresAt: new Date(now() + CANDIDATE_TTL_MS).toISOString(),
-          base: { generation: current.generation, revision: before.catalog?.revision || "" }, result, durationSeconds, droppedTimes: dropped, carriedAdminTimes: carried, aiCalls,
+          base: { generation: current.generation, revision: before.catalog?.revision || "" }, result, durationSeconds, droppedTimes: dropped, suspectTimes: [...new Set(suspects)].sort((a, b) => a - b), carriedAdminTimes: carried, aiCalls,
           yen: Number.isFinite(yen) ? Math.round(yen * 100) / 100 : null, yenUnknown: !Number.isFinite(yen) };
         const candKey = `reread-candidate/${id}`;
         const old = await store.get(candKey);
@@ -356,21 +365,32 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (Date.parse(cand.envelope.expiresAt || 0) <= now()) throw new ApiError(410, "candidate_expired", "候補の期限（24時間）が切れました。もう一度作ってください。");
       const current = await store.get(key);
       if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
-      if (current.generation !== cand.envelope.base.generation) throw new ApiError(409, "catalog_conflict", "候補を作った後にレシピが変わりました。候補を作り直してください。");
+      // 手順・時刻の版（catalog.revision。読み直し・手順の編集・時刻の保存で変わる）が同じかで確かめる。
+      // 料理名の手直しなど手順・時刻に関わらない保存では断らず、その時点の運営の料理名を引き継ぎ直す。
       const before = current.envelope.result;
+      if (String(before.catalog?.revision || "") !== String(cand.envelope.base.revision || "")) throw new ApiError(409, "catalog_conflict", "候補を作った後に、レシピの手順か時刻が変わりました。候補を作り直してください。");
       const c = cand.envelope;
       const { stepTimes } = checkCandidate(c.result, c.durationSeconds);
       const at = new Date(now()).toISOString();
       const result = { ...structuredClone(c.result), stepTimes, rereadAt: at, adoptedFrom: { candidateId, mode: c.mode, at } };
       delete result.guide;
+      delete result.stepTimesPending;
+      if (before.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
+      // 前に戻る時刻の手前の時刻（要確認）は、確かめるまでアプリで使わない。
+      const suspects = (c.suspectTimes || []).filter((i) => Number.isFinite(result.stepTimes[i]));
+      if (suspects.length) {
+        result.stepTimesPending = result.stepTimes.map((t, i) => (suspects.includes(i) ? t : null));
+        suspects.forEach((i) => { result.stepTimes[i] = null; });
+      }
       result.catalog = { id: key, revision: randomUUID(), analyzedAt: at, model, extractorVersion: EXTRACTOR_VERSION };
       result.snippetFetchedAt = c.createdAt;
-      // 前の版（運営が直した時刻も含めて）と新しい版を、履歴に残す（説明文の原文は残さない）。
-      await store.put(`versions/${randomUUID()}`, { ...before, caption: "", channelTitle: "", replacedAt: at, replacedBy: result.catalog.revision }, { ifGeneration: 0 }).catch(() => null);
+      // 前の版（運営が直した時刻も含めて）と新しい版を、履歴に残す（説明文の原文は残さない）。残せなければ置き換えない。
+      await keepVersion(before, at, result.catalog.revision);
       if (!(await store.put(`versions/${result.catalog.revision}`, { ...result, caption: "", channelTitle: "" }, { ifGeneration: 0 }))) throw new Error("Revision collision");
       if (!(await store.put(key, { status: "ready", result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度お試しください。");
       await store.remove(candKey, { ifGeneration: cand.generation }).catch(() => {});
-      return { before: (before.steps || []).length, after: result.steps.length, analyzedFrom: result.analyzedFrom, guideRemoved: !!before.guide, times: result.stepTimes.filter(Number.isFinite).length };
+      return { before: (before.steps || []).length, after: result.steps.length, analyzedFrom: result.analyzedFrom, guideRemoved: !!before.guide, times: result.stepTimes.filter(Number.isFinite).length,
+        steps: result.steps, stepTimes: result.stepTimes, stepTimesPending: result.stepTimesPending || [], stepTimesFrom: result.stepTimesFrom || "", durationSeconds: c.durationSeconds ?? null };
     },
     // 管理：読み直しの処理段階（なければ null）。
     async rereadProgress(rawUrl) { required(); return (await store.get(`reread-progress/${extractYouTubeVideoId(rawUrl)}`))?.envelope || null; },
@@ -464,24 +484,27 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       result.stepsEditedAt = at;
       delete result.guide;
       result.catalog = { ...(before.catalog || {}), revision: randomUUID() };
-      await store.put(`versions/${randomUUID()}`, { ...before, caption: "", channelTitle: "", replacedAt: at, replacedBy: result.catalog.revision }, { ifGeneration: 0 }).catch(() => null);
+      await keepVersion(before, at, result.catalog.revision);
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。開き直してください。");
       return { steps: result.steps, stepTimes: result.stepTimes, stepTimesPending: result.stepTimesPending || [], revision: result.catalog.revision, guideRemoved: !!before.guide };
     },
-    async setStepTimes(rawUrl, stepTimes, { from = "admin" } = {}) {
+    // baseRevision：管理画面が開いた時の版（渡された時は、違えば断る）。時刻を変えたら版を新しくする（古い編集画面・候補で上書きしない）。
+    async setStepTimes(rawUrl, stepTimes, { from = "admin", baseRevision } = {}) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
       const current = await store.get(key);
       if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      if (baseRevision !== undefined && String(baseRevision || "") !== String(current.envelope.result.catalog?.revision || "")) throw new ApiError(409, "catalog_conflict", "開いた後にレシピが変わりました。開き直してください。");
       const result = structuredClone(current.envelope.result);
+      result.catalog = { ...(result.catalog || {}), revision: randomUUID() };
       const count = (result.steps || []).length;
       const raw = Array.isArray(stepTimes) ? stepTimes : [];
       result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : Math.floor(Number(t)); });
       if (from) result.stepTimesFrom = from;
-      // 運営が時刻を保存した＝要確認だった時刻も確かめた（▶ で見て保存した）。
-      delete result.stepTimesPending;
+      // 運営が時刻を保存した＝要確認だった時刻も確かめた（▶ で見て保存した）。0円の一括補正では確かめていないので残す。
+      if (from === "admin") delete result.stepTimesPending;
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
-      return { stepTimes: result.stepTimes };
+      return { stepTimes: result.stepTimes, revision: result.catalog.revision };
     },
     // 定期実行用：保存済みの結果の説明文・チャンネル名を、30日ルールに沿って取り直す（AIでの読み直しはしない）。
     async refresh(rawUrl) {

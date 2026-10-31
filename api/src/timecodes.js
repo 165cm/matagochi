@@ -118,14 +118,20 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
   // YouTubeのタイムスタンプ付き字幕から（高精度・低コスト）。実在する字幕発話と照合し、架空の補間は行わない。
   async function fromTranscript(key, videoId, list, cached, household, info) {
     if (transcriptDone(cached?.envelope, now()) || typeof matchTranscript !== "function" || typeof fetchTranscript !== "function") return null;
-    const res = await fetchTranscript(videoId).catch(() => null);
+    // 同じ動画で字幕を取れなかった印（動画ごと。手順の違う保存・複数のサーバーからでも、期限まで YouTube に聞き直さない）。
+    const missKey = `transcript-miss/${videoId}`;
+    const miss = (await store.get(missKey).catch(() => null))?.envelope;
+    const missActive = miss && (Date.parse(miss.retryAt || 0) || 0) > now();
+    const res = missActive ? { status: "not_available", reason: miss.reason } : await fetchTranscript(videoId).catch(() => null);
     // 一時エラー（429やタイムアウト等）は transcriptChecked: true を保存せず、次回再試行可能にする
     if (res?.status === "retryable_error") return null;
     const items = res?.status === "ok" && Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : null);
     if (!items || !items.length) {
       // 取れなかった理由ごとの期限つき（断られた時は1日・一覧が空の時は7日。永久の「字幕なし」にしない）。
       const reason = res?.reason === "unplayable" ? "unplayable" : "no_captions";
-      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, transcriptMatched: undefined, transcriptReason: reason, transcriptRetryAt: new Date(now() + TRANSCRIPT_RETRY_MS[reason]).toISOString() }, cached);
+      const retryAt = missActive ? miss.retryAt : new Date(now() + TRANSCRIPT_RETRY_MS[reason]).toISOString();
+      if (!missActive) await store.put(missKey, { reason, retryAt }, { ifGeneration: (await store.get(missKey).catch(() => null))?.generation ?? 0 }).catch(() => null);
+      await save(key, { ...(cached?.envelope || {}), transcriptChecked: true, transcriptMatched: undefined, transcriptReason: reason, transcriptRetryAt: retryAt }, cached);
       return null;
     }
     let done = null;
@@ -229,6 +235,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         })());
         const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && transcriptDone(entry, now()));
         if (found(entry?.stepTimes) && isFullyChecked) return answer(entry, true, dur);
+        // 管理で採用した候補に「要確認」の時刻がある間は、探し直さない（確かめ済みの時刻だけを返す。APP_MAP §52-6）。
+        if (entry?.pendingCheck) return found(entry.stepTimes) ? answer(entry, true, dur) : { stepTimes: list.map(() => null), source: entry.source || "video", cacheHit: true };
         if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         if (!transcriptDone(entry, now())) {
           info = await snippet(videoId).catch(() => null);
@@ -369,9 +377,35 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         await store.put(dayKey, { used: (quota?.envelope.used || 0) + 1 }, { ifGeneration: quota?.generation ?? 0 }).catch(() => {});
       }
       const key = keyOf(videoId, list);
-      const cached = await store.get(key);
-      await store.put(key, { stepTimes: times, source: "fix", chaptersChecked: true, ...(found(times) ? {} : { cleared: true }), by: admin ? "admin" : createHash("sha256").update(String(household)).digest("hex").slice(0, 12), at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 });
-      return { stepTimes: times, source: "fix" };
+      // 保存できたことを確かめる（重なったら読み直して3回まで。できなければ伝える）。
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cached = await store.get(key);
+        if (await store.put(key, { stepTimes: times, source: "fix", chaptersChecked: true, ...(found(times) ? {} : { cleared: true }), by: admin ? "admin" : createHash("sha256").update(String(household)).digest("hex").slice(0, 12), at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 })) return { stepTimes: times, source: "fix" };
+      }
+      throw new ApiError(409, "timecode_conflict", "手順の時刻の保存がほかの更新と重なりました。もう一度保存してください。");
+    },
+    // 管理で候補を採用した時：同じ手順の古い時刻（以前の字幕・章・動画）が、採用した時刻を上書きしないように入れ替える（APP_MAP §52-6）。
+    // 時刻が1つもなく要確認もない → 保存を消す（新しいレシピとして、作る画面でふつうに探す）。
+    // pending（要確認がある）→ 確かめ済みの時刻だけを保存し、確かめるまで探し直さない。
+    async adopt({ url, steps, stepTimes, source = "video", seenSeconds = null, pending = false }) {
+      required();
+      const videoId = extractYouTubeVideoId(url);
+      const list = normalize(steps);
+      if (list.filter(Boolean).length < 2) return { skipped: true };
+      const times = cleanTimes(stepTimes, list);
+      const key = keyOf(videoId, list);
+      const src = ["transcript", "chapters"].includes(source) ? source : "video";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cached = await store.get(key);
+        if (!found(times) && !pending) {
+          if (!cached || await store.remove(key, { ifGeneration: cached.generation })) return { removed: true };
+          continue;
+        }
+        const entry = { stepTimes: times, source: src, chaptersChecked: true, ...transcriptMarks(cached?.envelope), ...(src === "transcript" ? { transcriptChecked: true, transcriptMatched: true } : {}),
+          ...(Number.isFinite(seenSeconds) && seenSeconds > 0 ? { seenSeconds } : {}), ...(pending ? { pendingCheck: true } : {}), adopted: true };
+        if (await save(key, entry, cached)) return { saved: true };
+      }
+      throw new ApiError(409, "timecode_conflict", "手順の時刻の保存がほかの更新と重なりました。");
     }
   };
 }

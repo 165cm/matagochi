@@ -83,3 +83,19 @@ test('step times: a transcript that was fetched and matched but gave nothing is 
   await book.find(ask, 'home-retry-2');
   assert.equal(matches, 1);
 });
+
+test('review fix: a miss is remembered per video, so other step lists of the same video do not ask YouTube again until the retry time', async () => {
+  let t = Date.parse('2026-10-31T00:00:00Z'), fetches = 0;
+  const book = createTimecodeBook(createMemorySyncStore(), {
+    now: () => t, reserveBudget: async () => {}, snippet: async () => ({ durationSeconds: 300 }),
+    fetchTranscript: async () => { fetches++; return { status: 'not_available', reason: 'unplayable' }; },
+    matchTranscript: async () => ({ stepTimes: [] }), analyze: async () => ({ stepTimes: [10, 50] })
+  });
+  const url = 'https://www.youtube.com/watch?v=UsOqhEG-7hY';
+  await book.find({ url, steps: ['切る', '焼く'] }, 'home-miss-1');
+  await book.find({ url, steps: ['刻む', '炒める'] }, 'home-miss-1');
+  assert.equal(fetches, 1);
+  t += 86_400_000 + 1000;
+  await book.find({ url, steps: ['刻む', '盛る'] }, 'home-miss-1');
+  assert.equal(fetches, 2);
+});

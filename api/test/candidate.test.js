@@ -56,8 +56,10 @@ test('import (candidate): a video longer than the limit (or of unknown length) i
 });
 
 test('candidate times: outside the video or going back in order become unknown (null); nothing is interpolated', () => {
-  assert.deepEqual(cleanCandidateTimes([10, 700, 5, null, 300], 5, 675), { stepTimes: [10, null, null, null, 300], dropped: 2 });
-  assert.deepEqual(cleanCandidateTimes([], 2, null), { stepTimes: [null, null], dropped: 0 });
+  assert.deepEqual(cleanCandidateTimes([10, 700, 5, null, 300], 5, 675), { stepTimes: [10, null, null, null, 300], dropped: 2, suspects: [0] });
+  assert.deepEqual(cleanCandidateTimes([], 2, null), { stepTimes: [null, null], dropped: 0, suspects: [] });
+  // [500, 100, 200]：先頭の 500 が正しいとは限らないので「要確認」（review fix 2026-10-31）
+  assert.deepEqual(cleanCandidateTimes([500, 100, 200], 3, null), { stepTimes: [500, null, null], dropped: 2, suspects: [0] });
 });
 
 test('cost: audio input is priced separately; a reply without usage is marked so the cost is not shown as 0円', async () => {
@@ -77,10 +79,10 @@ const oldRecipe = { title: '青のりクリームパスタ', videoId: V, videoUr
   stepTimes: [5, 40, 80, 120, 200, 260, 330, 400, 900, 1200], dishName: '青のりパスタ', dishNameFrom: 'admin', guide: { steps: [{ text: 'x', from: [0] }] },
   snippetFetchedAt: new Date().toISOString(), catalog: { id: `youtube-${V}`, revision: 'r-old', analyzedAt: new Date().toISOString(), extractorVersion: 99 } };
 
-async function serve(t, { importRecipe, env = {} } = {}) {
+async function serve(t, { importRecipe, env = {}, deps = {} } = {}) {
   const store = createMemorySyncStore();
   await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
-  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token', ...env }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], importRecipe });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token', ...env }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [], importRecipe, ...deps });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
@@ -138,8 +140,14 @@ test('admin candidate adopt: refused when the recipe changed after the candidate
   await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
   const catalog = createRecipeCatalog(store, async () => structuredClone(videoAnswer), { now: () => now });
   const c = await catalog.makeCandidate(URL_, { mode: 'video' });
-  await catalog.setDishName(URL_, 'パスタ');
+  // 時刻を保存した（版が変わった）後は断る
+  await catalog.setStepTimes(URL_, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], { baseRevision: 'r-old' });
   await assert.rejects(catalog.adoptCandidate(URL_, { candidateId: c.candidateId }), { code: 'catalog_conflict' });
+  // 料理名を直しただけなら、候補を作り直さずに採用でき、直した料理名が引き継がれる（review 2026-10-31）
+  const c1 = await catalog.makeCandidate(URL_, { mode: 'video' });
+  await catalog.setDishName(URL_, 'クリームパスタ');
+  await catalog.adoptCandidate(URL_, { candidateId: c1.candidateId });
+  assert.equal((await store.get(`youtube-${V}`)).envelope.result.dishName, 'クリームパスタ');
   const c2 = await catalog.makeCandidate(URL_, { mode: 'video' });
   now += 25 * 3600_000;
   await assert.rejects(catalog.adoptCandidate(URL_, { candidateId: c2.candidateId }), { code: 'candidate_expired' });
@@ -207,11 +215,89 @@ test('admin steps edit: rows (text + time + needs-check) are saved together; nee
   assert.deepEqual(view.stepTimes, [40, null, null]);
   assert.deepEqual(view.stepTimesPending, [null, 5, null]);
   // 運営が時刻を保存したら、要確認は確定（なくなる）
-  await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: [40, 5, null] }, 'PUT');
+  await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: [40, 5, null], baseRevision: view.revision }, 'PUT');
   const after = (await store.get(`youtube-${V}`)).envelope.result;
   assert.deepEqual(after.stepTimes, [40, 5, null]);
   assert.equal(after.stepTimesPending, undefined);
   // 前の版は履歴に残っている
   const names = (await store.list('versions/', { max: 10 })).names;
   assert.ok((await Promise.all(names.map((k) => store.get(k)))).some((x) => x.envelope.catalog?.revision === 'r-old'));
+});
+
+// ── review fix（2026-10-31・Codex の再現4件） ──
+const { createHash } = await import('node:crypto');
+const tcKey = (steps) => `timecodes/${V}-${createHash('sha256').update(steps.join('\n')).digest('hex').slice(0, 16)}`;
+const quietDeps = (count) => ({
+  fetchYouTubeTranscript: async () => { count.transcript++; return { status: 'not_available', reason: 'unplayable' }; },
+  fetchYouTubeSnippet: async () => ({ title: 't', description: '', durationSeconds: 675 }),
+  analyzeStepTimes: async () => { count.video++; return { stepTimes: [] }; }
+});
+const shared = async (base, steps) => (await (await fetch(`${base}/api/import/youtube/timecodes`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-household': 'home-review-1' }, body: JSON.stringify({ url: URL_, steps, peek: true }) })).json());
+
+test('review fix P1-1: after adopting a candidate, an older transcript cache for the same steps no longer wins on the cook screen', async (t) => {
+  const count = { transcript: 0, video: 0 };
+  const { store, call, base } = await serve(t, { importRecipe: async () => structuredClone(videoAnswer), deps: quietDeps(count) });
+  await store.put(tcKey(videoAnswer.steps), { stepTimes: [10, 30, 50, 70], source: 'transcript', transcriptChecked: true, transcriptMatched: true, chaptersChecked: true }, { ifGeneration: 0 });
+  const c = (await call(`/api/admin/recipes/${V}/candidate`, { mode: 'video' })).body.candidate;
+  const ok = (await call(`/api/admin/recipes/${V}/candidate/adopt`, { candidateId: c.candidateId })).body;
+  assert.equal(ok.sharedTimes, 'ok');
+  // peek（レシピに時刻がある時の問い合わせ）：古い字幕の時刻はもう返らない（作る画面はレシピの採用した時刻を使う）
+  assert.deepEqual((await shared(base, videoAnswer.steps)).stepTimes, []);
+  const full = await (await fetch(`${base}/api/import/youtube/timecodes`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-household': 'home-review-1' }, body: JSON.stringify({ url: URL_, steps: videoAnswer.steps }) })).json();
+  assert.deepEqual(full.stepTimes, [30, 190, null, 640]);
+  assert.equal(count.video, 0);
+  assert.deepEqual((await call(`/api/admin/recipes/${V}`)).body.stepTimes, [30, 190, null, 640]);
+});
+
+test('review fix P1-1b: a time just before one that goes back is "needs check" after adopting, and is not searched or used until confirmed', async (t) => {
+  const count = { transcript: 0, video: 0 };
+  const { call, base } = await serve(t, { importRecipe: async () => ({ ...structuredClone(videoAnswer), stepTimes: [500, 100, 200, 300] }), deps: quietDeps(count) });
+  const c = (await call(`/api/admin/recipes/${V}/candidate`, { mode: 'video' })).body.candidate;
+  assert.deepEqual(c.suspectTimes, [0]);
+  const ok = (await call(`/api/admin/recipes/${V}/candidate/adopt`, { candidateId: c.candidateId })).body;
+  assert.equal(ok.pending, 1);
+  const view = (await call(`/api/admin/recipes/${V}`)).body;
+  assert.deepEqual(view.stepTimes, [null, null, null, null]);
+  assert.deepEqual(view.stepTimesPending, [500, null, null, null]);
+  const before = { ...count };
+  assert.deepEqual((await shared(base, videoAnswer.steps)).stepTimes, [null, null, null, null]);
+  assert.deepEqual(count, before, 'no subtitle fetch or video search while it waits for a check');
+});
+
+test('review fix P1-2: marking every time as "needs check" does not bring the old times back (admin view and cook screen)', async (t) => {
+  const count = { transcript: 0, video: 0 };
+  const { store, call, base } = await serve(t, { deps: quietDeps(count) });
+  const steps = ['古い手順1', '古い手順2'];
+  await store.put(tcKey(steps), { stepTimes: [10, 30], source: 'transcript', transcriptChecked: true, transcriptMatched: true, chaptersChecked: true }, { ifGeneration: 0 });
+  const saved = (await call(`/api/admin/recipes/${V}/steps`, { baseRevision: 'r-old', rows: [{ text: steps[0], time: 10, pending: true }, { text: steps[1], time: 30, pending: true }] }, 'PUT')).body;
+  assert.equal(saved.sharedTimes, 'ok');
+  const view = (await call(`/api/admin/recipes/${V}`)).body;
+  assert.deepEqual(view.stepTimes, [null, null]);
+  assert.deepEqual(view.stepTimesPending, [10, 30]);
+  assert.deepEqual((await shared(base, steps)).stepTimes, [null, null]);
+  assert.equal(count.video, 0);
+});
+
+test('review fix P1-3: an old editor cannot overwrite times saved in another tab (times change the version too)', async (t) => {
+  const { call } = await serve(t);
+  const opened = (await call(`/api/admin/recipes/${V}`)).body;
+  const other = await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], baseRevision: opened.revision }, 'PUT');
+  assert.equal(other.status, 200);
+  assert.notEqual(other.body.revision, opened.revision);
+  const stale = await call(`/api/admin/recipes/${V}/steps`, { baseRevision: opened.revision, rows: [{ text: 'a', time: 5 }, { text: 'b', time: 6 }] }, 'PUT');
+  assert.equal(stale.body.error.code, 'catalog_conflict');
+  const staleTimes = await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: [9, 9, 9, 9, 9, 9, 9, 9, 9, 9], baseRevision: opened.revision }, 'PUT');
+  assert.equal(staleTimes.body.error.code, 'catalog_conflict');
+});
+
+test('review fix P2-4: when the old version cannot be kept in history, adopting and editing stop without replacing the recipe', async () => {
+  const store = createMemorySyncStore();
+  await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
+  const catalog = createRecipeCatalog(store, async () => structuredClone(videoAnswer));
+  const c = await catalog.makeCandidate(URL_, { mode: 'video' });
+  const put = store.put.bind(store);
+  store.put = async (key, ...rest) => { if (key.startsWith('versions/')) throw new Error('storage down'); return put(key, ...rest); };
+  await assert.rejects(catalog.adoptCandidate(URL_, { candidateId: c.candidateId }), { code: 'history_failed' });
+  await assert.rejects(catalog.setSteps(URL_, { baseRevision: 'r-old', rows: [{ text: 'a' }, { text: 'b' }] }), { code: 'history_failed' });
+  assert.equal((await store.get(`youtube-${V}`)).envelope.result.steps.length, 10);
 });

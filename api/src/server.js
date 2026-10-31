@@ -596,8 +596,27 @@ export function createApp(env = process.env, deps = {}) {
   });
   app.post("/api/admin/recipes/:videoId/candidate/adopt", (req, res) => {
     const videoId = adminVideo(req, res); if (!videoId) return;
-    send(res, catalog.adoptCandidate(canonicalYouTubeUrl(videoId), { candidateId: String(req.body?.candidateId || "") }).then((r) => { trendBook.clearCache(); popularBook.clearCache(); return r; }));
+    const url = canonicalYouTubeUrl(videoId);
+    send(res, (async () => {
+      const r = await catalog.adoptCandidate(url, { candidateId: String(req.body?.candidateId || "") });
+      // 同じ手順の古い保存の時刻（以前の字幕など）が、採用した時刻を上書きしないように入れ替える。
+      let sharedTimes = "ok";
+      try {
+        await timecodeBook.adopt({ url, steps: r.steps, stepTimes: r.stepTimes, source: r.stepTimesFrom || "video", seenSeconds: String(r.analyzedFrom).startsWith("video") ? r.durationSeconds : null, pending: r.stepTimesPending.some((t) => Number.isFinite(t)) });
+      } catch (error) {
+        console.error(JSON.stringify({ event: "candidate_shared_times_failed", videoId, message: String(error?.message || "").slice(0, 200) }));
+        sharedTimes = "failed";
+      }
+      trendBook.clearCache(); popularBook.clearCache();
+      return { before: r.before, after: r.after, analyzedFrom: r.analyzedFrom, guideRemoved: r.guideRemoved, times: r.times, pending: r.stepTimesPending.filter((t) => Number.isFinite(t)).length, sharedTimes };
+    })());
   });
+  // 運営の時刻を、作る画面と同じ保存（timecodes/*）にも入れる。失敗は握りつぶさず "failed" で返す（管理画面で知らせる）。
+  async function shareFixed(url, steps, stepTimes) {
+    if ((steps || []).filter(Boolean).length < 2) return "skipped";
+    try { await timecodeBook.fix({ url, steps, stepTimes }, "", { admin: true }); return "ok"; }
+    catch (error) { console.error(JSON.stringify({ event: "admin_shared_times_failed", url, message: String(error?.message || "").slice(0, 200) })); return "failed"; }
+  }
   // 管理：手順がちょうど10個（説明欄から読んだ・まだ読み直していない）新着を、1回に max 品まで読み直す。left：残り。
   app.post("/api/admin/reread/steps10", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -717,9 +736,10 @@ export function createApp(env = process.env, deps = {}) {
       const url = canonicalYouTubeUrl(videoId);
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const saved = await catalog.setSteps(url, { rows: req.body?.rows, baseRevision: req.body?.baseRevision, durationSeconds });
-      if (saved.stepTimes.some((t) => Number.isFinite(t))) await timecodeBook.fix({ url, steps: saved.steps, stepTimes: saved.stepTimes }, "", { admin: true }).catch(() => {});
+      // 時刻が全部「要確認」・なしでも保存する（null の手順は探し直さず、古い時刻も戻らない）。
+      const sharedTimes = await shareFixed(url, saved.steps, saved.stepTimes);
       trendBook.clearCache(); popularBook.clearCache();
-      return saved;
+      return { ...saved, sharedTimes };
     })());
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {
@@ -729,12 +749,13 @@ export function createApp(env = process.env, deps = {}) {
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
     send(res, (async () => {
       const url = canonicalYouTubeUrl(videoId);
-      const saved = await catalog.setStepTimes(url, req.body?.stepTimes);
+      // 開いた時の版（baseRevision）がいる（古い画面から、別のタブの手直しを上書きしない）。
+      if (typeof req.body?.baseRevision !== "string") throw new ApiError(400, "revision_required", "画面を開き直してから保存してください。");
+      const saved = await catalog.setStepTimes(url, req.body?.stepTimes, { baseRevision: req.body.baseRevision });
       // 作る画面の「▶ 2:15」（同じ動画・同じ手順を見る全員）にも、運営が直した時刻として使う。
       const r = await catalog.peek(url);
       // すべて消した時も同じように反映する（管理の画面と作る画面を一致させる）。
-      if ((r?.steps || []).filter(Boolean).length >= 2) await timecodeBook.fix({ url, steps: r.steps, stepTimes: saved.stepTimes }, "", { admin: true }).catch(() => {});
-      return saved;
+      return { ...saved, sharedTimes: await shareFixed(url, r?.steps, saved.stepTimes) };
     })());
   });
   app.get("/api/admin/feedback", (req, res) => {
