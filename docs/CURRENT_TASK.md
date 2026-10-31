@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 作業中 | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）②工程削減時の時間・数値乖離の機械的検出③AIに見せていない範囲（clipSeconds）の時刻の無効化④キャッシュされた異常時刻（尺外）の読み出し時クランプ⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護 | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
+| レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 公開済み（#207） | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）と`rereadAt`記録②工程削減時の時間・数値乖離の機械的検出（小数対応）③AIに見せていない範囲（clipSeconds）の時刻のクランプ④キャッシュされた異常時刻（尺外）の読み出し時除外⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護と遅延上書きガード | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
 | 管理画面の文法エラー修正と構文テスト追加 | 公開済み（#206） | fix/admin-syntax-error | PR #205 の履歴 join に含まれていた実改行による構文エラーを修正。管理 HTML 内の全インラインスクリプトを検査するテストを追加し、遅延ポーリングによる完了表示の上書きも防止 | admin/catalog.html, test/admin-syntax.test.cjs, docs/CURRENT_TASK.md |
 | 管理画面の読み直しの処理段階表示（5段階：素材取得／調理ブロック整理／字幕・章と照合／品質確認／保存） | 作業中 | feat/admin-reread-progress | サーバーが保存先（`reread-progress/<id>`）に実際の段階を残し、管理画面が2秒おきに見て「3/5 字幕・章と照合中｜…｜経過42秒」と表示。AI内部の進み具合は分からないので「AI応答待ち」と出す。終了時は 完了／前の結果を残した／競合／失敗 を区別 | api/src/importRecipe.js, recipeCatalog.js, server.js, admin/catalog.html, api/test/*, docs/CURRENT_TASK.md |
 | 動画のタイミングとレシピがずれる問題の修正（架空補間の停止・管理画面の読み直し経路の統一） | 公開済み（#201。Codex は2回目のレビュー途中で上限停止＝最終 commit は未レビュー） | fix/no-fake-times-admin-reread | ①動画の長さを超える／順番が逆の時刻は「不明（null）」にし、文字数からの補間はしない（`refineStepTimes` は `interpolate:true` の時だけ補間）②管理画面「手順と時刻を自動生成」が動画由来レシピでも動く（409 をやめる）③字幕ハイブリッドで工程が減っても採用（説明欄の半分未満の時だけ拒否）④管理の「動画から探し直す」はまず字幕と照合⑤字幕結果が、動画の長さを超えた古い誤時刻のせいで拒否されない。**未対応（次のPR）**：管理画面の処理段階表示（5段階）・料理モードの独立した開始/終了位置・作業ブロックの安定ID | api/src/timecodeCheck.js, timecodes.js, recipeCatalog.js, importRecipe.js, admin/catalog.html, api/test/*, docs/CURRENT_TASK.md |
@@ -39,6 +39,8 @@
 10. 以前からの小さめ：使われ方の数字の報告（`/api/admin/usage`）／料理モードの声の操作（Android・Safari）／複数の料理の同時調理
 
 ## 最近終わったこと（新しい順）
+
+- レシピ再生成の採用判定強化と時刻検証の厳格化（#207、公開済み）：①再生成時に既存有効時刻が全損する候補の拒否（`reread_lost_timecodes`）と`rereadAt`記録、②工程削減時の時間・数値（小数含む）乖離の機械的検出、③AIが見ていない範囲（clipSeconds）の時刻クランプ、④キャッシュ内の動画尺超過時刻の除外、⑤管理画面での字幕部分成功（過半数未満）時の動画解析フォールバック、⑥料理モードでの密集時刻の架空按分停止、⑦進捗保存のタイムアウトと遅延上書き防止ガードを実装。
 
 - 説明欄の材料と字幕の段取りを統合したハイブリッド手順・タイムコード生成（#196、公開済み）：説明欄の正確な材料・分量と動画の字幕発話順・調理の段取りを組み合わせ、ざっくり要約された粗い手順（3工程以下等）を動画の実際の作業進行に沿った4〜7工程のわかりやすい手順へ自動再構成。各手順のタイムコードも字幕発話時刻から高精度に紐づけ。未完結手順の上書き防止、材料グループ記号（A・タレ等）の保持、長文手順の完全保持、字幕省略時のAI枠無駄消費防止、おすすめ（新着・人気）配信・取り込み時の字幕出所保護（`stepTimesFrom: "transcript"`）を実装。版 `20261029-hybrid-steps`（キャッシュ `ripigochi-v193`）。APP_MAP §52。
 
