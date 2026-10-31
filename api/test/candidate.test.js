@@ -56,10 +56,10 @@ test('import (candidate): a video longer than the limit (or of unknown length) i
 });
 
 test('candidate times: outside the video or going back in order become unknown (null); nothing is interpolated', () => {
-  assert.deepEqual(cleanCandidateTimes([10, 700, 5, null, 300], 5, 675), { stepTimes: [10, null, null, null, 300], dropped: 2, suspects: [0] });
-  assert.deepEqual(cleanCandidateTimes([], 2, null), { stepTimes: [null, null], dropped: 0, suspects: [] });
+  assert.deepEqual(cleanCandidateTimes([10, 700, 5, null, 300], 5, 675), { stepTimes: [10, null, null, null, 300], dropped: 2, suspects: [0], duplicates: [] });
+  assert.deepEqual(cleanCandidateTimes([], 2, null), { stepTimes: [null, null], dropped: 0, suspects: [], duplicates: [] });
   // [500, 100, 200]：先頭の 500 が正しいとは限らないので「要確認」（review fix 2026-10-31）
-  assert.deepEqual(cleanCandidateTimes([500, 100, 200], 3, null), { stepTimes: [500, null, null], dropped: 2, suspects: [0] });
+  assert.deepEqual(cleanCandidateTimes([500, 100, 200], 3, null), { stepTimes: [500, null, null], dropped: 2, suspects: [0], duplicates: [] });
 });
 
 test('cost: audio input is priced separately; a reply without usage is marked so the cost is not shown as 0円', async () => {
@@ -389,4 +389,64 @@ test('review fix 4 P1: when every current time is waiting for a check, the cook-
   await store.put(tcKey(steps), { stepTimes: [null, null], source: 'video', pendingCheck: true, chaptersChecked: true }, { ifGeneration: (await store.get(tcKey(steps))).generation });
   assert.equal((await shared(base, steps)).cleared, true);
   assert.deepEqual(count, { transcript: 0, video: 0 });
+});
+
+// ── おおまかな章で時刻が重なる（2026-10-31・oWLCye3SXu4。Gemini・Codex で原因を確認） ──
+test('candidate times: the same time as the step before is needs-check (all same, a gap in between, at the end)', () => {
+  assert.deepEqual(cleanCandidateTimes([16, 16, 121, 159, 159], 5, 400), { stepTimes: [16, 16, 121, 159, 159], dropped: 0, suspects: [1, 4], duplicates: [1, 4] });
+  assert.deepEqual(cleanCandidateTimes([10, 10, 10], 3, null).duplicates, [1, 2]);
+  assert.deepEqual(cleanCandidateTimes([10, null, 10, 20], 4, null).duplicates, [2]);
+  assert.deepEqual(cleanCandidateTimes([10, 20, 20], 3, null).duplicates, [2]);
+});
+
+const chapterDesc = `${onlyIngredients.description}\n0:00 はじめに\n0:16 鶏・野菜下ごしらえ\n2:01 鶏肉火入れ\n2:39 野菜火入れ\n3:48 ソース作り\n5:27 鶏を再熱・仕上げ`;
+const sixSteps = ['鶏むね肉を開く', '玉ねぎを刻む', '鶏肉を焼く', '玉ねぎを炒める', 'マッシュルームを炒める', 'ソースを作る'];
+
+test('coarse chapters (oWLCye3SXu4): candidate shows where the times came from, duplicates are needs-check and stay unused after adopting', async () => {
+  const store = createMemorySyncStore();
+  await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
+  const deps = { fetchYouTubeSnippet: async () => ({ ...onlyIngredients, description: chapterDesc }),
+    analyzeRecipeDescription: async () => ({ title: '鶏むね肉のマッシュルームソース', ingredients: [{ name: '鶏むね肉', amount: '1枚' }], steps: sixSteps }),
+    fetchYouTubeTranscript: async () => ({ status: 'not_available', reason: 'unplayable' }),
+    matchStepsToChapters: async () => ({ chapterIndex: [2, 2, 3, 4, 4, 5] }) };
+  const catalog = createRecipeCatalog(store, (url, o) => importYouTubeRecipe(url, deps, o));
+  const c = await catalog.makeCandidate(URL_, { mode: 'auto' });
+  assert.equal(c.timesFrom, 'chapters');
+  assert.deepEqual(c.stepTimes, [16, 16, 121, 159, 159, 228]);
+  assert.deepEqual(c.duplicateTimes, [1, 4]);
+  await catalog.adoptCandidate(URL_, { candidateId: c.candidateId });
+  const saved = (await store.get(`youtube-${V}`)).envelope.result;
+  assert.deepEqual(saved.stepTimes, [16, null, 121, 159, null, 228]);
+  assert.deepEqual(saved.stepTimesPending, [null, 16, null, null, 159, null]);
+});
+
+test('problem A: times found in the video are not overwritten by coarse chapters; precise chapters still win', async () => {
+  const run = (chapterIndex) => importYouTubeRecipe(URL_, {
+    fetchYouTubeSnippet: async () => ({ ...onlyIngredients, description: chapterDesc }),
+    analyzeRecipeDescription: describe,
+    analyzeRecipeVideo: async () => ({ ...fromVideo, steps: sixSteps.slice(0, 4), stepTimes: [20, 65, 125, 170] }),
+    matchStepsToChapters: async () => ({ chapterIndex })
+  }, { forceVideo: true });
+  const coarse = await run([2, 2, 3, 4]);
+  assert.deepEqual(coarse.stepTimes, [20, 65, 125, 170]);
+  assert.equal(coarse.stepTimesFrom, undefined);
+  // 1手順に1つの章（重ならない）なら、これまでどおり投稿者の章の時刻を使う
+  const precise = await run([2, 3, 4, 5]);
+  assert.deepEqual(precise.stepTimes, [16, 121, 159, 228]);
+  assert.equal(precise.stepTimesFrom, 'chapters');
+});
+
+test('Codex review #210: a duplicate that the carried admin times resolve is not left as needs-check', async () => {
+  const store = createMemorySyncStore();
+  const steps = ['切る', '焼く', '盛る'];
+  await store.put(`youtube-${V}`, { status: 'ready', result: { ...oldRecipe, steps, stepTimes: [10, 20, 30], stepTimesFrom: 'admin' } }, { ifGeneration: 0 });
+  const catalog = createRecipeCatalog(store, async () => ({ ...structuredClone(videoAnswer), steps, stepTimes: [10, 10, 30] }));
+  const c = await catalog.makeCandidate(URL_, { mode: 'video' });
+  assert.deepEqual(c.stepTimes, [10, 20, 30]);
+  assert.deepEqual(c.duplicateTimes, []);
+  assert.deepEqual(c.suspectTimes, []);
+  await catalog.adoptCandidate(URL_, { candidateId: c.candidateId });
+  const saved = (await store.get(`youtube-${V}`)).envelope.result;
+  assert.deepEqual(saved.stepTimes, [10, 20, 30]);
+  assert.equal(saved.stepTimesPending, undefined);
 });

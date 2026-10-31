@@ -1051,6 +1051,7 @@
     const cVideo = el("button", "🎬 動画から候補を作る（約5〜10円）", "quiet small"); cVideo.type = "button";
     // 作る画面と同じ保存（timecodes）に入れられなかった時の知らせ（握りつぶさない）。
     const SHARED_FAIL = "（作る画面の ▶ の時刻は更新できませんでした。「時刻を保存」をもう一度押してください）";
+    const TFROM = { chapters: "説明欄の章", transcript: "字幕", video: "動画", description: "説明欄" };
     const FROMC = { video: "動画（最後まで）", "video-clip": "動画（途中まで）", "description+transcript": "説明欄＋字幕", description: "説明欄" };
     const progressText = (p, started) => {
       const secs = Math.floor((Date.now() - started) / 1000);
@@ -1097,18 +1098,24 @@
       const oldTimes = (r.stepTimes || []).filter((t) => Number.isFinite(t) && (!r.durationSeconds || t < r.durationSeconds)).length;
       const box = el("div", undefined, "warnbox"); box.style.background = "transparent";
       box.append(el("b", "🧩 候補（まだ保存していません）"));
-      box.append(el("p", [`読んだ元：${FROMC[c.analyzedFrom] || c.analyzedFrom}`, `手順 ${(r.steps || []).length} → ${c.steps.length}`, `有効な時刻 ${oldTimes} → ${times}個`,
+      const dups = c.duplicateTimes || [];
+      box.append(el("p", [`読んだ元：${FROMC[c.analyzedFrom] || c.analyzedFrom}`, c.timesFrom ? `時刻：${TFROM[c.timesFrom] || c.timesFrom}から` : "", `手順 ${(r.steps || []).length} → ${c.steps.length}`, `有効な時刻 ${oldTimes} → ${times}個`,
+        dups.length ? `前と同じ時刻の手順 ${dups.length}個は「要確認」（${c.timesFrom === "chapters" ? "章がおおまか" : "同じ時刻"}。採用しても、確かめるまでアプリでは使いません）` : "",
         c.droppedTimes ? `動画の外・順番が逆の${c.droppedTimes}個は「不明」にしました` : "", c.carriedAdminTimes ? `運営が直した時刻を${c.carriedAdminTimes}個引き継ぎ（同じ文の手順だけ）` : "",
-        (c.suspectTimes || []).length ? `前に戻る時刻の手前の${c.suspectTimes.length}個は「要確認」（採用しても、確かめるまでアプリでは使いません）` : "",
+        (c.suspectTimes || []).filter((i) => !dups.includes(i)).length ? `前に戻る時刻の手前の${c.suspectTimes.filter((i) => !dups.includes(i)).length}個は「要確認」（採用しても、確かめるまでアプリでは使いません）` : "",
         `材料 ${(c.ingredients || []).length}`, `費用 ${c.yenUnknown ? "不明（AI の返事に使用量がない）" : `約${c.yen}円`}・AI ${c.aiCalls}回`, `期限 ${new Date(c.expiresAt).toLocaleString("ja-JP")}`].filter(Boolean).join("・"), "meta"));
       if (r.guide) box.append(el("p", "採用すると、覚えやすい手順（書き直し）は外れます（あとで書き直し直せます）。", "meta"));
+      // 時刻が重なる時は、動画から作ると手順ごとの時刻になる（費用がかかるので、自動では読まない）。
+      if (dups.length && !String(c.analyzedFrom).startsWith("video")) box.append(el("p", "💡 時刻が重なっています。「🎬 動画から候補を作る」（約5〜10円）で、手順ごとの時刻にできます（おおまかな章では上書きしません）。", "meta"));
       const ol = el("ol", undefined, "steps");
       c.steps.forEach((step, i) => {
         const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
         const right = el("div"); right.append(el("div", step));
         const t = c.stepTimes?.[i];
         const tools = el("div", undefined, "tools");
-        tools.append(el("span", Number.isFinite(t) ? `${sec(t)}${(c.suspectTimes || []).includes(i) ? "（要確認）" : ""}` : "時刻なし", "meta"));
+        // 同じ時刻の組の最初は「章の目安」（章の始まりで、その手順の始まりとは限らない）。2番目以降は要確認。
+        const groupHead = c.timesFrom === "chapters" && Number.isFinite(t) && !dups.includes(i) && dups.some((j) => c.stepTimes[j] === t);
+        tools.append(el("span", Number.isFinite(t) ? `${sec(t)}${(c.suspectTimes || []).includes(i) ? "（要確認）" : groupHead ? "（章の目安）" : ""}` : "時刻なし", "meta"));
         if (Number.isFinite(t)) { const play = el("button", "▶", "quiet small"); play.type = "button"; play.setAttribute("aria-label", `候補の手順${i + 1}の時刻から再生`); play.addEventListener("click", () => { if (player?.seekTo) { player.seekTo(t, true); player.playVideo?.(); } }); tools.append(play); }
         right.append(tools); li.append(right); ol.append(li);
       });
