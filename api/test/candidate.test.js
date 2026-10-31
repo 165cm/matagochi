@@ -301,3 +301,43 @@ test('review fix P2-4: when the old version cannot be kept in history, adopting 
   await assert.rejects(catalog.setSteps(URL_, { baseRevision: 'r-old', rows: [{ text: 'a' }, { text: 'b' }] }), { code: 'history_failed' });
   assert.equal((await store.get(`youtube-${V}`)).envelope.result.steps.length, 10);
 });
+
+// ── review fix 2（2026-10-31・Codex の再現3件） ──
+test('review fix 2 P1-2: an earlier save that finishes late does not write its old times over a later save', async (t) => {
+  const { store, call } = await serve(t, { deps: quietDeps({ transcript: 0, video: 0 }) });
+  let release, armed = false;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const get = store.get.bind(store);
+  store.get = async (key, ...rest) => { if (armed && key.startsWith('timecodes/')) { armed = false; await gate; } return get(key, ...rest); };
+  const opened = (await call(`/api/admin/recipes/${V}`)).body;
+  armed = true; // 次の時刻の保存（A の書き込み）だけを止める
+  const timesA = [20, 40, 80, 120, 200, 260, 330, 400, 500, 600], timesB = [30, 60, 90, 130, 210, 270, 340, 410, 510, 610];
+  const a = call(`/api/admin/recipes/${V}/step-times`, { stepTimes: timesA, baseRevision: opened.revision }, 'PUT');
+  await new Promise((r) => setTimeout(r, 30));
+  const mid = (await call(`/api/admin/recipes/${V}`)).body;
+  const b = await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: timesB, baseRevision: mid.revision }, 'PUT');
+  assert.equal(b.body.sharedTimes, 'ok');
+  release();
+  assert.equal((await a).body.sharedTimes, 'superseded');
+  assert.deepEqual((await call(`/api/admin/recipes/${V}`)).body.stepTimes, timesB);
+  assert.deepEqual((await store.get(tcKey(oldRecipe.steps))).envelope.stepTimes, timesB);
+});
+
+test('review fix 2 P1-2b: shared times written for an older recipe version are not shown in the admin view', async (t) => {
+  const { store, call } = await serve(t);
+  await store.put(tcKey(oldRecipe.steps), { stepTimes: oldRecipe.steps.map(() => 99), source: 'fix', recipeRevision: 'r-stale' }, { ifGeneration: 0 });
+  assert.deepEqual((await call(`/api/admin/recipes/${V}`)).body.stepTimes, oldRecipe.stepTimes);
+});
+
+test('review fix 2 P2-3: on the real import path, a time that goes back still marks the one before it as needs-check', async () => {
+  const store = createMemorySyncStore();
+  await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
+  const deps = { fetchYouTubeSnippet: async () => onlyIngredients, analyzeRecipeDescription: describe,
+    fetchYouTubeTranscript: async () => ({ status: 'not_available', reason: 'unplayable' }),
+    analyzeRecipeVideo: async () => ({ ...fromVideo, stepTimes: [10, 30, 20, 40] }) };
+  const catalog = createRecipeCatalog(store, (url, o) => importYouTubeRecipe(url, deps, o));
+  const c = await catalog.makeCandidate(URL_, { mode: 'auto' });
+  assert.deepEqual(c.stepTimes, [10, 30, null, 40]);
+  assert.deepEqual(c.suspectTimes, [1]);
+  assert.equal(c.droppedTimes, 1);
+});

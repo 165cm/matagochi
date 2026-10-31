@@ -449,8 +449,11 @@ export function createApp(env = process.env, deps = {}) {
   const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "transcript" ? "transcript" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
   // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・YouTube字幕・説明欄の章（timecodes/* の fix・cleared・transcript・chapters）
   // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
+  // 管理の保存が書いた時刻（recipeRevision つき）は、そのレシピの版のものだけ使う（古い版の時刻を出さない）。
+  const stillCurrent = (url, revision) => async () => String((await catalog.peek(url).catch(() => null))?.catalog?.revision || "") === String(revision);
   async function timesOf(url, r) {
-    const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
+    let st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
+    if (st?.recipeRevision && st.recipeRevision !== (r.catalog?.revision || "")) st = null;
     if (st && (st.cleared || ["fix", "transcript", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
     if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
     return { times: st?.stepTimes || [], source: st?.source || "", ...(st?.seenSeconds ? { seenSeconds: st.seenSeconds } : {}) };
@@ -602,7 +605,8 @@ export function createApp(env = process.env, deps = {}) {
       // 同じ手順の古い保存の時刻（以前の字幕など）が、採用した時刻を上書きしないように入れ替える。
       let sharedTimes = "ok";
       try {
-        await timecodeBook.adopt({ url, steps: r.steps, stepTimes: r.stepTimes, source: r.stepTimesFrom || "video", seenSeconds: String(r.analyzedFrom).startsWith("video") ? r.durationSeconds : null, pending: r.stepTimesPending.some((t) => Number.isFinite(t)) });
+        await timecodeBook.adopt({ url, steps: r.steps, stepTimes: r.stepTimes, source: r.stepTimesFrom || "video", seenSeconds: String(r.analyzedFrom).startsWith("video") ? r.durationSeconds : null, pending: r.stepTimesPending.some((t) => Number.isFinite(t)),
+          recipeRevision: r.revision, guard: stillCurrent(url, r.revision) });
       } catch (error) {
         console.error(JSON.stringify({ event: "candidate_shared_times_failed", videoId, message: String(error?.message || "").slice(0, 200) }));
         sharedTimes = "failed";
@@ -612,9 +616,10 @@ export function createApp(env = process.env, deps = {}) {
     })());
   });
   // 運営の時刻を、作る画面と同じ保存（timecodes/*）にも入れる。失敗は握りつぶさず "failed" で返す（管理画面で知らせる）。
-  async function shareFixed(url, steps, stepTimes) {
+  // revision：いま保存したレシピの版。後から別の保存が入って版が変わっていたら、古い時刻を書かない（"superseded"）。
+  async function shareFixed(url, steps, stepTimes, revision = "") {
     if ((steps || []).filter(Boolean).length < 2) return "skipped";
-    try { await timecodeBook.fix({ url, steps, stepTimes }, "", { admin: true }); return "ok"; }
+    try { const x = await timecodeBook.fix({ url, steps, stepTimes }, "", { admin: true, recipeRevision: revision, guard: revision ? stillCurrent(url, revision) : null }); return x.superseded ? "superseded" : "ok"; }
     catch (error) { console.error(JSON.stringify({ event: "admin_shared_times_failed", url, message: String(error?.message || "").slice(0, 200) })); return "failed"; }
   }
   // 管理：手順がちょうど10個（説明欄から読んだ・まだ読み直していない）新着を、1回に max 品まで読み直す。left：残り。
@@ -737,7 +742,7 @@ export function createApp(env = process.env, deps = {}) {
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const saved = await catalog.setSteps(url, { rows: req.body?.rows, baseRevision: req.body?.baseRevision, durationSeconds });
       // 時刻が全部「要確認」・なしでも保存する（null の手順は探し直さず、古い時刻も戻らない）。
-      const sharedTimes = await shareFixed(url, saved.steps, saved.stepTimes);
+      const sharedTimes = await shareFixed(url, saved.steps, saved.stepTimes, saved.revision);
       trendBook.clearCache(); popularBook.clearCache();
       return { ...saved, sharedTimes };
     })());
@@ -755,7 +760,7 @@ export function createApp(env = process.env, deps = {}) {
       // 作る画面の「▶ 2:15」（同じ動画・同じ手順を見る全員）にも、運営が直した時刻として使う。
       const r = await catalog.peek(url);
       // すべて消した時も同じように反映する（管理の画面と作る画面を一致させる）。
-      return { ...saved, sharedTimes: await shareFixed(url, r?.steps, saved.stepTimes) };
+      return { ...saved, sharedTimes: await shareFixed(url, r?.steps, saved.stepTimes, saved.revision) };
     })());
   });
   app.get("/api/admin/feedback", (req, res) => {

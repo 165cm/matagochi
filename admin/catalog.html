@@ -1283,8 +1283,9 @@
       try {
         // 開いた時の版を送る（別のタブの手直しを上書きしない）。保存したら版を受け取り直す。
         const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/step-times`, { stepTimes: times, baseRevision: r.revision || "" }, "PUT");
-        if (x.revision) r.revision = x.revision;
-        note.textContent = x.sharedTimes === "failed" ? `保存しました${SHARED_FAIL}` : "✓ 保存しました（新着・作る画面の ▶ に使われます）";
+        // 保存した時刻・版・要確認の状態で開き直す（このあと手順の文を直す時に、古い時刻を送らない）。
+        note.textContent = x.sharedTimes === "failed" ? `保存しました${SHARED_FAIL}` : "✓ 保存しました（新着・作る画面の ▶ に使われます）。開き直します…";
+        setTimeout(() => openRecipe(videoId), x.sharedTimes === "failed" ? 4000 : 600);
       }
       catch (error) { note.textContent = error.message; }
       finally { save.disabled = false; }

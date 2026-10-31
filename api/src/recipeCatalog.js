@@ -302,6 +302,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       };
       try {
         await gate();
+        // videoFullOnly：最後まで見られる動画だけ読む。時刻も補正せずに渡してもらう（下の checkCandidate で検査を一本にする）。
         const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, reread: true, forceVideo: mode === "video", videoIfNeeded: mode === "auto", videoFullOnly: true,
           videoMaxSeconds: candidateMaxSeconds, reserveVideo: spendCandidateVideo, onProgress: tracker.update });
         tracker.update({ stage: 4, detail: "手順・時刻・材料を確認中" });
@@ -390,7 +391,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!(await store.put(key, { status: "ready", result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度お試しください。");
       await store.remove(candKey, { ifGeneration: cand.generation }).catch(() => {});
       return { before: (before.steps || []).length, after: result.steps.length, analyzedFrom: result.analyzedFrom, guideRemoved: !!before.guide, times: result.stepTimes.filter(Number.isFinite).length,
-        steps: result.steps, stepTimes: result.stepTimes, stepTimesPending: result.stepTimesPending || [], stepTimesFrom: result.stepTimesFrom || "", durationSeconds: c.durationSeconds ?? null };
+        steps: result.steps, stepTimes: result.stepTimes, stepTimesPending: result.stepTimesPending || [], stepTimesFrom: result.stepTimesFrom || "", durationSeconds: c.durationSeconds ?? null, revision: result.catalog.revision };
     },
     // 管理：読み直しの処理段階（なければ null）。
     async rereadProgress(rawUrl) { required(); return (await store.get(`reread-progress/${extractYouTubeVideoId(rawUrl)}`))?.envelope || null; },

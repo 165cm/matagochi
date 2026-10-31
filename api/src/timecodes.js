@@ -332,7 +332,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       const list = normalize(steps);
       if (list.filter(Boolean).length < 2) return null;
       const entry = (await store.get(keyOf(extractYouTubeVideoId(url), list)))?.envelope;
-      return entry ? { stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
+      return entry ? { ...(entry.recipeRevision ? { recipeRevision: entry.recipeRevision } : {}), stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
     },
     // すでに保存済みの時刻（AI・章）を0円で補正して保存し直す（だれかが直した時刻 fix や消した時刻 cleared は触らない）。
     async repair({ url, steps, stepTimes, source = "video", durationSeconds = null, fillGaps = true, allowEmpty = false }) {
@@ -361,7 +361,9 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       return { stepTimes: refined, source: effectiveSource };
     },
     // だれかが直した時刻を保存して、同じ動画・同じ手順を見る全員で使う（最後に直したものが使われる）。
-    async fix({ url, steps, stepTimes }, household = "", { admin = false } = {}) {
+    // 運営の保存（管理画面）：recipeRevision＝この時刻を保存したレシピの版。guard()：書き込む直前に「その版がまだ最新か」を確かめる
+    // （先に始まった保存が遅れて、後の保存の時刻を古い時刻で上書きしない。キャッシュを読んだ後・書く前に確かめ、世代つきで書く）。
+    async fix({ url, steps, stepTimes }, household = "", { admin = false, recipeRevision = "", guard = null } = {}) {
       required();
       const videoId = extractYouTubeVideoId(url);
       const list = normalize(steps);
@@ -380,14 +382,15 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       // 保存できたことを確かめる（重なったら読み直して3回まで。できなければ伝える）。
       for (let attempt = 0; attempt < 3; attempt++) {
         const cached = await store.get(key);
-        if (await store.put(key, { stepTimes: times, source: "fix", chaptersChecked: true, ...(found(times) ? {} : { cleared: true }), by: admin ? "admin" : createHash("sha256").update(String(household)).digest("hex").slice(0, 12), at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 })) return { stepTimes: times, source: "fix" };
+        if (guard && !(await guard())) return { stepTimes: times, source: "fix", superseded: true };
+        if (await store.put(key, { stepTimes: times, source: "fix", chaptersChecked: true, ...(found(times) ? {} : { cleared: true }), ...(recipeRevision ? { recipeRevision } : {}), by: admin ? "admin" : createHash("sha256").update(String(household)).digest("hex").slice(0, 12), at: new Date(now()).toISOString() }, { ifGeneration: cached?.generation ?? 0 })) return { stepTimes: times, source: "fix" };
       }
       throw new ApiError(409, "timecode_conflict", "手順の時刻の保存がほかの更新と重なりました。もう一度保存してください。");
     },
     // 管理で候補を採用した時：同じ手順の古い時刻（以前の字幕・章・動画）が、採用した時刻を上書きしないように入れ替える（APP_MAP §52-6）。
     // 時刻が1つもなく要確認もない → 保存を消す（新しいレシピとして、作る画面でふつうに探す）。
     // pending（要確認がある）→ 確かめ済みの時刻だけを保存し、確かめるまで探し直さない。
-    async adopt({ url, steps, stepTimes, source = "video", seenSeconds = null, pending = false }) {
+    async adopt({ url, steps, stepTimes, source = "video", seenSeconds = null, pending = false, recipeRevision = "", guard = null }) {
       required();
       const videoId = extractYouTubeVideoId(url);
       const list = normalize(steps);
@@ -397,12 +400,13 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       const src = ["transcript", "chapters"].includes(source) ? source : "video";
       for (let attempt = 0; attempt < 3; attempt++) {
         const cached = await store.get(key);
+        if (guard && !(await guard())) return { superseded: true };
         if (!found(times) && !pending) {
           if (!cached || await store.remove(key, { ifGeneration: cached.generation })) return { removed: true };
           continue;
         }
         const entry = { stepTimes: times, source: src, chaptersChecked: true, ...transcriptMarks(cached?.envelope), ...(src === "transcript" ? { transcriptChecked: true, transcriptMatched: true } : {}),
-          ...(Number.isFinite(seenSeconds) && seenSeconds > 0 ? { seenSeconds } : {}), ...(pending ? { pendingCheck: true } : {}), adopted: true };
+          ...(Number.isFinite(seenSeconds) && seenSeconds > 0 ? { seenSeconds } : {}), ...(pending ? { pendingCheck: true } : {}), ...(recipeRevision ? { recipeRevision } : {}), adopted: true };
         if (await save(key, entry, cached)) return { saved: true };
       }
       throw new ApiError(409, "timecode_conflict", "手順の時刻の保存がほかの更新と重なりました。");
