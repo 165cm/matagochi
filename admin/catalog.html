@@ -1012,8 +1012,12 @@
     const candBox = el("div");
     const rebuild = el("button", "🔄 手順と時刻を作り直す（約1〜2円）", "small"); rebuild.type = "button";
     let videoLeft = null;
+    // 貼った字幕は、作り直しに失敗しても次の貼り付け欄に残す（もう一度 YouTube からコピーしなくてよい）。
+    let lastPasted = "";
+    // 処理中に押せなくするボタン：いつもあるもの＋いま出ている候補の枠のもの（枠を作り直すたびに入れ替える）。
     const busyButtons = new Set([rebuild]);
-    const setBusy = (on) => busyButtons.forEach((b) => { b.disabled = on || b.dataset.off === "1"; });
+    let panelButtons = new Set();
+    const setBusy = (on) => [...busyButtons, ...panelButtons].forEach((b) => { b.disabled = on || b.dataset.off === "1"; });
     const progressText = (p, started) => {
       const secs = Math.floor((Date.now() - started) / 1000);
       return p && p.status === "running" ? `${p.stage}/${p.total} ${p.label}中｜${p.detail || ""}｜経過${secs}秒` : `1/5 素材を取得中｜リクエスト送信｜経過${secs}秒`;
@@ -1032,7 +1036,7 @@
     };
     // mode："basic"（作り直すの1段目）／"transcript"（貼り付けた字幕）／"video"（動画）。保存済みのレシピは、候補を保存するまで変わらない。
     const makeCandidate = async (mode, extra = {}) => {
-      setBusy(true); candBox.textContent = "";
+      setBusy(true); candBox.textContent = ""; panelButtons = new Set();
       const started = Date.now();
       const w = watch(started);
       try {
@@ -1062,24 +1066,26 @@
       const paste = el("button", "📋 字幕を貼り付けて作り直す（約1円）", "quiet small"); paste.type = "button";
       const video = el("button", `🎬 動画で作り直す（約5〜10円${Number.isFinite(videoLeft) ? `・今日はあと${videoLeft}回` : ""}）`, "quiet small"); video.type = "button";
       if (videoLeft === 0) { video.dataset.off = "1"; video.disabled = true; }
-      busyButtons.add(paste); busyButtons.add(video);
+      panelButtons.add(paste); panelButtons.add(video);
       row.append(paste);
       if (lastMode !== "video") row.append(video);
       const area = el("div"); area.hidden = true; area.style.cssText = "display:grid;gap:6px";
       const how = el("p", "パソコンの YouTube でこの動画を開き、説明欄の下の「文字起こしを表示」を押します。右に出た文字起こしを最初から最後まで選んでコピーし、ここに貼り付けてください（時刻の行ごと）。字幕のない動画では使えません。", "meta");
-      const ta = el("textarea"); ta.id = `transcript-${videoId}`; ta.rows = 6; ta.placeholder = "0:16\n鶏むね肉を開いていきます\n0:21\n…"; ta.setAttribute("aria-label", "貼り付ける字幕"); ta.style.cssText = "width:100%;font:inherit;padding:8px;box-sizing:border-box";
-      const go = el("button", "この字幕で作り直す", "small"); go.type = "button"; busyButtons.add(go);
+      const ta = el("textarea"); ta.id = `transcript-${videoId}`; ta.rows = 6; ta.value = lastPasted; ta.placeholder = "0:16\n鶏むね肉を開いていきます\n0:21\n…"; ta.setAttribute("aria-label", "貼り付ける字幕"); ta.style.cssText = "width:100%;font:inherit;padding:8px;box-sizing:border-box";
+      const go = el("button", "この字幕で作り直す", "small"); go.type = "button"; panelButtons.add(go);
       const yt = el("a", "YouTube で開く"); yt.href = r.videoUrl; yt.target = "_blank"; yt.rel = "noopener";
       const goRow = el("div", undefined, "row"); goRow.append(go, yt);
       area.append(how, ta, goRow);
+      // 前に貼った字幕がある時は、貼り付け欄を開いておく。
+      if (lastPasted) area.hidden = false;
       paste.addEventListener("click", () => { area.hidden = !area.hidden; if (!area.hidden) ta.focus(); });
-      go.addEventListener("click", () => { if (!ta.value.trim()) { ta.focus(); return; } makeCandidate("transcript", { transcript: ta.value }); });
+      go.addEventListener("click", () => { if (!ta.value.trim()) { ta.focus(); return; } lastPasted = ta.value; makeCandidate("transcript", { transcript: ta.value }); });
       video.addEventListener("click", () => makeCandidate("video"));
       wrap.append(row, area);
       return wrap;
     }
     function renderCandidate(c) {
-      candBox.textContent = "";
+      candBox.textContent = ""; panelButtons = new Set();
       if (!c) return;
       const times = (c.stepTimes || []).filter((t) => Number.isFinite(t)).length;
       const oldTimes = (r.stepTimes || []).filter((t) => Number.isFinite(t) && (!r.durationSeconds || t < r.durationSeconds)).length;
@@ -1122,7 +1128,12 @@
         try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate/adopt`, { candidateId: c.candidateId }); an.textContent = `✓ 手順 ${x.before} → ${x.after} に保存しました${x.guideRemoved ? "（書き直しは外しました）" : ""}${x.pending ? `・要確認の時刻 ${x.pending}個` : ""}${x.sharedTimes === "failed" ? SHARED_FAIL : ""}。開き直します…`; setTimeout(() => openRecipe(videoId), x.sharedTimes === "failed" ? 4000 : 600); }
         catch (error) { an.textContent = error.message; adopt.disabled = false; }
       });
-      drop.addEventListener("click", () => { candBox.textContent = ""; candNote.textContent = "候補は保存していません（いまのレシピのままです）。"; });
+      // やめる：候補を捨てる（開き直しても出ない）。いまのレシピはそのまま。
+      drop.addEventListener("click", async () => {
+        drop.disabled = true;
+        try { await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate/discard`, { candidateId: c.candidateId }); candBox.textContent = ""; candNote.textContent = "候補を捨てました（いまのレシピのままです）。"; }
+        catch (error) { an.textContent = error.message; drop.disabled = false; }
+      });
       row.append(adopt, drop, an); box.append(row);
       candBox.append(box);
     }

@@ -369,6 +369,15 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         await store.remove(lock.key, { ifGeneration: lock.generation }).catch(() => {});
       }
     },
+    // 管理：候補を捨てる（「やめる」。開き直しても出ない）。見ている候補（candidateId）が作り直されていたら捨てない。
+    async discardCandidate(rawUrl, { candidateId } = {}) {
+      required();
+      const candKey = `reread-candidate/${extractYouTubeVideoId(rawUrl)}`;
+      const cand = await store.get(candKey);
+      if (!cand) return { discarded: false };
+      if (!candidateId || cand.envelope.candidateId !== candidateId) throw new ApiError(409, "candidate_changed", "見ている候補は作り直されました。開き直してください。");
+      return { discarded: !!(await store.remove(candKey, { ifGeneration: cand.generation })) };
+    },
     // 管理：今日、動画から候補を作れる残りの回数。
     async candidateVideoLeft() {
       required();

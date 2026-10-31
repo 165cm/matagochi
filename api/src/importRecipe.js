@@ -5,7 +5,7 @@ import { canonicalYouTubeUrl, extractYouTubeVideoId, fetchYouTubeSnippet } from 
 import { parseChapters, timesFromChapterIndexes, parseTimeValue } from "./chapters.js";
 import { refineStepTimes } from "./timecodeCheck.js";
 import { detectServings } from "./servings.js";
-import { formatTranscriptForPrompt } from "./transcript.js";
+import { formatTranscriptForPrompt, formatTime } from "./transcript.js";
 
 const DEFAULT_CATEGORY = "その他";
 const NUTRITION = /kcal|キロカロリー|カロリー|糖質|たんぱく質|タンパク質|脂質|炭水化物|食物繊維|塩分|PFC|1人前あたり|1人分あたり/i;
@@ -127,11 +127,15 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   }
   if (shouldTryHybrid) {
     progress(1, pasted ? "貼り付けた字幕を使います" : "字幕を取得中");
+    // 貼り付けた字幕が動画の長さより30秒以上先まで続く時は、別の動画の字幕とみなして止める（AI は呼ばない）。
+    if (pasted && duration && pasted[pasted.length - 1].start > duration + 30) throw new ApiError(422, "transcript_mismatch", `貼り付けた字幕が動画の長さ（${Math.floor(duration / 60)}分${duration % 60}秒）より長く続いています。別の動画の字幕ではないか確かめてください。`);
     const transcriptRes = pasted ? { status: "ok", items: pasted } : await deps.fetchYouTubeTranscript(videoId).catch(() => null);
     const items = transcriptRes?.status === "ok" && Array.isArray(transcriptRes?.items) ? transcriptRes.items : (Array.isArray(transcriptRes) ? transcriptRes : null);
-    progress(1, items && items.length ? `字幕を取得しました（${items.length}行）` : `字幕を取得できませんでした（${transcriptRes?.status || "応答なし"}${transcriptRes?.reason || transcriptRes?.error ? `：${transcriptRes.reason || transcriptRes.error}` : ""}）。説明欄だけで続けます`);
+    progress(1, items && items.length ? `字幕を${pasted ? "読み取りました" : "取得しました"}（${items.length}行）` : `字幕を取得できませんでした（${transcriptRes?.status || "応答なし"}${transcriptRes?.reason || transcriptRes?.error ? `：${transcriptRes.reason || transcriptRes.error}` : ""}）。説明欄だけで続けます`);
     if (items && items.length) {
-      const { text, cues, truncated } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800 });
+      // 貼り付けた字幕は、運営がわざわざ用意したものなので長めまで AI に見せる（30分の動画の字幕が入る長さ。AI の費用はおよそ1〜2円増えるだけ）。
+      const { text, cues, truncated } = formatTranscriptForPrompt(items, { maxSeconds: duration || 1800, ...(pasted ? { maxChars: 60000 } : {}) });
+      if (truncated) progress(1, `字幕が長いため、最初の ${formatTime(cues[cues.length - 1]?.start || 0)} までを使います`);
       // 字幕が文字数や動画尺上限で途中で切れており、かつ説明欄に元の手順がない場合（rawSteps.length < 2）、
       // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
       const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;

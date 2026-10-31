@@ -603,6 +603,10 @@ export function createApp(env = process.env, deps = {}) {
     send(res, usage.run(collector, () => catalog.makeCandidate(canonicalYouTubeUrl(videoId), { mode, cost, transcriptItems }))
       .then(async (candidate) => ({ candidate, videoLeft: await catalog.candidateVideoLeft().catch(() => null) })));
   });
+  app.post("/api/admin/recipes/:videoId/candidate/discard", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    send(res, catalog.discardCandidate(canonicalYouTubeUrl(videoId), { candidateId: String(req.body?.candidateId || "") }));
+  });
   app.post("/api/admin/recipes/:videoId/candidate/adopt", (req, res) => {
     const videoId = adminVideo(req, res); if (!videoId) return;
     const url = canonicalYouTubeUrl(videoId);

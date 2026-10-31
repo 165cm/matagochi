@@ -514,3 +514,41 @@ test('server: pasted subtitles (larger than the usual 64KB) are accepted, and th
   assert.equal(r.body.videoLeft, 3);
   assert.equal((await call(`/api/admin/recipes/${V}/candidate`)).body.videoLeft, 3);
 });
+
+// ── Claude のコードレビュー（PR #211）の指摘への対応 ──
+test('review #211: spoken-time label lines ("16秒", "42 seconds") are dropped, but a number-only utterance ("150") is kept', () => {
+  assert.deepEqual(parseTranscriptText('0:16\n16秒\n鶏むね肉を開きます\n0:42\n42 seconds\n150\n1:02\n1分2秒\n焼きます').map((x) => [x.start, x.text]), [[16, '鶏むね肉を開きます'], [42, '150'], [62, '焼きます']]);
+});
+
+test('review #211: subtitles from another video (running past the video length) are refused before any AI call; the log says they were read, not fetched', async () => {
+  const count = { fetch: 0, hybrid: 0, video: 0 };
+  const deps = pastedDeps({ steps: ['a', 'b'], stepTimes: [10, 100], stepsComplete: true }, count);
+  const long = parseTranscriptText('0:10\nパスタをゆでます\n5:00\nソース\n9:00\n和えます');
+  await assert.rejects(importYouTubeRecipe(URL_, deps, { transcriptItems: long }), { code: 'transcript_mismatch' });
+  assert.equal(count.hybrid, 0);
+  const logs = [];
+  await importYouTubeRecipe(URL_, deps, { transcriptItems: pasted, onProgress: (p) => logs.push(p.detail) });
+  assert.ok(logs.some((x) => /字幕を読み取りました（4行）/.test(x)), logs.join(' | '));
+});
+
+test('review #211: pasted subtitles are shown to the AI up to 60,000 characters, and a cut is reported', async () => {
+  const seen = [];
+  const lines = Array.from({ length: 1500 }, (_, i) => `${Math.floor(i / 6)}:${String((i % 6) * 10).padStart(2, '0')}\n鶏むね肉をこんがりと焼いていきますね、ここで火を少し弱めます`).join('\n');
+  const items = parseTranscriptText(lines);
+  const logs = [];
+  await importYouTubeRecipe(URL_, { ...pastedDeps(null, { fetch: 0, hybrid: 0, video: 0 }), fetchYouTubeSnippet: async () => ({ ...onlyIngredients, durationSeconds: 15100 }),
+    analyzeRecipeDescription: async () => ({ title: '鶏むね', ingredients: [{ name: '鶏むね肉', amount: '1枚' }], steps: ['焼く', '盛る'] }),
+    buildHybridRecipeSteps: async (a) => { seen.push(a.formattedTranscript.length); return null; } }, { transcriptItems: items, onProgress: (p) => logs.push(p.detail) });
+  assert.ok(seen[0] > 24000, `shown ${seen[0]} chars`);
+  assert.ok(seen[0] <= 60000);
+  assert.ok(logs.some((x) => /字幕が長いため、最初の/.test(x)), logs.join(' | '));
+});
+
+test('review #211: "やめる" really discards the candidate (it does not come back), but not one that was rebuilt meanwhile', async (t) => {
+  const { call } = await serve(t, { importRecipe: async () => structuredClone(videoAnswer) });
+  const a = (await call(`/api/admin/recipes/${V}/candidate`, { mode: 'video' })).body.candidate;
+  const b = (await call(`/api/admin/recipes/${V}/candidate`, { mode: 'video' })).body.candidate;
+  assert.equal((await call(`/api/admin/recipes/${V}/candidate/discard`, { candidateId: a.candidateId })).body.error.code, 'candidate_changed');
+  assert.deepEqual((await call(`/api/admin/recipes/${V}/candidate/discard`, { candidateId: b.candidateId })).body, { discarded: true });
+  assert.equal((await call(`/api/admin/recipes/${V}/candidate`)).body.candidate, null);
+});

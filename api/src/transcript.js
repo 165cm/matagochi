@@ -291,12 +291,15 @@ function parseTimeStringToSeconds(val) {
 // 本番のサーバーからは字幕を取れないことがあるので、管理画面から貼れるようにする。読める形：
 // 「0:16」の行の次に文の行／「0:16 文」の1行／SRT・VTT（00:00:16,000 --> 00:00:18,000）。時刻のない行は前の発話の続きとして読む。
 const PASTED_TIME = /^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?(?:\s*-->\s*\S+)?\s*(.*)$/;
+// YouTube の文字起こしをコピーすると、時刻の下に読み上げ用の「16秒」「1分2秒」「16 seconds」の行が入ることがある（話の中身ではないので外す）。
+const SPOKEN_TIME = /^(?:\d+\s*(?:時間|分|秒)\s*)+$|^(?:\d+\s*(?:hours?|minutes?|seconds?)[,\s]*)+$/i;
 export function parseTranscriptText(text = "", { maxChars = 400_000, maxCues = 5000 } = {}) {
   const lines = String(text || "").slice(0, maxChars).replace(/\r/g, "").split("\n").map((s) => s.trim()).filter(Boolean);
   const cues = [];
   let cur = null;
-  for (const line of lines) {
-    if (/^\d+$/.test(line) || /^WEBVTT/i.test(line)) continue; // SRT の番号・VTT の見出し
+  for (const [i, line] of lines.entries()) {
+    // SRT の番号（次の行が「-->」の時刻だけ。数字だけの発話「150」は残す）・VTT の見出し・読み上げ用の時刻の行。
+    if ((/^\d+$/.test(line) && /-->/.test(lines[i + 1] || "")) || /^WEBVTT/i.test(line) || SPOKEN_TIME.test(line)) continue;
     const m = line.match(PASTED_TIME);
     if (m) {
       const start = Math.round(((Number(m[1] || 0) * 3600) + Number(m[2]) * 60 + Number(m[3]) + (m[4] ? Number(`0.${m[4]}`) : 0)) * 10) / 10;
