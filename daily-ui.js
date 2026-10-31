@@ -1079,6 +1079,8 @@ function renderCooking() {
   const slot = state.mealSlots?.[cookingDate];
   const recipe = slot?.recipe || day?.candidate?.recipe;
   ensureTimecodes(recipe);
+  // 献立の枠の写しも、運営が直した最新の版にする（APP_MAP §52-9）。
+  if (slot?.recipe) ensureLatest(slot.recipe);
   if (!recipe)
     return `<section class="panel"><h2>料理を選び直してください</h2>${dailyButton("go-view", "献立へ戻る", 'data-view="plan"')}</section>`;
   const servings = slot?.servings || dailyProfile().servings;
@@ -1091,6 +1093,7 @@ function renderCooking() {
   ${Lifestyle.traits(recipe).staple === "other" ? `<div class="cooking-staple-alert"><span class="csa-icon" aria-hidden="true">🍚</span><div class="csa-text"><strong>ごはん（主食）の準備はOKですか？</strong><p class="small muted">おかずがメインの献立です。炊飯のセットや主食の用意をお忘れなく！</p></div></div>` : ""}
   ${slot?.side ? `<div class="cooking-side-box"><b>🥢 今日の添え物：${escapeHtml(slot.side)}</b><p class="small muted">${escapeHtml(Lifestyle.sideOf(slot.side)?.desc || "")}</p></div>` : ""}
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
+  ${slot?.recipe ? renderSourceNote(slot.recipe, !isViewer(), cookingDate) : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
   <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${cook.ingredients}
   ${cook.steps}
@@ -1894,7 +1897,7 @@ function handleDailyAction(action, data) {
   if (action === "life-video-close") { closeVideoDock(); return true; }
   if (action.startsWith("life-time-") && handleTimeFixAction(action, data)) return true;
   if (action === "life-reread") { withDailyLimit(() => rereadRecipe(data.recipe)); return true; }
-  if (action === "life-source-apply") { if (applySourcePending(data.recipe)) { showToast("新しい作り方にしました"); render(); } return true; }
+  if (action === "life-source-apply") { if (applySourcePending(data.recipe, data.date || "")) { showToast("新しい作り方にしました"); render(); } return true; }
   if (action === "life-fill-video") { withDailyLimit(() => fillRecipeFromVideo(data.recipe)); return true; }
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
@@ -2847,9 +2850,10 @@ function renderRecipeDetail() {
   </section>`;
 }
 // 運営が作り方を直した時の知らせ（APP_MAP §52-9）：入れ替えた時は7日だけ小さく。使う人が直していた時は「新しい作り方にする」。
-function renderSourceNote(r, canEdit) {
+// date：作る画面（献立の枠の写し）から出す時の、その日。
+function renderSourceNote(r, canEdit, date = "") {
   if (!r) return "";
-  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : "いまの作り方は、あなたが直したものなので、そのままにしています。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}">新しい作り方にする</button></div>`;
+  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : "いまの作り方は、あなたが直したものなので、そのままにしています。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>新しい作り方にする</button></div>`;
   const at = Date.parse(r.sourceUpdatedAt || "");
   if (Number.isFinite(at) && Date.now() - at < 7 * 86_400_000) return `<p class="source-note muted small" role="note">📝 作り方が新しくなりました（${escapeHtml(formatDate(new Date(at).toISOString().slice(0, 10)))}）</p>`;
   return "";
