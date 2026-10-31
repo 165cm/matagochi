@@ -54,3 +54,15 @@ test('the new-arrivals list carries the recipe version, and a change saved on on
   assert.equal(after.revision, saved.body.revision);
   assert.notEqual(after.revision, 'r1');
 });
+
+test('latest recipes say when the admin last changed the recipe (newest of adopt / step edit / time save / reread / analysis)', async (t) => {
+  const store = await world();
+  const cur = await store.get(`youtube-${V}`);
+  await store.put(`youtube-${V}`, { ...cur.envelope, result: { ...cur.envelope.result, catalog: { ...recipe.catalog, analyzedAt: '2026-10-01T00:00:00Z' }, adoptedFrom: { at: '2026-10-31T11:20:00Z' }, rereadAt: '2026-10-20T00:00:00Z' } }, { ifGeneration: cur.generation });
+  const call = await serveOn(t, store);
+  assert.equal((await call('/api/recipes/latest', { videoIds: [V] })).body.items[V].changedAt, '2026-10-31T11:20:00.000Z');
+  // 時刻を保存すると、その日時になる
+  const opened = (await call(`/api/admin/recipes/${V}`)).body;
+  await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: [16, 48, 120], baseRevision: opened.revision }, 'PUT');
+  assert.ok(Date.parse((await call('/api/recipes/latest', { videoIds: [V] })).body.items[V].changedAt) > Date.parse('2026-10-31T11:20:00Z'));
+});

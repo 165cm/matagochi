@@ -214,7 +214,7 @@ const ingredientsPrint = (list) => (list || []).map((i) => `${i?.name || ""}|${i
 // これからの献立（作る前）の枠。枠は、その時のレシピの写しを自分で持っている（作る画面・料理モード・買い物はこちらを見る）。
 // 保存したレシピとはレシピの番号で結ばれていないことがあるので、動画で見つける（2026-10-31・作る画面だけ古いままだった）。
 const videoOfRecipe = (r) => youtubeVideoId(r?.videoUrl);
-const upcomingSlots = () => Object.values(state.mealSlots || {}).filter((sl) => sl?.recipe && sl.date >= today() && !["cooked", "off"].includes(sl.status) && sourceKind(sl.recipe) && videoOfRecipe(sl.recipe));
+const upcomingSlots = () => Object.values(state.mealSlots || {}).filter((sl) => sl?.recipe && sl.date >= today() && !["cooked", "off"].includes(sl.status) && videoOfRecipe(sl.recipe));
 const upcomingSlotsOf = (vid) => upcomingSlots().filter((sl) => videoOfRecipe(sl.recipe) === vid);
 function latestFields(item) {
   const steps = (item.steps || []).map((x) => String(x || "").trim()).filter(Boolean);
@@ -237,18 +237,21 @@ function applyLatest(r, revision, fresh) {
 // 1つの写し（保存したレシピ、または献立の枠の写し）を、最新の版に合わせる。変わったら true。
 // slot：献立の枠（決めた献立で材料が変わる時は、買い物リストが黙って変わらないよう、自動では入れ替えずボタンにする）。
 function updateCopy(r, item, slot = null) {
+  const kind = sourceKind(r);
+  // 目印（新着・定番の写し／取り込みの版）のないレシピ：運営が直したのが、このレシピを最後に変えた後の時だけ、ボタンを出す（自動では入れ替えない。2026-10-31：取り込み後に目印が外れていた料理）。
+  if (!kind && !r.sourceRevision && !((Date.parse(item.changedAt || "") || 0) > (Date.parse(r.updatedAt || r.savedAt || "") || 0))) return false;
   const known = r.sourceRevision || r.catalog?.revision || "";
   if (known === item.revision) {
     // 指紋のない以前の写しで、もう最新の時：いまの中身を基準として覚えるだけ（知らせは出さない）。
-    if (!r.sourcePrint && (slot || sourceKind(r) === "copy")) { r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); return true; }
+    if (!r.sourcePrint && kind === "copy") { r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); return true; }
     return false;
   }
   const fresh = latestFields(item);
   if (fresh.steps.length < 2) return false;
   // 中身が同じなら、版だけ覚える（知らせない）。
   if (sourcePrint({ ...r, ...fresh }) === sourcePrint(r)) { r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); if (r.catalog?.id) r.catalog = { ...r.catalog, revision: item.revision }; delete r.sourcePending; return true; }
-  // 取り込みで作ったレシピ（とその献立の枠の写し）は、使う人が直したかもしれないのでボタンにする。
-  const edited = sourceKind(r) === "import" || (!!r.sourcePrint && sourcePrint(r) !== r.sourcePrint);
+  // 新着・定番の写し以外（取り込み・目印のないレシピ）は、使う人が直したかもしれないのでボタンにする。
+  const edited = kind !== "copy" || (!!r.sourcePrint && sourcePrint(r) !== r.sourcePrint);
   const planned = !!slot && slot.status === "confirmed" && ingredientsPrint(fresh.ingredients) !== ingredientsPrint(r.ingredients);
   if (!edited && !planned) { applyLatest(r, item.revision, fresh); if (slot) slot.updatedAt = nowIso(); return true; }
   if (r.sourcePending?.revision === item.revision) return false;
@@ -264,7 +267,7 @@ async function refreshSavedRecipes({ videos = null, force = false } = {}) {
   if (!API_BASE_URL || (typeof isViewer === "function" && isViewer()) || cookingNow()) return false;
   if (!videos && !force) { try { if (Date.now() - Number(localStorage.getItem(LATEST_KEY) || 0) < LATEST_EVERY_MS) return false; } catch {} }
   const copies = [
-    ...state.recipes.filter((r) => sourceKind(r) && videoOfRecipe(r)).map((r) => ({ r, slot: null })),
+    ...state.recipes.filter((r) => videoOfRecipe(r)).map((r) => ({ r, slot: null })),
     ...upcomingSlots().map((sl) => ({ r: sl.recipe, slot: sl })),
   ].filter((x) => !videos || videos.includes(videoOfRecipe(x.r)));
   const ids = [...new Set(copies.map((x) => videoOfRecipe(x.r)))];
@@ -298,8 +301,7 @@ async function refreshSavedRecipes({ videos = null, force = false } = {}) {
 // レシピ・作る画面を開いた時：その動画だけ、10分に1回まで最新を確かめる。
 function ensureLatest(r) {
   const vid = videoOfRecipe(r);
-  // 新着・定番の写しと取り込みのレシピだけ（使う人のレシピは聞かない）。
-  if (!vid || !sourceKind(r)) return;
+  if (!vid) return;
   const last = latestAsked.get(vid) || 0;
   if (Date.now() - last < 10 * 60_000) return;
   latestAsked.set(vid, Date.now());
