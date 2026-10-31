@@ -12,9 +12,14 @@ export const liteMode = () => store.getStore()?.lite === true;
 export function recordUsage(model, response) {
   const c = store.getStore();
   const m = response?.usageMetadata;
-  if (!c || !m) return;
+  if (!c) return;
+  // 使用量のない返事は、費用を0円とみなさない印を残す（管理の候補づくりで「費用不明」と出す）。
+  if (!m) { c.unmetered = (c.unmetered || 0) + 1; return; }
   c.calls = (c.calls || 0) + 1;
   c.input = (c.input || 0) + (Number(m.promptTokenCount) || 0);
+  // 動画の音声は、文字・映像より入力の単価が高い（種類ごとの数があれば、音声の分を分けて数える）。
+  const audio = (Array.isArray(m.promptTokensDetails) ? m.promptTokensDetails : []).filter((d) => String(d?.modality || "").toUpperCase() === "AUDIO").reduce((n, d) => n + (Number(d.tokenCount) || 0), 0);
+  if (audio) c.audioInput = (c.audioInput || 0) + audio;
   c.output = (c.output || 0) + (Number(m.candidatesTokenCount) || 0) + (Number(m.thoughtsTokenCount) || 0);
   c.model = String(model || c.model || "");
 }
@@ -22,6 +27,9 @@ export function recordUsage(model, response) {
 export function usageYen(c, env = process.env) {
   const inPrice = Number(env.GEMINI_PRICE_IN_USD_PER_M) > 0 ? Number(env.GEMINI_PRICE_IN_USD_PER_M) : 0.3;
   const outPrice = Number(env.GEMINI_PRICE_OUT_USD_PER_M) > 0 ? Number(env.GEMINI_PRICE_OUT_USD_PER_M) : 2.5;
+  // 音声の入力の単価（既定：gemini-2.5-flash の公開料金 $1.00／100万トークン）。
+  const audioPrice = Number(env.GEMINI_PRICE_AUDIO_IN_USD_PER_M) > 0 ? Number(env.GEMINI_PRICE_AUDIO_IN_USD_PER_M) : 1.0;
   const rate = Number(env.USD_JPY) > 0 ? Number(env.USD_JPY) : 160;
-  return (((c?.input || 0) * inPrice + (c?.output || 0) * outPrice) / 1_000_000) * rate;
+  const audio = Math.min(c?.audioInput || 0, c?.input || 0);
+  return ((((c?.input || 0) - audio) * inPrice + audio * audioPrice + (c?.output || 0) * outPrice) / 1_000_000) * rate;
 }

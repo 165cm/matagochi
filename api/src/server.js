@@ -47,10 +47,12 @@ export function createApp(env = process.env, deps = {}) {
       matchStepsToChapters: env.GOOGLE_CLOUD_PROJECT ? (steps, chapters) => matchStepsToChapters(steps, chapters, env) : undefined,
       fetchYouTubeTranscript: deps.fetchYouTubeTranscript || ((id) => fetchYouTubeTranscript(id)),
       buildHybridRecipeSteps: env.GOOGLE_CLOUD_PROJECT || env.GEMINI_API_KEY ? (args) => buildHybridRecipeSteps(args, env) : undefined
-    }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
+    // 管理の候補づくりは、動画を最後まで見る（videoMaxSeconds を渡す）。ふだんの読み取りは VIDEO_MAX_SECONDS まで。
+    }, { ...options, videoMaxSeconds: Number(options.videoMaxSeconds) > 0 ? Number(options.videoMaxSeconds) : Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
       enabled: env.AI_IMPORT_ENABLED !== "false",
       tickets,
+      candidateMaxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), candidateVideoPerDay: Number(env.CANDIDATE_VIDEO_PER_DAY || 10),
       refreshSnippet: async (videoId) => { const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env); return { caption: buildCaption(snippet), channelTitle: snippet.channelTitle }; },
       // 定期の後片付け：保存済みの動画が、いまも公開されているかをまとめて確かめる（50本で1回）。
       checkVideos: async (ids) => Object.fromEntries(Object.entries(await (deps.fetchYouTubeStatuses || fetchYouTubeStatuses)(ids, env)).map(([id, v]) => [id, v.status === "public" ? { status: "public", caption: buildCaption(v.snippet), channelTitle: v.snippet.channelTitle } : { status: v.status }])) });
@@ -571,6 +573,30 @@ export function createApp(env = process.env, deps = {}) {
     const videoId = String(req.params.videoId || "");
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
     send(res, catalog.rereadProgress(canonicalYouTubeUrl(videoId)).then((progress) => ({ progress })));
+  });
+  // 管理：レシピの候補（作る → 見比べる → 採用。APP_MAP §52-6）。作るだけでは保存済みのレシピは変わらない。
+  const adminVideo = (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) { res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } }); return null; }
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) { res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } }); return null; }
+    return videoId;
+  };
+  app.get("/api/admin/recipes/:videoId/candidate", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    send(res, catalog.candidate(canonicalYouTubeUrl(videoId)).then((candidate) => ({ candidate })));
+  });
+  app.post("/api/admin/recipes/:videoId/candidate", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    const mode = req.body?.mode === "video" ? "video" : "auto";
+    const collector = {};
+    // 費用は、AI の返事の使用量から（音声は音声の単価）。使用量のない返事があれば「不明」（0円にしない）。
+    const cost = () => (collector.unmetered ? null : usageYen(collector, env));
+    send(res, usage.run(collector, () => catalog.makeCandidate(canonicalYouTubeUrl(videoId), { mode, cost })).then((candidate) => ({ candidate })));
+  });
+  app.post("/api/admin/recipes/:videoId/candidate/adopt", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    send(res, catalog.adoptCandidate(canonicalYouTubeUrl(videoId), { candidateId: String(req.body?.candidateId || "") }).then((r) => { trendBook.clearCache(); popularBook.clearCache(); return r; }));
   });
   // 管理：手順がちょうど10個（説明欄から読んだ・まだ読み直していない）新着を、1回に max 品まで読み直す。left：残り。
   app.post("/api/admin/reread/steps10", (req, res) => {
