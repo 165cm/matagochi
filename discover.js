@@ -53,7 +53,7 @@ async function loadDiscover({ force = false } = {}) {
 function discoverRecipe(item, kind) {
   const ingredients = normalizeImportedIngredients(item.ingredients || []);
   const steps = (item.steps || []).map((s) => String(s || "").trim()).filter(Boolean);
-  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), ...(item.stepTimesFrom ? { stepTimesFrom: item.stepTimesFrom } : {}), ...(recipeGuide({ steps, guide: item.guide, guideOf: item.guideOf }) ? { guide: item.guide, guideOf: item.guideOf } : {}), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", ...(/^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(item.channelThumb || "") ? { channelThumb: item.channelThumb } : {}), ...(typeof item.catch === "string" && item.catch ? { catch: item.catch.slice(0, 40) } : {}), sourceServings: item.sourceServings ?? null, ...(item.embeddable === false ? { embeddable: false } : {}), mealType: "dinner", tags: item.tags || [], ...(typeof item.dish?.name === "string" && item.dish.name ? { dish: item.dish.name.slice(0, 20) } : {}), curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
+  const recipe = { id: `${kind}-${item.videoId}`, title: item.title, ...(item.revision ? { sourceRevision: item.revision } : {}), ingredients, steps, stepTimes: stepTimesFor(steps, item.stepTimes), ...(item.stepTimesFrom ? { stepTimesFrom: item.stepTimesFrom } : {}), ...(recipeGuide({ steps, guide: item.guide, guideOf: item.guideOf }) ? { guide: item.guide, guideOf: item.guideOf } : {}), videoUrl: item.videoUrl, thumbnailUrl: item.thumbnailUrl, author: item.channelTitle || "", channelId: item.channelId || "", ...(/^https:\/\/yt\d\.(ggpht|googleusercontent)\.com\//.test(item.channelThumb || "") ? { channelThumb: item.channelThumb } : {}), ...(typeof item.catch === "string" && item.catch ? { catch: item.catch.slice(0, 40) } : {}), sourceServings: item.sourceServings ?? null, ...(item.embeddable === false ? { embeddable: false } : {}), mealType: "dinner", tags: item.tags || [], ...(typeof item.dish?.name === "string" && item.dish.name ? { dish: item.dish.name.slice(0, 20) } : {}), curated: true, discover: { kind, week: item.week || "", expiresAt: item.expiresAt || "" } };
   recipe.planning = aiPlanning(item.planning, { ingredients, steps }) || Lifestyle.suggestPlanning({ ingredients, steps });
   return recipe;
 }
@@ -190,6 +190,80 @@ function recipeGuide(recipe) {
     if (g) return g;
   }
   return null;
+}
+// ----- 端末に保存したレシピを、運営が直した最新の版にする（2026-10-31 のユーザーの判断。APP_MAP §52-9） -----
+// 献立に入れた・保存した新着・みんなの定番は、その時の写し（starterId が trend-/pop-）。運営があとで手順・時刻・材料を直したら：
+// ・使う人が直していない（受け取った時の指紋 sourcePrint と同じ）→ 自動で入れ替えて「📝 作り方が新しくなりました」
+// ・使う人が直した／取り込みで作ったレシピ（catalog.id）→ 入れ替えず、レシピの画面に「新しい作り方にする」を出す（sourcePending）
+// ・指紋のない以前の写しは、直していないとみなして入れ替える（ユーザーの判断 A）。メモ・評価・作った記録はそのまま。
+const LATEST_KEY = "ripigochi-latest-at";
+const LATEST_EVERY_MS = 6 * 3600_000;
+const latestAsked = new Map(); // レシピを開いた時の問い合わせ（同じレシピは10分に1回）
+function sourcePrint(r) {
+  return stepsKey([...(r?.steps || []), "\u0001", ...(r?.stepTimes || []).map((t) => (Number.isFinite(t) ? String(t) : "")), "\u0001", ...(r?.ingredients || []).map((i) => `${i?.name || ""}|${i?.amount || ""}`)]);
+}
+const sourceKind = (r) => (/^(trend|pop)-/.test(String(r?.starterId || "")) ? "copy" : r?.catalog?.id ? "import" : "");
+function latestFields(item) {
+  const steps = (item.steps || []).map((x) => String(x || "").trim()).filter(Boolean);
+  const fresh = { steps, stepTimes: stepTimesFor(steps, item.stepTimes), ingredients: normalizeImportedIngredients(item.ingredients || []), sourceServings: item.sourceServings ?? null };
+  if (item.stepTimesFrom) fresh.stepTimesFrom = item.stepTimesFrom;
+  if (Array.isArray(item.guide) && typeof item.guideOf === "string") Object.assign(fresh, { guide: item.guide, guideOf: item.guideOf });
+  return fresh;
+}
+function applyLatest(r, revision, fresh) {
+  for (const k of ["stepTimesFrom", "guide", "guideOf"]) delete r[k];
+  Object.assign(r, fresh, { sourceRevision: revision, sourceUpdatedAt: nowIso(), updatedAt: nowIso() });
+  if (r.catalog?.id) r.catalog = { ...r.catalog, revision };
+  r.sourcePrint = sourcePrint(r);
+  delete r.sourcePending;
+}
+// 料理モードで作っている最中は入れ替えない（手順の番号がずれる）。
+const cookingNow = () => { const el = typeof document !== "undefined" ? document.getElementById?.("cook-mode") : null; return !!el && !el.hidden && !el.classList?.contains("is-closed"); };
+async function refreshSavedRecipes({ ids = null, force = false } = {}) {
+  if (!API_BASE_URL || (typeof isViewer === "function" && isViewer()) || cookingNow()) return false;
+  if (!ids && !force) { try { if (Date.now() - Number(localStorage.getItem(LATEST_KEY) || 0) < LATEST_EVERY_MS) return false; } catch {} }
+  const targets = state.recipes.filter((r) => sourceKind(r) && youtubeVideoId(r.videoUrl) && (!ids || ids.includes(r.id))).slice(0, 50);
+  if (!targets.length) return false;
+  if (!ids) { try { localStorage.setItem(LATEST_KEY, String(Date.now())); } catch {} }
+  const data = await fetchWithTimeout(`${API_BASE_URL}/api/recipes/latest`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ videoIds: targets.map((r) => youtubeVideoId(r.videoUrl)) }) }, 15_000).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+  if (!data?.items || cookingNow()) return false;
+  let changed = false;
+  for (const r of targets) {
+    const item = data.items[youtubeVideoId(r.videoUrl)];
+    if (!item?.revision) continue;
+    const known = r.sourceRevision || r.catalog?.revision || "";
+    if (known === item.revision) {
+      // 指紋のない以前の写しで、もう最新の時：いまの中身を基準として覚えるだけ（知らせは出さない）。
+      if (!r.sourcePrint && sourceKind(r) === "copy") { r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); changed = true; }
+      continue;
+    }
+    const fresh = latestFields(item);
+    if (fresh.steps.length < 2) continue;
+    // 中身が同じなら、版だけ覚える（知らせない）。
+    if (sourcePrint({ ...r, ...fresh }) === sourcePrint(r)) { r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); if (r.catalog?.id) r.catalog = { ...r.catalog, revision: item.revision }; delete r.sourcePending; changed = true; continue; }
+    const edited = sourceKind(r) === "import" || (!!r.sourcePrint && sourcePrint(r) !== r.sourcePrint);
+    if (!edited) { applyLatest(r, item.revision, fresh); changed = true; }
+    else if (r.sourcePending?.revision !== item.revision) { r.sourcePending = { revision: item.revision, ...fresh }; changed = true; }
+  }
+  if (changed) { saveState(); if (["recipe", "plan", "collection", "today"].includes(state.view)) render(); }
+  return changed;
+}
+// レシピを開いた時：そのレシピだけ、10分に1回まで最新を確かめる。
+function ensureLatest(r) {
+  if (!r || !sourceKind(r)) return;
+  const last = latestAsked.get(r.id) || 0;
+  if (Date.now() - last < 10 * 60_000) return;
+  latestAsked.set(r.id, Date.now());
+  refreshSavedRecipes({ ids: [r.id] });
+}
+// 「新しい作り方にする」（使う人が直していた・取り込みで作ったレシピ）。
+function applySourcePending(id) {
+  const r = state.recipes.find((x) => x.id === id);
+  if (!r?.sourcePending) return false;
+  const { revision, ...fresh } = r.sourcePending;
+  applyLatest(r, revision, fresh);
+  saveState();
+  return true;
 }
 // 手順ごとの動画の時刻は、手順の数と合う時だけ使う。
 function stepTimesFor(steps, times) {

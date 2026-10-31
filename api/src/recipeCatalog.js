@@ -292,6 +292,9 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     droppedTimes: c.droppedTimes || 0, suspectTimes: c.suspectTimes || [], duplicateTimes: c.duplicateTimes || [], timesFrom: c.timesFrom || "", carriedAdminTimes: c.carriedAdminTimes || 0, aiCalls: c.aiCalls || 0, yen: c.yen ?? null, yenUnknown: !!c.yenUnknown, logs: c.logs || [] };
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
+    // 運営がレシピを変えた時刻（複数のサーバーで一覧の作り置きを捨てるため。APP_MAP §52-9）。保存先がない時は 0。
+    async markChanged() { if (!store) return; const cur = await store.get("catalog-changed").catch(() => null); await store.put("catalog-changed", { at: new Date(now()).toISOString() }, { ifGeneration: cur?.generation ?? 0 }).catch(() => null); },
+    async changedAt() { if (!store) return 0; return Date.parse((await store.get("catalog-changed").catch(() => null))?.envelope?.at || 0) || 0; },
     // 管理：レシピの候補を作る（保存済みのレシピは上書きしない）。mode：
     // "basic"＝説明欄＋字幕＋章（動画は読まない。管理画面の「作り直す」の1段目）／"auto"＝説明欄＋字幕 → だめなら動画／
     // "video"＝動画から／"transcript"＝運営が貼り付けた字幕（transcriptItems）で作る。
