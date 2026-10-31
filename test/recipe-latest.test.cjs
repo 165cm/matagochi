@@ -186,3 +186,30 @@ test("review #213: a failed check is retried only once", async () => {
   assert.equal(run("__n"), 2);
   assert.equal(run("__timers.length"), 0, "no endless retries");
 });
+
+// ── Claude のコードレビュー（PR #214）の指摘への対応 ──
+test("review #214: an unmarked recipe with no dates, or one the admin changed earlier, only remembers the version; a later admin change still gets the button even if the recipe was touched meanwhile", async () => {
+  let latest = { [V]: { ...newer, changedAt: "2026-10-01T00:00:00Z" } };
+  const { run } = app(() => latest);
+  run(`state.recipes.push({ id: "r-nodate", title: "日付なし", videoUrl: "${item.videoUrl}", ingredients: [], steps: ["自分1", "自分2"], stepTimes: [] })`);
+  run(`state.recipes.push({ id: "r-later", title: "あとで保存", videoUrl: "${item.videoUrl}", updatedAt: "2026-10-20T00:00:00Z", ingredients: [], steps: ["自分1", "自分2"], stepTimes: [] })`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-nodate').sourcePending"), undefined, "no date: no false button");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-later').sourcePending"), undefined, "admin changed before the user saved it");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-later').sourceRevision"), "r2", "the version is remembered");
+  // そのあと使う人のレシピが別の理由で更新されても、運営が新しく直したらボタン
+  run("state.recipes.find((r) => r.id === 'r-later').updatedAt = '2026-12-01T00:00:00Z'");
+  latest = { [V]: { ...newer, revision: "r5", changedAt: "2026-11-01T00:00:00Z" } };
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-later').sourcePending.revision"), "r5");
+  assert.match(run("renderSourceNote(state.recipes.find((r) => r.id === 'r-later'), true)"), /いまの作り方のままにしています/);
+});
+
+test("review #214: videos not in the catalog are not asked again for a day", async () => {
+  const { run, asked } = app(() => ({}));
+  run(`state.recipes.push({ id: "r-mine", title: "自分の", videoUrl: "https://www.youtube.com/watch?v=zzzzzzzzzzz", updatedAt: "2026-10-20T00:00:00Z", ingredients: [], steps: ["a", "b"], stepTimes: [] })`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(asked.length, 1);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(asked.length, 1, "remembered as not in the catalog");
+});
