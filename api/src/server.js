@@ -47,10 +47,12 @@ export function createApp(env = process.env, deps = {}) {
       matchStepsToChapters: env.GOOGLE_CLOUD_PROJECT ? (steps, chapters) => matchStepsToChapters(steps, chapters, env) : undefined,
       fetchYouTubeTranscript: deps.fetchYouTubeTranscript || ((id) => fetchYouTubeTranscript(id)),
       buildHybridRecipeSteps: env.GOOGLE_CLOUD_PROJECT || env.GEMINI_API_KEY ? (args) => buildHybridRecipeSteps(args, env) : undefined
-    }, { ...options, videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
+    // 管理の候補づくりは、動画を最後まで見る（videoMaxSeconds を渡す）。ふだんの読み取りは VIDEO_MAX_SECONDS まで。
+    }, { ...options, videoMaxSeconds: Number(options.videoMaxSeconds) > 0 ? Number(options.videoMaxSeconds) : Number(env.VIDEO_MAX_SECONDS || 600) })), { model: env.GEMINI_MODEL || "gemini-2.5-flash",
       dailyLimit: Number(env.AI_DAILY_LIMIT || 100), monthlyLimit: Number(env.AI_MONTHLY_LIMIT || 1000),
       enabled: env.AI_IMPORT_ENABLED !== "false",
       tickets,
+      candidateMaxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), candidateVideoPerDay: Number(env.CANDIDATE_VIDEO_PER_DAY || 10),
       refreshSnippet: async (videoId) => { const snippet = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(videoId, env); return { caption: buildCaption(snippet), channelTitle: snippet.channelTitle }; },
       // 定期の後片付け：保存済みの動画が、いまも公開されているかをまとめて確かめる（50本で1回）。
       checkVideos: async (ids) => Object.fromEntries(Object.entries(await (deps.fetchYouTubeStatuses || fetchYouTubeStatuses)(ids, env)).map(([id, v]) => [id, v.status === "public" ? { status: "public", caption: buildCaption(v.snippet), channelTitle: v.snippet.channelTitle } : { status: v.status }])) });
@@ -59,7 +61,8 @@ export function createApp(env = process.env, deps = {}) {
     matchTranscript: deps.matchStepsToTranscript || ((steps, text) => matchStepsToTranscript(steps, text, env)),
     fetchTranscript: deps.fetchYouTubeTranscript || ((id) => fetchYouTubeTranscript(id)),
     // 手順の時刻は動画の最後まで見る（30分まで。5秒に1コマなので費用は抑えられる。2026-10-04）。レシピの読み取り（VIDEO_MAX_SECONDS）とは別。
-    snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), now: deps.now || Date.now });
+    snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), now: deps.now || Date.now,
+    currentRecipe: async (id) => { const r = await catalog.peek(canonicalYouTubeUrl(id)); return r ? { revision: r.catalog?.revision || "", steps: r.steps || [], stepTimes: r.stepTimes || [] } : null; } });
   const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
   // 掲載停止・再開が変わったら、新着・みんなの定番の表示キャッシュをすぐ捨てる（停止した料理を10分残さない）。
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now, onChange: () => { trendBook?.clearCache?.(); popularBook?.clearCache?.(); } });
@@ -425,7 +428,7 @@ export function createApp(env = process.env, deps = {}) {
       const { times, source, seenSeconds } = await timesOf(url, r);
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const check = checkStepTimes(r.steps || [], times, { durationSeconds, source, seenSeconds });
-      return { videoId, title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
+      return { videoId, revision: r.catalog?.revision || "", stepTimesPending: r.stepTimesPending || [], title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
         // 書き直した手順（APP_MAP §49）と、その時間の上限。
         guide: listedGuide(r), guideLimit: guideLimit(r.planning?.minutes), guideLabels: GUIDE_ISSUE_LABEL };
     }));
@@ -447,8 +450,11 @@ export function createApp(env = process.env, deps = {}) {
   const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "transcript" ? "transcript" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
   // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・YouTube字幕・説明欄の章（timecodes/* の fix・cleared・transcript・chapters）
   // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
+  // 管理の保存が書いた時刻（recipeRevision つき）は、そのレシピの版のものだけ使う（古い版の時刻を出さない）。
+  const stillCurrent = (url, revision) => async () => String((await catalog.peek(url).catch(() => null))?.catalog?.revision || "") === String(revision);
   async function timesOf(url, r) {
-    const st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
+    let st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
+    if (st?.recipeRevision && st.recipeRevision !== (r.catalog?.revision || "")) st = null;
     if (st && (st.cleared || ["fix", "transcript", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
     if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
     return { times: st?.stepTimes || [], source: st?.source || "", ...(st?.seenSeconds ? { seenSeconds: st.seenSeconds } : {}) };
@@ -572,6 +578,51 @@ export function createApp(env = process.env, deps = {}) {
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
     send(res, catalog.rereadProgress(canonicalYouTubeUrl(videoId)).then((progress) => ({ progress })));
   });
+  // 管理：レシピの候補（作る → 見比べる → 採用。APP_MAP §52-6）。作るだけでは保存済みのレシピは変わらない。
+  const adminVideo = (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) { res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } }); return null; }
+    const videoId = String(req.params.videoId || "");
+    if (!/^[\w-]{11}$/.test(videoId)) { res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } }); return null; }
+    return videoId;
+  };
+  app.get("/api/admin/recipes/:videoId/candidate", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    send(res, catalog.candidate(canonicalYouTubeUrl(videoId)).then((candidate) => ({ candidate })));
+  });
+  app.post("/api/admin/recipes/:videoId/candidate", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    const mode = req.body?.mode === "video" ? "video" : "auto";
+    const collector = {};
+    // 費用は、AI の返事の使用量から（音声は音声の単価）。使用量のない返事があれば「不明」（0円にしない）。
+    const cost = () => (collector.unmetered ? null : usageYen(collector, env));
+    send(res, usage.run(collector, () => catalog.makeCandidate(canonicalYouTubeUrl(videoId), { mode, cost })).then((candidate) => ({ candidate })));
+  });
+  app.post("/api/admin/recipes/:videoId/candidate/adopt", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    const url = canonicalYouTubeUrl(videoId);
+    send(res, (async () => {
+      const r = await catalog.adoptCandidate(url, { candidateId: String(req.body?.candidateId || "") });
+      // 同じ手順の古い保存の時刻（以前の字幕など）が、採用した時刻を上書きしないように入れ替える。
+      let sharedTimes = "ok";
+      try {
+        await timecodeBook.adopt({ url, steps: r.steps, stepTimes: r.stepTimes, source: r.stepTimesFrom || "video", seenSeconds: String(r.analyzedFrom).startsWith("video") ? r.durationSeconds : null, pending: r.stepTimesPending.some((t) => Number.isFinite(t)),
+          recipeRevision: r.revision, guard: stillCurrent(url, r.revision) });
+      } catch (error) {
+        console.error(JSON.stringify({ event: "candidate_shared_times_failed", videoId, message: String(error?.message || "").slice(0, 200) }));
+        sharedTimes = "failed";
+      }
+      trendBook.clearCache(); popularBook.clearCache();
+      return { before: r.before, after: r.after, analyzedFrom: r.analyzedFrom, guideRemoved: r.guideRemoved, times: r.times, pending: r.stepTimesPending.filter((t) => Number.isFinite(t)).length, sharedTimes };
+    })());
+  });
+  // 運営の時刻を、作る画面と同じ保存（timecodes/*）にも入れる。失敗は握りつぶさず "failed" で返す（管理画面で知らせる）。
+  // revision：いま保存したレシピの版。後から別の保存が入って版が変わっていたら、古い時刻を書かない（"superseded"）。
+  async function shareFixed(url, steps, stepTimes, revision = "") {
+    if ((steps || []).filter(Boolean).length < 2) return "skipped";
+    try { const x = await timecodeBook.fix({ url, steps, stepTimes }, "", { admin: true, recipeRevision: revision, guard: revision ? stillCurrent(url, revision) : null }); return x.superseded ? "superseded" : "ok"; }
+    catch (error) { console.error(JSON.stringify({ event: "admin_shared_times_failed", url, message: String(error?.message || "").slice(0, 200) })); return "failed"; }
+  }
   // 管理：手順がちょうど10個（説明欄から読んだ・まだ読み直していない）新着を、1回に max 品まで読み直す。left：残り。
   app.post("/api/admin/reread/steps10", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -684,6 +735,19 @@ export function createApp(env = process.env, deps = {}) {
       return { done, left: Math.max(0, targets.length - max) };
     })());
   });
+  // 管理：手順の文を直す（APP_MAP §52-7）。確かめ済みの時刻だけを、作る画面と同じ「運営が直した時刻」にも使う（要確認の時刻は使わない）。
+  app.put("/api/admin/recipes/:videoId/steps", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    send(res, (async () => {
+      const url = canonicalYouTubeUrl(videoId);
+      const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
+      const saved = await catalog.setSteps(url, { rows: req.body?.rows, baseRevision: req.body?.baseRevision, durationSeconds });
+      // 時刻が全部「要確認」・なしでも保存する（null の手順は探し直さず、古い時刻も戻らない）。
+      const sharedTimes = await shareFixed(url, saved.steps, saved.stepTimes, saved.revision);
+      trendBook.clearCache(); popularBook.clearCache();
+      return { ...saved, sharedTimes };
+    })());
+  });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
@@ -691,12 +755,13 @@ export function createApp(env = process.env, deps = {}) {
     if (!/^[\w-]{11}$/.test(videoId)) return res.status(400).json({ error: { code: "invalid_video", message: "動画IDが正しくありません。" } });
     send(res, (async () => {
       const url = canonicalYouTubeUrl(videoId);
-      const saved = await catalog.setStepTimes(url, req.body?.stepTimes);
+      // 開いた時の版（baseRevision）がいる（古い画面から、別のタブの手直しを上書きしない）。
+      if (typeof req.body?.baseRevision !== "string") throw new ApiError(400, "revision_required", "画面を開き直してから保存してください。");
+      const saved = await catalog.setStepTimes(url, req.body?.stepTimes, { baseRevision: req.body.baseRevision });
       // 作る画面の「▶ 2:15」（同じ動画・同じ手順を見る全員）にも、運営が直した時刻として使う。
       const r = await catalog.peek(url);
       // すべて消した時も同じように反映する（管理の画面と作る画面を一致させる）。
-      if ((r?.steps || []).filter(Boolean).length >= 2) await timecodeBook.fix({ url, steps: r.steps, stepTimes: saved.stepTimes }, "", { admin: true }).catch(() => {});
-      return saved;
+      return { ...saved, sharedTimes: await shareFixed(url, r?.steps, saved.stepTimes, saved.revision) };
     })());
   });
   app.get("/api/admin/feedback", (req, res) => {

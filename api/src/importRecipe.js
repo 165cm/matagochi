@@ -72,9 +72,15 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const clipSeconds = !duration || duration > maxSeconds ? maxSeconds : null;
   // 動画はボタンを押した時（forceVideo）だけ読む。取り込みでは読まず、読めることだけ知らせる（1日の上限の回数を勝手に使わない）。
   const videoSkipped = weak && !options.forceVideo;
-  if (weak && options.forceVideo && maxSeconds > 0 && typeof deps.analyzeRecipeVideo === "function") {
+  // 動画から読む（利用者のボタン・管理の候補づくり）。videoFullOnly（管理の候補づくり）：最後まで見られない長い動画（や長さが分からない動画）は、
+  // 途中までを「全部読んだ」にしないため読まない。reserveVideo：管理の候補づくりの、動画の1日の回数。
+  async function readVideo() {
+    if (!(maxSeconds > 0) || typeof deps.analyzeRecipeVideo !== "function") return;
+    if (options.videoFullOnly && clipSeconds !== null) throw new ApiError(422, "video_too_long", `動画が長い（または長さが分からない）ため、動画からは読めません（${Math.round(maxSeconds / 60)}分までの動画が対象です）。`);
     try {
+      await options.reserveVideo?.();
       await options.reserveBudget?.();
+      progress(2, "動画から作り方を読み取り中（AI応答待ち・1〜3分）");
       // 接続先を切り替えて読み直す時も、その直前ごとに予算を通す（beforeRetry）。
       const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds, beforeRetry: options.reserveBudget });
       const complete = video.stepsComplete !== false;
@@ -95,13 +101,16 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         planning: videoSteps.length && video.planning ? video.planning : analysis.planning || video.planning
       };
       if (videoSteps.length) analyzedFrom = clipSeconds ? "video-clip" : "video";
+      progress(2, videoSteps.length ? `動画から${videoSteps.length}手順を読み取りました` : `動画から作り方を読み取れませんでした${complete ? "" : "（途中までしか作っていない）"}`);
     } catch (error) {
       // 「読めたがレシピではなかった」（analysis_uncertain）だけは、説明欄の結果で続ける。
       // 通信・AIの失敗・回数の上限は、呼び出し元まで伝える（「レシピが不完全」と区別し、やり直せるように）。
       if (!hasDescription || error?.code !== "analysis_uncertain") throw error;
     }
   }
-  if (!hasDescription && !analyzedFrom.startsWith("video")) throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
+  if (weak && options.forceVideo) await readVideo();
+  // videoIfNeeded（管理の候補づくり）の時は、説明欄がなくても下で動画を読むので、ここでは止めない。
+  if (!hasDescription && !analyzedFrom.startsWith("video") && !options.videoIfNeeded) throw new ApiError(422, "empty_description", "この動画には解析できる説明文がありません。");
 
   // 字幕ハイブリッド生成：説明欄の材料があり、動画解析をしていない場合で、字幕が存在すれば動画の段取りに沿った手順とタイムコードを生成する
   const rawSteps = normalizeSteps(analysis.steps);
@@ -163,6 +172,13 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     }
   }
 
+  // 管理の候補づくり（自動）：字幕で整理できず、説明欄にも手順が2つ未満なら、動画から読む（材料・題名から手順を推測はしない）。
+  if (options.videoIfNeeded && !options.forceVideo && !analyzedFrom.startsWith("video") && analyzedFrom !== "description+transcript" && normalizeSteps(analysis.steps).length < 2) {
+    progress(2, "字幕でも説明欄でも手順を作れないため、動画から読みます");
+    await readVideo();
+    if (!hasDescription && !analyzedFrom.startsWith("video")) throw new ApiError(422, "empty_description", "この動画には解析できる説明文がなく、動画からも読み取れませんでした。");
+  }
+
   // 説明欄に投稿者のタイムスタンプがあれば、手順の時刻はそれに合わせる（AIが動画から探した時刻より正確）。
   const chapters = parseChapters(snippet.description);
   const finalSteps = normalizeSteps(analysis.steps);
@@ -172,8 +188,10 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     progress(3, "説明欄の章と照合中（AI応答待ち）");
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
     const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);
-    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }
-  } else if (!analyzedTimes && Array.isArray(analysis.stepTimes) && finalSteps.length >= 2) {
+    // 管理の候補づくり（videoFullOnly）では、章の時刻も直さずに渡す（前に戻る時刻の「要確認」を候補の検査で判断する）。
+    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: options.videoFullOnly ? times : refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }
+  } else if (!analyzedTimes && Array.isArray(analysis.stepTimes) && finalSteps.length >= 2 && !options.videoFullOnly) {
+    // 管理の候補づくり（videoFullOnly）では直さずに渡す（候補の検査 cleanCandidateTimes で、前に戻る時刻と「要確認」を一度に判断する）。
     analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, analysis.stepTimes, { durationSeconds: duration }) };
   }
 
@@ -196,7 +214,9 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     }),
     analyzedFrom,
     ...(analyzedTimes ? { stepTimesFrom: analyzedTimes } : {}),
-    videoSkipped
+    // 動画の長さ（管理の候補づくりで、時刻が動画の中かを確かめる。保存する結果には入れない）。
+    ...(duration ? { durationSeconds: duration } : {}),
+    videoSkipped: videoSkipped && !analyzedFrom.startsWith("video")
   };
 }
 

@@ -36,7 +36,9 @@ test('admin: read a collected recipe and fix its step times (saved to the recipe
   assert.equal(got.title, '豚こまキャベツ');
   assert.deepEqual(got.stepTimes, [10, null, 95]);
   assert.equal((await fetch(`${base}/api/admin/recipes/${V}/step-times`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"stepTimes":[1,2,3]}' })).status, 403);
-  const r = await fetch(`${base}/api/admin/recipes/${V}/step-times`, { method: 'PUT', headers: admin, body: JSON.stringify({ stepTimes: [12, '45', -3, 99] }) });
+  // 開いた時の版がないと断る（古い画面から上書きしない。review fix 2026-10-31）
+  assert.equal((await fetch(`${base}/api/admin/recipes/${V}/step-times`, { method: 'PUT', headers: admin, body: JSON.stringify({ stepTimes: [1, 2, 3] }) })).status, 400);
+  const r = await fetch(`${base}/api/admin/recipes/${V}/step-times`, { method: 'PUT', headers: admin, body: JSON.stringify({ stepTimes: [12, '45', -3, 99], baseRevision: got.revision }) });
   assert.equal(r.status, 200);
   assert.deepEqual((await r.json()).stepTimes, [12, 45, null], 'one per step; negative or extra values are dropped');
   const saved = (await store.get(`youtube-${V}`)).envelope.result;
@@ -59,7 +61,7 @@ test('admin: the seed status lists the search words with their progress', async 
 
 test('review fix (#119): clearing all step times also clears the shared ▶ times (no stale times, no AI search again); users still cannot clear', async (t) => {
   const { base } = await serve(t);
-  const put = (stepTimes) => fetch(`${base}/api/admin/recipes/${V}/step-times`, { method: 'PUT', headers: admin, body: JSON.stringify({ stepTimes }) });
+  const put = async (stepTimes) => { const { revision } = await (await fetch(`${base}/api/admin/recipes/${V}`, { headers: admin })).json(); return fetch(`${base}/api/admin/recipes/${V}/step-times`, { method: 'PUT', headers: admin, body: JSON.stringify({ stepTimes, baseRevision: revision }) }); };
   const shared = async () => (await (await fetch(`${base}/api/import/youtube/timecodes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: recipe.videoUrl, steps: recipe.steps, peek: true }) })).json());
   assert.equal((await put([10, 20, null])).status, 200);
   assert.deepEqual((await shared()).stepTimes, [10, 20, null]);

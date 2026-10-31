@@ -110,7 +110,8 @@ export function pickCaptionTrack(tracks = [], targetLang = "ja") {
 // YouTube動画の字幕を取得する
 // 戻り値:
 // { status: "ok", items: [...] }
-// { status: "not_available", reason: "no_captions" | "disabled" }
+// { status: "not_available", reason: "no_captions" | "unplayable" | ..., diag?: { client, clientVersion, playability, playabilityReason, trackCount } }
+// no_captions も unplayable も「この取得方法では字幕を確かめられなかった」だけ（本番のサーバーからは断られることがある）。永久の「字幕なし」にしない。
 // { status: "retryable_error", error: "429" | "timeout" | "server_error" | ... }
 export async function fetchYouTubeTranscript(videoId, { lang = "ja", fetchImpl = fetch } = {}) {
   if (!videoId || typeof videoId !== "string") {
@@ -143,7 +144,12 @@ export async function fetchYouTubeTranscript(videoId, { lang = "ja", fetchImpl =
 
     const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (!Array.isArray(captionTracks) || !captionTracks.length) {
-      return { status: "not_available", reason: "no_captions" };
+      // 字幕の一覧が空の時は、再生の状態（playabilityStatus）で理由を分ける。再生できない（LOGIN_REQUIRED 等）は
+      // サーバーの場所（データセンター）で断られた可能性があるが、断定はできないので「unplayable」とし、元の理由を残す。
+      const playability = String(data?.playabilityStatus?.status || "");
+      const diag = { client: INNERTUBE_CONTEXT.client.clientName, clientVersion: INNERTUBE_CLIENT_VERSION, playability, playabilityReason: String(data?.playabilityStatus?.reason || "").slice(0, 120), trackCount: 0 };
+      console.error(JSON.stringify({ event: "transcript_unavailable", videoId, ...diag }));
+      return { status: "not_available", reason: playability && playability !== "OK" ? "unplayable" : "no_captions", diag };
     }
 
     const track = pickCaptionTrack(captionTracks, lang);

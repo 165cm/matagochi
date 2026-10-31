@@ -65,6 +65,8 @@
   tr.dim td { color: var(--n1); }
   .warnbox { border: 1.5px solid var(--s2); border-radius: 10px; padding: 8px 12px; margin: 8px 0; } .warnbox ul { margin: 4px 0 0; padding-left: 1.2em; }
   input.is-new { border-color: var(--s3); background: #eefaf3; }
+  input.is-pending { border-color: var(--s2); border-style: dashed; }
+  .steps textarea { width: 100%; min-height: 3.2em; font: inherit; padding: 6px 8px; box-sizing: border-box; }
   ol.guide-cmp { padding-left: 1.4em; margin: 6px 0; } ol.guide-cmp li { margin: 6px 0; } ol.guide-cmp li .meta { font-size: 12px; }
   ol.steps li.warn { outline: 2px solid var(--s2); outline-offset: 2px; border-radius: 6px; }
   .run-status { font-weight: 700; margin: 0; font-size: 14px; } .run-status:empty { display: none; }
@@ -1041,6 +1043,107 @@
     mainActionRow.append(rr, mainNote);
     body.append(mainActionRow);
 
+    // 候補（作る → 見比べる → 採用。APP_MAP §52-6）：字幕が取れない・説明欄に手順がない時の道。採用するまで保存済みのレシピは変わらない。
+    const candRow = el("div", undefined, "row"); candRow.style.margin = "4px 0 8px";
+    const candNote = el("span", "", "meta"); candNote.style.whiteSpace = "pre-wrap";
+    const candBox = el("div");
+    const cAuto = el("button", "🧩 候補を作る（説明欄＋字幕 → だめなら動画）", "quiet small"); cAuto.type = "button";
+    const cVideo = el("button", "🎬 動画から候補を作る（約5〜10円）", "quiet small"); cVideo.type = "button";
+    // 作る画面と同じ保存（timecodes）に入れられなかった時の知らせ（握りつぶさない）。
+    const SHARED_FAIL = "（作る画面の ▶ の時刻は更新できませんでした。「時刻を保存」をもう一度押してください）";
+    const FROMC = { video: "動画（最後まで）", "video-clip": "動画（途中まで）", "description+transcript": "説明欄＋字幕", description: "説明欄" };
+    const progressText = (p, started) => {
+      const secs = Math.floor((Date.now() - started) / 1000);
+      return p && p.status === "running" ? `${p.stage}/${p.total} ${p.label}中｜${p.detail || ""}｜経過${secs}秒` : `1/5 素材を取得中｜リクエスト送信｜経過${secs}秒`;
+    };
+    // サーバーに残った実際の処理段階を2秒おきに見る（開き直しても続きから見られる）。stop() で止める。
+    const watch = (started) => {
+      let last = null, on = true;
+      (async () => {
+        while (on) {
+          try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (x.progress && Date.parse(x.progress.startedAt) >= started - 5000) last = x.progress; } catch { /* 表示だけ */ }
+          if (on) candNote.textContent = progressText(last, started);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      })();
+      return { stop: () => { on = false; }, last: () => last };
+    };
+    const makeCandidate = async (mode) => {
+      const msg = mode === "video"
+        ? "AI に動画を最後まで見せて、手順と時刻の候補を作ります（約5〜10円・1日10回まで・30分までの動画）。保存済みのレシピは、見比べて「この候補で保存」を押すまで変わりません。"
+        : "説明欄と字幕で候補を作ります（約1円）。字幕で作れず説明欄にも手順がない時は、動画を最後まで読みます（約5〜10円・1日10回まで）。保存済みのレシピは、見比べて「この候補で保存」を押すまで変わりません。";
+      if (!confirm(msg)) return;
+      cAuto.disabled = cVideo.disabled = true; candBox.textContent = "";
+      const started = Date.now();
+      const w = watch(started);
+      try {
+        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`, { mode });
+        w.stop(); candNote.textContent = "✓ 候補ができました。下で見比べて、よければ「この候補で保存」を押してください。";
+        renderCandidate(x.candidate);
+      } catch (error) {
+        w.stop();
+        let p = w.last();
+        try { const f = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`); if (f.progress) p = f.progress; } catch { /* 表示だけ */ }
+        const logs = Array.isArray(p?.logs) && p.logs.length ? `\n【処理の履歴】\n・${p.logs.join("\n・")}` : "";
+        candNote.textContent = `候補を作れませんでした：${error.message}${logs}`;
+      } finally { cAuto.disabled = cVideo.disabled = false; }
+    };
+    cAuto.addEventListener("click", () => makeCandidate("auto"));
+    cVideo.addEventListener("click", () => makeCandidate("video"));
+    function renderCandidate(c) {
+      candBox.textContent = "";
+      if (!c) return;
+      const times = (c.stepTimes || []).filter((t) => Number.isFinite(t)).length;
+      const oldTimes = (r.stepTimes || []).filter((t) => Number.isFinite(t) && (!r.durationSeconds || t < r.durationSeconds)).length;
+      const box = el("div", undefined, "warnbox"); box.style.background = "transparent";
+      box.append(el("b", "🧩 候補（まだ保存していません）"));
+      box.append(el("p", [`読んだ元：${FROMC[c.analyzedFrom] || c.analyzedFrom}`, `手順 ${(r.steps || []).length} → ${c.steps.length}`, `有効な時刻 ${oldTimes} → ${times}個`,
+        c.droppedTimes ? `動画の外・順番が逆の${c.droppedTimes}個は「不明」にしました` : "", c.carriedAdminTimes ? `運営が直した時刻を${c.carriedAdminTimes}個引き継ぎ（同じ文の手順だけ）` : "",
+        (c.suspectTimes || []).length ? `前に戻る時刻の手前の${c.suspectTimes.length}個は「要確認」（採用しても、確かめるまでアプリでは使いません）` : "",
+        `材料 ${(c.ingredients || []).length}`, `費用 ${c.yenUnknown ? "不明（AI の返事に使用量がない）" : `約${c.yen}円`}・AI ${c.aiCalls}回`, `期限 ${new Date(c.expiresAt).toLocaleString("ja-JP")}`].filter(Boolean).join("・"), "meta"));
+      if (r.guide) box.append(el("p", "採用すると、覚えやすい手順（書き直し）は外れます（あとで書き直し直せます）。", "meta"));
+      const ol = el("ol", undefined, "steps");
+      c.steps.forEach((step, i) => {
+        const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
+        const right = el("div"); right.append(el("div", step));
+        const t = c.stepTimes?.[i];
+        const tools = el("div", undefined, "tools");
+        tools.append(el("span", Number.isFinite(t) ? `${sec(t)}${(c.suspectTimes || []).includes(i) ? "（要確認）" : ""}` : "時刻なし", "meta"));
+        if (Number.isFinite(t)) { const play = el("button", "▶", "quiet small"); play.type = "button"; play.setAttribute("aria-label", `候補の手順${i + 1}の時刻から再生`); play.addEventListener("click", () => { if (player?.seekTo) { player.seekTo(t, true); player.playVideo?.(); } }); tools.append(play); }
+        right.append(tools); li.append(right); ol.append(li);
+      });
+      box.append(ol);
+      const row = el("div", undefined, "row");
+      const adopt = el("button", "✅ この候補で保存", "small"); adopt.type = "button";
+      const an = el("span", "", "meta");
+      adopt.addEventListener("click", async () => {
+        if (!confirm(`いまのレシピ（手順 ${(r.steps || []).length}）を、この候補（手順 ${c.steps.length}）に置き換えます。前の版は履歴に残ります。よろしいですか？`)) return;
+        adopt.disabled = true; an.textContent = "保存しています…";
+        try { const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate/adopt`, { candidateId: c.candidateId }); an.textContent = `✓ 手順 ${x.before} → ${x.after} に保存しました${x.guideRemoved ? "（書き直しは外しました）" : ""}${x.pending ? `・要確認の時刻 ${x.pending}個` : ""}${x.sharedTimes === "failed" ? SHARED_FAIL : ""}。開き直します…`; setTimeout(() => openRecipe(videoId), x.sharedTimes === "failed" ? 4000 : 600); }
+        catch (error) { an.textContent = error.message; adopt.disabled = false; }
+      });
+      row.append(adopt, an); box.append(row);
+      candBox.append(box);
+    }
+    candRow.append(cAuto, cVideo, candNote);
+    body.append(el("p", "字幕が取れない・説明欄に手順がない時は、候補を作って見比べてから保存します。", "meta"), candRow, candBox);
+    // 開き直した時：まだ期限内の候補を出す。候補づくりの途中（2分以内に動きがあった）なら、終わるまで段階を見せる。
+    api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`).then((x) => renderCandidate(x.candidate)).catch(() => {});
+    api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`).then(async (x) => {
+      const p = x.progress;
+      if (!p || p.status !== "running" || Date.now() - Date.parse(p.updatedAt || p.startedAt) > 120_000) return;
+      cAuto.disabled = cVideo.disabled = true;
+      const started = Date.parse(p.startedAt);
+      for (let i = 0; i < 300 && document.getElementById("recipe").open; i++) {
+        let cur = null;
+        try { cur = (await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/reread/progress`)).progress; } catch { /* 表示だけ */ }
+        if (!cur || cur.status !== "running") { candNote.textContent = cur?.detail || ""; if (cur?.outcome === "candidate") api(`/api/admin/recipes/${encodeURIComponent(videoId)}/candidate`).then((y) => renderCandidate(y.candidate)).catch(() => {}); break; }
+        candNote.textContent = `処理中です（別の画面で始めた分）：${progressText(cur, started)}`;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      cAuto.disabled = cVideo.disabled = false;
+    }).catch(() => {});
+
     // その他の修正ツール（折りたたんで迷いをなくす）
     const moreDetails = el("details", undefined, "more");
     moreDetails.style.margin = "6px 0 10px";
@@ -1093,6 +1196,12 @@
     moreBody.append(moreNote);
     moreDetails.append(moreBody);
     body.append(moreDetails);
+    // 手順の文を直す（APP_MAP §52-7）：1行＝「文＋時刻＋要確認」の1組で動かし、まとめて保存する。
+    const pending = r.stepTimesPending || [];
+    if (pending.some((t) => Number.isFinite(t))) body.append(el("p", "点線の時刻は「要確認」（文を直した手順の前の時刻）です。▶ で確かめて「時刻を保存」を押すと確定します（それまでアプリでは使いません）。", "meta"));
+    const editRow = el("div", undefined, "row"); editRow.style.margin = "4px 0 8px";
+    const editBtn = el("button", "✏ 手順の文を直す（足す・消す・並べ替え）", "quiet small"); editBtn.type = "button";
+    editRow.append(editBtn); body.append(editRow);
     const ol = el("ol", undefined, "steps");
     const inputs = [];
     (r.steps || []).forEach((step, i) => {
@@ -1100,7 +1209,9 @@
       if (badSteps.has(i)) li.classList.add("warn");
       const right = el("div"); right.append(el("div", step));
       const tools = el("div", undefined, "tools");
-      const input = el("input"); input.value = sec(r.stepTimes?.[i] ?? null); input.placeholder = "なし"; input.setAttribute("aria-label", `手順${i + 1}の時刻`); inputs.push(input);
+      const isPending = !Number.isFinite(r.stepTimes?.[i]) && Number.isFinite(pending[i]);
+      const input = el("input"); input.value = sec(isPending ? pending[i] : r.stepTimes?.[i] ?? null); input.placeholder = "なし"; input.setAttribute("aria-label", `手順${i + 1}の時刻${isPending ? "（要確認）" : ""}`); inputs.push(input);
+      if (isPending) { input.classList.add("is-pending"); input.title = "要確認：文を直した手順の前の時刻"; }
       input.addEventListener("input", () => input.classList.toggle("is-bad", Number.isNaN(parseSec(input.value))));
       const play = el("button", "▶", "quiet small"); play.type = "button"; play.setAttribute("aria-label", `手順${i + 1}の時刻から再生`);
       play.addEventListener("click", () => { const t = parseSec(input.value); if (player?.seekTo && Number.isFinite(t)) { player.seekTo(t, true); player.playVideo?.(); } });
@@ -1109,6 +1220,59 @@
       tools.append(input, play, now); right.append(tools); li.append(right); ol.append(li);
     });
     body.append(ol);
+    editBtn.addEventListener("click", () => {
+      editBtn.disabled = true;
+      let seq = 0;
+      // 行は編集画面だけの一時ID（key）で持つ。並べ替え・削除で、別の手順に時刻がずれない。
+      const rows = (r.steps || []).map((text, i) => {
+        const isP = !Number.isFinite(r.stepTimes?.[i]) && Number.isFinite(pending[i]);
+        return { key: ++seq, text, orig: text, time: isP ? pending[i] : (Number.isFinite(r.stepTimes?.[i]) ? r.stepTimes[i] : null), pending: isP };
+      });
+      const ed = el("div");
+      const list = el("ol", undefined, "steps");
+      const enote = el("span", "", "meta");
+      const draw = () => {
+        list.textContent = "";
+        rows.forEach((row, i) => {
+          const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
+          const right = el("div");
+          const ta = el("textarea"); ta.value = row.text; ta.setAttribute("aria-label", `手順${i + 1}の文`); ta.maxLength = 300;
+          const tools = el("div", undefined, "tools");
+          const ti = el("input"); ti.value = sec(row.time); ti.placeholder = "なし"; ti.setAttribute("aria-label", `手順${i + 1}の時刻`);
+          const pl = el("label", undefined, "meta"); const pc = el("input"); pc.type = "checkbox"; pc.checked = row.pending; pc.style.width = "auto"; pl.append(pc, document.createTextNode(" 要確認"));
+          // 文を変えた手順に時刻があれば、要確認にする（前の文の時刻なので。外すこともできる）。
+          ta.addEventListener("input", () => { row.text = ta.value; if (row.orig !== null && ta.value.trim() !== row.orig && row.time !== null && !row.autoPending) { row.pending = true; row.autoPending = true; pc.checked = true; } });
+          ti.addEventListener("input", () => { const t = parseSec(ti.value); ti.classList.toggle("is-bad", Number.isNaN(t)); if (!Number.isNaN(t)) row.time = t; });
+          pc.addEventListener("change", () => { row.pending = pc.checked; });
+          const play = el("button", "▶", "quiet small"); play.type = "button"; play.addEventListener("click", () => { if (player?.seekTo && Number.isFinite(row.time)) { player.seekTo(row.time, true); player.playVideo?.(); } });
+          const nowB = el("button", "⏱", "quiet small"); nowB.type = "button"; nowB.setAttribute("aria-label", "いまの時刻"); nowB.addEventListener("click", () => { if (player?.getCurrentTime) { row.time = Math.floor(player.getCurrentTime()); ti.value = sec(row.time); ti.classList.remove("is-bad"); } });
+          const up = el("button", "↑", "quiet small"); up.type = "button"; up.disabled = i === 0; up.setAttribute("aria-label", `手順${i + 1}を上へ`); up.addEventListener("click", () => { [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]]; draw(); });
+          const down = el("button", "↓", "quiet small"); down.type = "button"; down.disabled = i === rows.length - 1; down.setAttribute("aria-label", `手順${i + 1}を下へ`); down.addEventListener("click", () => { [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]]; draw(); });
+          const del = el("button", "✕", "quiet small"); del.type = "button"; del.setAttribute("aria-label", `手順${i + 1}を消す`); del.addEventListener("click", () => { rows.splice(i, 1); draw(); });
+          tools.append(ti, play, nowB, pl, up, down, del);
+          right.append(ta, tools); li.append(right); list.append(li);
+        });
+      };
+      draw();
+      const add = el("button", "＋ 手順を足す", "quiet small"); add.type = "button"; add.addEventListener("click", () => { rows.push({ key: ++seq, text: "", orig: null, time: null, pending: false }); draw(); });
+      const saveS = el("button", "手順を保存", "small"); saveS.type = "button";
+      const cancel = el("button", "やめる", "quiet small"); cancel.type = "button"; cancel.addEventListener("click", () => openRecipe(videoId));
+      saveS.addEventListener("click", async () => {
+        if (list.querySelector("input.is-bad")) { enote.textContent = "「分:秒」の形で入れてください（赤い枠）。"; return; }
+        if (rows.length < 2 || rows.some((x) => !x.text.trim())) { enote.textContent = "手順は2つ以上、空の手順がないようにしてください。"; return; }
+        if (r.guide && !confirm("手順の文を変えると、覚えやすい手順（書き直し）は外れます。よろしいですか？")) return;
+        saveS.disabled = true; enote.textContent = "保存しています…";
+        try {
+          const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/steps`, { baseRevision: r.revision || "", rows: rows.map((x) => ({ text: x.text, time: x.time, pending: x.pending })) }, "PUT");
+          enote.textContent = `✓ 手順 ${x.steps.length} を保存しました${x.guideRemoved ? "（書き直しは外しました）" : ""}${x.sharedTimes === "failed" ? SHARED_FAIL : ""}。開き直します…`;
+          setTimeout(() => openRecipe(videoId), x.sharedTimes === "failed" ? 4000 : 600);
+        } catch (error) { enote.textContent = error.message; saveS.disabled = false; }
+      });
+      const erow = el("div", undefined, "row"); erow.append(add, saveS, cancel, enote);
+      ed.append(el("p", "文を直した手順の時刻は「要確認」になります（確かめるまでアプリでは使いません）。並べ替え・削除では、時刻も手順と一緒に動きます。", "meta"), list, erow);
+      ol.replaceWith(ed);
+      foot.hidden = true;
+    });
     const foot = el("div", undefined, "sticky row");
     const save = el("button", "時刻を保存"); save.type = "button";
     const note = el("span", "", "meta");
@@ -1116,7 +1280,13 @@
       const times = inputs.map((x) => parseSec(x.value));
       if (times.some((t) => Number.isNaN(t))) { note.textContent = "「分:秒」の形で入れてください（赤い枠）。"; return; }
       save.disabled = true; note.textContent = "保存しています…";
-      try { await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/step-times`, { stepTimes: times }, "PUT"); note.textContent = "✓ 保存しました（新着・作る画面の ▶ に使われます）"; }
+      try {
+        // 開いた時の版を送る（別のタブの手直しを上書きしない）。保存したら版を受け取り直す。
+        const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/step-times`, { stepTimes: times, baseRevision: r.revision || "" }, "PUT");
+        // 保存した時刻・版・要確認の状態で開き直す（このあと手順の文を直す時に、古い時刻を送らない）。
+        note.textContent = x.sharedTimes === "failed" ? `保存しました${SHARED_FAIL}` : "✓ 保存しました（新着・作る画面の ▶ に使われます）。開き直します…";
+        setTimeout(() => openRecipe(videoId), x.sharedTimes === "failed" ? 4000 : 600);
+      }
       catch (error) { note.textContent = error.message; }
       finally { save.disabled = false; }
     });
