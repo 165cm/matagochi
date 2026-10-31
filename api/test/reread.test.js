@@ -290,3 +290,39 @@ test('reread: rejects description+transcript candidate if it completely loses ex
   // 前の5件の時刻が維持されていること
   assert.equal((await cat.peek(url)).stepTimes.filter(Number.isFinite).length, 5);
 });
+
+test('reread: marks rereadAt even when rejected with reread_lost_timecodes', async () => {
+  const store = createMemorySyncStore();
+  const v = 'marklostt01';
+  const url = `https://www.youtube.com/watch?v=${v}`;
+  let answer = {
+    title: '料理',
+    videoUrl: url,
+    ingredients: [{ name: '豚肉' }],
+    steps: steps(5),
+    stepTimes: [10, 20, 30, 40, 50],
+    analyzedFrom: 'description',
+    durationSeconds: 300,
+    catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }
+  };
+  const cat = createRecipeCatalog(store, async () => answer);
+  await cat.import(url);
+  assert.equal((await cat.peek(url)).rereadAt, undefined);
+
+  // 新結果が全時刻 null
+  answer = {
+    title: '料理',
+    videoUrl: url,
+    ingredients: [{ name: '豚肉' }],
+    steps: steps(4),
+    stepTimes: [null, null, null, null],
+    analyzedFrom: 'description+transcript',
+    durationSeconds: 300,
+    catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }
+  };
+
+  await assert.rejects(cat.import(url, { reread: true }), (err) => err.code === 'reread_lost_timecodes');
+  // 棄却されても rereadAt が付き、一括読み直しで何度も選ばれないこと
+  const kept = await cat.peek(url);
+  assert.ok(kept.rereadAt);
+});

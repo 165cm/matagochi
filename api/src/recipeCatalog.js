@@ -152,7 +152,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 読み直して手順が減る・読めない・レシピでないと言われた時は、前の結果に「読み直した」印だけ付ける（一括の読み直しで同じ品を何度も呼ばない）。
       // 読み直しでは保存済みのレシピを置き換えていないので、ほかの失敗では何も書かない。
       if (reread) {
-        if (["reread_worse", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) await store.put(key, { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } }, { ifGeneration: claim.generation }).catch(() => {});
+        if (["reread_worse", "reread_lost_timecodes", "incomplete_recipe", "analysis_uncertain"].includes(error.code)) await store.put(key, { ...current.envelope, result: { ...current.envelope.result, rereadAt: new Date(now()).toISOString() } }, { ifGeneration: claim.generation }).catch(() => {});
         throw error;
       }
       // 読み直しに失敗しても、保存済みの結果は消さない（レシピでないと言われた時も。review fix #138）。
@@ -174,11 +174,16 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const write = () => {
       const snapshot = { ...state, logs: [...logs], updatedAt: new Date(now()).toISOString() };
       const task = async () => {
+        let timedOut = false;
         try {
-          const timer = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 1500));
+          const timer = new Promise((_, reject) => setTimeout(() => { timedOut = true; reject(new Error("timeout")); }, 1500));
           await Promise.race([
             (async () => {
               const cur = await store.get(key);
+              // タイムアウトしていた場合や、既に done/failed で完了している場合は古い進捗で上書きしない
+              if (timedOut) return;
+              // 同じ実行回（startedAt が同一）で、既に完了（done/failed）している場合は古い途中の進捗で上書きしない
+              if (cur?.envelope?.startedAt === snapshot.startedAt && cur?.envelope?.status === "done" && snapshot.status !== "done") return;
               await store.put(key, snapshot, { ifGeneration: cur?.generation ?? 0 });
             })(),
             timer

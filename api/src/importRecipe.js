@@ -22,12 +22,11 @@ function validateNumbersConsistency(rawSteps = [], newSteps = []) {
     const map = new Map();
     for (const step of steps) {
       const s = String(step || "");
-      const matches = s.matchAll(/(\d+)\s*(分|秒|時間)/g);
+      const matches = s.matchAll(/(\d+(?:\.\d+)?)\s*(分(?:間)?|秒(?:間)?|時間)/g);
       for (const m of matches) {
         const val = Number(m[1]);
         const unit = m[2];
-        // 単位あたりの秒数を大まかに把握
-        const sec = unit === "時間" ? val * 3600 : unit === "分" ? val * 60 : val;
+        const sec = unit === "時間" ? Math.round(val * 3600) : unit.startsWith("分") ? Math.round(val * 60) : Math.round(val);
         map.set(`${val}${unit}`, sec);
       }
     }
@@ -40,9 +39,10 @@ function validateNumbersConsistency(rawSteps = [], newSteps = []) {
   // 新手順に数字が登場している場合、元の数字と全く合わず大幅に縮小・乖離している（例: 元が10分焼くで新が1分焼く）矛盾を検出
   for (const [newLabel, newSec] of newMap.entries()) {
     // 新手順に出てきた時間指定が、元手順の時間指定のどれとも一致せず、元の最大時間と大幅に乖離している場合は警戒
-    const hasExact = [...rawMap.keys()].includes(newLabel);
-    if (!hasExact) {
-      const rawSecs = [...rawMap.values()];
+    const rawSecs = [...rawMap.values()];
+    // 秒数がほぼ一致（例: 0.5時間 と 30分、または 1〜2秒以内の丸め差）していれば同じ時間指定
+    const hasEquivalent = rawSecs.some((r) => Math.abs(r - newSec) <= 10);
+    if (!hasEquivalent) {
       const closest = Math.min(...rawSecs.map((r) => Math.abs(r - newSec)));
       // 元の指定時間のいずれとも5倍以上の差がある新しい時間指定は数値の勝手な捏造と判定
       if (closest > 180 && rawSecs.every((r) => r >= newSec * 5 || newSec >= r * 5)) {
