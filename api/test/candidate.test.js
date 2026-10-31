@@ -372,3 +372,21 @@ test('review fix 3 P2: on the chapter path too, a time that goes back marks the 
   assert.deepEqual(c.suspectTimes, [1]);
   assert.equal(c.droppedTimes, 1);
 });
+
+// ── review fix 4（2026-10-31・Codex：全部が要確認の時に端末の古い時刻へ戻る） ──
+test('review fix 4 P1: when every current time is waiting for a check, the cook-screen API says cleared so old device times are not used', async (t) => {
+  const count = { transcript: 0, video: 0 };
+  const { store, base } = await serve(t, { deps: quietDeps(count) });
+  const steps = ['古い手順1', '古い手順2'];
+  // いまのレシピ：確定 [null, null]・要確認 [10, 30]。キャッシュは古い版のまま（保存の途中で失敗した）
+  const cur = (await store.get(`youtube-${V}`));
+  await store.put(`youtube-${V}`, { ...cur.envelope, result: { ...cur.envelope.result, steps, stepTimes: [null, null], stepTimesPending: [10, 30], catalog: { ...cur.envelope.result.catalog, revision: 'r-now' } } }, { ifGeneration: cur.generation });
+  await store.put(tcKey(steps), { stepTimes: [90, 95], source: 'fix', recipeRevision: 'r-stale' }, { ifGeneration: 0 });
+  const r = await shared(base, steps);
+  assert.deepEqual(r.stepTimes, [null, null]);
+  assert.equal(r.cleared, true);
+  // 採用した候補で、確かめ済みの時刻が1つもない時（pendingCheck）も同じ
+  await store.put(tcKey(steps), { stepTimes: [null, null], source: 'video', pendingCheck: true, chaptersChecked: true }, { ifGeneration: (await store.get(tcKey(steps))).generation });
+  assert.equal((await shared(base, steps)).cleared, true);
+  assert.deepEqual(count, { transcript: 0, video: 0 });
+});

@@ -233,7 +233,9 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         if (entry?.recipeRevision && typeof currentRecipe === "function") {
           const cur = await currentRecipe(videoId).catch(() => null);
           if (cur && cur.revision !== entry.recipeRevision && normalize(cur.steps).join("\n") === list.join("\n")) {
-            return { stepTimes: list.map((_, i) => (Number.isFinite(cur.stepTimes?.[i]) ? cur.stepTimes[i] : null)), source: "fix", cacheHit: true };
+            const times = list.map((_, i) => (Number.isFinite(cur.stepTimes?.[i]) ? cur.stepTimes[i] : null));
+            // 全部 null（すべて要確認・なし）の時は cleared を付ける（作る画面が端末に残った古い時刻へ戻らない）。
+            return { stepTimes: times, source: "fix", ...(found(times) ? {} : { cleared: true }), cacheHit: true };
           }
         }
         let info = null;
@@ -245,7 +247,8 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && transcriptDone(entry, now()));
         if (found(entry?.stepTimes) && isFullyChecked) return answer(entry, true, dur);
         // 管理で採用した候補に「要確認」の時刻がある間は、探し直さない（確かめ済みの時刻だけを返す。APP_MAP §52-6）。
-        if (entry?.pendingCheck) return found(entry.stepTimes) ? answer(entry, true, dur) : { stepTimes: list.map(() => null), source: entry.source || "video", cacheHit: true };
+        // 確かめ済みの時刻が1つもない時は cleared を付ける（作る画面が端末に残った古い時刻へ戻らない）。
+        if (entry?.pendingCheck) return found(entry.stepTimes) ? answer(entry, true, dur) : { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         if (entry?.cleared) return { stepTimes: list.map(() => null), source: "fix", cleared: true, cacheHit: true };
         if (!transcriptDone(entry, now())) {
           info = await snippet(videoId).catch(() => null);
