@@ -118,14 +118,16 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   // 字幕ハイブリッド生成：説明欄の材料があり、動画解析をしていない場合で、字幕が存在すれば動画の段取りに沿った手順とタイムコードを生成する
   const rawSteps = normalizeSteps(analysis.steps);
   const rawIngredients = normalizeIngredients(analysis.ingredients);
-  const shouldTryHybrid = !analyzedFrom.startsWith("video") && rawIngredients.length > 0 && typeof deps.buildHybridRecipeSteps === "function" && typeof deps.fetchYouTubeTranscript === "function";
+  // transcriptItems：運営が管理画面に貼り付けた字幕（あれば YouTube には取りに行かない）。
+  const pasted = Array.isArray(options.transcriptItems) && options.transcriptItems.length ? options.transcriptItems : null;
+  const shouldTryHybrid = !analyzedFrom.startsWith("video") && rawIngredients.length > 0 && typeof deps.buildHybridRecipeSteps === "function" && (pasted || typeof deps.fetchYouTubeTranscript === "function");
 
   if (!shouldTryHybrid && !analyzedFrom.startsWith("video")) {
     progress(1, rawIngredients.length ? "字幕での整理ができない設定です（サーバーの設定）" : "説明欄から材料を読み取れなかったため、字幕での整理をスキップしました");
   }
   if (shouldTryHybrid) {
-    progress(1, "字幕を取得中");
-    const transcriptRes = await deps.fetchYouTubeTranscript(videoId).catch(() => null);
+    progress(1, pasted ? "貼り付けた字幕を使います" : "字幕を取得中");
+    const transcriptRes = pasted ? { status: "ok", items: pasted } : await deps.fetchYouTubeTranscript(videoId).catch(() => null);
     const items = transcriptRes?.status === "ok" && Array.isArray(transcriptRes?.items) ? transcriptRes.items : (Array.isArray(transcriptRes) ? transcriptRes : null);
     progress(1, items && items.length ? `字幕を取得しました（${items.length}行）` : `字幕を取得できませんでした（${transcriptRes?.status || "応答なし"}${transcriptRes?.reason || transcriptRes?.error ? `：${transcriptRes.reason || transcriptRes.error}` : ""}）。説明欄だけで続けます`);
     if (items && items.length) {

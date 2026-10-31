@@ -280,16 +280,26 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     const limit = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : null;
     return cleanCandidateTimes(result.stepTimes, result.steps.length, limit);
   }
-  const candidateView = (c) => c && { candidateId: c.candidateId, mode: c.mode, createdAt: c.createdAt, expiresAt: c.expiresAt, analyzedFrom: c.result.analyzedFrom, stepTimesFrom: c.result.stepTimesFrom || "",
+  // 候補の見立て（管理画面で「このまま保存」か「次の作り方」を勧める）：時刻が半分に足りない・重なる・前に戻る、のどれもなければ ok。
+  const candidateCheck = (c) => {
+    const n = c.result.steps.length, times = (c.result.stepTimes || []).filter(Number.isFinite).length;
+    const dups = c.duplicateTimes || [], back = (c.suspectTimes || []).filter((i) => !dups.includes(i));
+    const reasons = [...(times < Math.ceil(n / 2) ? ["times_few"] : []), ...(dups.length ? ["duplicates"] : []), ...(back.length ? ["goes_back"] : [])];
+    return { ok: !reasons.length, reasons };
+  };
+  const candidateView = (c) => c && { check: candidateCheck(c), candidateId: c.candidateId, mode: c.mode, createdAt: c.createdAt, expiresAt: c.expiresAt, analyzedFrom: c.result.analyzedFrom, stepTimesFrom: c.result.stepTimesFrom || "",
     title: c.result.title, dishName: c.result.dishName || "", ingredients: c.result.ingredients, steps: c.result.steps, stepTimes: c.result.stepTimes || [], durationSeconds: c.durationSeconds ?? null,
     droppedTimes: c.droppedTimes || 0, suspectTimes: c.suspectTimes || [], duplicateTimes: c.duplicateTimes || [], timesFrom: c.timesFrom || "", carriedAdminTimes: c.carriedAdminTimes || 0, aiCalls: c.aiCalls || 0, yen: c.yen ?? null, yenUnknown: !!c.yenUnknown, logs: c.logs || [] };
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
-    // 管理：レシピの候補を作る（保存済みのレシピは上書きしない）。mode："auto"＝説明欄＋字幕 → だめなら動画／"video"＝動画から。
+    // 管理：レシピの候補を作る（保存済みのレシピは上書きしない）。mode：
+    // "basic"＝説明欄＋字幕＋章（動画は読まない。管理画面の「作り直す」の1段目）／"auto"＝説明欄＋字幕 → だめなら動画／
+    // "video"＝動画から／"transcript"＝運営が貼り付けた字幕（transcriptItems）で作る。
     // cost()：AI の費用（円。分からなければ null）を、保存の直前に聞く。
-    async makeCandidate(rawUrl, { mode = "auto", cost = null } = {}) {
+    async makeCandidate(rawUrl, { mode = "auto", cost = null, transcriptItems = null } = {}) {
       required();
-      if (!["auto", "video"].includes(mode)) throw new ApiError(400, "invalid_mode", "作り方の指定が正しくありません。");
+      if (!["basic", "auto", "video", "transcript"].includes(mode)) throw new ApiError(400, "invalid_mode", "作り方の指定が正しくありません。");
+      if (mode === "transcript" && !(Array.isArray(transcriptItems) && transcriptItems.length >= 3)) throw new ApiError(400, "transcript_unreadable", "貼り付けた字幕から、時刻つきの行を読み取れませんでした（「0:16」のような時刻の行が3つ以上いります）。");
       const id = extractYouTubeVideoId(rawUrl);
       const key = `youtube-${id}`;
       const current = await store.get(key);
@@ -306,10 +316,11 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         await gate();
         // videoFullOnly：最後まで見られる動画だけ読む。時刻も補正せずに渡してもらう（下の checkCandidate で検査を一本にする）。
         const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, reread: true, forceVideo: mode === "video", videoIfNeeded: mode === "auto", videoFullOnly: true,
-          videoMaxSeconds: candidateMaxSeconds, reserveVideo: spendCandidateVideo, onProgress: tracker.update });
+          videoMaxSeconds: candidateMaxSeconds, reserveVideo: spendCandidateVideo, onProgress: tracker.update, ...(mode === "transcript" ? { transcriptItems } : {}) });
         tracker.update({ stage: 4, detail: "手順・時刻・材料を確認中" });
         const analyzedFrom = ["video", "video-clip", "description+transcript"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description";
         if (mode === "video" && !analyzedFrom.startsWith("video")) throw new ApiError(422, "video_analysis_failed", "動画から作り方を読み取れませんでした。");
+        if (mode === "transcript" && analyzedFrom !== "description+transcript") throw new ApiError(422, "transcript_unused", "貼り付けた字幕で手順を作れませんでした（処理の履歴に理由があります）。");
         const result = { ...normalizeImportResult(raw), analyzedFrom };
         if (["chapters", "transcript"].includes(raw?.stepTimesFrom)) result.stepTimesFrom = raw.stepTimesFrom;
         const before = current.envelope.result;
@@ -357,6 +368,12 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       } finally {
         await store.remove(lock.key, { ifGeneration: lock.generation }).catch(() => {});
       }
+    },
+    // 管理：今日、動画から候補を作れる残りの回数。
+    async candidateVideoLeft() {
+      required();
+      const used = (await store.get(`candidate-video/${new Date(now()).toISOString().slice(0, 10)}`))?.envelope.used || 0;
+      return Math.max(0, candidateVideoPerDay - used);
     },
     // 管理：いまの候補（期限切れ・なしは null）。
     async candidate(rawUrl) {

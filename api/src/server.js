@@ -11,7 +11,7 @@ import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
 import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, matchStepsToTranscript, buildHybridRecipeSteps, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
-import { fetchYouTubeTranscript } from "./transcript.js";
+import { fetchYouTubeTranscript, parseTranscriptText } from "./transcript.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
 import { createSearchQuota } from "./searchQuota.js";
@@ -111,8 +111,10 @@ export function createApp(env = process.env, deps = {}) {
   const syncJson = express.json({ limit: "24mb" });
   const imageJson = express.json({ limit: "7mb" });
   const menuJson = express.json({ limit: "10mb" });
+  const candidateJson = express.json({ limit: "512kb" });
   app.use((req, res, next) => {
-    const parser = req.path === "/api/weekly/menu" ? menuJson : ["/api/import/images", "/api/skill/photo"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
+    // 管理の候補づくりは、貼り付けた字幕（30分の動画で数十KB）を受け取るので広げる。
+    const parser = /^\/api\/admin\/recipes\/[\w-]{11}\/candidate$/.test(req.path) ? candidateJson : req.path === "/api/weekly/menu" ? menuJson : ["/api/import/images", "/api/skill/photo"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
     parser(req, res, next);
   });
 
@@ -588,15 +590,18 @@ export function createApp(env = process.env, deps = {}) {
   };
   app.get("/api/admin/recipes/:videoId/candidate", (req, res) => {
     const videoId = adminVideo(req, res); if (!videoId) return;
-    send(res, catalog.candidate(canonicalYouTubeUrl(videoId)).then((candidate) => ({ candidate })));
+    send(res, Promise.all([catalog.candidate(canonicalYouTubeUrl(videoId)), catalog.candidateVideoLeft()]).then(([candidate, videoLeft]) => ({ candidate, videoLeft })));
   });
   app.post("/api/admin/recipes/:videoId/candidate", (req, res) => {
     const videoId = adminVideo(req, res); if (!videoId) return;
-    const mode = req.body?.mode === "video" ? "video" : "auto";
+    const mode = ["basic", "video", "transcript"].includes(req.body?.mode) ? req.body.mode : "auto";
+    // 貼り付けた字幕（パソコンの YouTube の「文字起こし」をコピーしたもの）を読む。
+    const transcriptItems = mode === "transcript" ? parseTranscriptText(String(req.body?.transcript || "")) : null;
     const collector = {};
     // 費用は、AI の返事の使用量から（音声は音声の単価）。使用量のない返事があれば「不明」（0円にしない）。
     const cost = () => (collector.unmetered ? null : usageYen(collector, env));
-    send(res, usage.run(collector, () => catalog.makeCandidate(canonicalYouTubeUrl(videoId), { mode, cost })).then((candidate) => ({ candidate })));
+    send(res, usage.run(collector, () => catalog.makeCandidate(canonicalYouTubeUrl(videoId), { mode, cost, transcriptItems }))
+      .then(async (candidate) => ({ candidate, videoLeft: await catalog.candidateVideoLeft().catch(() => null) })));
   });
   app.post("/api/admin/recipes/:videoId/candidate/adopt", (req, res) => {
     const videoId = adminVideo(req, res); if (!videoId) return;
