@@ -120,6 +120,14 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 読み直しで手順が減る（説明欄が変わった・読めなかった）時は、前の結果を残す。
       // 字幕と照合して作り直した時（description+transcript）は「作業のまとまり」に整理するので、工程数が減っても採用する。
       if (reread && before && result.analyzedFrom !== "description+transcript" && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
+
+      // 字幕ハイブリッド（description+transcript）で再生成した際に、既存レシピにあった多くの有効時刻が全損（0件）してしまう場合は採用を見送る
+      const duration = before?.durationSeconds || result?.durationSeconds || null;
+      const beforeValidTimes = (before?.stepTimes || []).filter((t) => Number.isFinite(t) && (duration === null || t < duration)).length;
+      const newValidTimes = (result?.stepTimes || []).filter((t) => Number.isFinite(t) && (duration === null || t < duration)).length;
+      if (reread && result.analyzedFrom === "description+transcript" && beforeValidTimes >= 3 && newValidTimes === 0) {
+        throw new ApiError(422, "reread_lost_timecodes", "読み直すと有効な時刻が失われるため、前の結果を残しました。");
+      }
       if (reread) result.rereadAt = new Date(now()).toISOString();
       // 動画から作り方を読めなかったら、回数は戻す。
       if (!result.analyzedFrom.startsWith("video")) await refund();
@@ -165,7 +173,19 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
     let state = { status: "running", stage: 1, total: 5, label: PROGRESS_LABEL[1], detail: "開始しました", startedAt, logs };
     const write = () => {
       const snapshot = { ...state, logs: [...logs], updatedAt: new Date(now()).toISOString() };
-      chain = chain.then(async () => { const cur = await store.get(key); await store.put(key, snapshot, { ifGeneration: cur?.generation ?? 0 }); }).catch(() => {});
+      const task = async () => {
+        try {
+          const timer = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 1500));
+          await Promise.race([
+            (async () => {
+              const cur = await store.get(key);
+              await store.put(key, snapshot, { ifGeneration: cur?.generation ?? 0 });
+            })(),
+            timer
+          ]);
+        } catch { /* 表示用の保存失敗・遅延は無視 */ }
+      };
+      chain = chain.then(task);
       return chain;
     };
     write();

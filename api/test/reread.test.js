@@ -255,3 +255,38 @@ test('admin reread: stores an array of execution logs so earlier details are not
   assert.ok(p.logs.some((l) => l.includes('字幕を取得しました')));
   assert.ok(p.logs.some((l) => l.includes('quota exceeded')));
 });
+
+test('reread: rejects description+transcript candidate if it completely loses existing valid timecodes', async () => {
+  const store = createMemorySyncStore();
+  const v = 'losttimevid';
+  const url = `https://www.youtube.com/watch?v=${v}`;
+  let answer = {
+    title: '料理',
+    videoUrl: url,
+    ingredients: [{ name: '豚肉' }],
+    steps: steps(5),
+    stepTimes: [10, 20, 30, 40, 50],
+    analyzedFrom: 'video',
+    durationSeconds: 300,
+    catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }
+  };
+  const cat = createRecipeCatalog(store, async () => answer);
+  await cat.import(url);
+  assert.equal((await cat.peek(url)).stepTimes.filter(Number.isFinite).length, 5);
+
+  // 新結果が description+transcript で全時刻 null の場合
+  answer = {
+    title: '料理',
+    videoUrl: url,
+    ingredients: [{ name: '豚肉' }],
+    steps: steps(4),
+    stepTimes: [null, null, null, null],
+    analyzedFrom: 'description+transcript',
+    durationSeconds: 300,
+    catalog: { analyzedAt: new Date().toISOString(), extractorVersion: 99 }
+  };
+
+  await assert.rejects(cat.import(url, { reread: true }), (err) => err.code === 'reread_lost_timecodes');
+  // 前の5件の時刻が維持されていること
+  assert.equal((await cat.peek(url)).stepTimes.filter(Number.isFinite).length, 5);
+});

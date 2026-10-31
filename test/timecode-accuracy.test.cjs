@@ -7,25 +7,18 @@ const CookMode = require("../cook-mode.js");
 
 test("CookMode.refineTimes and segment: subdivides coarse chapter duplicates and repairs inverted timestamps for saved recipes", () => {
   const steps = ["野菜を切る", "豚肉を炒める", "野菜を加えてさらに炒める", "合わせ調味料を入れる", "盛り付ける"];
-  // 同じ章時刻（90秒）が3手順続くケース
+  // 同じ章時刻（90秒）が3手順続くケース：架空の按分時刻は捏造せず、元の時刻を維持する（2026-10-31方針）
   CookMode.setRecipe({ title: "野菜炒め", steps, timesOf: () => [10, 90, 90, 90, 180], ingredients: [] });
   const s0 = CookMode.segment(0);
   const s1 = CookMode.segment(1);
-  const s2 = CookMode.segment(2);
-  const s3 = CookMode.segment(3);
   const s4 = CookMode.segment(4);
   assert.deepEqual(s0, { start: 10, end: 90 });
   assert.equal(s1.start, 90);
-  assert.ok(s1.end > 90 && s1.end < 180, "step 1 ends before 180 so it does not loop the entire 90s chapter");
-  assert.equal(s2.start, s1.end);
-  assert.ok(s2.end > s2.start && s2.end < 180);
-  assert.equal(s3.start, s2.end);
-  assert.equal(s3.end, 180);
   assert.deepEqual(s4, { start: 180, end: null });
 
-  // 順番が逆転しているケース（[10, 200, 100, 300]）も単調増加に補正される
+  // 順番が逆転しているケース（[10, 200, 100, 300]）は、外れ値（200）が null に補正され架空補間されない
   const repaired = CookMode.refineTimes(["a", "b", "c", "d"], [10, 200, 100, 300]);
-  assert.deepEqual(repaired, [10, 55, 100, 300]);
+  assert.deepEqual(repaired, [10, null, 100, 300]);
 
   // "MM:SS" 形式の文字列が混ざっていても秒数に変換される
   const fromStrings = CookMode.refineTimes(["a", "b", "c"], ["00:12", "01:25", "02:40"]);
@@ -33,10 +26,9 @@ test("CookMode.refineTimes and segment: subdivides coarse chapter duplicates and
 
   // review fix (#152): 短尺動画の [0, 5, 10, 14] は密集（cluster）として後ろへ勝手に広げない
   assert.deepEqual(CookMode.refineTimes(["a", "b", "c", "d"], [0, 5, 10, 14]), [0, 5, 10, 14]);
-  // review fix (#152): 動画の長さが不明な時は、末尾の重複や逆転があっても既存の最大時刻を超えない
+  // review fix (#152): 末尾の重複があっても架空の按分時刻を捏造せず、元の時刻を維持する
   const cappedDup = CookMode.refineTimes(["a", "b", "c", "d"], [10, 50, 90, 90]);
-  assert.equal(cappedDup[3], 90);
-  assert.ok(cappedDup[2] > 50 && cappedDup[2] < 90);
+  assert.deepEqual(cappedDup, [10, 50, 90, 90]);
 });
 
 test("CookMode nudgeTime and voice commands: adjusts loop start/end by -5s / +5s / here and triggers onTimeFix", () => {
@@ -215,7 +207,8 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   const refinedSaved = JSON.parse(run("JSON.stringify(recipeStepTimes(state.recipes[0]))"));
   assert.equal(refinedSaved[0], 10);
   assert.equal(refinedSaved[1], 60);
-  assert.ok(refinedSaved[2] > 60 && refinedSaved[2] < 120, "saved recipe duplicate timestamp is automatically subdivided");
+  // 架空の時刻（80秒など）を捏造せず、元の根拠ある時刻を維持する
+  assert.equal(refinedSaved[2], 60);
   assert.equal(refinedSaved[3], 120);
 
   // 2. 書き直した手順（guide）で、まとめた先頭の手順に時刻がなく2番目に時刻がある場合も引き継ぐ
@@ -383,4 +376,12 @@ test("daily-ui & discover: already-saved recipes refine coarse times, guide step
   run("globalThis.ownFromDisc = saveOwnRecipe(discRecipe)");
   assert.equal(run("ownFromDisc.stepTimesFrom"), "transcript");
   assert.deepEqual(JSON.parse(run("JSON.stringify(recipeStepTimes(ownFromDisc))")), [10, 10, 10, 90]);
+});
+
+test("cook-mode refineTimes does not invent fake interpolated times for dense timestamps [10.5, 15.5, 20.5, 25.5]", () => {
+  const steps = ["下準備", "炒める", "煮る", "盛り付け"];
+  const rawTimes = [10.5, 15.5, 20.5, 25.5];
+  const refined = CookMode.refineTimes(steps, rawTimes, { durationSeconds: 675 });
+  // 架空の按分 [10.5, 46, 81, 116] ではなく、元の根拠ある時刻がそのまま維持されること
+  assert.deepEqual(refined, [10.5, 15.5, 20.5, 25.5]);
 });

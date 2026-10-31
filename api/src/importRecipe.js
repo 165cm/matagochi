@@ -13,6 +13,45 @@ const NUTRITION = /kcal|キロカロリー|カロリー|糖質|たんぱく質|�
 const VIDEO_MAX_SECONDS = 600;
 
 // まず説明文（安い）。作り方か材料が取れない時だけ、短い動画を映像ごと読む。
+
+// 元の手順（説明欄）に含まれる時間・数値指定（例: 「中火で10分」など）が、
+// 新しい手順で勝手に別の数字（例: 「中火で1分」など）に書き換えられていないか検証する
+function validateNumbersConsistency(rawSteps = [], newSteps = []) {
+  if (!Array.isArray(rawSteps) || rawSteps.length < 2 || !Array.isArray(newSteps) || !newSteps.length) return true;
+  const extractTimeNums = (steps) => {
+    const map = new Map();
+    for (const step of steps) {
+      const s = String(step || "");
+      const matches = s.matchAll(/(\d+)\s*(分|秒|時間)/g);
+      for (const m of matches) {
+        const val = Number(m[1]);
+        const unit = m[2];
+        // 単位あたりの秒数を大まかに把握
+        const sec = unit === "時間" ? val * 3600 : unit === "分" ? val * 60 : val;
+        map.set(`${val}${unit}`, sec);
+      }
+    }
+    return map;
+  };
+  const rawMap = extractTimeNums(rawSteps);
+  const newMap = extractTimeNums(newSteps);
+  if (!rawMap.size || !newMap.size) return true; // 新手順に時間の数字がなければ要約とみなして通す
+
+  // 新手順に数字が登場している場合、元の数字と全く合わず大幅に縮小・乖離している（例: 元が10分焼くで新が1分焼く）矛盾を検出
+  for (const [newLabel, newSec] of newMap.entries()) {
+    // 新手順に出てきた時間指定が、元手順の時間指定のどれとも一致せず、元の最大時間と大幅に乖離している場合は警戒
+    const hasExact = [...rawMap.keys()].includes(newLabel);
+    if (!hasExact) {
+      const rawSecs = [...rawMap.values()];
+      const closest = Math.min(...rawSecs.map((r) => Math.abs(r - newSec)));
+      // 元の指定時間のいずれとも5倍以上の差がある新しい時間指定は数値の勝手な捏造と判定
+      if (closest > 180 && rawSecs.every((r) => r >= newSec * 5 || newSec >= r * 5)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const videoId = extractYouTubeVideoId(rawUrl);
   // 管理画面に見せる処理段階（1〜5。表示の失敗で取り込みを止めない）。
@@ -49,7 +88,9 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         sourceServings: Number.isInteger(analysis.sourceServings) ? analysis.sourceServings : video.sourceServings,
         ingredients: normalizeIngredients(analysis.ingredients).length ? analysis.ingredients : videoIngredients,
         steps: videoSteps.length ? videoSteps : analysis.steps,
-        stepTimes: videoSteps.length ? video.stepTimes : undefined,
+        stepTimes: videoSteps.length && Array.isArray(video.stepTimes)
+          ? video.stepTimes.map((t) => (clipSeconds !== null && Number.isFinite(t) && t >= clipSeconds ? null : t))
+          : undefined,
         tags: analysis.tags?.length ? analysis.tags : video.tags,
         planning: videoSteps.length && video.planning ? video.planning : analysis.planning || video.planning
       };
@@ -101,7 +142,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
 
           const isComplete = hybrid?.stepsComplete !== false;
           // 工程数が減ること自体は悪くない（作業のまとまりに整理するため）。説明欄の半分未満まで減った時だけ、抜けを疑って採用しない。
-          const isBetterOrCoarse = rawSteps.length <= 4 || (hybrid?.steps?.length >= Math.ceil(rawSteps.length / 2));
+          const numbersValid = validateNumbersConsistency(rawSteps, hybrid?.steps);
+          const isBetterOrCoarse = numbersValid && (rawSteps.length <= 4 || (hybrid?.steps?.length >= Math.ceil(rawSteps.length / 2)));
           if (hybrid && Array.isArray(hybrid.steps) && hybrid.steps.length >= 2 && isComplete && isBetterOrCoarse) {
             analysis = {
               ...analysis,
