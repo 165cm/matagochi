@@ -2849,7 +2849,7 @@ function renderRecipeDetail() {
 // 運営が作り方を直した時の知らせ（APP_MAP §52-9）：入れ替えた時は7日だけ小さく。使う人が直していた時は「新しい作り方にする」。
 function renderSourceNote(r, canEdit) {
   if (!r) return "";
-  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。いまの作り方は、あなたが直したものなので、そのままにしています。</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}">新しい作り方にする</button></div>`;
+  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : "いまの作り方は、あなたが直したものなので、そのままにしています。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}">新しい作り方にする</button></div>`;
   const at = Date.parse(r.sourceUpdatedAt || "");
   if (Number.isFinite(at) && Date.now() - at < 7 * 86_400_000) return `<p class="source-note muted small" role="note">📝 作り方が新しくなりました（${escapeHtml(formatDate(new Date(at).toISOString().slice(0, 10)))}）</p>`;
   return "";

@@ -290,10 +290,12 @@ export function createApp(env = process.env, deps = {}) {
     const ids = [...new Set((Array.isArray(req.body?.videoIds) ? req.body.videoIds : []).map(String).filter((x) => /^[\w-]{11}$/.test(x)))].slice(0, 50);
     send(res, (async () => {
       const items = {};
-      for (const videoId of ids) {
-        const r = await catalog.peek(canonicalYouTubeUrl(videoId)).catch(() => null);
+      // 10件ずつまとめて読む（50件を1件ずつ読むと遅く、アプリの待ち時間を超えることがある。Claude review #212）。
+      const read = [];
+      for (let i = 0; i < ids.length; i += 10) read.push(...await Promise.all(ids.slice(i, i + 10).map((videoId) => catalog.peek(canonicalYouTubeUrl(videoId)).catch(() => null).then((r) => [videoId, r]))));
+      for (const [videoId, r] of read) {
         if (!r?.catalog?.revision || !(r.steps || []).length) continue;
-        items[videoId] = { revision: r.catalog.revision, title: r.title || "", sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps, stepTimes: r.stepTimes || [],
+        items[videoId] = { revision: r.catalog.revision, title: r.title || "", sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps, stepTimes: r.stepTimes || [], planning: r.planning || null,
           ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}) };
       }
       return { items };

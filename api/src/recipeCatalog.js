@@ -51,6 +51,7 @@ export function cleanCandidateTimes(times, count, limit = null) {
 const UNAVAILABLE = { not_found: ["video_not_found", 404, "YouTube動画が見つかりませんでした。"], non_public: ["non_public_video", 422, "この動画はいま公開されていません。"] };
 export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true, tickets = null, refreshSnippet = null, checkVideos = null, candidateMaxSeconds = 1800, candidateVideoPerDay = 10 } = {}) {
   const inFlight = new Map();
+  let changedMemo = null; // 運営がレシピを変えた時刻（changedAt）の短い覚え
   const required = () => {
     if (!store) throw new ApiError(503, "catalog_not_configured", "分析結果の保存先が未設定です。手動入力をご利用ください。");
   };
@@ -293,8 +294,22 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
     // 運営がレシピを変えた時刻（複数のサーバーで一覧の作り置きを捨てるため。APP_MAP §52-9）。保存先がない時は 0。
-    async markChanged() { if (!store) return; const cur = await store.get("catalog-changed").catch(() => null); await store.put("catalog-changed", { at: new Date(now()).toISOString() }, { ifGeneration: cur?.generation ?? 0 }).catch(() => null); },
-    async changedAt() { if (!store) return 0; return Date.parse((await store.get("catalog-changed").catch(() => null))?.envelope?.at || 0) || 0; },
+    // 重なったら読み直して3回まで（印が進まないと、ほかのサーバーが古い一覧を返し続ける。Claude review #212）。
+    async markChanged() {
+      if (!store) return;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cur = await store.get("catalog-changed").catch(() => null);
+        if (await store.put("catalog-changed", { at: new Date(now()).toISOString() }, { ifGeneration: cur?.generation ?? 0 }).catch(() => null)) { changedMemo = { at: now(), value: now() }; return; }
+      }
+    },
+    // 一覧の読み出しのたびに保存先を読まないよう、5秒だけ覚える（ほかのサーバーで変えた時も、5秒以内に届く）。
+    async changedAt() {
+      if (!store) return 0;
+      if (changedMemo && now() - changedMemo.at < 5000) return changedMemo.value;
+      const value = Date.parse((await store.get("catalog-changed").catch(() => null))?.envelope?.at || 0) || 0;
+      changedMemo = { at: now(), value };
+      return value;
+    },
     // 管理：レシピの候補を作る（保存済みのレシピは上書きしない）。mode：
     // "basic"＝説明欄＋字幕＋章（動画は読まない。管理画面の「作り直す」の1段目）／"auto"＝説明欄＋字幕 → だめなら動画／
     // "video"＝動画から／"transcript"＝運営が貼り付けた字幕（transcriptItems）で作る。

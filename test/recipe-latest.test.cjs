@@ -91,3 +91,45 @@ test("the recipe screen shows the notice above the ingredients", async () => {
   assert.match(html, /source-note[^>]*>📝 作り方が新しくなりました/);
   assert.ok(html.indexOf("source-note") < html.indexOf("材料"), "shown before the ingredients");
 });
+
+// ── Claude のコードレビュー（PR #212）の指摘への対応 ──
+test("review #212: times the app found by itself do not count as the user's edit, so the later update is still automatic", async () => {
+  const { run } = app(() => ({ [V]: newer }));
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend"))`);
+  run("keepSourceBaseline(own, () => { own.stepTimes = [10, 30, 90]; })");
+  await run("refreshSavedRecipes({ force: true })");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(own.steps)")), newer.steps);
+  assert.equal(run("own.sourcePending"), undefined);
+});
+
+test("review #212: the planned meal's own copy is updated too (cook screen); with changed ingredients in a decided meal, the button is shown instead", async () => {
+  const sameIngredients = { ...newer, ingredients: item.ingredients };
+  let latest = { [V]: sameIngredients };
+  const { run } = app(() => latest);
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); const d = today(); state.mealSlots[d] = { date: d, recipe: clone(own), status: "confirmed" }; globalThis.slot = state.mealSlots[d]`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(slot.recipe.steps)")), newer.steps, "the cook screen reads this copy");
+  latest = { [V]: { ...newer, revision: "r3", steps: [...newer.steps, "盛る"] } };
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("own.sourcePending.planned"), true, "ingredients change while the meal is decided");
+  assert.equal(run("slot.recipe.ingredients.length"), 1, "the shopping list does not change by itself");
+  assert.match(run("renderSourceNote(own, true)"), /決めた献立と買い物リスト/);
+  run("applySourcePending(own.id)");
+  assert.equal(run("slot.recipe.ingredients.length"), 2);
+  assert.equal(run("slot.recipe.steps.length"), 5);
+});
+
+test("review #212: every saved copy is checked (50 at a time); a failed check does not start the 6-hour pause", async () => {
+  const { run } = app(() => ({}));
+  run(`globalThis.__fail = true; globalThis.__asked = []; const f0 = globalThis.fetch;
+    globalThis.fetch = (url, o) => { if (!String(url).endsWith("/api/recipes/latest")) return f0(url, o); __asked.push(JSON.parse(o.body).videoIds.length);
+      return Promise.resolve(__fail ? { ok: false, json: async () => ({}) } : { ok: true, json: async () => ({ items: {} }) }); }`);
+  run(`for (let i = 0; i < 120; i++) state.recipes.push({ id: "c" + i, starterId: "trend-x", title: "x", videoUrl: "https://www.youtube.com/watch?v=" + String(i).padStart(11, "a"), ingredients: [], steps: ["a", "b"], stepTimes: [] })`);
+  assert.equal(await run("refreshSavedRecipes()"), false, "the server did not answer");
+  run("__fail = false; __asked = []");
+  await run("refreshSavedRecipes()");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(__asked)")), [50, 50, 20], "not paused by the failed try; all 120 asked");
+  run("__asked = []");
+  await run("refreshSavedRecipes()");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(__asked)")), [], "then the 6-hour pause");
+});
