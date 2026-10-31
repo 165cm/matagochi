@@ -314,7 +314,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         if (["chapters", "transcript"].includes(raw?.stepTimesFrom)) result.stepTimesFrom = raw.stepTimesFrom;
         const before = current.envelope.result;
         const durationSeconds = Number.isFinite(raw?.durationSeconds) ? raw.durationSeconds : null;
-        const { stepTimes, dropped, suspects, duplicates } = checkCandidate(result, durationSeconds);
+        let { stepTimes, dropped, suspects, duplicates } = checkCandidate(result, durationSeconds);
         result.stepTimes = stepTimes;
         if (!stepTimes.some(Number.isFinite)) delete result.stepTimesFrom;
         // 時刻の出どころ（候補の画面に出す）：説明欄の章・字幕・動画・説明欄の読み取り。
@@ -322,16 +322,23 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         // 運営が直した料理名は引き継ぐ。運営が直した時刻は、文がまったく同じ手順（前にも候補にも1つだけ）の分だけ引き継ぐ（別の作業に時刻を付けない）。
         if (before.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
         let carried = 0;
+        const carriedAt = new Set();
         if (before.stepTimesFrom === "admin") {
           const count = (list) => list.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
           const oldCount = count(before.steps || []), newCount = count(result.steps);
           result.steps.forEach((step, i) => {
             const j = (before.steps || []).indexOf(step);
             const t = before.stepTimes?.[j];
-            if (j >= 0 && oldCount.get(step) === 1 && newCount.get(step) === 1 && Number.isFinite(t) && (durationSeconds === null || t < durationSeconds)) { result.stepTimes[i] = t; carried += 1; }
+            if (j >= 0 && oldCount.get(step) === 1 && newCount.get(step) === 1 && Number.isFinite(t) && (durationSeconds === null || t < durationSeconds)) { result.stepTimes[i] = t; carried += 1; carriedAt.add(i); }
           });
-          // 引き継いだ時刻で順番が逆になったら、もう一度確かめる
-          if (carried) { const again = cleanCandidateTimes(result.stepTimes, result.steps.length, durationSeconds); result.stepTimes = again.stepTimes; again.suspects.forEach((i) => suspects.push(i)); again.duplicates.forEach((i) => duplicates.push(i)); }
+          // 引き継いだ時刻で、もう一度確かめる。重なりは最後の時刻で数え直し（引き継ぎで解けた重なりを残さない）、
+          // 運営が直した時刻は要確認にしない。前に戻る時刻の手前の要確認は、引き継がなかった手順の分だけ残す（Codex review #210）。
+          if (carried) {
+            const again = cleanCandidateTimes(result.stepTimes, result.steps.length, durationSeconds);
+            result.stepTimes = again.stepTimes;
+            suspects = [...suspects.filter((i) => !duplicates.includes(i) && !carriedAt.has(i)), ...again.suspects];
+            duplicates = again.duplicates;
+          }
         }
         const yen = typeof cost === "function" ? cost() : null;
         const createdAt = new Date(now()).toISOString();

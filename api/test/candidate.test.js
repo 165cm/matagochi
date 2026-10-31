@@ -435,3 +435,18 @@ test('problem A: times found in the video are not overwritten by coarse chapters
   assert.deepEqual(precise.stepTimes, [16, 121, 159, 228]);
   assert.equal(precise.stepTimesFrom, 'chapters');
 });
+
+test('Codex review #210: a duplicate that the carried admin times resolve is not left as needs-check', async () => {
+  const store = createMemorySyncStore();
+  const steps = ['切る', '焼く', '盛る'];
+  await store.put(`youtube-${V}`, { status: 'ready', result: { ...oldRecipe, steps, stepTimes: [10, 20, 30], stepTimesFrom: 'admin' } }, { ifGeneration: 0 });
+  const catalog = createRecipeCatalog(store, async () => ({ ...structuredClone(videoAnswer), steps, stepTimes: [10, 10, 30] }));
+  const c = await catalog.makeCandidate(URL_, { mode: 'video' });
+  assert.deepEqual(c.stepTimes, [10, 20, 30]);
+  assert.deepEqual(c.duplicateTimes, []);
+  assert.deepEqual(c.suspectTimes, []);
+  await catalog.adoptCandidate(URL_, { candidateId: c.candidateId });
+  const saved = (await store.get(`youtube-${V}`)).envelope.result;
+  assert.deepEqual(saved.stepTimes, [10, 20, 30]);
+  assert.equal(saved.stepTimesPending, undefined);
+});
