@@ -2853,7 +2853,7 @@ function renderRecipeDetail() {
 // date：作る画面（献立の枠の写し）から出す時の、その日。
 function renderSourceNote(r, canEdit, date = "") {
   if (!r) return "";
-  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : "いまの作り方は、あなたが直したものなので、そのままにしています。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>新しい作り方にする</button></div>`;
+  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : r.sourcePrint && sourcePrint(r) !== r.sourcePrint ? "いまの作り方は、あなたが直したものなので、そのままにしています。" : "いまの作り方のままにしています。新しい作り方にするか選べます。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>新しい作り方にする</button></div>`;
   const at = Date.parse(r.sourceUpdatedAt || "");
   if (Number.isFinite(at) && Date.now() - at < 7 * 86_400_000) return `<p class="source-note muted small" role="note">📝 作り方が新しくなりました（${escapeHtml(formatDate(new Date(at).toISOString().slice(0, 10)))}）</p>`;
   return "";

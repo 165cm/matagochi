@@ -148,19 +148,29 @@ test("review #212: every saved copy is checked (50 at a time); a failed check do
 
 // ── Claude のコードレビュー（PR #213）の指摘への対応 ──
 test("review #213: meal-plan copies of the user's own or imported recipes are never replaced automatically", async () => {
-  const { run, asked } = app(() => ({ [V]: { ...newer, ingredients: item.ingredients } }));
-  run(`globalThis.d1 = today(); globalThis.d2 = addDays ? addDays(today(), 1) : today();`);
-  run(`state.mealSlots[d1] = { date: d1, recipe: { id: "r-mine", title: "自分の", videoUrl: "${item.videoUrl}", ingredients: [], steps: ["自分の手順1", "自分の手順2"], stepTimes: [] }, status: "planned" }`);
+  const { run } = app(() => ({ [V]: { ...newer, ingredients: item.ingredients, changedAt: "2000-01-01T00:00:00Z" } }));
+  run(`globalThis.d1 = today();`);
+  run(`state.mealSlots[d1] = { date: d1, recipe: { id: "r-mine", title: "自分の", videoUrl: "${item.videoUrl}", updatedAt: "2026-10-30T00:00:00Z", ingredients: [], steps: ["自分の手順1", "自分の手順2"], stepTimes: [] }, status: "planned" }`);
   run(`state.mealSlots["2999-01-01"] = { date: "2999-01-01", recipe: { id: "r-imp", catalog: { id: "youtube-${V}", revision: "r0" }, title: "取り込み", videoUrl: "${item.videoUrl}", ingredients: ${JSON.stringify(item.ingredients)}, steps: ["直した1", "直した2"], stepTimes: [] }, status: "planned" }`);
   await run("refreshSavedRecipes({ force: true })");
   assert.deepEqual(JSON.parse(run("JSON.stringify(state.mealSlots[d1].recipe.steps)")), ["自分の手順1", "自分の手順2"], "the user's own recipe is never touched");
+  assert.equal(run("state.mealSlots[d1].recipe.sourcePending"), undefined, "the admin changed it before the user's recipe: no button");
   assert.deepEqual(JSON.parse(run('JSON.stringify(state.mealSlots["2999-01-01"].recipe.steps)')), ["直した1", "直した2"]);
   assert.equal(run('state.mealSlots["2999-01-01"].recipe.sourcePending.revision'), "r2", "an imported one waits for the button");
-  // 使う人のレシピを開いても、問い合わせない
-  const before = asked.length;
-  run(`ensureLatest(state.mealSlots[d1].recipe)`);
+});
+
+test("2026-10-31 report 2: a planned recipe with no marks (imported long ago) gets the button when the admin changed it later; the cook screen shows it", async () => {
+  const { run } = app(() => ({ [V]: { ...newer, changedAt: "2026-10-31T11:20:00Z" } }));
+  run(`globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: { id: "r-old", title: "鶏むね肉の濃厚マッシュルームクリームソース", videoUrl: "${item.videoUrl}", updatedAt: "2026-10-20T00:00:00Z", ingredients: ${JSON.stringify(item.ingredients)}, steps: Array.from({ length: 10 }, (_, i) => "古い手順" + i), stepTimes: [] }, status: "confirmed" }`);
+  run("cookingDate = d; state.view = 'cooking'; renderCooking()");
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(asked.length, before);
+  assert.equal(run("state.mealSlots[d].recipe.steps.length"), 10, "not replaced by itself");
+  assert.match(run("renderCooking()"), /運営が作り方を直しました（手順 10 → 4）.*新しい作り方にする/s);
+  run("applySourcePending('r-old', d)");
+  assert.equal(run("state.mealSlots[d].recipe.steps.length"), 4);
+  // ボタンで入れたあとは、同じ版でまたボタンを出さない
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("state.mealSlots[d].recipe.sourcePending"), undefined);
 });
 
 test("review #213: a failed check is retried only once", async () => {
@@ -175,4 +185,31 @@ test("review #213: a failed check is retried only once", async () => {
   await new Promise((r) => setImmediate(r));
   assert.equal(run("__n"), 2);
   assert.equal(run("__timers.length"), 0, "no endless retries");
+});
+
+// ── Claude のコードレビュー（PR #214）の指摘への対応 ──
+test("review #214: an unmarked recipe with no dates, or one the admin changed earlier, only remembers the version; a later admin change still gets the button even if the recipe was touched meanwhile", async () => {
+  let latest = { [V]: { ...newer, changedAt: "2026-10-01T00:00:00Z" } };
+  const { run } = app(() => latest);
+  run(`state.recipes.push({ id: "r-nodate", title: "日付なし", videoUrl: "${item.videoUrl}", ingredients: [], steps: ["自分1", "自分2"], stepTimes: [] })`);
+  run(`state.recipes.push({ id: "r-later", title: "あとで保存", videoUrl: "${item.videoUrl}", updatedAt: "2026-10-20T00:00:00Z", ingredients: [], steps: ["自分1", "自分2"], stepTimes: [] })`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-nodate').sourcePending"), undefined, "no date: no false button");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-later').sourcePending"), undefined, "admin changed before the user saved it");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-later').sourceRevision"), "r2", "the version is remembered");
+  // そのあと使う人のレシピが別の理由で更新されても、運営が新しく直したらボタン
+  run("state.recipes.find((r) => r.id === 'r-later').updatedAt = '2026-12-01T00:00:00Z'");
+  latest = { [V]: { ...newer, revision: "r5", changedAt: "2026-11-01T00:00:00Z" } };
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-later').sourcePending.revision"), "r5");
+  assert.match(run("renderSourceNote(state.recipes.find((r) => r.id === 'r-later'), true)"), /いまの作り方のままにしています/);
+});
+
+test("review #214: videos not in the catalog are not asked again for a day", async () => {
+  const { run, asked } = app(() => ({}));
+  run(`state.recipes.push({ id: "r-mine", title: "自分の", videoUrl: "https://www.youtube.com/watch?v=zzzzzzzzzzz", updatedAt: "2026-10-20T00:00:00Z", ingredients: [], steps: ["a", "b"], stepTimes: [] })`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(asked.length, 1);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(asked.length, 1, "remembered as not in the catalog");
 });

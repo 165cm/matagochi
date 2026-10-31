@@ -295,7 +295,9 @@ export function createApp(env = process.env, deps = {}) {
       for (let i = 0; i < ids.length; i += 10) read.push(...await Promise.all(ids.slice(i, i + 10).map((videoId) => catalog.peek(canonicalYouTubeUrl(videoId)).catch(() => null).then((r) => [videoId, r]))));
       for (const [videoId, r] of read) {
         if (!r?.catalog?.revision || !(r.steps || []).length) continue;
-        items[videoId] = { revision: r.catalog.revision, title: r.title || "", sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps, stepTimes: r.stepTimes || [], planning: r.planning || null,
+        // changedAt：運営が最後に作り方を変えた日時（候補の採用・手順の手直し・時刻の保存・読み直し）。目印のない端末のレシピに、ボタンを出すかの判断に使う。
+        const changedAt = [r.adoptedFrom?.at, r.stepsEditedAt, r.timesEditedAt, r.rereadAt, r.catalog?.analyzedAt].map((x) => Date.parse(x || "") || 0).reduce((a, b) => Math.max(a, b), 0);
+        items[videoId] = { revision: r.catalog.revision, ...(changedAt ? { changedAt: new Date(changedAt).toISOString() } : {}), title: r.title || "", sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps, stepTimes: r.stepTimes || [], planning: r.planning || null,
           ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}) };
       }
       return { items };

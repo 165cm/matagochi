@@ -557,6 +557,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       const raw = Array.isArray(stepTimes) ? stepTimes : [];
       result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : Math.floor(Number(t)); });
       if (from) result.stepTimesFrom = from;
+      // 運営が時刻を保存した日時（0円の一括補正は運営の判断ではないので残さない。Claude review #214）。
+      if (from === "admin") result.timesEditedAt = new Date(now()).toISOString();
       // 運営が時刻を保存した＝要確認だった時刻も確かめた（▶ で見て保存した）。0円の一括補正では確かめていないので残す。
       if (from === "admin") delete result.stepTimesPending;
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
