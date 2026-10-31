@@ -188,7 +188,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
     progress(3, "説明欄の章と照合中（AI応答待ち）");
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
     const times = timesFromChapterIndexes(matched?.chapterIndex, chapters, finalSteps.length);
-    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }
+    // 管理の候補づくり（videoFullOnly）では、章の時刻も直さずに渡す（前に戻る時刻の「要確認」を候補の検査で判断する）。
+    if (times.some((t) => t !== null)) { analysis = { ...analysis, stepTimes: options.videoFullOnly ? times : refineStepTimes(finalSteps, times, { durationSeconds: duration }) }; analyzedTimes = "chapters"; }
   } else if (!analyzedTimes && Array.isArray(analysis.stepTimes) && finalSteps.length >= 2 && !options.videoFullOnly) {
     // 管理の候補づくり（videoFullOnly）では直さずに渡す（候補の検査 cleanCandidateTimes で、前に戻る時刻と「要確認」を一度に判断する）。
     analysis = { ...analysis, stepTimes: refineStepTimes(finalSteps, analysis.stepTimes, { durationSeconds: duration }) };

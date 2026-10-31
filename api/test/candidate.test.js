@@ -341,3 +341,34 @@ test('review fix 2 P2-3: on the real import path, a time that goes back still ma
   assert.deepEqual(c.suspectTimes, [1]);
   assert.equal(c.droppedTimes, 1);
 });
+
+// ── review fix 3（2026-10-31・Codex の再現2件） ──
+test('review fix 3 P1: the cook-screen API does not return admin times written for an older recipe version (same steps)', async (t) => {
+  const count = { transcript: 0, video: 0 };
+  const { store, base } = await serve(t, { deps: quietDeps(count) });
+  await store.put(tcKey(oldRecipe.steps), { stepTimes: oldRecipe.steps.map(() => 90), source: 'fix', recipeRevision: 'r-stale' }, { ifGeneration: 0 });
+  assert.deepEqual((await shared(base, oldRecipe.steps)).stepTimes, oldRecipe.stepTimes);
+  const full = await (await fetch(`${base}/api/import/youtube/timecodes`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-household': 'home-review-2' }, body: JSON.stringify({ url: URL_, steps: oldRecipe.steps }) })).json();
+  assert.deepEqual(full.stepTimes, oldRecipe.stepTimes);
+  assert.deepEqual(count, { transcript: 0, video: 0 });
+  // 手順の違う古いレシピ（利用者の手元に残っている版）への時刻は、そのまま返す
+  const otherSteps = ['別の手順1', '別の手順2'];
+  await store.put(tcKey(otherSteps), { stepTimes: [7, 8], source: 'fix', recipeRevision: 'r-stale' }, { ifGeneration: 0 });
+  assert.deepEqual((await shared(base, otherSteps)).stepTimes, [7, 8]);
+});
+
+test('review fix 3 P2: on the chapter path too, a time that goes back marks the one before it as needs-check', async () => {
+  const store = createMemorySyncStore();
+  await store.put(`youtube-${V}`, { status: 'ready', result: oldRecipe }, { ifGeneration: 0 });
+  const steps = ['ゆでる', 'ソースを作る', '和える', '盛る'];
+  const deps = { fetchYouTubeSnippet: async () => ({ ...onlyIngredients, description: `${onlyIngredients.description}\n0:00 はじめに\n0:10 ゆでる\n0:20 和える\n0:30 ソース\n0:40 盛る` }),
+    analyzeRecipeDescription: async () => ({ title: '青のりクリームパスタ', ingredients: [{ name: 'パスタ', amount: '100g' }], steps }),
+    fetchYouTubeTranscript: async () => ({ status: 'not_available', reason: 'unplayable' }),
+    matchStepsToChapters: async () => ({ chapterIndex: [2, 4, 3, 5] }) };
+  const catalog = createRecipeCatalog(store, (url, o) => importYouTubeRecipe(url, deps, o));
+  const c = await catalog.makeCandidate(URL_, { mode: 'auto' });
+  assert.equal(c.stepTimesFrom, 'chapters');
+  assert.deepEqual(c.stepTimes, [10, 30, null, 40]);
+  assert.deepEqual(c.suspectTimes, [1]);
+  assert.equal(c.droppedTimes, 1);
+});

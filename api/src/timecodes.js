@@ -49,7 +49,8 @@ function verifyTranscriptTimes(rawTimes, count, duration) {
   return out;
 }
 
-export function createTimecodeBook(store, { analyze, matchChapters, matchTranscript = null, fetchTranscript = async () => null, snippet = async () => null, reserveBudget, maxSeconds = 600, now = Date.now } = {}) {
+// currentRecipe(videoId)：保存済みのレシピの { revision, steps, stepTimes }（管理の保存が書いた時刻が、いまの版のものかを確かめる）。
+export function createTimecodeBook(store, { analyze, matchChapters, matchTranscript = null, fetchTranscript = async () => null, snippet = async () => null, reserveBudget, maxSeconds = 600, now = Date.now, currentRecipe = null } = {}) {
   const required = () => { if (!store) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   const inFlight = new Map();
   const keyOf = (videoId, list) => `timecodes/${videoId}-${createHash("sha256").update(list.join("\n")).digest("hex").slice(0, 16)}`;
@@ -227,6 +228,14 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
       const work = (async () => {
         const cached = await store.get(key);
         const entry = cached?.envelope;
+        // 管理の保存が書いた時刻（recipeRevision つき）が、同じ手順のいまのレシピの版と違う（保存の途中で失敗した等）なら、
+        // 古い時刻は返さず、いまのレシピの確かめ済みの時刻を返す（要確認の手順は null）。
+        if (entry?.recipeRevision && typeof currentRecipe === "function") {
+          const cur = await currentRecipe(videoId).catch(() => null);
+          if (cur && cur.revision !== entry.recipeRevision && normalize(cur.steps).join("\n") === list.join("\n")) {
+            return { stepTimes: list.map((_, i) => (Number.isFinite(cur.stepTimes?.[i]) ? cur.stepTimes[i] : null)), source: "fix", cacheHit: true };
+          }
+        }
         let info = null;
         const dur = (await (async () => {
           if (entry?.source === "fix") return null;

@@ -61,7 +61,8 @@ export function createApp(env = process.env, deps = {}) {
     matchTranscript: deps.matchStepsToTranscript || ((steps, text) => matchStepsToTranscript(steps, text, env)),
     fetchTranscript: deps.fetchYouTubeTranscript || ((id) => fetchYouTubeTranscript(id)),
     // 手順の時刻は動画の最後まで見る（30分まで。5秒に1コマなので費用は抑えられる。2026-10-04）。レシピの読み取り（VIDEO_MAX_SECONDS）とは別。
-    snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), now: deps.now || Date.now });
+    snippet: async (id) => (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(id, env), maxSeconds: Number(env.TIMECODE_MAX_SECONDS || 1800), now: deps.now || Date.now,
+    currentRecipe: async (id) => { const r = await catalog.peek(canonicalYouTubeUrl(id)); return r ? { revision: r.catalog?.revision || "", steps: r.steps || [], stepTimes: r.stepTimes || [] } : null; } });
   const creatorAuth = createCreatorAuth(recipeStore, { clientId: env.GOOGLE_CLIENT_ID || "", fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
   // 掲載停止・再開が変わったら、新着・みんなの定番の表示キャッシュをすぐ捨てる（停止した料理を10分残さない）。
   const creatorDesk = createCreatorDesk(recipeStore, { resolveChannel: deps.resolveChannel || ((x) => resolveYouTubeChannel(x, env)), now: deps.now || Date.now, onChange: () => { trendBook?.clearCache?.(); popularBook?.clearCache?.(); } });
