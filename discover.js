@@ -335,12 +335,15 @@ function pendingTargets(own, slot, vid) {
   }
   return list;
 }
+// 押したボタンのレシピ（id）・その日の献立の枠（date）から、そろえる相手を集める。
+function sourceTargets(id, date = "") {
+  const own = state.recipes.find((x) => x.id === id);
+  const slot = date && state.mealSlots?.[date]?.recipe ? state.mealSlots[date] : null;
+  return pendingTargets(own, slot, videoOfRecipe(own || slot?.recipe));
+}
 // 「新しい作り方にする」：保存したレシピと、同じ動画のこれからの献立の枠の、待っている版を入れる。
 function applySourcePending(id, date = "") {
-  const own = state.recipes.find((x) => x.id === id);
-  const slotRecipe = date ? state.mealSlots?.[date]?.recipe : null;
-  const vid = videoOfRecipe(own || slotRecipe);
-  const targets = pendingTargets(own, slotRecipe ? state.mealSlots[date] : null, vid);
+  const targets = sourceTargets(id, date);
   let done = false;
   for (const { r, slot } of targets) {
     if (!r.sourcePending) continue;
@@ -354,10 +357,7 @@ function applySourcePending(id, date = "") {
 }
 // 「このままにする」：その版はもう出さない（保存したレシピと、同じ動画の献立の枠）。
 function keepSourceAsIs(id, date = "") {
-  const own = state.recipes.find((x) => x.id === id);
-  const slotRecipe = date ? state.mealSlots?.[date]?.recipe : null;
-  const vid = videoOfRecipe(own || slotRecipe);
-  const targets = pendingTargets(own, slotRecipe ? state.mealSlots[date] : null, vid);
+  const targets = sourceTargets(id, date);
   let done = false;
   for (const { r, slot } of targets) {
     if (!r.sourcePending) continue;
@@ -385,7 +385,7 @@ async function reloadLatest({ recipeId = "", date = "" } = {}) {
   const fresh = latestFields(item);
   if (fresh.steps.length < 2) return "none";
   // 押したレシピに加え、同じ動画の保存したレシピと、まだ作っていない献立の枠もそろえる（片方だけ古く残らないように。Claude review #215）。
-  const targets = [{ r, slot }, ...state.recipes.filter((x) => x !== r && videoOfRecipe(x) === vid).map((x) => ({ r: x, slot: null })), ...upcomingSlotsOf(vid).filter((sl) => sl !== slot).map((sl) => ({ r: sl.recipe, slot: sl }))];
+  const targets = pendingTargets(slot ? null : r, slot?.recipe ? slot : null, vid);
   let updated = false;
   for (const t of targets) {
     if (sourcePrint({ ...t.r, ...fresh }) === sourcePrint(t.r)) { t.r.sourceRevision = item.revision; t.r.sourcePrint = sourcePrint(t.r); delete t.r.sourcePending; continue; }

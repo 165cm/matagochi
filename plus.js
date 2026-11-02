@@ -158,7 +158,10 @@ const OBJECTION_CATEGORIES = [
 let objectionSheet = null; // { recipeId, date, category, suggested, comment, step: "form" | "sent", busy, error, applied }
 function objectionRecipe(o = objectionSheet) {
   if (!o) return null;
+  // 作る画面の提案中の料理（献立の枠にまだない）も、その日の候補から探す（Claude review #216）。
+  const candidate = () => (o.date && typeof dailyPlan === "function" ? dailyPlan().find((d) => d.date === o.date)?.candidate?.recipe : null);
   return (o.date && state.mealSlots?.[o.date]?.recipe?.id === o.recipeId ? state.mealSlots[o.date].recipe : null)
+    || (candidate()?.id === o.recipeId ? candidate() : null)
     || state.recipes.find((r) => r.id === o.recipeId)
     || Object.values(state.mealSlots || {}).find((sl) => sl?.recipe?.id === o.recipeId)?.recipe
     || (typeof detailRecipe === "function" && detailRecipe()?.id === o.recipeId ? detailRecipe() : null);
@@ -171,6 +174,8 @@ function openObjection(data) {
   objectionSheet = { recipeId: r.id, date: data.date || "", category, suggested: null, comment: "", step: "form", busy: false, error: "" };
   trackDaily("objection_open", { category: category || "none" });
 }
+// 打っている途中のひとことを覚えておく（ほかの理由で画面が描き直されても消えないように。Claude review #216）。
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") document.addEventListener("input", (e) => { if (e.target?.id === "obj-comment" && objectionSheet) objectionSheet.comment = String(e.target.value || "").slice(0, 500); });
 const objectionComment = () => String(document.querySelector("#obj-comment")?.value ?? objectionSheet?.comment ?? "").slice(0, 500);
 async function sendObjection() {
   const o = objectionSheet;

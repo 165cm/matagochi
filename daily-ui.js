@@ -1093,7 +1093,7 @@ function renderCooking() {
   const cook = cookSections(recipe, servings);
   const meta = [`${servings}人分`, recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分（炊飯は別）` : "時間は未確認", recipe.planning?.equipment?.length ? `器具：${recipe.planning.equipment.join("・")}` : ""].filter(Boolean).join(" · ");
   const primary = slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った！", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : "";
-  return `<section class="hero-card cooking-card"><div class="detail-top"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button>${objectionButton(recipe, slot?.recipe ? cookingDate : "")}</div><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p>${CookMode.supported() ? `<p class="wake-chip">🔆 画面つけっぱなし ${tip("作る画面の間は、スマホの画面が消えません")}</p>` : ""}</div></div>
+  return `<section class="hero-card cooking-card"><div class="detail-top"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button>${objectionButton(recipe, cookingDate)}</div><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p>${CookMode.supported() ? `<p class="wake-chip">🔆 画面つけっぱなし ${tip("作る画面の間は、スマホの画面が消えません")}</p>` : ""}</div></div>
   <details class="cooking-safety"><summary>⚠️ 原材料・火の通りを確認</summary><p class="small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p></details>
   ${renderCreatorCredit(recipe)}
   ${Lifestyle.traits(recipe).staple === "other" ? `<div class="cooking-staple-alert"><span class="csa-icon" aria-hidden="true">🍚</span><div class="csa-text"><strong>ごはん（主食）の準備はOKですか？</strong><p class="small muted">おかずがメインの献立です。炊飯のセットや主食の用意をお忘れなく！</p></div></div>` : ""}
@@ -2851,9 +2851,14 @@ function setRecipeServings(id, n, { date = "", by = "manual" } = {}) {
   const base = own || slotRecipe || Object.values(state.mealSlots || {}).find((sl) => sl?.recipe?.id === id)?.recipe;
   if (!base) return 0;
   const vid = youtubeVideoId(base.videoUrl);
-  const same = (r) => r && (r.id === id || (vid && youtubeVideoId(r.videoUrl) === vid));
-  const targets = [...state.recipes.filter(same).map((r) => ({ r, slot: null })),
-    ...Object.values(state.mealSlots || {}).filter((sl) => same(sl?.recipe) && !["cooked", "removed"].includes(sl.status)).map((sl) => ({ r: sl.recipe, slot: sl }))];
+  // 保存したレシピは、押したレシピとその写しのもと（starterId）だけ。同じ動画でも、使う人が別に作ったレシピは変えない（Claude review #216）。
+  const linked = (r) => r.id === id || (r.starterId && r.starterId === base.id) || (base.starterId && base.starterId === r.id);
+  const owned = state.recipes.filter(linked);
+  // 献立の枠は、そのレシピの写しか、同じ動画で別の保存したレシピの写しでないもの。
+  const otherIds = new Set(state.recipes.filter((r) => !owned.includes(r)).map((r) => r.id));
+  const slotOf = (r) => r && (linked(r) || (vid && youtubeVideoId(r.videoUrl) === vid && !otherIds.has(r.id)));
+  const targets = [...owned.map((r) => ({ r, slot: null })),
+    ...Object.values(state.mealSlots || {}).filter((sl) => slotOf(sl?.recipe) && !["cooked", "removed"].includes(sl.status)).map((sl) => ({ r: sl.recipe, slot: sl }))];
   if (slotRecipe && !targets.some((t) => t.r === slotRecipe)) targets.push({ r: slotRecipe, slot: state.mealSlots[date] });
   let changed = 0;
   for (const { r, slot } of targets) {

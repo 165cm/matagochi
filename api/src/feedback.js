@@ -43,6 +43,8 @@ export function createFeedbackDesk(store, { now = Date.now } = {}) {
     // 日ごとに1つの文書へ追記（1日500件まで・1家庭1日20件まで）。読むのは管理者だけ。
     async objection(body, household = "") {
       if (!store) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。");
+      // 1家庭1日の上限を数えられるよう、家庭の番号（アプリは毎回付ける）がない知らせは受けない（Claude review #216）。
+      if (!household) throw new ApiError(400, "household_required", "アプリから送ってください。");
       const category = OBJECTION_CATEGORIES.includes(body?.category) ? body.category : "";
       if (!category) throw new ApiError(400, "invalid_category", "どこが違うかを選んでください。");
       const videoId = typeof body?.videoId === "string" && /^[\w-]{11}$/.test(body.videoId) ? body.videoId : "";

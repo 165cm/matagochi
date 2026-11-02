@@ -114,3 +114,21 @@ test("「⚡️ 異議あり」 is for the whole recipe: it sits in the top row 
   assert.equal(sent[0].category, "steps");
   assert.equal(sent[0].servings, undefined);
 });
+
+// Claude review #216
+test("review: the count only goes to the recipe that was set (and its copies), not to another recipe the user made from the same video", async () => {
+  const { run } = app();
+  setup(run);
+  run(`globalThis.mine = { ...clone(own), id: "r-mine", starterId: undefined, sourceServings: 3 }; state.recipes.push(mine)`);
+  run("setRecipeServings(own.id, 2, { date: d })");
+  assert.equal(run("own.sourceServings"), 2);
+  assert.equal(run("slot.recipe.sourceServings"), 2);
+  assert.equal(run("mine.sourceServings"), 3, "the user's other recipe keeps its own count");
+});
+
+test("review: 「⚡️ 異議あり」 opens for the suggested dish on the cook screen (not yet in the plan)", async () => {
+  const { run } = app();
+  run(`globalThis.d = today(); globalThis.cand = { id: "trend-${V}", title: "提案の料理", videoUrl: "${item.videoUrl}", ingredients: [], steps: ["a", "b"] }; dailyPlan = () => [{ date: d, candidate: { recipe: cand } }]`);
+  await run(`handleDailyAction("life-obj-open", { recipe: cand.id, date: d })`);
+  assert.match(run("renderObjectionSheet()"), /提案の料理/);
+});

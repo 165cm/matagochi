@@ -43,6 +43,8 @@ test('objections are kept by day with the category and the counts; the admin rea
   const ok = await post({ videoId: 'oWLCye3SXu4', title: '鶏むね肉', category: 'servings', servings: { shown: 2, by: 'manual', suggested: 4 }, comment: '説明欄に4人分' });
   assert.equal(ok.status, 200);
   assert.equal((await post({ videoId: 'oWLCye3SXu4', category: 'nope' })).status, 400);
+  const bare = await fetch(`${base}/api/recipes/objections`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: 'oWLCye3SXu4', category: 'steps' }) });
+  assert.equal(bare.status, 400, 'the app always sends the household; without it the per-household limit cannot count');
   assert.equal((await post({ category: 'steps' })).status, 400, 'which recipe is needed');
   assert.equal((await post({ videoId: 'oWLCye3SXu4', category: 'other', comment: ' ' })).status, 400, 'other needs a comment');
   const admin = { Authorization: 'Bearer secret-token', 'Content-Type': 'application/json' };
