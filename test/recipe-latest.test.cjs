@@ -165,7 +165,7 @@ test("2026-10-31 report 2: a planned recipe with no marks (imported long ago) ge
   run("cookingDate = d; state.view = 'cooking'; renderCooking()");
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(run("state.mealSlots[d].recipe.steps.length"), 10, "not replaced by itself");
-  assert.match(run("renderCooking()"), /運営が作り方を直しました（手順 10 → 4）.*新しい作り方にする/s);
+  assert.match(run("renderCooking()"), /この動画の作り方が、サーバーにあります（手順 10 → 4）.*新しい作り方にする/s);
   run("applySourcePending('r-old', d)");
   assert.equal(run("state.mealSlots[d].recipe.steps.length"), 4);
   // ボタンで入れたあとは、同じ版でまたボタンを出さない
@@ -206,7 +206,7 @@ test("2026-11-01: an unmarked recipe gets the button whatever its dates; 「こ�
 
 test("2026-11-01 report: yesterday's decided meal (not cooked yet) is still checked, and 「🔄 最新の作り方を読み込む」 always brings the latest", async () => {
   const { run } = app(() => ({ [V]: { ...newer, ingredients: item.ingredients } }));
-  run(`globalThis.y = daysAgo(1); state.mealSlots[y] = { date: y, recipe: { id: "url-${V}", starterId: "url-${V}", title: "鶏むね肉の濃厚マッシュルームクリームソース", videoUrl: "${item.videoUrl}", sourceRevision: "r2", updatedAt: "2026-10-31T13:00:00Z", ingredients: ${JSON.stringify(item.ingredients)}, steps: Array.from({ length: 10 }, (_, i) => "古い手順" + i), stepTimes: [] }, status: "confirmed" }`);
+  run(`globalThis.y = addDaysIso(today(), -1); state.mealSlots[y] = { date: y, recipe: { id: "url-${V}", starterId: "url-${V}", title: "鶏むね肉の濃厚マッシュルームクリームソース", videoUrl: "${item.videoUrl}", sourceRevision: "r2", updatedAt: "2026-10-31T13:00:00Z", ingredients: ${JSON.stringify(item.ingredients)}, steps: Array.from({ length: 10 }, (_, i) => "古い手順" + i), stepTimes: [] }, status: "confirmed" }`);
   await run("refreshSavedRecipes({ force: true })");
   assert.equal(run("state.mealSlots[y].recipe.sourcePending.revision"), "r2", "yesterday's meal is checked; the silently remembered version does not block it");
   run("cookingDate = y; state.view = 'cooking'");
@@ -224,4 +224,23 @@ test("review #214: videos not in the catalog are not asked again for a day", asy
   assert.equal(asked.length, 1);
   await run("refreshSavedRecipes({ force: true })");
   assert.equal(asked.length, 1, "remembered as not in the catalog");
+});
+
+// ── Claude のコードレビュー（PR #215）の指摘への対応 ──
+test("review #215: an import edited at import time (same version) gets no button; a hand-written saved recipe gets no button by itself; the manual reload updates every copy of the video", async () => {
+  const { run } = app(() => ({ [V]: { ...newer, ingredients: item.ingredients } }));
+  run(`state.recipes.push({ id: "r-imp", catalog: { id: "youtube-${V}", revision: "r2" }, title: "取り込み", videoUrl: "${item.videoUrl}", updatedAt: "2026-10-31T00:00:00Z", ingredients: ${JSON.stringify(item.ingredients)}, steps: ["取り込みで直した1", "直した2"], stepTimes: [] })`);
+  run(`state.recipes.push({ id: "r-hand", title: "手書き", videoUrl: "${item.videoUrl}", updatedAt: "2026-10-01T00:00:00Z", ingredients: [], steps: ["自分1", "自分2"], stepTimes: [] })`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-imp').sourcePending"), undefined, "same version: the differences are the user's own");
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-hand').sourcePending"), undefined);
+  assert.match(run("renderSourceReload(state.recipes.find((r) => r.id === 'r-hand'), true)"), /最新の作り方を読み込む/, "the manual button is there instead");
+  // 作る画面の枠で押すと、同じ動画の保存したレシピもそろう
+  run(`globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: { id: "r-slot", title: "枠", videoUrl: "${item.videoUrl}", ingredients: [], steps: ["古1", "古2", "古3"], stepTimes: [] }, status: "confirmed" }`);
+  assert.equal(await run("reloadLatest({ date: d })"), "updated");
+  assert.equal(run("state.mealSlots[d].recipe.steps.length"), 4);
+  assert.equal(run("state.recipes.find((r) => r.id === 'r-hand').steps.length"), 4);
+  // 目印のない枠の知らせは「運営が直した」とは言わない
+  run(`state.mealSlots[d].recipe.sourcePending = { revision: "r9", steps: ["a", "b"] }`);
+  assert.match(run("renderSourceNote(state.mealSlots[d].recipe, true, d)"), /この動画の作り方が、サーバーにあります/);
 });

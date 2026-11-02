@@ -215,8 +215,7 @@ const ingredientsPrint = (list) => (list || []).map((i) => `${i?.name || ""}|${i
 // 保存したレシピとはレシピの番号で結ばれていないことがあるので、動画で見つける（2026-10-31・作る画面だけ古いままだった）。
 const videoOfRecipe = (r) => youtubeVideoId(r?.videoUrl);
 // 対象：これからの献立と、まだ「作った！」にしていない決めた献立（日付が過ぎていても14日前まで。2026-11-01：10/31の献立が11/01に外れていた）。
-const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const upcomingSlots = () => Object.values(state.mealSlots || {}).filter((sl) => sl?.recipe && !["cooked", "off", "removed"].includes(sl.status) && videoOfRecipe(sl.recipe) && (sl.date >= today() || (sl.status === "confirmed" && sl.date >= daysAgo(14))));
+const upcomingSlots = () => Object.values(state.mealSlots || {}).filter((sl) => sl?.recipe && !["cooked", "off", "removed"].includes(sl.status) && videoOfRecipe(sl.recipe) && (sl.date >= today() || (sl.status === "confirmed" && sl.date >= addDaysIso(today(), -14))));
 const upcomingSlotsOf = (vid) => upcomingSlots().filter((sl) => videoOfRecipe(sl.recipe) === vid);
 function latestFields(item) {
   const steps = (item.steps || []).map((x) => String(x || "").trim()).filter(Boolean);
@@ -250,9 +249,13 @@ function updateCopy(r, item, slot = null) {
     r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); if (r.catalog?.id) r.catalog = { ...r.catalog, revision: item.revision }; delete r.sourcePending;
     return true;
   }
-  // 受け取った版のままで中身が違う＝使う人が直した（指紋のある時だけそう言える）。そのままにする。
-  if (r.sourceRevision === item.revision && r.sourcePrint && sourcePrint(r) !== r.sourcePrint) return false;
   const kind = sourceKind(r);
+  // 受け取った版のままで中身が違う＝使う人が直した（指紋が違う／取り込みの時に直した）。そのままにする（Claude review #215）。
+  const known = r.sourceRevision || r.catalog?.revision || "";
+  if (known === item.revision && (r.sourcePrint ? sourcePrint(r) !== r.sourcePrint : kind === "import")) return false;
+  // 目印も版もない保存したレシピ（自分で書いたレシピなど）は、自動ではボタンを出さない（「🔄 最新の作り方を読み込む」で選べる）。
+  // 献立の枠は、作る画面で困らないよう出す（Claude review #215）。
+  if (!slot && !kind && !r.sourceRevision) return false;
   // 自動で入れ替えるのは、使う人が直していない新着・定番の写しで、決めた献立の材料が変わらない時だけ。それ以外は「新しい作り方にする／このままにする」。
   const edited = kind !== "copy" || (!!r.sourcePrint && sourcePrint(r) !== r.sourcePrint);
   const planned = !!slot && slot.status === "confirmed" && ingredientsPrint(fresh.ingredients) !== ingredientsPrint(r.ingredients);
@@ -366,13 +369,18 @@ async function reloadLatest({ recipeId = "", date = "" } = {}) {
   if (!item?.revision) return "none";
   const fresh = latestFields(item);
   if (fresh.steps.length < 2) return "none";
-  const same = sourcePrint({ ...r, ...fresh }) === sourcePrint(r);
-  if (same) { r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); delete r.sourcePending; saveState(); return "same"; }
-  applyLatest(r, item.revision, fresh);
-  delete r.sourceDismissed;
-  if (slot) slot.updatedAt = nowIso();
+  // 押したレシピに加え、同じ動画の保存したレシピと、まだ作っていない献立の枠もそろえる（片方だけ古く残らないように。Claude review #215）。
+  const targets = [{ r, slot }, ...state.recipes.filter((x) => x !== r && videoOfRecipe(x) === vid).map((x) => ({ r: x, slot: null })), ...upcomingSlotsOf(vid).filter((sl) => sl !== slot).map((sl) => ({ r: sl.recipe, slot: sl }))];
+  let updated = false;
+  for (const t of targets) {
+    if (sourcePrint({ ...t.r, ...fresh }) === sourcePrint(t.r)) { t.r.sourceRevision = item.revision; t.r.sourcePrint = sourcePrint(t.r); delete t.r.sourcePending; continue; }
+    applyLatest(t.r, item.revision, fresh);
+    delete t.r.sourceDismissed;
+    if (t.slot) t.slot.updatedAt = nowIso();
+    updated = true;
+  }
   saveState();
-  return "updated";
+  return updated ? "updated" : "same";
 }
 // 手順ごとの動画の時刻は、手順の数と合う時だけ使う。
 function stepTimesFor(steps, times) {

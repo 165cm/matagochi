@@ -3499,8 +3499,14 @@ async function handleAction(event) {
     if (version === APP_VERSION) { showToast(`最新の状態です（版 ${APP_VERSION}）`); return; }
     if (hasUnsavedWork()) { showToast("入力の途中です。保存してから、もう一度押してください"); return; }
     showToast("新しい版を読み込んでいます…");
-    try { const reg = await navigator.serviceWorker?.getRegistration?.(); await reg?.update?.(); } catch {}
-    try { sessionStorage.setItem("ripigochi-reloaded-for", version); } catch {}
+    // 新しいサービスワーカーに替わるのを待ってから読み込み直す（古いサービスワーカーが古い画面を返さないように。5秒まで。Claude review #215）。
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration?.();
+      await reg?.update?.();
+      if (reg?.installing || reg?.waiting) await new Promise((resolve) => { navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }); setTimeout(resolve, 5000); });
+    } catch {}
+    // 自動の読み込み直しの印（1回まで）とは別の印で、読み込み直した後の「最新版になりました」を出す。
+    try { sessionStorage.setItem("ripigochi-manual-update", version); } catch {}
     location.reload();
     return;
   }
@@ -4765,7 +4771,7 @@ document.addEventListener("visibilitychange", () => {
   loadDiscover();
   // 新しい版に自動で読み込み直した直後に、1回だけ知らせる（スマホでも新しくなったと分かるように。2026-11-01）。
   try {
-    if (sessionStorage.getItem("ripigochi-reloaded-for") === APP_VERSION && sessionStorage.getItem("ripigochi-updated-shown") !== APP_VERSION) {
+    if ((sessionStorage.getItem("ripigochi-reloaded-for") === APP_VERSION || sessionStorage.getItem("ripigochi-manual-update") === APP_VERSION) && sessionStorage.getItem("ripigochi-updated-shown") !== APP_VERSION) {
       sessionStorage.setItem("ripigochi-updated-shown", APP_VERSION);
       setTimeout(() => showToast(`✨ 最新版になりました（版 ${APP_VERSION}）`), 800);
     }
