@@ -4176,3 +4176,32 @@ div.source-note { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: ce
 div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.5; }
 .app-version-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; margin: 4px 0 0; font-size: 12px; }
 .source-reload { margin: 4px 0 8px; font-size: 13px; }
+
+/* 元の人数：その場でタップ／手動で設定した印と「⚡️ 異議あり」（APP_MAP §52-11。construction2nd の「異議あり」をまねた） */
+.servings-banner { flex-wrap: wrap; }
+.servings-banner .servings-options { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.servings-banner .choice-button { min-height: 44px; flex: 1 1 0; border-color: #e2574c; color: #c0392b; background: #fff; }
+.servings-manual { margin: 8px 0; padding: 8px 12px; border-radius: 12px; background: #fff8ec; border: 1px solid #f1d3a2; font-size: 12.5px; line-height: 1.5; color: #7a4a10; }
+.detail-top-end { display: flex; align-items: center; gap: 6px; }
+.objection-button { flex: 0 0 auto; min-height: 44px; padding: 0 10px; border-radius: 12px; border: 1.5px solid #f0a020; background: #fff1d6; color: #9a5b00; font-size: 13px; font-weight: 800; cursor: pointer; }
+.objection-button:active { transform: scale(.96); }
+.obj-sheet .quota-card { border: 2px solid #f0b040; }
+.obj-head { justify-content: flex-start; }
+.obj-head > div { flex: 1; min-width: 0; }
+.obj-head .fb-title { color: #9a5b00; font-size: 17px; }
+.obj-bolt { font-size: 24px; }
+.obj-sub { margin: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obj-lead { margin: 0; padding: 8px 10px; border-radius: 12px; background: var(--surface-soft); font-size: 13px; }
+.obj-label { margin: 2px 0 0; font-size: 12.5px; font-weight: 800; color: var(--muted); }
+.obj-cats { display: grid; gap: 6px; }
+.obj-cat { display: flex; gap: 8px; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1.5px solid var(--line, #e8dfd2); background: #fff; font-size: 14px; font-weight: 700; text-align: left; cursor: pointer; color: inherit; }
+.obj-cat[aria-pressed="true"] { border-color: #f0a020; background: #fff1d6; color: #7a4a10; }
+.obj-sheet .servings-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.obj-sheet .servings-options .choice-button { min-height: 44px; flex: 1 1 0; }
+.obj-note { margin: 0; }
+.obj-submit { min-height: 48px; border: 0; border-radius: 14px; background: linear-gradient(90deg, #f5a623, #f07a1a); color: #2b1600; font-size: 15px; font-weight: 900; cursor: pointer; }
+.obj-submit:disabled { opacity: .55; }
+.obj-done { text-align: center; display: grid; gap: 8px; justify-items: center; }
+.obj-scale { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 32px; background: #e8f6ee; border: 1.5px solid #8fd1a8; }
+@media (prefers-reduced-motion: no-preference) { .obj-bolt { animation: obj-bounce 1.2s ease-in-out infinite; } }
+@keyframes obj-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }

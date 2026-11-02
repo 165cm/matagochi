@@ -230,10 +230,14 @@ function latestFields(item) {
 }
 function applyLatest(r, revision, fresh) {
   for (const k of ["stepTimesFrom", "guide", "guideOf"]) delete r[k];
+  // 元の人数：使う人が手で決めた人数と、運営の版で「不明」の時は、いまの人数のまま（2026-11-02・設定しても未確認に戻っていた）。
+  if (r.sourceServingsBy === "manual" || fresh.sourceServings == null) { fresh = { ...fresh }; delete fresh.sourceServings; }
+  else delete r.sourceServingsBy;
   Object.assign(r, fresh, { sourceRevision: revision, sourceUpdatedAt: nowIso(), updatedAt: nowIso() });
   if (r.catalog?.id) r.catalog = { ...r.catalog, revision };
   r.sourcePrint = sourcePrint(r);
   delete r.sourcePending;
+  delete r.sourceDismissed;
 }
 // 1つの写し（保存したレシピ、または献立の枠の写し）を、最新の版に合わせる。変わったら true。
 // slot：献立の枠（決めた献立で材料が変わる時は、買い物リストが黙って変わらないよう、自動では入れ替えずボタンにする）。
@@ -322,12 +326,24 @@ function ensureLatest(r) {
   latestAsked.set(vid, Date.now());
   refreshSavedRecipes({ videos: [vid] });
 }
+// 押したレシピ（保存したレシピ・その日の枠）と、同じ動画の保存したレシピ・まだ作っていない献立の枠（番号がずれていても動画でそろえる。Gemini review #215）。
+function pendingTargets(own, slot, vid) {
+  const list = [...(own ? [{ r: own, slot: null }] : []), ...(slot?.recipe ? [{ r: slot.recipe, slot }] : [])];
+  if (vid) {
+    for (const r of state.recipes) if (videoOfRecipe(r) === vid && !list.some((t) => t.r === r)) list.push({ r, slot: null });
+    for (const sl of upcomingSlotsOf(vid)) if (!list.some((t) => t.r === sl.recipe)) list.push({ r: sl.recipe, slot: sl });
+  }
+  return list;
+}
+// 押したボタンのレシピ（id）・その日の献立の枠（date）から、そろえる相手を集める。
+function sourceTargets(id, date = "") {
+  const own = state.recipes.find((x) => x.id === id);
+  const slot = date && state.mealSlots?.[date]?.recipe ? state.mealSlots[date] : null;
+  return pendingTargets(own, slot, videoOfRecipe(own || slot?.recipe));
+}
 // 「新しい作り方にする」：保存したレシピと、同じ動画のこれからの献立の枠の、待っている版を入れる。
 function applySourcePending(id, date = "") {
-  const own = state.recipes.find((x) => x.id === id);
-  const slotRecipe = date ? state.mealSlots?.[date]?.recipe : null;
-  const vid = videoOfRecipe(own || slotRecipe);
-  const targets = [...(own ? [{ r: own, slot: null }] : []), ...(vid ? upcomingSlotsOf(vid).map((sl) => ({ r: sl.recipe, slot: sl })) : [])];
+  const targets = sourceTargets(id, date);
   let done = false;
   for (const { r, slot } of targets) {
     if (!r.sourcePending) continue;
@@ -341,10 +357,7 @@ function applySourcePending(id, date = "") {
 }
 // 「このままにする」：その版はもう出さない（保存したレシピと、同じ動画の献立の枠）。
 function keepSourceAsIs(id, date = "") {
-  const own = state.recipes.find((x) => x.id === id);
-  const slotRecipe = date ? state.mealSlots?.[date]?.recipe : null;
-  const vid = videoOfRecipe(own || slotRecipe);
-  const targets = [...(own ? [{ r: own, slot: null }] : []), ...(vid ? upcomingSlotsOf(vid).map((sl) => ({ r: sl.recipe, slot: sl })) : [])];
+  const targets = sourceTargets(id, date);
   let done = false;
   for (const { r, slot } of targets) {
     if (!r.sourcePending) continue;
@@ -365,12 +378,14 @@ async function reloadLatest({ recipeId = "", date = "" } = {}) {
   if (!r || !vid || !API_BASE_URL) return "none";
   const data = await fetchWithTimeout(`${API_BASE_URL}/api/recipes/latest`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ videoIds: [vid] }) }, 15_000).then((x) => (x.ok ? x.json() : null)).catch(() => null);
   if (!data?.items) return "error";
+  // 読み込みの間に料理モードを開いた時は、手順の番号がずれないよう入れ替えない（Gemini review #215）。
+  if (cookingNow()) return "cooking";
   const item = data.items[vid];
   if (!item?.revision) return "none";
   const fresh = latestFields(item);
   if (fresh.steps.length < 2) return "none";
   // 押したレシピに加え、同じ動画の保存したレシピと、まだ作っていない献立の枠もそろえる（片方だけ古く残らないように。Claude review #215）。
-  const targets = [{ r, slot }, ...state.recipes.filter((x) => x !== r && videoOfRecipe(x) === vid).map((x) => ({ r: x, slot: null })), ...upcomingSlotsOf(vid).filter((sl) => sl !== slot).map((sl) => ({ r: sl.recipe, slot: sl }))];
+  const targets = pendingTargets(slot ? null : r, slot?.recipe ? slot : null, vid);
   let updated = false;
   for (const t of targets) {
     if (sourcePrint({ ...t.r, ...fresh }) === sourcePrint(t.r)) { t.r.sourceRevision = item.revision; t.r.sourcePrint = sourcePrint(t.r); delete t.r.sourcePending; continue; }

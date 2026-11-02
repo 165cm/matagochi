@@ -147,7 +147,108 @@ function renderFeedbackSheet() {
     ${BETA ? '<p class="muted small fb-note">🎁 送ってくれた方に、正式版で3か月無料の招待コード</p>' : ""}`;
   return `<div class="quota-sheet fb-sheet" role="dialog" aria-modal="true" aria-label="意見を送る"><div class="quota-card">${body}</div></div>`;
 }
+// ── 「⚡️ 異議あり」：レシピの間違い（人数・材料・手順・時刻）を運営に知らせる。construction2nd の「この問題に異議あり！」をまねた（APP_MAP §52-11）。
+const OBJECTION_CATEGORIES = [
+  { id: "servings", icon: "👥", label: "何人分か（人数）が違う" },
+  { id: "ingredients", icon: "🥕", label: "材料・分量が違う" },
+  { id: "steps", icon: "📝", label: "作り方（手順）が違う" },
+  { id: "times", icon: "⏱", label: "動画の時刻がずれている" },
+  { id: "other", icon: "💬", label: "その他ツッコミ" },
+];
+let objectionSheet = null; // { recipeId, date, category, suggested, comment, step: "form" | "sent", busy, error, applied }
+function objectionRecipe(o = objectionSheet) {
+  if (!o) return null;
+  // 作る画面の提案中の料理（献立の枠にまだない）も、その日の候補から探す（Claude review #216）。
+  const candidate = () => (o.date && typeof dailyPlan === "function" ? dailyPlan().find((d) => d.date === o.date)?.candidate?.recipe : null);
+  return (o.date && state.mealSlots?.[o.date]?.recipe?.id === o.recipeId ? state.mealSlots[o.date].recipe : null)
+    || (candidate()?.id === o.recipeId ? candidate() : null)
+    || state.recipes.find((r) => r.id === o.recipeId)
+    || Object.values(state.mealSlots || {}).find((sl) => sl?.recipe?.id === o.recipeId)?.recipe
+    || (typeof detailRecipe === "function" && detailRecipe()?.id === o.recipeId ? detailRecipe() : null);
+}
+function openObjection(data) {
+  const r = objectionRecipe({ recipeId: data.recipe, date: data.date || "" });
+  if (!r) return;
+  // レシピ全体への異議。どこが違うかは選んでもらう（呼び出し元が決めた時だけ選んでおく）。
+  const category = OBJECTION_CATEGORIES.some((c) => c.id === data.category) ? data.category : "";
+  objectionSheet = { recipeId: r.id, date: data.date || "", category, suggested: null, comment: "", step: "form", busy: false, error: "" };
+  trackDaily("objection_open", { category: category || "none" });
+}
+// 打っている途中のひとことを覚えておく（ほかの理由で画面が描き直されても消えないように。Claude review #216）。
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") document.addEventListener("input", (e) => { if (e.target?.id === "obj-comment" && objectionSheet) objectionSheet.comment = String(e.target.value || "").slice(0, 500); });
+const objectionComment = () => String(document.querySelector("#obj-comment")?.value ?? objectionSheet?.comment ?? "").slice(0, 500);
+async function sendObjection() {
+  const o = objectionSheet;
+  if (!o || o.busy) return;
+  const r = objectionRecipe(o);
+  if (!r) { objectionSheet = null; render(); return; }
+  const comment = objectionComment().trim();
+  if (!o.category) { objectionSheet = { ...o, comment, error: "どこに異議があるか選んでください。" }; render(); return; }
+  if (o.category === "other" && comment.length < 2) { objectionSheet = { ...o, comment, error: "どこが違うか、ひとこと書いてください。" }; render(); return; }
+  const shown = r.sourceServings ?? null, by = r.sourceServingsBy || "";
+  // 正しい人数を選んだら、この家庭のレシピ（と献立の写し）はすぐその人数にする（運営の確認を待たない）。
+  let applied = 0;
+  if (o.category === "servings" && o.suggested && o.suggested !== shown && !isViewer() && typeof setRecipeServings === "function") {
+    applied = setRecipeServings(r.id, o.suggested, { date: o.date });
+    if (applied) saveState();
+  }
+  objectionSheet = { ...o, comment, busy: true, error: "", applied: applied ? o.suggested : 0 };
+  render();
+  try {
+    if (!API_BASE_URL) throw new Error("いまは送れません。");
+    const body = { videoId: youtubeVideoId(r.videoUrl) || "", title: r.title || "", category: o.category, comment, where: state.view, version: APP_VERSION,
+      ...(o.category === "servings" ? { servings: { shown, by, suggested: o.suggested || null } } : {}) };
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api/recipes/objections`, { method: "POST", headers: { "Content-Type": "application/json", ...ticketHeaders() }, body: JSON.stringify(body) }, 15_000);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error?.message || "送れませんでした。");
+    objectionSheet = { ...objectionSheet, step: "sent", busy: false };
+    trackDaily("objection_sent", { category: o.category });
+  } catch (error) {
+    objectionSheet = { ...objectionSheet, busy: false, error: `${error.message || "送れませんでした。"} 時間をおいて、もう一度お試しください。` };
+  }
+  render();
+}
+function renderObjectionSheet() {
+  const o = objectionSheet;
+  if (!o) return "";
+  const r = objectionRecipe(o);
+  if (!r) return "";
+  const close = '<button type="button" class="tk-close" data-action="life-obj-close" aria-label="閉じる">×</button>';
+  const head = `<div class="fb-head obj-head"><span class="obj-bolt" aria-hidden="true">⚡️</span><div><p class="fb-title">このレシピに異議あり！</p><p class="obj-sub">${escapeHtml(r.title || "")}</p></div>${close}</div>`;
+  let body;
+  if (o.step === "sent") body = `${head}<div class="obj-done"><div class="obj-scale" aria-hidden="true">⚖️</div><p class="fb-title">異議申し立てを受け付けました！</p>
+    <p class="fb-lead">ツッコミありがとうございます！<br>動画と見比べて確かめ、必要なら直します⚡️</p>
+    ${o.applied ? `<p class="fb-gift">この家庭のレシピは、<b>${o.applied}人分</b>にしました。</p>` : ""}</div>
+    <button type="button" class="primary-button full-button" data-action="life-obj-close">OK</button>`;
+  else {
+    const shown = r.sourceServings == null ? "未確認" : `${r.sourceServings}人分${r.sourceServingsBy === "manual" ? "（手動で設定）" : ""}`;
+    body = `${head}<p class="obj-lead">「人数が違う！」「手順が足りない」など、違和感があれば5秒でツッコミを！</p>
+    <p class="obj-label">どこに異議がありますか？（タップで選択）</p>
+    <div class="obj-cats">${OBJECTION_CATEGORIES.map((c) => `<button type="button" class="obj-cat" data-action="life-obj-cat" data-category="${c.id}" aria-pressed="${o.category === c.id}"><span aria-hidden="true">${c.icon}</span>${escapeHtml(c.label)}</button>`).join("")}</div>
+    ${o.category === "servings" ? `<p class="obj-label">いまは <b>${escapeHtml(shown)}</b>。正しくは何人分？（わかれば）</p>
+    <div class="servings-options" role="group" aria-label="正しい人数">${[1, 2, 3, 4].map((k) => `<button type="button" class="choice-button" data-action="life-obj-servings" data-count="${k}" aria-pressed="${o.suggested === k}">${k}人分</button>`).join("")}<button type="button" class="choice-button" data-action="life-obj-servings" data-count="" aria-pressed="${!o.suggested}">不明</button></div>
+    ${o.suggested && !isViewer() ? `<p class="muted small">送ると、この家庭のレシピも${o.suggested}人分になります。</p>` : ""}` : ""}
+    <label class="obj-label" for="obj-comment">ひとことツッコミ（${o.category === "other" ? "必須" : "任意"}）</label>
+    <textarea id="obj-comment" class="input fb-message" maxlength="500" rows="2" placeholder="例：説明欄に「2人分」と書いてあります">${escapeHtml(o.comment || "")}</textarea>
+    <p class="muted small obj-note">※ 運営に届きます。お名前など個人情報は書かないでください。</p>
+    ${o.error ? `<p class="form-error">${escapeHtml(o.error)}</p>` : ""}
+    <button type="button" class="obj-submit full-button" data-action="life-obj-send" ${o.busy ? "disabled" : ""}>${o.busy ? "送っています…" : "⚡️ 異議を申し立てる！（送る）"}</button>`;
+  }
+  return `<div class="quota-sheet fb-sheet obj-sheet" role="dialog" aria-modal="true" aria-label="異議あり"><div class="quota-card">${body}</div></div>`;
+}
+function handleObjectionAction(action, data) {
+  if (!action.startsWith("life-obj-")) return false;
+  if (action === "life-obj-open") openObjection(data);
+  else if (!objectionSheet) return true;
+  else if (action === "life-obj-cat") objectionSheet = { ...objectionSheet, comment: objectionComment(), category: data.category, error: "" };
+  else if (action === "life-obj-servings") { const n = Number(data.count); objectionSheet = { ...objectionSheet, comment: objectionComment(), suggested: Number.isInteger(n) && n > 0 ? n : null }; }
+  else if (action === "life-obj-send") { sendObjection(); return true; }
+  else if (action === "life-obj-close") objectionSheet = null;
+  render();
+  return true;
+}
 function handleFeedbackAction(action, data) {
+  if (handleObjectionAction(action, data)) return true;
   if (action === "life-usage-toggle") { try { localStorage.setItem("ripigochi-usage", usageOn() ? "off" : "on"); } catch {} render(); return true; }
   if (!action.startsWith("life-fb")) return false;
   if (action === "life-fb-open") openFeedback(data.from || "settings", "form");
@@ -159,7 +260,7 @@ function handleFeedbackAction(action, data) {
 }
 
 // ── 使われ方の集計（個人・家庭を特定しない）。端末ごとのランダムな番号で、その日に起きたことの回数だけを送る。設定で止められる。
-const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "plan_url_inserted", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "paywall_view", "plus_view", "free_pick", "talk_started", "talk_followup", "talk_fixed", "talk_saved", "meal_replanned"];
+const USAGE_EVENTS = ["plan_confirmed", "plan_swapped", "plan_url_inserted", "meal_cooked", "meal_rated", "meal_skipped", "cooking_opened", "recipe_saved", "playlist_imported", "shopping_completed", "push_on", "feedback_sent", "objection_sent", "paywall_view", "plus_view", "free_pick", "talk_started", "talk_followup", "talk_fixed", "talk_saved", "meal_replanned"];
 const usageOn = () => { try { return localStorage.getItem("ripigochi-usage") !== "off"; } catch { return false; } };
 function anonId() {
   try {

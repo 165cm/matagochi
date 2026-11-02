@@ -33,3 +33,31 @@ test('feedback route: anyone can send; only the admin can read', async (t) => {
   assert.equal(list.items[0].message, 'すごく便利です');
   assert.equal(list.items[0].household, 'house-fb-01');
 });
+
+// 2026-11-02：「⚡️ 異議あり」（APP_MAP §52-11）。
+test('objections are kept by day with the category and the counts; the admin reads them and marks them done', async (t) => {
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'secret-token' }, { recipeStore: createMemorySyncStore(), syncStore: null });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (body) => fetch(`${base}/api/recipes/objections`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Household': 'house-ob-01' }, body: JSON.stringify(body) });
+  const ok = await post({ videoId: 'oWLCye3SXu4', title: '鶏むね肉', category: 'servings', servings: { shown: 2, by: 'manual', suggested: 4 }, comment: '説明欄に4人分' });
+  assert.equal(ok.status, 200);
+  assert.equal((await post({ videoId: 'oWLCye3SXu4', category: 'nope' })).status, 400);
+  const bare = await fetch(`${base}/api/recipes/objections`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: 'oWLCye3SXu4', category: 'steps' }) });
+  assert.equal(bare.status, 400, 'the app always sends the household; without it the per-household limit cannot count');
+  assert.equal((await post({ category: 'steps' })).status, 400, 'which recipe is needed');
+  assert.equal((await post({ videoId: 'oWLCye3SXu4', category: 'other', comment: ' ' })).status, 400, 'other needs a comment');
+  const admin = { Authorization: 'Bearer secret-token', 'Content-Type': 'application/json' };
+  assert.equal((await fetch(`${base}/api/admin/objections`)).status, 403);
+  const days = await fetch(`${base}/api/admin/objections`, { headers: admin }).then((r) => r.json());
+  const list = await fetch(`${base}/api/admin/objections?day=${days.days[0]}`, { headers: admin }).then((r) => r.json());
+  assert.equal(list.items.length, 1);
+  const x = list.items[0];
+  assert.deepEqual([x.category, x.status, x.videoId, x.comment, x.household], ['servings', 'open', 'oWLCye3SXu4', '説明欄に4人分', 'house-ob-01']);
+  assert.deepEqual(x.servings, { shown: 2, by: 'manual', suggested: 4 });
+  const done = await fetch(`${base}/api/admin/objections/${days.days[0]}/${x.id}`, { method: 'POST', headers: admin, body: JSON.stringify({ status: 'done' }) }).then((r) => r.json());
+  assert.equal(done.item.status, 'done');
+  assert.equal((await fetch(`${base}/api/admin/objections/${days.days[0]}/${x.id}`, { method: 'POST', body: '{}' })).status, 403);
+  const again = await fetch(`${base}/api/admin/objections?day=${days.days[0]}`, { headers: admin }).then((r) => r.json());
+  assert.equal(again.items[0].status, 'done');
+});

@@ -11,8 +11,8 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261102-reload-latest";
-const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
+const APP_VERSION = "20261102-recipe-objection";
+const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
   { id: "tomorrow", label: "明日でも", days: 1, tone: "hot" },
@@ -1412,7 +1412,7 @@ function render() {
     talk: renderTalk
   };
   if (isViewer()) Object.assign(views, { today: renderViewerToday, plan: renderViewerPlan });
-  document.querySelector("#app").innerHTML = renderSyncSavePanel() + views[state.view]() + renderLimitNotice() + renderMenuViewer() + renderFeedbackSheet() + (Object.keys(state.sync?.conflicts || {}).length ? "" : paywall ? renderPaywall() : "");
+  document.querySelector("#app").innerHTML = renderSyncSavePanel() + views[state.view]() + renderLimitNotice() + renderMenuViewer() + renderFeedbackSheet() + renderObjectionSheet() + (Object.keys(state.sync?.conflicts || {}).length ? "" : paywall ? renderPaywall() : "");
   placePageChrome();
   bindEvents();
   if (state.view === "plan" && typeof placePlanPages === "function") placePlanPages();
@@ -1570,7 +1570,7 @@ function renderSourceServingsPicker() {
   const options = [1, 2, 3, 4, ...(n > 4 ? [n] : [])];
   return `<div class="servings-pick ${n == null ? "is-unknown" : ""}">
     <input id="source-servings" type="hidden" value="${escapeAttr(n ?? "")}">
-    <p><b>元のレシピは何人分？</b>${n != null && state.draft.servingsDetected ? '<small>動画から読み取り</small>' : ""}</p>
+    <p><b>元のレシピは何人分？</b>${n != null && state.draft.servingsDetected ? '<small>動画から読み取り</small>' : n != null && (state.draft.servingsManual || (recipeById(state.editingRecipeId)?.sourceServingsBy === "manual" && recipeById(state.editingRecipeId)?.sourceServings === n)) ? '<small>手動で設定</small>' : ""}</p>
     <div class="servings-options" role="group" aria-label="元のレシピの人数">${options.map((k) => `<button type="button" class="choice-button" data-action="set-source-servings" data-count="${k}" aria-pressed="${n === k}">${k}</button>`).join("")}<button type="button" class="choice-button" data-action="set-source-servings" data-count="" aria-pressed="${n == null}">不明</button></div>
     ${n == null ? `<p class="servings-warn">わかれば選ぶ ${tip("選ぶと、家族の人数に合わせて分量を直します。不明なら分量はそのまま")}</p>` : ""}
   </div>`;
@@ -2899,7 +2899,7 @@ async function handleAction(event) {
   if (handleTicketAction(action, event.currentTarget.dataset)) return;
   if (handleDailyAction(action, event.currentTarget.dataset)) return;
   if (action === "paste-recipe-url") { await pasteRecipeUrl(); return; }
-  if (action === "set-source-servings") { captureDraft(); const n = Number(event.currentTarget.dataset.count); state.draft.sourceServings = Number.isInteger(n) && n > 0 ? n : null; state.draft.servingsDetected = false; saveState(); render(); return; }
+  if (action === "set-source-servings") { captureDraft(); const n = Number(event.currentTarget.dataset.count); state.draft.sourceServings = Number.isInteger(n) && n > 0 ? n : null; state.draft.servingsDetected = false; state.draft.servingsManual = state.draft.sourceServings != null; saveState(); render(); return; }
   if (handlePlaylistAction(action, event.currentTarget.dataset)) return;
 
   if (["image-up", "image-down", "image-remove", "clear-images", "cancel-images"].includes(action)) {
@@ -2937,7 +2937,7 @@ async function handleAction(event) {
       }
       captureDraft();
       if (state.draft.videoUrl !== originalUrl) return;
-      state.draft = { ...state.draft, title: result.title || state.draft.title, catalog: null, sourceServings: result.sourceServings,
+      state.draft = { ...state.draft, title: result.title || state.draft.title, catalog: null, sourceServings: result.sourceServings, servingsManual: false,
         planning: undefined, source: state.draft.videoUrl ? detectPlatform(state.draft.videoUrl).label : "画像から取り込み", requiresImageReview: true, imageReviewed: false, imageWarnings: result.warnings || [] };
       state.originalIngredients = clone(result.ingredients);
       state.extractedIngredients = clone(result.ingredients);
@@ -3251,7 +3251,7 @@ async function handleAction(event) {
     captureDraft();
     if (sharedRecipeComparison?.catalog.id !== state.draft.catalog?.id) return;
     const common = sharedRecipeComparison;
-    state.draft = { ...state.draft, title: common.title, sourceServings: common.sourceServings, catalog: clone(common.catalog) };
+    state.draft = { ...state.draft, title: common.title, sourceServings: common.sourceServings, servingsManual: false, catalog: clone(common.catalog) };
     state.originalIngredients = clone(common.ingredients);
     state.extractedIngredients = clone(common.ingredients);
     state.extractedSteps = [...common.steps];
@@ -3313,7 +3313,13 @@ async function handleAction(event) {
     const steps = state.extractedSteps;
     const existing = state.editingRecipeId ? recipeById(state.editingRecipeId) : null;
     if (existing) {
+      // 元の人数：手でタップして決めた時は「手動で設定」の印をつける。印のある人数を変えずに保存した時は、印を残す（2026-11-02）。
+      if (state.draft.sourceServings == null) delete existing.sourceServingsBy;
+      else if (state.draft.servingsManual) existing.sourceServingsBy = "manual";
+      else if (existing.sourceServings !== state.draft.sourceServings) delete existing.sourceServingsBy;
       existing.sourceServings = state.draft.sourceServings;
+      // 献立の枠の写し（作る画面・買い物リストが見る）にも、決めた人数を届ける（設定しても作る画面に未確認が出続けていた）。
+      if (typeof setRecipeServings === "function") setRecipeServings(existing.id, existing.sourceServings, { by: existing.sourceServingsBy || "" });
       existing.catalog = state.draft.catalog;
       existing.title = state.draft.title;
       existing.videoUrl = state.draft.videoUrl;
@@ -3356,6 +3362,7 @@ async function handleAction(event) {
       const recipe = {
         id: generateId("r"),
         sourceServings: state.draft.sourceServings,
+        ...(state.draft.sourceServings != null && state.draft.servingsManual ? { sourceServingsBy: "manual" } : {}),
         catalog: state.draft.catalog,
         title: state.draft.title,
         videoUrl: state.draft.videoUrl,
@@ -3495,7 +3502,7 @@ async function handleAction(event) {
   // 設定：新しい版を確かめる（押した時だけ。新しい版があれば、その場で読み込み直す。2026-11-01）。
   if (action === "check-app-version") {
     const version = await fetch(`./version.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((j) => String(j?.version || "")).catch(() => "");
-    if (!version) { showToast("確かめられませんでした。通信を確かめて、もう一度お試しください"); return; }
+    if (!version) { showToast("つながりませんでした。少し待ってからもう一度押してください"); return; }
     if (version === APP_VERSION) { showToast(`最新の状態です（版 ${APP_VERSION}）`); return; }
     if (hasUnsavedWork()) { showToast("入力の途中です。保存してから、もう一度押してください"); return; }
     showToast("新しい版を読み込んでいます…");
@@ -4341,6 +4348,7 @@ function applyImportedRecipe(result) {
     imageReviewed: false,
     imageWarnings: [],
     sourceServings: result.sourceServings ?? detectSourceServings(`${result.caption || ""} ${result.title || ""}`),
+    servingsManual: false,
     servingsDetected: result.sourceServings == null && !!detectSourceServings(`${result.caption || ""} ${result.title || ""}`),
     catalog: result.catalog || null,
     title: result.title || state.draft.title || state.draft.shareTitle || "",

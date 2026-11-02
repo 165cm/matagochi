@@ -89,7 +89,7 @@ test("the recipe screen shows the notice above the ingredients", async () => {
   run("recipeDetailId = own.id; latestAsked.set(videoOfRecipe(own), Date.now())");
   const html = run("renderRecipeDetail()");
   assert.match(html, /source-note[^>]*>📝 作り方が新しくなりました/);
-  assert.ok(html.indexOf("source-note") < html.indexOf("材料"), "shown before the ingredients");
+  assert.ok(html.indexOf("source-note") < html.indexOf(`class="detail-h">材料`), "shown before the ingredients");
 });
 
 // ── Claude のコードレビュー（PR #212）の指摘への対応 ──
@@ -165,7 +165,7 @@ test("2026-10-31 report 2: a planned recipe with no marks (imported long ago) ge
   run("cookingDate = d; state.view = 'cooking'; renderCooking()");
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(run("state.mealSlots[d].recipe.steps.length"), 10, "not replaced by itself");
-  assert.match(run("renderCooking()"), /この動画の作り方が、サーバーにあります（手順 10 → 4）.*新しい作り方にする/s);
+  assert.match(run("renderCooking()"), /この動画の新しい作り方があります（手順 10 → 4）.*新しい作り方にする/s);
   run("applySourcePending('r-old', d)");
   assert.equal(run("state.mealSlots[d].recipe.steps.length"), 4);
   // ボタンで入れたあとは、同じ版でまたボタンを出さない
@@ -242,5 +242,49 @@ test("review #215: an import edited at import time (same version) gets no button
   assert.equal(run("state.recipes.find((r) => r.id === 'r-hand').steps.length"), 4);
   // 目印のない枠の知らせは「運営が直した」とは言わない
   run(`state.mealSlots[d].recipe.sourcePending = { revision: "r9", steps: ["a", "b"] }`);
-  assert.match(run("renderSourceNote(state.mealSlots[d].recipe, true, d)"), /この動画の作り方が、サーバーにあります/);
+  assert.match(run("renderSourceNote(state.mealSlots[d].recipe, true, d)"), /この動画の新しい作り方があります/);
+});
+
+// Gemini review #215（2026-11-02）
+test("review: 「新しい作り方にする」 on the cook screen also settles the saved recipe whose id differs (found by the video), and clears 「このままにする」", async () => {
+  const { run } = app(() => ({ [V]: newer }));
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); own.steps = ["開く", "細かく刻む", "焼く"]; own.sourceDismissed = "r0"`);
+  run(`globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: { ...clone(own), id: "slot-copy" }, status: "planned" }`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.ok(run("own.sourcePending") && run("state.mealSlots[d].recipe.sourcePending"));
+  assert.equal(run(`applySourcePending("slot-copy", d)`), true);
+  assert.equal(run("own.sourcePending"), undefined, "the saved recipe is settled too");
+  assert.equal(run("own.steps.length"), 4);
+  assert.equal(run("own.sourceDismissed"), undefined);
+  // 「このままにする」も同じ
+  const b = app(() => ({ [V]: newer }));
+  b.run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); own.steps = ["開く", "細かく刻む", "焼く"]; globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: { ...clone(own), id: "slot-copy" }, status: "planned" }`);
+  await b.run("refreshSavedRecipes({ force: true })");
+  assert.equal(b.run(`keepSourceAsIs("slot-copy", d)`), true);
+  assert.equal(b.run("own.sourcePending"), undefined);
+  assert.equal(b.run("own.sourceDismissed"), "r2");
+});
+
+test("review: 「🔄 最新の作り方を読み込む」 does not swap the steps while the cook mode is open, and the words avoid 「サーバー」「通信」", async () => {
+  const { run } = app(() => ({ [V]: newer }));
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend"))`);
+  run(`globalThis.cm = { hidden: false, classList: { contains: () => false } }; document.getElementById = (id) => (id === "cook-mode" ? cm : null)`);
+  assert.equal(await run("reloadLatest({ recipeId: own.id })"), "cooking");
+  assert.equal(run("own.steps.length"), 3);
+  run("cm.hidden = true");
+  assert.equal(await run("reloadLatest({ recipeId: own.id })"), "updated");
+  for (const f of ["daily-ui.js", "app.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    assert.doesNotMatch(src, /サーバーにあります|まだサーバーにありません|少しあとでお試しください"|確かめられませんでした。通信を確かめて/, f);
+  }
+});
+
+test("review: applying a newer version that changes a decided meal's ingredients shows the shopping difference", async () => {
+  const { run } = app(() => ({ [V]: newer }));
+  run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: clone(own), status: "confirmed" }`);
+  await run("refreshSavedRecipes({ force: true })");
+  assert.equal(run("state.mealSlots[d].recipe.sourcePending.planned"), true);
+  run("globalThis.toasts = []; showToast = (m) => toasts.push(m)");
+  await run(`handleDailyAction("life-source-apply", { recipe: state.mealSlots[d].recipe.id, date: d })`);
+  assert.ok(run("toasts.some((m) => /買い物：.*生クリーム/.test(m))"), run("JSON.stringify(toasts)"));
 });
