@@ -940,7 +940,7 @@
     for (const x of list) {
       const card = el("div", undefined, "obj-card"); card.style.cssText = "border:1px solid #f1d3a2;border-radius:10px;padding:8px 10px;margin:6px 0;background:" + (x.status === "done" ? "#f6f6f6" : "#fff8ec");
       const top = el("div", undefined, "row");
-      const name = el(x.videoId ? "button" : "b", x.title || x.videoId || "（題名なし）", x.videoId ? "quiet small" : ""); if (x.videoId) { name.type = "button"; name.addEventListener("click", () => { if (["servings", "ingredients"].includes(x.category)) history.replaceState(null, "", "#ingredients"); else if (location.hash === "#ingredients") history.replaceState(null, "", "#objections"); openRecipe(x.videoId); }); }
+      const name = el(x.videoId ? "button" : "b", x.title || x.videoId || "（題名なし）", x.videoId ? "quiet small" : ""); if (x.videoId) { name.type = "button"; name.addEventListener("click", () => openRecipe(x.videoId, { ingredients: ["servings", "ingredients"].includes(x.category) })); }
       top.append(el("span", OBJ_CAT[x.category] || x.category, "meta"), name, el("span", new Date(x.at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }), "meta"));
       card.append(top);
       if (x.servings) card.append(el("p", `いま：${x.servings.shown ? `${x.servings.shown}人分${x.servings.by === "manual" ? "（手動で設定）" : ""}` : "未確認"} → 正しくは：${x.servings.suggested ? `${x.servings.suggested}人分` : "わからない"}`));
@@ -970,7 +970,7 @@
     ytReady = new Promise((resolve) => { window.onYouTubeIframeAPIReady = () => resolve(window.YT); const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; s.onerror = () => resolve(null); document.head.append(s); });
     return ytReady;
   }
-  async function openRecipe(videoId) {
+  async function openRecipe(videoId, { ingredients: openIngredients = false } = {}) {
     // デモの行はサンプルなので、レシピは開かない（サーバーに問い合わせない）。
     if (DEMO) { status.textContent = "🧪 デモ：サンプルの行なので、レシピは開けません（本番では材料・手順・動画が開きます）。"; return; }
     const dlg = document.getElementById("recipe"), body = document.getElementById("recipe-body");
@@ -994,11 +994,13 @@
     const ul = el("ul"); (r.ingredients || []).forEach((i) => ul.append(el("li", `${i.group ? `【${i.group}】` : ""}${i.name}　${i.amount || ""}`)));
     const ingEdit = el("button", "✏️ 材料・人数を直す", "quiet small"); ingEdit.type = "button";
     ing.append(ul, ingEdit); body.append(ing);
-    if (location.hash === "#ingredients") ing.open = true;
+    if (openIngredients) ing.open = true;
     ingEdit.addEventListener("click", () => {
       const box = el("div"); box.style.cssText = "display:grid;gap:6px;margin-top:6px";
       const sv = el("select"); sv.setAttribute("aria-label", "元の人数");
-      [["", "不明"], ...Array.from({ length: 8 }, (_, k) => [String(k + 1), `${k + 1}人分`])].forEach(([v, label]) => { const o = el("option", label); o.value = v; if (String(r.sourceServings ?? "") === v) o.selected = true; sv.append(o); });
+      // 1〜20人分（よくある範囲。サーバーは100まで受け付ける）。それより多い保存済みの人数も選べるように残す（Claude review #217）。
+      const counts = [...new Set([...Array.from({ length: 20 }, (_, k) => k + 1), ...(Number.isInteger(r.sourceServings) ? [r.sourceServings] : [])])].sort((a, b) => a - b);
+      [["", "不明"], ...counts.map((k) => [String(k), `${k}人分`])].forEach(([v, label]) => { const o = el("option", label); o.value = v; if (String(r.sourceServings ?? "") === v) o.selected = true; sv.append(o); });
       const svRow = el("label", undefined, "row"); svRow.append(el("span", "元の人数（動画の分量が何人分か）", "meta"), sv);
       const rows = (r.ingredients || []).map((i) => ({ ...i }));
       const list = el("div"); list.style.cssText = "display:grid;gap:4px";
@@ -1006,8 +1008,8 @@
         list.replaceChildren();
         rows.forEach((x, i) => {
           const row = el("div", undefined, "row");
-          const n = el("input"); n.value = x.name || ""; n.placeholder = "材料名"; n.maxLength = 60; n.style.flex = "1 1 140px"; n.setAttribute("aria-label", `材料${i + 1}の名前`); n.addEventListener("input", () => { x.name = n.value; });
-          const a = el("input"); a.value = x.amount || ""; a.placeholder = "分量（例：大さじ1）"; a.maxLength = 40; a.style.flex = "0 1 130px"; a.setAttribute("aria-label", `材料${i + 1}の分量`); a.addEventListener("input", () => { x.amount = a.value; });
+          const n = el("input"); n.value = x.name || ""; n.placeholder = "材料名"; n.maxLength = 120; n.style.flex = "1 1 140px"; n.setAttribute("aria-label", `材料${i + 1}の名前`); n.addEventListener("input", () => { x.name = n.value; });
+          const a = el("input"); a.value = x.amount || ""; a.placeholder = "分量（例：大さじ1）"; a.maxLength = 120; a.style.flex = "0 1 130px"; a.setAttribute("aria-label", `材料${i + 1}の分量`); a.addEventListener("input", () => { x.amount = a.value; });
           const del = el("button", "✕", "quiet small"); del.type = "button"; del.setAttribute("aria-label", `材料${i + 1}を消す`); del.addEventListener("click", () => { rows.splice(i, 1); draw(); });
           row.append(...(x.group ? [el("span", `【${x.group}】`, "meta")] : []), n, a, del); list.append(row);
         });
@@ -1024,7 +1026,7 @@
         try {
           const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/ingredients`, { baseRevision: r.revision || "", sourceServings: sv.value === "" ? null : Number(sv.value), ingredients: clean }, "PUT");
           inote.textContent = `✓ 材料 ${x.ingredients.length}・${x.sourceServings ? `${x.sourceServings}人分` : "人数は不明"}で保存しました（使う人の端末にも届きます）。開き直します…`;
-          setTimeout(() => openRecipe(videoId), 900);
+          setTimeout(() => openRecipe(videoId, { ingredients: true }), 900);
         } catch (error) { inote.textContent = error.message; saveI.disabled = false; }
       });
       const brow = el("div", undefined, "row"); brow.append(add, saveI, cancelI, inote);

@@ -60,15 +60,34 @@ export function createPushDesk(store, { send = (sub, payload, options) => webpus
     const payload = JSON.stringify({ title: item.title, body: item.body, url: item.url || "", tag: item.id });
     await send(doc.subscription, payload, { TTL: 7200, urgency: "normal", vapidDetails: { subject, publicKey: k.publicKey, privateKey: k.privateKey } });
   }
-  // 運営の端末に送る（届かなくなった端末は外す）。送れた数を返す。
-  async function sendAdmins(item) {
-    const got = await store.get("push/admin");
-    const subs = got?.envelope?.subs || [];
-    let sent = 0;
+  // 運営の端末に送る（同時に送る。届かなくなった端末は外す）。送れた数を返す。subs を渡せば読み直さない。
+  async function sendAdmins(item, subs = null) {
+    const list = subs || (await store.get("push/admin"))?.envelope?.subs || [];
     const dead = [];
-    for (const x of subs) await deliver(x, item).then(() => { sent += 1; }).catch((error) => { if ([404, 410].includes(error?.statusCode)) dead.push(x.key); });
-    if (dead.length) await store.put("push/admin", { subs: subs.filter((x) => !dead.includes(x.key)) }, { ifGeneration: got.generation }).catch(() => {});
-    return sent;
+    const results = await Promise.all(list.map((x) => deliver(x, item).then(() => true, (error) => { if ([404, 410].includes(error?.statusCode)) dead.push(x.key); return false; })));
+    if (dead.length) {
+      for (let i = 0; i < 4; i += 1) {
+        const got = await store.get("push/admin");
+        if (!got) break;
+        if (await store.put("push/admin", { subs: (got.envelope.subs || []).filter((x) => !dead.includes(x.key)) }, { ifGeneration: got.generation }).catch(() => null)) break;
+      }
+    }
+    return results.filter(Boolean).length;
+  }
+  // 知らせのまとめの記録：送った時刻を進め、送った分だけ待ちの数を減らす／待ちの数を足す。
+  async function markAdminSent(t, covered) {
+    for (let i = 0; i < 6; i += 1) {
+      const got = await store.get("push/admin-notify");
+      const doc = got?.envelope || {};
+      if (await store.put("push/admin-notify", { lastAt: new Date(t).toISOString(), pending: Math.max(0, (doc.pending || 0) - covered) }, { ifGeneration: got?.generation ?? 0 }).catch(() => null)) return;
+    }
+  }
+  async function countAdmin(n) {
+    for (let i = 0; i < 6; i += 1) {
+      const got = await store.get("push/admin-notify");
+      const doc = got?.envelope || { lastAt: "", pending: 0 };
+      if (await store.put("push/admin-notify", { ...doc, pending: (doc.pending || 0) + n }, { ifGeneration: got?.generation ?? 0 }).catch(() => null)) return;
+    }
   }
   return {
     async publicKey() { required(); return { publicKey: (await keys()).publicKey }; },
@@ -137,27 +156,27 @@ export function createPushDesk(store, { send = (sub, payload, options) => webpus
     },
     async adminDevices() { required(); return { devices: ((await store.get("push/admin"))?.envelope?.subs || []).length }; },
     // 異議を運営の端末へ。続けて届いた時は15分に1回にまとめる（間の分は数だけ数えて、次の知らせ・定期実行で送る）。
+    // 送れてから「送った時刻」を進める（送れなかった時は数に足して、定期実行で送り直す。Claude review #217）。
     async notifyAdmins(item = {}) {
       required();
       const subs = (await store.get("push/admin"))?.envelope?.subs || [];
       if (!subs.length) return { sent: 0 };
       const t = now();
-      for (let i = 0; i < 6; i += 1) {
-        const got = await store.get("push/admin-notify");
-        const doc = got?.envelope || { lastAt: "", pending: 0 };
-        if (doc.lastAt && t - Date.parse(doc.lastAt) < ADMIN_GAP) {
-          if (await store.put("push/admin-notify", { ...doc, pending: (doc.pending || 0) + 1 }, { ifGeneration: got?.generation ?? 0 }).catch(() => null)) return { queued: true };
-          continue;
-        }
-        if (!(await store.put("push/admin-notify", { lastAt: new Date(t).toISOString(), pending: 0 }, { ifGeneration: got?.generation ?? 0 }).catch(() => null))) continue;
-        const more = doc.pending || 0;
-        return { sent: await sendAdmins({ id: `objection-${t}`, title: text(item.title, 60) || "⚡️ 異議あり", body: `${text(item.body, 140)}${more ? `（ほか${more}件）` : ""}`, url: ADMIN_URL }) };
-      }
-      return { sent: 0 };
+      const got = await store.get("push/admin-notify");
+      const doc = got?.envelope || { lastAt: "", pending: 0 };
+      if (doc.lastAt && t - Date.parse(doc.lastAt) < ADMIN_GAP) { await countAdmin(1); return { queued: true }; }
+      const more = doc.pending || 0;
+      const sent = await sendAdmins({ id: `objection-${t}`, title: text(item.title, 60) || "⚡️ 異議あり", body: `${text(item.body, 140)}${more ? `（ほか${more}件）` : ""}`, url: ADMIN_URL }, subs);
+      if (sent) await markAdminSent(t, more); else await countAdmin(1);
+      return { sent };
     },
-    async adminTest() {
+    // 登録した端末にだけ、試しに送る（ほかの運営の端末には送らない。Claude review #217）。
+    async adminTest(body = {}) {
       required();
-      const n = await sendAdmins({ id: `admin-test-${now()}`, title: "⚡️ リピごち 運営", body: "この端末に「異議あり」の知らせが届きます。", url: ADMIN_URL });
+      const key = keyOf(String(body?.endpoint || ""));
+      const subs = ((await store.get("push/admin"))?.envelope?.subs || []).filter((x) => x.key === key);
+      if (!subs.length) throw new ApiError(404, "not_subscribed", "この端末はまだ登録されていません。");
+      const n = await sendAdmins({ id: `admin-test-${now()}`, title: "⚡️ リピごち 運営", body: "この端末に「異議あり」の知らせが届きます。", url: ADMIN_URL }, subs);
       if (!n) throw new ApiError(502, "push_failed", "通知を送れませんでした。");
       return { ok: true, sent: n };
     },
@@ -183,11 +202,11 @@ export function createPushDesk(store, { send = (sub, payload, options) => webpus
         if (dead) { gone += 1; await store.put(`push/subs/${key}`, { deleted: true }, { ifGeneration: got.generation }).catch(() => {}); await updateIndex((s) => s.delete(key)); continue; }
         await store.put(`push/subs/${key}`, { ...doc, sent: [...(doc.sent || []), ...due.map((x) => x.id)].slice(-80) }, { ifGeneration: got.generation }).catch(() => {});
       }
-      // まとめて待たせていた異議の知らせ（15分たった分）。
-      const waiting = await store.get("push/admin-notify");
-      if (waiting?.envelope?.pending > 0 && t - Date.parse(waiting.envelope.lastAt || 0) >= ADMIN_GAP
-        && await store.put("push/admin-notify", { lastAt: new Date(t).toISOString(), pending: 0 }, { ifGeneration: waiting.generation }).catch(() => null)) {
-        await sendAdmins({ id: `objection-${t}`, title: "⚡️ 異議あり", body: `新しい知らせが${waiting.envelope.pending}件あります。`, url: ADMIN_URL }).catch(() => 0);
+      // まとめて待たせていた異議の知らせ（15分たった分）。送れた時だけ数を減らす。
+      const waiting = (await store.get("push/admin-notify"))?.envelope;
+      if (waiting?.pending > 0 && t - (Date.parse(waiting.lastAt || "") || 0) >= ADMIN_GAP) {
+        const n = waiting.pending;
+        if (await sendAdmins({ id: `objection-${t}`, title: "⚡️ 異議あり", body: `新しい知らせが${n}件あります。`, url: ADMIN_URL }).catch(() => 0)) await markAdminSent(t, n);
       }
       return { sent, gone, subs: subs.length };
     }

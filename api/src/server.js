@@ -330,6 +330,7 @@ export function createApp(env = process.env, deps = {}) {
   };
   // ご意見・お問い合わせ（β版の「お気持ち」から。招待コードは正式版で）
   // 「⚡️ 異議あり」の受付。受け付けたら運営の端末に知らせる（最大4秒待つ。知らせに失敗しても受付は成功。APP_MAP §52-12）。
+  // 待つのは、Cloud Run が答えを返した後の処理を止めることがあるため（送れなかった分は定期実行で送り直す）。
   app.post("/api/recipes/objections", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     send(res, feedbackDesk.objection(req.body || {}, householdOf(req)).then(async (saved) => {
@@ -356,7 +357,7 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/admin/push/test", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, pushDesk.adminTest());
+    send(res, pushDesk.adminTest(req.body || {}));
   });
   app.post("/api/feedback", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, feedbackDesk.send(req.body || {}, householdOf(req))); });
   app.post("/api/usage", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, usageBook.record(req.body || {})); });

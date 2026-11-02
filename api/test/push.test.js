@@ -67,7 +67,8 @@ test('push: admin devices get objection notices, at most one per 15 minutes; the
   const store = createMemorySyncStore();
   let t = Date.parse('2026-11-02T07:00:00Z');
   const sent = [];
-  const desk = createPushDesk(store, { now: () => t, send: async (s, payload) => { sent.push([s.endpoint, JSON.parse(payload)]); } });
+  let failing = false;
+  const desk = createPushDesk(store, { now: () => t, send: async (s, payload) => { if (failing) throw Object.assign(new Error('x'), { statusCode: 503 }); sent.push([s.endpoint, JSON.parse(payload)]); } });
   assert.deepEqual(await desk.notifyAdmins({ title: '⚡️ 異議あり：人数' }), { sent: 0 }, 'no admin device yet');
   await desk.adminSubscribe({ subscription: sub });
   await desk.adminSubscribe({ subscription: sub });
@@ -83,6 +84,20 @@ test('push: admin devices get objection notices, at most one per 15 minutes; the
   await desk.tick();
   assert.equal(sent.length, 2);
   assert.match(sent[1][1].body, /2件/);
+  // 送れなかった時は数に足し、定期実行で送り直す（Claude review #217）
+  t += 15 * 60_000;
+  failing = true;
+  assert.deepEqual(await desk.notifyAdmins({ title: '⚡️ 異議あり：その他' }), { sent: 0 });
+  failing = false;
+  await desk.tick();
+  assert.match(sent.at(-1)[1].body, /1件/);
+  // 試しの通知は、その端末にだけ
+  const other = { ...sub, endpoint: 'https://fcm.googleapis.com/fcm/send/other' };
+  await desk.adminSubscribe({ subscription: other });
+  const n = sent.length;
+  await desk.adminTest({ endpoint: other.endpoint });
+  assert.deepEqual(sent.slice(n).map((x) => x[0]), [other.endpoint]);
+  await desk.adminUnsubscribe({ endpoint: other.endpoint });
   await desk.adminUnsubscribe({ endpoint: sub.endpoint });
   assert.equal((await desk.adminDevices()).devices, 0);
 });

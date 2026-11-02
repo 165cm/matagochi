@@ -135,7 +135,8 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = new URL(`./${event.notification.data?.url || ""}`, self.registration.scope).href;
   event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-    const open = list.find((c) => c.url.startsWith(self.registration.scope));
+    // 運営の知らせ（管理画面）は、開いているアプリの画面を置き換えず、別に開く（Claude review #217）。
+    const open = /^admin\//.test(event.notification.data?.url || "") ? null : list.find((c) => c.url.startsWith(self.registration.scope));
     if (open) return open.navigate(target).then((c) => (c || open).focus()).catch(() => open.focus());
     return self.clients.openWindow(target);
   }));

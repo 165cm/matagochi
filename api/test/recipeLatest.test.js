@@ -73,8 +73,10 @@ test('the admin fixes the ingredients and the servings (for an objection): the v
   const opened = (await call(`/api/admin/recipes/${V}`)).body;
   assert.equal((await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: 'old', ingredients: [{ name: 'x', amount: '1' }] }, 'PUT')).status, 409);
   assert.equal((await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [] }, 'PUT')).status, 400);
-  assert.equal((await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [{ name: 'x', amount: '1' }], sourceServings: 50 }, 'PUT')).status, 400);
-  const saved = await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [{ name: '鶏むね肉', amount: '1枚' }, { name: '生クリーム', amount: '200ml' }], sourceServings: 2 }, 'PUT');
+  // AI が読んだ長い分量があっても、長さでは断らない（Claude review #217）
+  const long = 'あ'.repeat(60);
+  assert.equal((await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [{ name: 'x', amount: '1' }], sourceServings: 150 }, 'PUT')).status, 400);
+  const saved = await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [{ name: '鶏むね肉', amount: '1枚' }, { name: '生クリーム', amount: '200ml' }, { name: 'しお', amount: long }], sourceServings: 2 }, 'PUT');
   assert.equal(saved.status, 200, JSON.stringify(saved.body));
   assert.notEqual(saved.body.revision, opened.revision);
   const latest = (await call('/api/recipes/latest', { videoIds: [V] })).body.items[V];

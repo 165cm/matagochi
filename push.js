@@ -51,11 +51,23 @@ function b64ToBytes(s) {
   const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
-async function pushPost(path, body) {
-  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...ticketHeaders() }, body: JSON.stringify(body) }, 20_000);
+async function pushPost(path, body, headers = {}) {
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...ticketHeaders(), ...headers }, body: JSON.stringify(body || {}) }, 20_000);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error?.message || "通知の設定ができませんでした。");
+  if (!response.ok) throw new Error(response.status === 403 ? "合言葉が違います。" : data.error?.message || "通知の設定ができませんでした。");
   return data;
+}
+// 通知の許可をもらい、この端末の登録（なければ作る）を返す。献立の通知と運営の知らせで同じ登録を使う。
+async function ensurePushSubscription() {
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error(permission === "denied" ? "通知がブロックされています。端末の設定から、リピごちの通知を許可してください。" : "通知が許可されませんでした。");
+  const reg = await navigator.serviceWorker.ready;
+  const existing = await reg.pushManager.getSubscription();
+  if (existing) return existing;
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/push/key`, {}, 15_000);
+  const { publicKey } = response.ok ? await response.json().catch(() => ({})) : {};
+  if (!publicKey) throw new Error("つながりませんでした。少し待ってからもう一度押してください。");
+  return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
 }
 async function currentSubscription() {
   const reg = await navigator.serviceWorker.ready;
@@ -65,11 +77,7 @@ async function enablePush() {
   if (pushBusy) return;
   pushBusy = true; pushMessage = ""; render();
   try {
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") throw new Error(permission === "denied" ? "通知がブロックされています。端末の設定から、リピごちの通知を許可してください。" : "通知が許可されませんでした。");
-    const { publicKey } = await (await fetchWithTimeout(`${API_BASE_URL}/api/push/key`, {}, 15_000)).json();
-    const reg = await navigator.serviceWorker.ready;
-    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) }));
+    const sub = await ensurePushSubscription();
     const info = { ...pushInfo(), endpoint: sub.endpoint };
     await pushPost("/api/push/subscribe", { subscription: sub.toJSON(), schedule: pushSchedule(info) });
     savePush({ ...info, sentHash: "" });
@@ -135,26 +143,18 @@ function handlePushAction(action) {
 const ADMIN_PUSH_KEY = "ripigochi-admin-push";
 let adminPushBusy = false, adminPushMessage = "";
 function adminPushEndpoint() { try { return localStorage.getItem(ADMIN_PUSH_KEY) || ""; } catch { return ""; } }
-async function adminPushPost(path, body, token = "") {
-  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body || {}) }, 20_000);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(response.status === 403 ? "合言葉が違います。" : data.error?.message || "うまくいきませんでした。");
-  return data;
-}
 async function enableAdminPush() {
   if (adminPushBusy) return;
   const token = String(document.querySelector("#admin-push-token")?.value || "").trim();
   if (!token) { adminPushMessage = "管理の合言葉を入れてください。"; render(); return; }
   adminPushBusy = true; adminPushMessage = ""; render();
   try {
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") throw new Error("通知が許可されませんでした。端末の設定から、リピごちの通知を許可してください。");
-    const { publicKey } = await (await fetchWithTimeout(`${API_BASE_URL}/api/push/key`, {}, 15_000)).json();
-    const reg = await navigator.serviceWorker.ready;
-    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) }));
-    await adminPushPost("/api/admin/push/subscribe", { subscription: sub.toJSON() }, token);
+    const sub = await ensurePushSubscription();
+    const auth = { Authorization: `Bearer ${token}` };
+    await pushPost("/api/admin/push/subscribe", { subscription: sub.toJSON() }, auth);
     try { localStorage.setItem(ADMIN_PUSH_KEY, sub.endpoint); } catch {}
-    await adminPushPost("/api/admin/push/test", {}, token).catch(() => {});
+    // 試しの1件は、この端末にだけ（Claude review #217）。
+    await pushPost("/api/admin/push/test", { endpoint: sub.endpoint }, auth).catch(() => {});
     showToast("この端末に「異議あり」の知らせが届きます。試しに1件送りました。");
   } catch (error) {
     adminPushMessage = error.message || "うまくいきませんでした。";
@@ -163,8 +163,10 @@ async function enableAdminPush() {
 }
 async function disableAdminPush() {
   const endpoint = adminPushEndpoint();
-  if (endpoint) await adminPushPost("/api/admin/push/unsubscribe", { endpoint }).catch(() => {});
+  if (endpoint) await pushPost("/api/admin/push/unsubscribe", { endpoint }).catch(() => {});
   try { localStorage.removeItem(ADMIN_PUSH_KEY); } catch {}
+  // 献立の通知もオフなら、端末の登録も外す（Claude review #217）。
+  if (!pushInfo().endpoint) try { const sub = await currentSubscription(); await sub?.unsubscribe(); } catch {}
   showToast("運営の知らせを止めました。");
   render();
 }

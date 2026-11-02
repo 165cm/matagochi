@@ -140,7 +140,7 @@ test("the operator's fixed count reaches copies whose count was unknown or read 
   setup(a.run);
   await a.run("refreshSavedRecipes({ force: true })");
   assert.equal(a.run("own.sourceServings"), 2);
-  assert.equal(a.run("slot.recipe.sourceServings"), 2);
+  assert.equal(a.run("slot.recipe.sourcePending.sourceServings"), 2, "a decided meal gets the button (shopping amounts change)");
   assert.equal(a.run("own.sourceServingsBy"), undefined);
   const b = app(() => ({ [V]: fixed }));
   setup(b.run);
@@ -158,4 +158,21 @@ test("「🛠 運営の方へ」 asks for the admin password only to register; i
   run(`localStorage.setItem("ripigochi-admin-push", "https://fcm.googleapis.com/x")`);
   assert.match(run("renderAdminPush()"), /届きます.*受け取るのをやめる/s);
   assert.equal(run(`localStorage.getItem("ripigochi-admin")`), null);
+});
+
+// Claude review #217
+test("review: a count set by hand before the mark existed is kept while the version is the same; a fixed count for a decided meal waits for the button", async () => {
+  const same = { ...item, revision: "r1", sourceServings: 2 };
+  const a = app(() => ({ [V]: same }));
+  a.run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); own.sourceServings = 4`);
+  await a.run("refreshSavedRecipes({ force: true })");
+  assert.equal(a.run("own.sourceServings"), 4, "no mark, same version: kept");
+  const fixed = { ...item, revision: "r2", sourceServings: 2 };
+  const b = app(() => ({ [V]: fixed }));
+  b.run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: clone(own), status: "confirmed" }`);
+  await b.run("refreshSavedRecipes({ force: true })");
+  assert.equal(b.run("state.mealSlots[d].recipe.sourceServings"), null, "the decided meal's shopping does not change by itself");
+  assert.equal(b.run("state.mealSlots[d].recipe.sourcePending.planned"), true);
+  assert.match(b.run("renderSourceNote(state.mealSlots[d].recipe, true, d)"), /元の人数 → 2人分/);
+  assert.equal(b.run("own.sourceServings"), 2, "the saved copy (not in a decided meal) takes it");
 });

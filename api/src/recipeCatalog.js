@@ -564,12 +564,12 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       const before = current.envelope.result;
       if (String(baseRevision || "") !== String(before.catalog?.revision || "")) throw new ApiError(409, "catalog_conflict", "編集を始めた後にレシピが変わりました。開き直してください。");
       const raw = Array.isArray(ingredients) ? ingredients : [];
-      if (raw.some((x) => String(x?.name || "").length > 60 || String(x?.amount || "").length > 40)) throw new ApiError(400, "invalid_ingredients", "材料名は60字、分量は40字までにしてください。");
-      const list = normalizeIngredients(raw);
+      // AI が読んだ長い分量もあるので、長さでは断らない（ほかの行を直す時に止まらないように。長すぎる分は切る。Claude review #217）。
+      const list = normalizeIngredients(raw.map((x) => ({ ...x, name: String(x?.name || "").slice(0, 120), amount: String(x?.amount || "").slice(0, 120) })));
       if (!list.length) throw new ApiError(400, "invalid_ingredients", "材料を1つ以上入れてください。");
       if (raw.filter((x) => String(x?.name || "").trim()).length > 20) throw new ApiError(400, "invalid_ingredients", "材料は20個までです。");
       const servings = sourceServings === null || sourceServings === "" || sourceServings === undefined ? null : Number(sourceServings);
-      if (servings !== null && !(Number.isInteger(servings) && servings > 0 && servings <= 20)) throw new ApiError(400, "invalid_servings", "人数は1〜20か、不明にしてください。");
+      if (servings !== null && !(Number.isInteger(servings) && servings > 0 && servings <= 100)) throw new ApiError(400, "invalid_servings", "人数は1〜100か、不明にしてください。");
       const at = new Date(now()).toISOString();
       const result = structuredClone(before);
       result.ingredients = list;
