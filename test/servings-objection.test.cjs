@@ -39,7 +39,7 @@ test("tapping the count in the banner sets it on the saved recipe and on the mea
   assert.equal(run("slot.recipe.sourceServingsBy"), "manual");
   assert.equal(run("old.recipe.sourceServings"), null, "a meal already cooked keeps its record");
   assert.equal(run("servingsUnknownBanner(slot.recipe, true, d)"), "");
-  assert.match(run("servingsManualNote(slot.recipe, d)"), /手動で設定.*2人分.*life-obj-open/s);
+  assert.match(run("servingsManualNote(slot.recipe)"), /手動で設定.*2人分/s);
   assert.equal(run("servingsManualNote({ sourceServings: 2 })"), "", "counts read from the video show no note");
 });
 
@@ -93,4 +93,24 @@ test("「その他」 needs a short comment before it is sent", async () => {
   await run("sendObjection()");
   assert.equal(sent.length, 0);
   assert.match(run("renderObjectionSheet()"), /ひとこと書いてください/);
+});
+
+test("「⚡️ 異議あり」 is for the whole recipe: it sits in the top row of the recipe and cook screens, and asks which part is wrong", async () => {
+  const { run, sent } = app();
+  setup(run);
+  assert.match(run("objectionButton(own)"), /life-obj-open.*異議あり/s);
+  assert.equal(run(`objectionButton({ id: "x", title: "手書き", videoUrl: "" })`), "", "only recipes with a video");
+  run(`recipeDetailId = own.id; state.view = "recipe"`);
+  assert.match(run("renderRecipeDetail()"), /class="detail-top">.*life-obj-open/s);
+  run(`cookingDate = d; state.view = "cooking"`);
+  assert.match(run("renderCooking()"), /class="detail-top">.*life-obj-open[^>]*data-date/s);
+  await run(`handleDailyAction("life-obj-open", { recipe: own.id, date: d })`);
+  assert.doesNotMatch(run("renderObjectionSheet()"), /aria-pressed="true"><span aria-hidden="true">/, "nothing chosen yet");
+  await run("sendObjection()");
+  assert.equal(sent.length, 0);
+  assert.match(run("renderObjectionSheet()"), /どこに異議があるか選んでください/);
+  await run(`handleDailyAction("life-obj-cat", { category: "steps" })`);
+  await run("sendObjection()");
+  assert.equal(sent[0].category, "steps");
+  assert.equal(sent[0].servings, undefined);
 });

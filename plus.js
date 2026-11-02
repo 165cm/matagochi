@@ -166,9 +166,10 @@ function objectionRecipe(o = objectionSheet) {
 function openObjection(data) {
   const r = objectionRecipe({ recipeId: data.recipe, date: data.date || "" });
   if (!r) return;
-  const category = OBJECTION_CATEGORIES.some((c) => c.id === data.category) ? data.category : "servings";
+  // レシピ全体への異議。どこが違うかは選んでもらう（呼び出し元が決めた時だけ選んでおく）。
+  const category = OBJECTION_CATEGORIES.some((c) => c.id === data.category) ? data.category : "";
   objectionSheet = { recipeId: r.id, date: data.date || "", category, suggested: null, comment: "", step: "form", busy: false, error: "" };
-  trackDaily("objection_open", { category });
+  trackDaily("objection_open", { category: category || "none" });
 }
 const objectionComment = () => String(document.querySelector("#obj-comment")?.value ?? objectionSheet?.comment ?? "").slice(0, 500);
 async function sendObjection() {
@@ -177,6 +178,7 @@ async function sendObjection() {
   const r = objectionRecipe(o);
   if (!r) { objectionSheet = null; render(); return; }
   const comment = objectionComment().trim();
+  if (!o.category) { objectionSheet = { ...o, comment, error: "どこに異議があるか選んでください。" }; render(); return; }
   if (o.category === "other" && comment.length < 2) { objectionSheet = { ...o, comment, error: "どこが違うか、ひとこと書いてください。" }; render(); return; }
   const shown = r.sourceServings ?? null, by = r.sourceServingsBy || "";
   // 正しい人数を選んだら、この家庭のレシピ（と献立の写し）はすぐその人数にする（運営の確認を待たない）。
@@ -215,7 +217,7 @@ function renderObjectionSheet() {
     <button type="button" class="primary-button full-button" data-action="life-obj-close">OK</button>`;
   else {
     const shown = r.sourceServings == null ? "未確認" : `${r.sourceServings}人分${r.sourceServingsBy === "manual" ? "（手動で設定）" : ""}`;
-    body = `${head}<p class="obj-lead">「人数が違う！」など、違和感があれば5秒でツッコミを！</p>
+    body = `${head}<p class="obj-lead">「人数が違う！」「手順が足りない」など、違和感があれば5秒でツッコミを！</p>
     <p class="obj-label">どこに異議がありますか？（タップで選択）</p>
     <div class="obj-cats">${OBJECTION_CATEGORIES.map((c) => `<button type="button" class="obj-cat" data-action="life-obj-cat" data-category="${c.id}" aria-pressed="${o.category === c.id}"><span aria-hidden="true">${c.icon}</span>${escapeHtml(c.label)}</button>`).join("")}</div>
     ${o.category === "servings" ? `<p class="obj-label">いまは <b>${escapeHtml(shown)}</b>。正しくは何人分？（わかれば）</p>

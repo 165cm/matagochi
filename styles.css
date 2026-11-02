@@ -4181,9 +4181,9 @@ div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.
 .servings-banner { flex-wrap: wrap; }
 .servings-banner .servings-options { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .servings-banner .choice-button { min-height: 44px; flex: 1 1 0; border-color: #e2574c; color: #c0392b; background: #fff; }
-.servings-manual { display: flex; gap: 8px; align-items: center; margin: 8px 0; padding: 8px 10px 8px 12px; border-radius: 12px; background: #fff8ec; border: 1px solid #f1d3a2; }
-.servings-manual p { flex: 1; margin: 0; font-size: 12.5px; line-height: 1.5; color: #7a4a10; }
-.objection-button { flex: 0 0 auto; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1.5px solid #f0a020; background: #fff1d6; color: #9a5b00; font-size: 13px; font-weight: 800; cursor: pointer; }
+.servings-manual { margin: 8px 0; padding: 8px 12px; border-radius: 12px; background: #fff8ec; border: 1px solid #f1d3a2; font-size: 12.5px; line-height: 1.5; color: #7a4a10; }
+.detail-top-end { display: flex; align-items: center; gap: 6px; }
+.objection-button { flex: 0 0 auto; min-height: 40px; padding: 0 10px; border-radius: 12px; border: 1.5px solid #f0a020; background: #fff1d6; color: #9a5b00; font-size: 13px; font-weight: 800; cursor: pointer; }
 .objection-button:active { transform: scale(.96); }
 .obj-sheet .quota-card { border: 2px solid #f0b040; }
 .obj-head { justify-content: flex-start; }

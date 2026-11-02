@@ -1093,7 +1093,7 @@ function renderCooking() {
   const cook = cookSections(recipe, servings);
   const meta = [`${servings}人分`, recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分（炊飯は別）` : "時間は未確認", recipe.planning?.equipment?.length ? `器具：${recipe.planning.equipment.join("・")}` : ""].filter(Boolean).join(" · ");
   const primary = slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った！", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : "";
-  return `<section class="hero-card cooking-card"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p>${CookMode.supported() ? `<p class="wake-chip">🔆 画面つけっぱなし ${tip("作る画面の間は、スマホの画面が消えません")}</p>` : ""}</div></div>
+  return `<section class="hero-card cooking-card"><div class="detail-top"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button>${objectionButton(recipe, slot?.recipe ? cookingDate : "")}</div><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p>${CookMode.supported() ? `<p class="wake-chip">🔆 画面つけっぱなし ${tip("作る画面の間は、スマホの画面が消えません")}</p>` : ""}</div></div>
   <details class="cooking-safety"><summary>⚠️ 原材料・火の通りを確認</summary><p class="small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p></details>
   ${renderCreatorCredit(recipe)}
   ${Lifestyle.traits(recipe).staple === "other" ? `<div class="cooking-staple-alert"><span class="csa-icon" aria-hidden="true">🍚</span><div class="csa-text"><strong>ごはん（主食）の準備はOKですか？</strong><p class="small muted">おかずがメインの献立です。炊飯のセットや主食の用意をお忘れなく！</p></div></div>` : ""}
@@ -1102,7 +1102,7 @@ function renderCooking() {
   ${slot?.recipe ? renderSourceNote(slot.recipe, !isViewer(), cookingDate) : ""}
   ${slot?.recipe ? renderSourceReload(slot.recipe, !isViewer(), cookingDate) : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && (!!slot?.recipe || state.recipes.some((x) => x.id === recipe.id)), slot?.recipe ? cookingDate : "")}
-  ${servingsManualNote(recipe, slot?.recipe ? cookingDate : "")}
+  ${servingsManualNote(recipe)}
   <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${cook.ingredients}
   ${cook.steps}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
@@ -2828,10 +2828,15 @@ function servingsUnknownBanner(recipe, canEdit, date = "") {
   const pick = canEdit ? `<div class="servings-options" role="group" aria-label="元のレシピの人数">${[1, 2, 3, 4].map((k) => `<button type="button" class="choice-button" data-action="life-servings-set" data-recipe="${escapeAttr(recipe.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} data-count="${k}">${k}人分</button>`).join("")}</div>` : "";
   return `<div class="servings-banner" role="note"><p><b>元のレシピが何人分か未確認です</b><br>分量は動画のまま。${dailyProfile().servings || getServingCount()}人分に合わせるには、${canEdit ? "動画の人数をタップしてください。" : "レシピを編集できる人に人数を決めてもらってください。"}</p>${pick}</div>`;
 }
-// 手で決めた人数は、そう書いておく。違っていたら「⚡️ 異議あり」で知らせられる（construction2nd の「異議あり」をまねた。APP_MAP §52-11）。
-function servingsManualNote(recipe, date = "") {
+// 手で決めた人数は、そう書いておく。違っていたら、画面の上の「⚡️ 異議あり」で知らせられる（APP_MAP §52-11）。
+function servingsManualNote(recipe) {
   if (!recipe || recipe.sourceServings == null || recipe.sourceServingsBy !== "manual") return "";
-  return `<div class="servings-manual" role="note"><p>✋ 元の人数は<b>手動で設定</b>（${recipe.sourceServings}人分）${tip("動画からは読み取れなかったので、この家庭で決めた人数です。違っていたら「異議あり」から知らせてください")}</p><button type="button" class="objection-button" data-action="life-obj-open" data-recipe="${escapeAttr(recipe.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} data-category="servings" title="人数・分量の間違いを知らせる">⚡️ 異議あり</button></div>`;
+  return `<p class="servings-manual" role="note">✋ 元の人数は<b>手動で設定</b>（${recipe.sourceServings}人分）${tip("動画からは読み取れなかったので、この家庭で決めた人数です。違っていたら、画面の上の「⚡️ 異議あり」から知らせてください")}</p>`;
+}
+// レシピ全体への「⚡️ 異議あり」（construction2nd の問題の上のボタンをまねて、画面の上の段に置く）。動画のあるレシピだけ（運営が動画と見比べて直せるもの）。
+function objectionButton(recipe, date = "") {
+  if (!recipe || typeof youtubeVideoId !== "function" || !youtubeVideoId(recipe.videoUrl)) return "";
+  return `<button type="button" class="objection-button" data-action="life-obj-open" data-recipe="${escapeAttr(recipe.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} title="このレシピの間違い（人数・材料・作り方・時刻）を知らせる">⚡️ 異議あり</button>`;
 }
 // 元の人数を決める：保存したレシピと、同じレシピ（同じ動画）の献立の枠の写しの全部に入れる（作る画面・買い物リストは枠の写しを見る）。
 // 返り値：変えた数。n が null なら「不明」に戻す。
@@ -2883,7 +2888,7 @@ function renderRecipeDetail() {
     : `<div class="detail-actions">${requestButton(r)}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>`;
   const pLine = renderParentLine(r);
   return `<section class="recipe-detail">
-    <div class="detail-top"><button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button>${more}</div>
+    <div class="detail-top"><button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button><div class="detail-top-end">${objectionButton(r)}${more}</div></div>
     ${renderCreatorCredit(r) || dishTile(r, "detail-photo")}
     <h2 class="detail-title">${escapeHtml(r.title)}</h2>
     <p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>
