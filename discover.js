@@ -249,7 +249,10 @@ function updateCopy(r, item, slot = null) {
   if (fresh.steps.length < 2) return false;
   // 中身が同じ：版を覚えるだけ（知らせない）。
   if (sourcePrint({ ...r, ...fresh }) === sourcePrint(r)) {
-    if (r.sourceRevision === item.revision && !r.sourcePending) return false;
+    // 元の人数だけを運営が直した時（「⚡️ 異議あり」への対応）も届ける。手で決めた人数はそのまま（APP_MAP §52-12）。
+    const servings = fresh.sourceServings != null && r.sourceServingsBy !== "manual" && r.sourceServings !== fresh.sourceServings;
+    if (r.sourceRevision === item.revision && !r.sourcePending && !servings) return false;
+    if (servings) { r.sourceServings = fresh.sourceServings; delete r.sourceServingsBy; if (slot) slot.updatedAt = nowIso(); else r.updatedAt = nowIso(); }
     r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); if (r.catalog?.id) r.catalog = { ...r.catalog, revision: item.revision }; delete r.sourcePending;
     return true;
   }

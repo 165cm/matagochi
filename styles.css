@@ -4205,3 +4205,7 @@ div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.
 .obj-scale { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 32px; background: #e8f6ee; border: 1.5px solid #8fd1a8; }
 @media (prefers-reduced-motion: no-preference) { .obj-bolt { animation: obj-bounce 1.2s ease-in-out infinite; } }
 @keyframes obj-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+/* 運営の方へ（「⚡️ 異議あり」の知らせを受け取る。APP_MAP §52-12） */
+.admin-push { margin-top: 10px; font-size: 13px; }
+.admin-push summary { cursor: pointer; color: var(--muted); font-size: 12.5px; min-height: 32px; display: flex; align-items: center; }
+.admin-push .input { margin: 6px 0; }

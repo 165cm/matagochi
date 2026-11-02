@@ -272,6 +272,7 @@
 
   <div id="panel-objections" role="tabpanel" aria-labelledby="tab-objections" hidden>
     <section><div class="head"><h2>⚡️ 異議あり（使う人からの間違いの知らせ）</h2><div class="row"><label class="chk"><input type="checkbox" id="obj-open-only" checked> まだの分だけ</label><button type="button" class="quiet small" id="obj-reload">読み直す</button><details class="info"><summary>ⓘ</summary><div>アプリの「⚡️ 異議あり」から届いた、人数・材料・手順・時刻の間違いの知らせです（新しい14日分）。料理名を押すとレシピを開きます。直したら（または直さないと決めたら）「✓ 対応した」。人数の「正しくは」は、送った家庭のレシピにはもう入っています。</div></details></div></div>
+      <p class="meta" id="obj-devices" style="margin-top:6px"></p>
       <div id="obj-list" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div></section>
   </div>
 
@@ -924,6 +925,8 @@
     const days = ((await api("/api/admin/objections")).days || []).slice(-14).reverse();
     const lists = await Promise.all(days.map((d) => api(`/api/admin/objections?day=${encodeURIComponent(d)}`)));
     if (my !== session) return;
+    // 知らせを受け取る端末の数（アプリの設定 → 意見・お問い合わせ → 🛠 運営の方へ）。
+    api("/api/admin/push").then((d) => { if (my === session) document.getElementById("obj-devices").textContent = d.devices ? `📲 知らせを受け取る端末：${d.devices}台` : "📲 知らせを受け取る端末はまだありません（アプリの設定 →「意見・お問い合わせ」→「🛠 運営の方へ」で、管理の合言葉を入れて登録）。"; }).catch(() => {});
     last.objections = lists.flatMap((x) => (x.items || []).map((i) => ({ ...i, day: x.day }))).sort((a, b) => String(b.at).localeCompare(String(a.at)));
     renderObjections();
   }
@@ -937,7 +940,7 @@
     for (const x of list) {
       const card = el("div", undefined, "obj-card"); card.style.cssText = "border:1px solid #f1d3a2;border-radius:10px;padding:8px 10px;margin:6px 0;background:" + (x.status === "done" ? "#f6f6f6" : "#fff8ec");
       const top = el("div", undefined, "row");
-      const name = el(x.videoId ? "button" : "b", x.title || x.videoId || "（題名なし）", x.videoId ? "quiet small" : ""); if (x.videoId) { name.type = "button"; name.addEventListener("click", () => openRecipe(x.videoId)); }
+      const name = el(x.videoId ? "button" : "b", x.title || x.videoId || "（題名なし）", x.videoId ? "quiet small" : ""); if (x.videoId) { name.type = "button"; name.addEventListener("click", () => { if (["servings", "ingredients"].includes(x.category)) history.replaceState(null, "", "#ingredients"); else if (location.hash === "#ingredients") history.replaceState(null, "", "#objections"); openRecipe(x.videoId); }); }
       top.append(el("span", OBJ_CAT[x.category] || x.category, "meta"), name, el("span", new Date(x.at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }), "meta"));
       card.append(top);
       if (x.servings) card.append(el("p", `いま：${x.servings.shown ? `${x.servings.shown}人分${x.servings.by === "manual" ? "（手動で設定）" : ""}` : "未確認"} → 正しくは：${x.servings.suggested ? `${x.servings.suggested}人分` : "わからない"}`));
@@ -958,6 +961,8 @@
   }
   TABS.forEach((t) => document.getElementById(`tab-${t}`).addEventListener("click", () => showTab(t)));
   try { const saved = localStorage.getItem("ripigochi-admin-tab"); if (TABS.includes(saved)) showTab(saved); } catch {}
+  // 通知（「⚡️ 異議あり」）から開いた時は、そのタブを開く（APP_MAP §52-12）。
+  if (location.hash === "#objections") showTab("objections");
   // ── レシピ（材料・手順・手順の時刻を見て直す） ──
   let player = null, ytReady = null;
   function loadYT() {
@@ -984,8 +989,48 @@
     body.append(head, links);
     const playerBox = el("div", undefined, "player"); const slot = el("div"); slot.id = "yt-slot"; playerBox.append(slot);
     if (r.embeddable) body.append(playerBox); else body.append(el("p", "この動画は埋め込みで再生できません。時刻は YouTube で確かめてください。", "meta"));
-    const ing = el("details"); ing.append(el("summary", `材料（${(r.ingredients || []).length}）`));
-    const ul = el("ul"); (r.ingredients || []).forEach((i) => ul.append(el("li", `${i.name}　${i.amount || ""}`))); ing.append(ul); body.append(ing);
+    // 材料と元の人数。「⚡️ 異議あり」への対応で、運営が直せる（APP_MAP §52-12。版が変わり、使う人の端末の写しにも届く）。
+    const ing = el("details"); ing.append(el("summary", `材料（${(r.ingredients || []).length}）・元の人数：${r.sourceServings ? `${r.sourceServings}人分` : "不明"}${r.ingredientsFrom === "admin" ? "（運営が直した）" : ""}`));
+    const ul = el("ul"); (r.ingredients || []).forEach((i) => ul.append(el("li", `${i.group ? `【${i.group}】` : ""}${i.name}　${i.amount || ""}`)));
+    const ingEdit = el("button", "✏️ 材料・人数を直す", "quiet small"); ingEdit.type = "button";
+    ing.append(ul, ingEdit); body.append(ing);
+    if (location.hash === "#ingredients") ing.open = true;
+    ingEdit.addEventListener("click", () => {
+      const box = el("div"); box.style.cssText = "display:grid;gap:6px;margin-top:6px";
+      const sv = el("select"); sv.setAttribute("aria-label", "元の人数");
+      [["", "不明"], ...Array.from({ length: 8 }, (_, k) => [String(k + 1), `${k + 1}人分`])].forEach(([v, label]) => { const o = el("option", label); o.value = v; if (String(r.sourceServings ?? "") === v) o.selected = true; sv.append(o); });
+      const svRow = el("label", undefined, "row"); svRow.append(el("span", "元の人数（動画の分量が何人分か）", "meta"), sv);
+      const rows = (r.ingredients || []).map((i) => ({ ...i }));
+      const list = el("div"); list.style.cssText = "display:grid;gap:4px";
+      const draw = () => {
+        list.replaceChildren();
+        rows.forEach((x, i) => {
+          const row = el("div", undefined, "row");
+          const n = el("input"); n.value = x.name || ""; n.placeholder = "材料名"; n.maxLength = 60; n.style.flex = "1 1 140px"; n.setAttribute("aria-label", `材料${i + 1}の名前`); n.addEventListener("input", () => { x.name = n.value; });
+          const a = el("input"); a.value = x.amount || ""; a.placeholder = "分量（例：大さじ1）"; a.maxLength = 40; a.style.flex = "0 1 130px"; a.setAttribute("aria-label", `材料${i + 1}の分量`); a.addEventListener("input", () => { x.amount = a.value; });
+          const del = el("button", "✕", "quiet small"); del.type = "button"; del.setAttribute("aria-label", `材料${i + 1}を消す`); del.addEventListener("click", () => { rows.splice(i, 1); draw(); });
+          row.append(...(x.group ? [el("span", `【${x.group}】`, "meta")] : []), n, a, del); list.append(row);
+        });
+      };
+      draw();
+      const add = el("button", "＋ 材料を足す", "quiet small"); add.type = "button"; add.addEventListener("click", () => { if (rows.length < 20) { rows.push({ name: "", amount: "" }); draw(); } });
+      const saveI = el("button", "材料・人数を保存", "small"); saveI.type = "button";
+      const cancelI = el("button", "やめる", "quiet small"); cancelI.type = "button"; cancelI.addEventListener("click", () => openRecipe(videoId));
+      const inote = el("span", "", "meta");
+      saveI.addEventListener("click", async () => {
+        const clean = rows.filter((x) => String(x.name || "").trim());
+        if (!clean.length) { inote.textContent = "材料を1つ以上入れてください。"; return; }
+        saveI.disabled = true; inote.textContent = "保存しています…";
+        try {
+          const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/ingredients`, { baseRevision: r.revision || "", sourceServings: sv.value === "" ? null : Number(sv.value), ingredients: clean }, "PUT");
+          inote.textContent = `✓ 材料 ${x.ingredients.length}・${x.sourceServings ? `${x.sourceServings}人分` : "人数は不明"}で保存しました（使う人の端末にも届きます）。開き直します…`;
+          setTimeout(() => openRecipe(videoId), 900);
+        } catch (error) { inote.textContent = error.message; saveI.disabled = false; }
+      });
+      const brow = el("div", undefined, "row"); brow.append(add, saveI, cancelI, inote);
+      box.append(svRow, list, brow, el("p", "保存すると版が新しくなり、使う人の端末の写しにも届きます（手で人数を決めた家庭の人数はそのまま）。読み直し・候補の採用でも、ここで直した材料・人数を引き継ぎます。", "meta"));
+      ul.replaceWith(box); ingEdit.hidden = true;
+    });
     // 料理名（親を決める元）。AI が付けた名前を手で直せる（空にすると題名で決める。あとから AI で上書きしない）。
     const FROM = { "": "まだなし", ai: "AI", "ai-backfill": "AI（あとから）", admin: "運営が直した" };
     const dn = el("div", undefined, "row"); dn.style.marginTop = "4px";

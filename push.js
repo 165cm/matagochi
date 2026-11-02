@@ -83,7 +83,8 @@ async function enablePush() {
 }
 async function disablePush() {
   const info = pushInfo();
-  try { const sub = await currentSubscription(); await sub?.unsubscribe(); } catch {}
+  // 運営の知らせ（下）も同じ登録を使うので、受け取っている間は端末の登録は残す。
+  if (!adminPushEndpoint()) try { const sub = await currentSubscription(); await sub?.unsubscribe(); } catch {}
   if (info.endpoint) await pushPost("/api/push/unsubscribe", { endpoint: info.endpoint }).catch(() => {});
   savePush({ ...info, endpoint: "", sentHash: "" });
   trackDaily("push_off");
@@ -121,9 +122,65 @@ function bindPushSettings() {
   document.querySelector("[data-push-time]")?.addEventListener("change", (e) => { savePush({ ...pushInfo(), tonightTime: e.target.value }); queuePushSync(300); });
 }
 function handlePushAction(action) {
+  if (handleAdminPushAction(action)) return true;
   if (!action.startsWith("life-push")) return false;
   if (action === "life-push-on") enablePush();
   else if (action === "life-push-off") disablePush();
   else if (action === "life-push-test") pushPost("/api/push/test", { endpoint: pushInfo().endpoint }).then(() => showToast("テスト通知を送りました。"), (e) => showToast(e.message));
   return true;
+}
+
+// ── 運営の方へ：「⚡️ 異議あり」が届いたら、この端末に通知する（APP_MAP §52-12。2026-11-02 のユーザーの判断：アプリの通知）。
+// 管理の合言葉は、登録する時だけ使い、端末には残さない。外す時は登録の宛先だけで外せる。
+const ADMIN_PUSH_KEY = "ripigochi-admin-push";
+let adminPushBusy = false, adminPushMessage = "";
+function adminPushEndpoint() { try { return localStorage.getItem(ADMIN_PUSH_KEY) || ""; } catch { return ""; } }
+async function adminPushPost(path, body, token = "") {
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body || {}) }, 20_000);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(response.status === 403 ? "合言葉が違います。" : data.error?.message || "うまくいきませんでした。");
+  return data;
+}
+async function enableAdminPush() {
+  if (adminPushBusy) return;
+  const token = String(document.querySelector("#admin-push-token")?.value || "").trim();
+  if (!token) { adminPushMessage = "管理の合言葉を入れてください。"; render(); return; }
+  adminPushBusy = true; adminPushMessage = ""; render();
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") throw new Error("通知が許可されませんでした。端末の設定から、リピごちの通知を許可してください。");
+    const { publicKey } = await (await fetchWithTimeout(`${API_BASE_URL}/api/push/key`, {}, 15_000)).json();
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) }));
+    await adminPushPost("/api/admin/push/subscribe", { subscription: sub.toJSON() }, token);
+    try { localStorage.setItem(ADMIN_PUSH_KEY, sub.endpoint); } catch {}
+    await adminPushPost("/api/admin/push/test", {}, token).catch(() => {});
+    showToast("この端末に「異議あり」の知らせが届きます。試しに1件送りました。");
+  } catch (error) {
+    adminPushMessage = error.message || "うまくいきませんでした。";
+  }
+  adminPushBusy = false; render();
+}
+async function disableAdminPush() {
+  const endpoint = adminPushEndpoint();
+  if (endpoint) await adminPushPost("/api/admin/push/unsubscribe", { endpoint }).catch(() => {});
+  try { localStorage.removeItem(ADMIN_PUSH_KEY); } catch {}
+  showToast("運営の知らせを止めました。");
+  render();
+}
+function renderAdminPush() {
+  const st = pushState();
+  let body;
+  if (["install", "unsupported", "denied"].includes(st)) body = '<p class="small muted">この端末では通知を受け取れません（上の「通知」の案内をご覧ください）。</p>';
+  else if (adminPushEndpoint()) body = `<p class="small">✓ この端末に「⚡️ 異議あり」の知らせが届きます（続けて届いた時は15分に1回にまとめます）。</p><button type="button" class="text-button" data-action="life-admin-push-off">受け取るのをやめる</button>`;
+  else body = `<p class="small">「⚡️ 異議あり」が届いたら、この端末に通知します。</p>
+    <input id="admin-push-token" class="input" type="password" autocomplete="off" placeholder="管理の合言葉" aria-label="管理の合言葉">
+    ${dailyButton("life-admin-push-on", adminPushBusy ? "準備しています…" : "⚡️ この端末で受け取る", adminPushBusy ? "disabled" : "")}
+    ${adminPushMessage ? `<p class="form-error">${escapeHtml(adminPushMessage)}</p>` : ""}`;
+  return `<details class="admin-push"${adminPushEndpoint() || adminPushMessage ? " open" : ""}><summary>🛠 運営の方へ</summary>${body}</details>`;
+}
+function handleAdminPushAction(action) {
+  if (action === "life-admin-push-on") { enableAdminPush(); return true; }
+  if (action === "life-admin-push-off") { disableAdminPush(); return true; }
+  return false;
 }

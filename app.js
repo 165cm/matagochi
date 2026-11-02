@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261102-recipe-objection";
+const APP_VERSION = "20261102-objection-notice";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2758,7 +2758,7 @@ function renderSettings() {
         <button class="secondary-button" type="button" data-action="import-data">読み込む</button>
       </div>
       <input id="import-file" type="file" accept="application/json,.json" hidden>`)}
-    ${settingRow("feedback", "💬", "意見・お問い合わせ", "使いにくい所・ほしい機能を送る", `${dailyButton("life-fb-open", "✍️ 意見を送る", 'data-from="settings"', true)}<button type="button" class="role-toggle" data-action="life-usage-toggle" aria-pressed="${usageOn()}"><span>使われ方の集計に協力する<small>何日目か・その日に献立を決めた／作った／評価したの回数だけ ${tip("端末ごとのランダムな番号で送ります。名前・料理・写真・メモは送りません")}</small></span><i aria-hidden="true"></i></button>`)}
+    ${settingRow("feedback", "💬", "意見・お問い合わせ", "使いにくい所・ほしい機能を送る", `${dailyButton("life-fb-open", "✍️ 意見を送る", 'data-from="settings"', true)}<button type="button" class="role-toggle" data-action="life-usage-toggle" aria-pressed="${usageOn()}"><span>使われ方の集計に協力する<small>何日目か・その日に献立を決めた／作った／評価したの回数だけ ${tip("端末ごとのランダムな番号で送ります。名前・料理・写真・メモは送りません")}</small></span><i aria-hidden="true"></i></button>${renderAdminPush()}`)}
     ${settingRow("legal", "📄", "規約とポリシー", "利用規約・プライバシー・特商法", `<ul class="legal-links"><li><a href="legal/terms.html" target="_blank" rel="noopener">利用規約</a></li><li><a href="legal/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a></li><li><a href="legal/tokushoho.html" target="_blank" rel="noopener">特定商取引法に基づく表記</a></li></ul><p class="muted small">お問い合わせ：<a href="mailto:papazon@nomadkazoku.com">papazon@nomadkazoku.com</a></p>`)}
     ${settingRow("reset", "⚠️", "全件削除", "レシピ・記録を消す／使い直す", `<button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピと食事の記録を全件削除</button>
       <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>`)}

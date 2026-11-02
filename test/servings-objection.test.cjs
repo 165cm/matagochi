@@ -132,3 +132,30 @@ test("review: 「⚡️ 異議あり」 opens for the suggested dish on the cook
   await run(`handleDailyAction("life-obj-open", { recipe: cand.id, date: d })`);
   assert.match(run("renderObjectionSheet()"), /提案の料理/);
 });
+
+// 2026-11-02：運営が人数を直したら、端末にも届く（手で決めた人数はそのまま）。運営の方へ（APP_MAP §52-12）。
+test("the operator's fixed count reaches copies whose count was unknown or read by the app, but not a count set by hand", async () => {
+  const fixed = { ...item, revision: "r2", sourceServings: 2 };
+  const a = app(() => ({ [V]: fixed }));
+  setup(a.run);
+  await a.run("refreshSavedRecipes({ force: true })");
+  assert.equal(a.run("own.sourceServings"), 2);
+  assert.equal(a.run("slot.recipe.sourceServings"), 2);
+  assert.equal(a.run("own.sourceServingsBy"), undefined);
+  const b = app(() => ({ [V]: fixed }));
+  setup(b.run);
+  b.run("setRecipeServings(own.id, 3, { date: d })");
+  await b.run("refreshSavedRecipes({ force: true })");
+  assert.equal(b.run("own.sourceServings"), 3);
+  assert.equal(b.run("own.sourceRevision"), "r2");
+});
+
+test("「🛠 運営の方へ」 asks for the admin password only to register; it is not kept on the device", async () => {
+  const { run } = app();
+  assert.match(run("renderAdminPush()"), /運営の方へ/);
+  run(`pushState = () => "off"`);
+  assert.match(run("renderAdminPush()"), /admin-push-token.*この端末で受け取る/s);
+  run(`localStorage.setItem("ripigochi-admin-push", "https://fcm.googleapis.com/x")`);
+  assert.match(run("renderAdminPush()"), /届きます.*受け取るのをやめる/s);
+  assert.equal(run(`localStorage.getItem("ripigochi-admin")`), null);
+});
