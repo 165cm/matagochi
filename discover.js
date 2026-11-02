@@ -247,8 +247,12 @@ function updateCopy(r, item, slot = null) {
   if (r.sourceDismissed === item.revision) return false;
   const fresh = latestFields(item);
   if (fresh.steps.length < 2) return false;
+  // 元の人数の違い（運営が「⚡️ 異議あり」で直した時。APP_MAP §52-12）も中身の違いとして、ふつうの入れ替えの決まりに乗せる（Claude review #217）。
+  // 手で決めた人数は見ない。人数が分かっている写しは、受け取った版のままなら見ない（#216 より前に手で決めた、印のない人数を守る）。
+  const known0 = r.sourceRevision || r.catalog?.revision || "";
+  const servingsDiff = fresh.sourceServings != null && r.sourceServingsBy !== "manual" && fresh.sourceServings !== (r.sourceServings ?? null) && (r.sourceServings == null || known0 !== item.revision);
   // 中身が同じ：版を覚えるだけ（知らせない）。
-  if (sourcePrint({ ...r, ...fresh }) === sourcePrint(r)) {
+  if (!servingsDiff && sourcePrint({ ...r, ...fresh }) === sourcePrint(r)) {
     if (r.sourceRevision === item.revision && !r.sourcePending) return false;
     r.sourceRevision = item.revision; r.sourcePrint = sourcePrint(r); if (r.catalog?.id) r.catalog = { ...r.catalog, revision: item.revision }; delete r.sourcePending;
     return true;
@@ -262,7 +266,8 @@ function updateCopy(r, item, slot = null) {
   if (!slot && !kind && !r.sourceRevision) return false;
   // 自動で入れ替えるのは、使う人が直していない新着・定番の写しで、決めた献立の材料が変わらない時だけ。それ以外は「新しい作り方にする／このままにする」。
   const edited = kind !== "copy" || (!!r.sourcePrint && sourcePrint(r) !== r.sourcePrint);
-  const planned = !!slot && slot.status === "confirmed" && ingredientsPrint(fresh.ingredients) !== ingredientsPrint(r.ingredients);
+  // 決めた献立で材料か人数（買い物の分量）が変わる時は、自動では入れ替えない。
+  const planned = !!slot && slot.status === "confirmed" && (ingredientsPrint(fresh.ingredients) !== ingredientsPrint(r.ingredients) || servingsDiff);
   if (!edited && !planned) { applyLatest(r, item.revision, fresh); if (slot) slot.updatedAt = nowIso(); return true; }
   if (r.sourcePending?.revision === item.revision) return false;
   r.sourcePending = { revision: item.revision, ...fresh, ...(planned && !edited ? { planned: true } : {}) };

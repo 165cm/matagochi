@@ -3,7 +3,7 @@ import { cleanDishName } from "./dishes.js";
 import { ApiError } from "./errors.js";
 import { createGcsSyncStore, createMemorySyncStore } from "./syncStore.js";
 import { extractYouTubeVideoId, canonicalYouTubeUrl } from "./youtube.js";
-import { normalizeImportResult } from "./importRecipe.js";
+import { normalizeImportResult, normalizeIngredients } from "./importRecipe.js";
 import { localizeRecipe } from "./units.js";
 import { stepsKey } from "./rewrite.js";
 import { VIDEO_TIMEOUT_MS, VIDEO_CLIENTS_MAX } from "./analyzer.js";
@@ -49,6 +49,14 @@ export function cleanCandidateTimes(times, count, limit = null) {
   return { stepTimes: out, dropped, suspects: [...suspects].sort((a, b) => a - b), duplicates: [...duplicates].sort((a, b) => a - b) };
 }
 const UNAVAILABLE = { not_found: ["video_not_found", 404, "YouTube動画が見つかりませんでした。"], non_public: ["non_public_video", 422, "この動画はいま公開されていません。"] };
+// 運営が直した材料・元の人数（ingredientsFrom: "admin"）を、読み直し・候補の採用でも引き継ぐ。
+export function keepAdminIngredients(before, result) {
+  if (before?.ingredientsFrom !== "admin") return;
+  result.ingredients = structuredClone(before.ingredients || []);
+  result.sourceServings = before.sourceServings ?? null;
+  result.ingredientsFrom = "admin";
+  if (before.ingredientsEditedAt) result.ingredientsEditedAt = before.ingredientsEditedAt;
+}
 export function createRecipeCatalog(store, analyze, { model = "unknown", now = Date.now, dailyLimit = 100, monthlyLimit = 1000, enabled = true, tickets = null, refreshSnippet = null, checkVideos = null, candidateMaxSeconds = 1800, candidateVideoPerDay = 10 } = {}) {
   const inFlight = new Map();
   let changedMemo = null; // 運営がレシピを変えた時刻（changedAt）の短い覚え
@@ -143,6 +151,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       // 運営が直した料理名は、読み直しても引き継ぐ（AI の新しい料理名で上書きしない。空＝題名で決める、も含めて）。
       const before = current?.envelope.status === "ready" ? current.envelope.result : null;
       if (before?.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
+      // 運営が直した材料・元の人数も引き継ぐ（APP_MAP §52-12。変えたい時は管理画面の「材料・人数を直す」で）。
+      keepAdminIngredients(before, result);
       // 読み直しで手順が減る（説明欄が変わった・読めなかった）時は、前の結果を残す。
       // 字幕と照合して作り直した時（description+transcript）は「作業のまとまり」に整理するので、工程数が減っても採用する。
       if (reread && before && result.analyzedFrom !== "description+transcript" && (result.steps || []).length < (before.steps || []).length) throw new ApiError(422, "reread_worse", "読み直すと手順が減るので、前の結果を残しました。");
@@ -432,6 +442,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       delete result.guide;
       delete result.stepTimesPending;
       if (before.dishNameFrom === "admin") { if (before.dishName) result.dishName = before.dishName; else delete result.dishName; result.dishNameFrom = "admin"; }
+      keepAdminIngredients(before, result);
       // 前に戻る時刻の手前の時刻（要確認）は、確かめるまでアプリで使わない。
       const suspects = (c.suspectTimes || []).filter((i) => Number.isFinite(result.stepTimes[i]));
       if (suspects.length) {
@@ -543,6 +554,32 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       await keepVersion(before, at, result.catalog.revision);
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。開き直してください。");
       return { steps: result.steps, stepTimes: result.stepTimes, stepTimesPending: result.stepTimesPending || [], revision: result.catalog.revision, guideRemoved: !!before.guide };
+    },
+    // 管理：材料・分量と元の人数を直す（「⚡️ 異議あり」への対応。APP_MAP §52-12）。版を新しくして、端末の写しにも届ける。
+    async setIngredients(rawUrl, { ingredients, sourceServings, baseRevision = "" } = {}) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      if (current?.envelope.status !== "ready" || current.envelope.result?.unavailable) throw new ApiError(404, "recipe_not_found", "読み取り済みのレシピが見つかりません。");
+      const before = current.envelope.result;
+      if (String(baseRevision || "") !== String(before.catalog?.revision || "")) throw new ApiError(409, "catalog_conflict", "編集を始めた後にレシピが変わりました。開き直してください。");
+      const raw = Array.isArray(ingredients) ? ingredients : [];
+      // AI が読んだ長い分量もあるので、長さでは断らない（ほかの行を直す時に止まらないように。長すぎる分は切る。Claude review #217）。
+      const list = normalizeIngredients(raw.map((x) => ({ ...x, name: String(x?.name || "").slice(0, 120), amount: String(x?.amount || "").slice(0, 120) })));
+      if (!list.length) throw new ApiError(400, "invalid_ingredients", "材料を1つ以上入れてください。");
+      if (raw.filter((x) => String(x?.name || "").trim()).length > 20) throw new ApiError(400, "invalid_ingredients", "材料は20個までです。");
+      const servings = sourceServings === null || sourceServings === "" || sourceServings === undefined ? null : Number(sourceServings);
+      if (servings !== null && !(Number.isInteger(servings) && servings > 0 && servings <= 100)) throw new ApiError(400, "invalid_servings", "人数は1〜100か、不明にしてください。");
+      const at = new Date(now()).toISOString();
+      const result = structuredClone(before);
+      result.ingredients = list;
+      result.sourceServings = servings;
+      result.ingredientsFrom = "admin";
+      result.ingredientsEditedAt = at;
+      result.catalog = { ...(before.catalog || {}), revision: randomUUID() };
+      await keepVersion(before, at, result.catalog.revision);
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。開き直してください。");
+      return { ingredients: result.ingredients, sourceServings: result.sourceServings, revision: result.catalog.revision };
     },
     // baseRevision：管理画面が開いた時の版（渡された時は、違えば断る）。時刻を変えたら版を新しくする（古い編集画面・候補で上書きしない）。
     async setStepTimes(rawUrl, stepTimes, { from = "admin", baseRevision } = {}) {

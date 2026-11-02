@@ -296,7 +296,7 @@ export function createApp(env = process.env, deps = {}) {
       for (const [videoId, r] of read) {
         if (!r?.catalog?.revision || !(r.steps || []).length) continue;
         // changedAt：運営が最後に作り方を変えた日時（候補の採用・手順の手直し・時刻の保存・読み直し）。目印のない端末のレシピに、ボタンを出すかの判断に使う。
-        const changedAt = [r.adoptedFrom?.at, r.stepsEditedAt, r.timesEditedAt, r.rereadAt, r.catalog?.analyzedAt].map((x) => Date.parse(x || "") || 0).reduce((a, b) => Math.max(a, b), 0);
+        const changedAt = [r.adoptedFrom?.at, r.stepsEditedAt, r.ingredientsEditedAt, r.timesEditedAt, r.rereadAt, r.catalog?.analyzedAt].map((x) => Date.parse(x || "") || 0).reduce((a, b) => Math.max(a, b), 0);
         items[videoId] = { revision: r.catalog.revision, ...(changedAt ? { changedAt: new Date(changedAt).toISOString() } : {}), title: r.title || "", sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps, stepTimes: r.stepTimes || [], planning: r.planning || null,
           ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}) };
       }
@@ -329,7 +329,36 @@ export function createApp(env = process.env, deps = {}) {
     return expected.length > 0 && expected.length === supplied.length && timingSafeEqual(expected, supplied);
   };
   // ご意見・お問い合わせ（β版の「お気持ち」から。招待コードは正式版で）
-  app.post("/api/recipes/objections", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, feedbackDesk.objection(req.body || {}, householdOf(req))); });
+  // 「⚡️ 異議あり」の受付。受け付けたら運営の端末に知らせる（最大4秒待つ。知らせに失敗しても受付は成功。APP_MAP §52-12）。
+  // 待つのは、Cloud Run が答えを返した後の処理を止めることがあるため（送れなかった分は定期実行で送り直す）。
+  app.post("/api/recipes/objections", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    send(res, feedbackDesk.objection(req.body || {}, householdOf(req)).then(async (saved) => {
+      const b = req.body || {};
+      const what = { servings: "人数", ingredients: "材料・分量", steps: "作り方", times: "時刻", other: "その他" }[b.category] || "";
+      const title = String(b.title || "").slice(0, 40);
+      const note = pushDesk.notifyAdmins({ title: `⚡️ 異議あり：${what}`, body: [title, String(b.comment || "").slice(0, 60)].filter(Boolean).join("／") }).catch(() => null);
+      await Promise.race([note, new Promise((r) => { const t = setTimeout(r, 4000); t.unref?.(); })]);
+      return saved;
+    }));
+  });
+  // 運営の端末を「異議あり」の知らせ先にする（管理の合言葉がいる）・外す・数・試しに送る。
+  app.post("/api/admin/push/subscribe", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, pushDesk.adminSubscribe(req.body || {}));
+  });
+  app.post("/api/admin/push/unsubscribe", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, pushDesk.adminUnsubscribe(req.body || {})); });
+  app.get("/api/admin/push", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, pushDesk.adminDevices());
+  });
+  app.post("/api/admin/push/test", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, pushDesk.adminTest(req.body || {}));
+  });
   app.post("/api/feedback", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, feedbackDesk.send(req.body || {}, householdOf(req))); });
   app.post("/api/usage", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, usageBook.record(req.body || {})); });
   app.get("/api/admin/usage", (req, res) => {
@@ -457,7 +486,7 @@ export function createApp(env = process.env, deps = {}) {
       const { times, source, seenSeconds } = await timesOf(url, r);
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const check = checkStepTimes(r.steps || [], times, { durationSeconds, source, seenSeconds });
-      return { videoId, revision: r.catalog?.revision || "", stepTimesPending: r.stepTimesPending || [], title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
+      return { videoId, revision: r.catalog?.revision || "", stepTimesPending: r.stepTimesPending || [], title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredientsFrom: r.ingredientsFrom || "", ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
         // 書き直した手順（APP_MAP §49）と、その時間の上限。
         guide: listedGuide(r), guideLimit: guideLimit(r.planning?.minutes), guideLabels: GUIDE_ISSUE_LABEL };
     }));
@@ -768,6 +797,15 @@ export function createApp(env = process.env, deps = {}) {
         }
       }
       return { done, left: Math.max(0, targets.length - max) };
+    })());
+  });
+  // 管理：材料・分量と元の人数を直す（APP_MAP §52-12）。版が変わるので、端末の写しにも届く。
+  app.put("/api/admin/recipes/:videoId/ingredients", (req, res) => {
+    const videoId = adminVideo(req, res); if (!videoId) return;
+    send(res, (async () => {
+      const saved = await catalog.setIngredients(canonicalYouTubeUrl(videoId), { ingredients: req.body?.ingredients, sourceServings: req.body?.sourceServings, baseRevision: req.body?.baseRevision });
+      catalogChanged();
+      return saved;
     })());
   });
   // 管理：手順の文を直す（APP_MAP §52-7）。確かめ済みの時刻だけを、作る画面と同じ「運営が直した時刻」にも使う（要確認の時刻は使わない）。

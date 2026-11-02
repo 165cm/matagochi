@@ -66,3 +66,29 @@ test('latest recipes say when the admin last changed the recipe (newest of adopt
   await call(`/api/admin/recipes/${V}/step-times`, { stepTimes: [16, 48, 120], baseRevision: opened.revision }, 'PUT');
   assert.ok(Date.parse((await call('/api/recipes/latest', { videoIds: [V] })).body.items[V].changedAt) > Date.parse('2026-10-31T11:20:00Z'));
 });
+
+test('the admin fixes the ingredients and the servings (for an objection): the version changes, the latest list carries them, and a reread keeps them', async (t) => {
+  const store = await world();
+  const call = await serveOn(t, store);
+  const opened = (await call(`/api/admin/recipes/${V}`)).body;
+  assert.equal((await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: 'old', ingredients: [{ name: 'x', amount: '1' }] }, 'PUT')).status, 409);
+  assert.equal((await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [] }, 'PUT')).status, 400);
+  // AI が読んだ長い分量があっても、長さでは断らない（Claude review #217）
+  const long = 'あ'.repeat(60);
+  assert.equal((await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [{ name: 'x', amount: '1' }], sourceServings: 150 }, 'PUT')).status, 400);
+  const saved = await call(`/api/admin/recipes/${V}/ingredients`, { baseRevision: opened.revision, ingredients: [{ name: '鶏むね肉', amount: '1枚' }, { name: '生クリーム', amount: '200ml' }, { name: 'しお', amount: long }], sourceServings: 2 }, 'PUT');
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.notEqual(saved.body.revision, opened.revision);
+  const latest = (await call('/api/recipes/latest', { videoIds: [V] })).body.items[V];
+  assert.equal(latest.revision, saved.body.revision);
+  assert.equal(latest.sourceServings, 2);
+  assert.equal(latest.ingredients[1].amount, '200ml');
+  assert.ok(latest.changedAt);
+  const again = (await call(`/api/admin/recipes/${V}`)).body;
+  assert.equal(again.ingredientsFrom, 'admin');
+  const { keepAdminIngredients } = await import('../src/recipeCatalog.js');
+  const before = (await store.get(`youtube-${V}`)).envelope.result;
+  const reread = { ingredients: [{ name: 'AI', amount: '?' }], sourceServings: null };
+  keepAdminIngredients(before, reread);
+  assert.deepEqual([reread.ingredients[1].amount, reread.sourceServings, reread.ingredientsFrom], ['200ml', 2, 'admin']);
+});

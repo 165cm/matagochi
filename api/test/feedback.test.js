@@ -61,3 +61,19 @@ test('objections are kept by day with the category and the counts; the admin rea
   const again = await fetch(`${base}/api/admin/objections?day=${days.days[0]}`, { headers: admin }).then((r) => r.json());
   assert.equal(again.items[0].status, 'done');
 });
+
+test('objection route: only the admin can register a device for the notices; a new objection reaches it', async (t) => {
+  const pushed = [];
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'secret-token' }, { recipeStore: createMemorySyncStore(), syncStore: null, sendPush: async (s, payload) => { pushed.push(JSON.parse(payload)); } });
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise((r) => server.close(r)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/admin1', keys: { p256dh: 'BExampleKey_-', auth: 'authKey_-' } };
+  const reg = (headers) => fetch(`${base}/api/admin/push/subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ subscription }) });
+  assert.equal((await reg({})).status, 403);
+  assert.equal((await reg({ Authorization: 'Bearer secret-token' })).status, 200);
+  const sent = await fetch(`${base}/api/recipes/objections`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Household': 'house-ob-02' }, body: JSON.stringify({ videoId: 'oWLCye3SXu4', title: '鶏むね肉のクリーム', category: 'ingredients', comment: '生クリームが200ml' }) });
+  assert.equal(sent.status, 200);
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed[0].title, '⚡️ 異議あり：材料・分量');
+  assert.match(pushed[0].body, /鶏むね肉のクリーム.*生クリームが200ml/);
+});

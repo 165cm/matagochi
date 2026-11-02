@@ -273,7 +273,7 @@ export function buildCaption(snippet) {
   ].filter(Boolean).join("\n");
 }
 
-function normalizeIngredients(value) {
+export function normalizeIngredients(value) {
   if (!Array.isArray(value)) return [];
   return value
     .map((item) => ({

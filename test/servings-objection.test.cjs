@@ -132,3 +132,47 @@ test("review: 「⚡️ 異議あり」 opens for the suggested dish on the cook
   await run(`handleDailyAction("life-obj-open", { recipe: cand.id, date: d })`);
   assert.match(run("renderObjectionSheet()"), /提案の料理/);
 });
+
+// 2026-11-02：運営が人数を直したら、端末にも届く（手で決めた人数はそのまま）。運営の方へ（APP_MAP §52-12）。
+test("the operator's fixed count reaches copies whose count was unknown or read by the app, but not a count set by hand", async () => {
+  const fixed = { ...item, revision: "r2", sourceServings: 2 };
+  const a = app(() => ({ [V]: fixed }));
+  setup(a.run);
+  await a.run("refreshSavedRecipes({ force: true })");
+  assert.equal(a.run("own.sourceServings"), 2);
+  assert.equal(a.run("slot.recipe.sourcePending.sourceServings"), 2, "a decided meal gets the button (shopping amounts change)");
+  assert.equal(a.run("own.sourceServingsBy"), undefined);
+  const b = app(() => ({ [V]: fixed }));
+  setup(b.run);
+  b.run("setRecipeServings(own.id, 3, { date: d })");
+  await b.run("refreshSavedRecipes({ force: true })");
+  assert.equal(b.run("own.sourceServings"), 3);
+  assert.equal(b.run("own.sourceRevision"), "r2");
+});
+
+test("「🛠 運営の方へ」 asks for the admin password only to register; it is not kept on the device", async () => {
+  const { run } = app();
+  assert.match(run("renderAdminPush()"), /運営の方へ/);
+  run(`pushState = () => "off"`);
+  assert.match(run("renderAdminPush()"), /admin-push-token.*この端末で受け取る/s);
+  run(`localStorage.setItem("ripigochi-admin-push", "https://fcm.googleapis.com/x")`);
+  assert.match(run("renderAdminPush()"), /届きます.*受け取るのをやめる/s);
+  assert.equal(run(`localStorage.getItem("ripigochi-admin")`), null);
+});
+
+// Claude review #217
+test("review: a count set by hand before the mark existed is kept while the version is the same; a fixed count for a decided meal waits for the button", async () => {
+  const same = { ...item, revision: "r1", sourceServings: 2 };
+  const a = app(() => ({ [V]: same }));
+  a.run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); own.sourceServings = 4`);
+  await a.run("refreshSavedRecipes({ force: true })");
+  assert.equal(a.run("own.sourceServings"), 4, "no mark, same version: kept");
+  const fixed = { ...item, revision: "r2", sourceServings: 2 };
+  const b = app(() => ({ [V]: fixed }));
+  b.run(`globalThis.own = saveOwnRecipe(discoverRecipe(${JSON.stringify(item)}, "trend")); globalThis.d = today(); state.mealSlots[d] = { date: d, recipe: clone(own), status: "confirmed" }`);
+  await b.run("refreshSavedRecipes({ force: true })");
+  assert.equal(b.run("state.mealSlots[d].recipe.sourceServings"), null, "the decided meal's shopping does not change by itself");
+  assert.equal(b.run("state.mealSlots[d].recipe.sourcePending.planned"), true);
+  assert.match(b.run("renderSourceNote(state.mealSlots[d].recipe, true, d)"), /元の人数 → 2人分/);
+  assert.equal(b.run("own.sourceServings"), 2, "the saved copy (not in a decided meal) takes it");
+});
