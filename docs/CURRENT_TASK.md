@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-11-02（#216 公開。「⚡️ 異議あり」の知らせと、運営が材料・人数を直す画面を作業中に）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-11-03（「⚡️ 異議あり」の知らせと、運営が材料・人数を直す画面 #217 公開）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：「⚡️ 異議あり」の運営への知らせ（アプリの通知）・運営が材料・人数を直す画面 | 作業中 | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-02 のユーザーの判断：知らせはアプリの通知（設定の「🛠 運営の方へ」で端末を登録・15分に1回にまとめる）。管理画面のレシピで材料・分量・元の人数を直す（版が変わり端末にも届く・読み直しでも引き継ぐ）。APP_MAP §52-12 | push.js, app.js, discover.js, styles.css, api/src/push.js, api/src/server.js, api/src/recipeCatalog.js, api/src/importRecipe.js, admin/catalog.html, sw.js, index.html, version.json, test/servings-objection.test.cjs, api/test/*, docs/* |
+| Claude：「⚡️ 異議あり」の運営への知らせ（アプリの通知）・運営が材料・人数を直す画面 | 公開済み（#217） | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-02 のユーザーの判断：知らせはアプリの通知（設定の「🛠 運営の方へ」で端末を登録・15分に1回にまとめる）。管理画面のレシピで材料・分量・元の人数を直す（版が変わり端末にも届く・読み直しでも引き継ぐ）。APP_MAP §52-12 | push.js, app.js, discover.js, styles.css, api/src/push.js, api/src/server.js, api/src/recipeCatalog.js, api/src/importRecipe.js, admin/catalog.html, sw.js, index.html, version.json, test/servings-objection.test.cjs, api/test/*, docs/* |
 | Claude：元の人数を手で決めても未確認が出続ける・「手動で設定」と「⚡️ 異議あり」（レシピ全体・画面の上の段）＋ Gemini review #215 の4点 | 公開済み（#216） | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-02：作る画面（献立の写し）に人数が届かない・新しい版で「不明」に戻るのを直す。バナーでその場で人数を選ぶ・手動の印・construction2nd をまねた「⚡️ 異議あり」（運営の管理画面で見る）。APP_MAP §52-11 | daily-ui.js, plus.js, discover.js, app.js, styles.css, api/src/feedback.js, api/src/server.js, admin/catalog.html, sw.js, index.html, version.json, test/servings-objection.test.cjs, api/test/feedback.test.js, docs/* |
 | Claude：作り方の更新の判断を単純に・「最新の作り方を読み込む」・版と状態の確かめ | 公開済み（#215） | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-01：#214 の公開後も 10/31 の作る画面が10工程のまま。相談書を Gemini に見てもらい、その答えで直す（Codex は利用上限）。日付で外さない・日時の比べをやめる・このままにする・押せば最新・URL取り込みの目印・設定で版の確かめと状態のコピー。APP_MAP §52-10 | discover.js, daily-ui.js, app.js, styles.css, sw.js, index.html, version.json, test/recipe-latest.test.cjs, docs/* |
 | レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 公開済み（#207） | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）②工程削減時の時間・数値乖離の機械的検出③AIに見せていない範囲（clipSeconds）の時刻の無効化④キャッシュされた異常時刻（尺外）の読み出し時クランプ⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護 | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
