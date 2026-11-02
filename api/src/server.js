@@ -329,6 +329,7 @@ export function createApp(env = process.env, deps = {}) {
     return expected.length > 0 && expected.length === supplied.length && timingSafeEqual(expected, supplied);
   };
   // ご意見・お問い合わせ（β版の「お気持ち」から。招待コードは正式版で）
+  app.post("/api/recipes/objections", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, feedbackDesk.objection(req.body || {}, householdOf(req))); });
   app.post("/api/feedback", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, feedbackDesk.send(req.body || {}, householdOf(req))); });
   app.post("/api/usage", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, usageBook.record(req.body || {})); });
   app.get("/api/admin/usage", (req, res) => {
@@ -803,6 +804,16 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, feedbackDesk.list(String(req.query?.day || "")));
+  });
+  app.get("/api/admin/objections", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, feedbackDesk.objections(String(req.query?.day || "")));
+  });
+  app.post("/api/admin/objections/:day/:id", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
+    send(res, feedbackDesk.closeObjection(String(req.params.day), String(req.params.id), req.body?.status === "open" ? "open" : "done"));
   });
   // 掲載停止の申し込み：確認待ち（一時的に外している）・確定・戻したチャンネルの一覧と、確かめた結果の登録。
   app.get("/api/admin/creators", (req, res) => {

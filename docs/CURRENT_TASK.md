@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-11-02（目印のないレシピのボタン #214 公開。判断の単純化をレビュー待ちに）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-11-02（判断の単純化 #215 公開。元の人数の手動設定と「⚡️ 異議あり」を作業中に）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,8 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：作り方の更新の判断を単純に・「最新の作り方を読み込む」・版と状態の確かめ | レビュー待ち | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-01：#214 の公開後も 10/31 の作る画面が10工程のまま。相談書を Gemini に見てもらい、その答えで直す（Codex は利用上限）。日付で外さない・日時の比べをやめる・このままにする・押せば最新・URL取り込みの目印・設定で版の確かめと状態のコピー。APP_MAP §52-10 | discover.js, daily-ui.js, app.js, styles.css, sw.js, index.html, version.json, test/recipe-latest.test.cjs, docs/* |
+| Claude：元の人数を手で決めても未確認が出続ける・「手動で設定」と「⚡️ 異議あり」 | 作業中 | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-02：作る画面（献立の写し）に人数が届かない・新しい版で「不明」に戻るのを直す。バナーでその場で人数を選ぶ・手動の印・construction2nd をまねた「⚡️ 異議あり」（運営の管理画面で見る）。APP_MAP §52-11 | daily-ui.js, plus.js, discover.js, app.js, styles.css, api/src/feedback.js, api/src/server.js, admin/catalog.html, sw.js, index.html, version.json, test/servings-objection.test.cjs, api/test/feedback.test.js, docs/* |
+| Claude：作り方の更新の判断を単純に・「最新の作り方を読み込む」・版と状態の確かめ | 公開済み（#215） | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-01：#214 の公開後も 10/31 の作る画面が10工程のまま。相談書を Gemini に見てもらい、その答えで直す（Codex は利用上限）。日付で外さない・日時の比べをやめる・このままにする・押せば最新・URL取り込みの目印・設定で版の確かめと状態のコピー。APP_MAP §52-10 | discover.js, daily-ui.js, app.js, styles.css, sw.js, index.html, version.json, test/recipe-latest.test.cjs, docs/* |
 | レシピ再生成の採用判定強化と時刻検証の厳格化（Codex追加レビュー6点対応） | 公開済み（#207） | fix/recipe-quality-and-verification | ①読み直しで既存の有効時刻が全損する候補の拒否（`reread_lost_timecodes`）②工程削減時の時間・数値乖離の機械的検出③AIに見せていない範囲（clipSeconds）の時刻の無効化④キャッシュされた異常時刻（尺外）の読み出し時クランプ⑤管理再解析での字幕部分成功（過半数未満）時の動画解析フォールバック⑥料理モード（cook-mode.js）での密集架空按分の停止⑦進捗保存のタイムアウト保護 | api/src/importRecipe.js, recipeCatalog.js, timecodes.js, cook-mode.js, api/test/*, test/*, docs/CURRENT_TASK.md |
 | 管理画面の文法エラー修正と構文テスト追加 | 公開済み（#206） | fix/admin-syntax-error | PR #205 の履歴 join に含まれていた実改行による構文エラーを修正。管理 HTML 内の全インラインスクリプトを検査するテストを追加し、遅延ポーリングによる完了表示の上書きも防止 | admin/catalog.html, test/admin-syntax.test.cjs, docs/CURRENT_TASK.md |
 | 管理画面の読み直しの処理段階表示（5段階：素材取得／調理ブロック整理／字幕・章と照合／品質確認／保存） | 作業中 | feat/admin-reread-progress | サーバーが保存先（`reread-progress/<id>`）に実際の段階を残し、管理画面が2秒おきに見て「3/5 字幕・章と照合中｜…｜経過42秒」と表示。AI内部の進み具合は分からないので「AI応答待ち」と出す。終了時は 完了／前の結果を残した／競合／失敗 を区別 | api/src/importRecipe.js, recipeCatalog.js, server.js, admin/catalog.html, api/test/*, docs/CURRENT_TASK.md |

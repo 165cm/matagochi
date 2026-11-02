@@ -230,6 +230,9 @@ function latestFields(item) {
 }
 function applyLatest(r, revision, fresh) {
   for (const k of ["stepTimesFrom", "guide", "guideOf"]) delete r[k];
+  // 元の人数：使う人が手で決めた人数と、運営の版で「不明」の時は、いまの人数のまま（2026-11-02・設定しても未確認に戻っていた）。
+  if (r.sourceServingsBy === "manual" || fresh.sourceServings == null) { fresh = { ...fresh }; delete fresh.sourceServings; }
+  else delete r.sourceServingsBy;
   Object.assign(r, fresh, { sourceRevision: revision, sourceUpdatedAt: nowIso(), updatedAt: nowIso() });
   if (r.catalog?.id) r.catalog = { ...r.catalog, revision };
   r.sourcePrint = sourcePrint(r);

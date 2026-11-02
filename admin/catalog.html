@@ -183,6 +183,7 @@
     <button type="button" role="tab" id="tab-creators" aria-controls="panel-creators" aria-selected="false">🤝 投稿者</button>
     <button type="button" role="tab" id="tab-recipes" aria-controls="panel-recipes" aria-selected="false">📚 レシピ一覧</button>
     <button type="button" role="tab" id="tab-dishes" aria-controls="panel-dishes" aria-selected="false">🍲 親の料理名</button>
+    <button type="button" role="tab" id="tab-objections" aria-controls="panel-objections" aria-selected="false">⚡️ 異議あり<span id="obj-count"></span></button>
   </div>
 
   <div id="panel-seed" role="tabpanel" aria-labelledby="tab-seed" style="display:grid;gap:10px">
@@ -267,6 +268,11 @@
         <form id="dish-alias" class="row" style="margin-top:8px"><input id="alias-from" placeholder="例：からあげ" aria-label="まとめる料理名" style="flex:1 1 120px"><span class="meta">→</span><input id="alias-to" placeholder="例：唐揚げ" aria-label="まとめ先の料理名" style="flex:1 1 120px"><button type="submit" class="small">まとめる</button></form>
         <div id="dish-other" style="margin-top:8px"></div></section>
     </div>
+  </div>
+
+  <div id="panel-objections" role="tabpanel" aria-labelledby="tab-objections" hidden>
+    <section><div class="head"><h2>⚡️ 異議あり（使う人からの間違いの知らせ）</h2><div class="row"><label class="chk"><input type="checkbox" id="obj-open-only" checked> まだの分だけ</label><button type="button" class="quiet small" id="obj-reload">読み直す</button><details class="info"><summary>ⓘ</summary><div>アプリの「⚡️ 異議あり」から届いた、人数・材料・手順・時刻の間違いの知らせです（新しい14日分）。料理名を押すとレシピを開きます。直したら（または直さないと決めたら）「✓ 対応した」。人数の「正しくは」は、送った家庭のレシピにはもう入っています。</div></details></div></div>
+      <div id="obj-list" style="margin-top:8px"><p class="empty">合言葉を入れると表示します。</p></div></section>
   </div>
 
   <div id="panel-creators" role="tabpanel" aria-labelledby="tab-creators" hidden>
@@ -850,6 +856,7 @@
       loadDishes().catch(() => {});
       loadBackfill().catch(() => {});
       loadRecipes().catch(() => {});
+      loadObjections().catch(() => {});
       renderAll();
       // 読み込めたら、合言葉の欄は畳む（上の「合言葉を消す」で戻せる）。
       document.getElementById("login-box").hidden = true;
@@ -910,8 +917,41 @@
   try { const a = localStorage.getItem("ripigochi-admin-axis"); if (["both", "trend", "classic", "channel", "parent"].includes(a)) document.getElementById("axis").value = a; } catch {}
   document.getElementById("axis").addEventListener("change", (e) => { try { localStorage.setItem("ripigochi-admin-axis", e.target.value); } catch {} });
   document.getElementById("stop").addEventListener("click", () => { stopAuto = true; runStatus.textContent = "この回が終わったら止めます…"; });
+  // ── ⚡️ 異議あり（APP_MAP §52-11） ──
+  const OBJ_CAT = { servings: "👥 人数", ingredients: "🥕 材料・分量", steps: "📝 作り方", times: "⏱ 時刻", other: "💬 その他" };
+  async function loadObjections() {
+    const my = session;
+    const days = ((await api("/api/admin/objections")).days || []).slice(-14).reverse();
+    const lists = await Promise.all(days.map((d) => api(`/api/admin/objections?day=${encodeURIComponent(d)}`)));
+    if (my !== session) return;
+    last.objections = lists.flatMap((x) => (x.items || []).map((i) => ({ ...i, day: x.day }))).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    renderObjections();
+  }
+  function renderObjections() {
+    const box = document.getElementById("obj-list"); box.replaceChildren();
+    const all = last.objections || [];
+    const open = all.filter((x) => x.status !== "done").length;
+    document.getElementById("obj-count").textContent = open ? ` ${open}` : "";
+    const list = document.getElementById("obj-open-only").checked ? all.filter((x) => x.status !== "done") : all;
+    if (!list.length) { box.append(el("p", all.length ? "まだの知らせはありません。" : "まだ届いていません。", "empty")); return; }
+    for (const x of list) {
+      const card = el("div", undefined, "obj-card"); card.style.cssText = "border:1px solid #f1d3a2;border-radius:10px;padding:8px 10px;margin:6px 0;background:" + (x.status === "done" ? "#f6f6f6" : "#fff8ec");
+      const top = el("div", undefined, "row");
+      const name = el(x.videoId ? "button" : "b", x.title || x.videoId || "（題名なし）", x.videoId ? "quiet small" : ""); if (x.videoId) { name.type = "button"; name.addEventListener("click", () => openRecipe(x.videoId)); }
+      top.append(el("span", OBJ_CAT[x.category] || x.category, "meta"), name, el("span", new Date(x.at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }), "meta"));
+      card.append(top);
+      if (x.servings) card.append(el("p", `いま：${x.servings.shown ? `${x.servings.shown}人分${x.servings.by === "manual" ? "（手動で設定）" : ""}` : "未確認"} → 正しくは：${x.servings.suggested ? `${x.servings.suggested}人分` : "わからない"}`));
+      if (x.comment) card.append(el("p", `「${x.comment}」`));
+      const b = el("button", x.status === "done" ? "↩ まだに戻す" : "✓ 対応した", "quiet small"); b.type = "button";
+      b.addEventListener("click", async () => { b.disabled = true; try { const r = await api(`/api/admin/objections/${encodeURIComponent(x.day)}/${encodeURIComponent(x.id)}`, { status: x.status === "done" ? "open" : "done" }); Object.assign(x, r.item || {}); renderObjections(); } catch (error) { status.textContent = error.message; b.disabled = false; } });
+      card.append(b);
+      box.append(card);
+    }
+  }
+  document.getElementById("obj-open-only").addEventListener("change", renderObjections);
+  document.getElementById("obj-reload").addEventListener("click", () => loadObjections().catch((error) => { status.textContent = error.message; }));
   // ── タブ ──
-  const TABS = ["seed", "adopt", "recipes", "creators", "dishes"];
+  const TABS = ["seed", "adopt", "recipes", "creators", "dishes", "objections"];
   function showTab(name) {
     for (const t of TABS) { document.getElementById(`tab-${t}`).setAttribute("aria-selected", String(t === name)); document.getElementById(`panel-${t}`).hidden = t !== name; }
     try { localStorage.setItem("ripigochi-admin-tab", name); } catch {}

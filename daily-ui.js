@@ -1101,7 +1101,8 @@ function renderCooking() {
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${slot?.recipe ? renderSourceNote(slot.recipe, !isViewer(), cookingDate) : ""}
   ${slot?.recipe ? renderSourceReload(slot.recipe, !isViewer(), cookingDate) : ""}
-  ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
+  ${servingsUnknownBanner(recipe, !isViewer() && (!!slot?.recipe || state.recipes.some((x) => x.id === recipe.id)), slot?.recipe ? cookingDate : "")}
+  ${servingsManualNote(recipe, slot?.recipe ? cookingDate : "")}
   <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${cook.ingredients}
   ${cook.steps}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
@@ -1904,6 +1905,12 @@ function handleDailyAction(action, data) {
   if (action === "life-video-close") { closeVideoDock(); return true; }
   if (action.startsWith("life-time-") && handleTimeFixAction(action, data)) return true;
   if (action === "life-reread") { withDailyLimit(() => rereadRecipe(data.recipe)); return true; }
+  if (action === "life-servings-set") {
+    if (isViewer()) return true;
+    const n = Number(data.count);
+    if (setRecipeServings(data.recipe, n, { date: data.date || "" })) { saveState(); showToast(`元の人数を${n}人分にしました`); }
+    render(); return true;
+  }
   if (action === "life-source-apply") { if (applySourcePending(data.recipe, data.date || "")) { showToast("新しい作り方にしました"); render(); } return true; }
   if (action === "life-source-keep") { if (keepSourceAsIs(data.recipe, data.date || "")) { showToast("いまの作り方のままにしました"); render(); } return true; }
   if (action === "life-source-reload") {
@@ -2815,9 +2822,40 @@ function tagLabels(recipe) {
   return Lifestyle.tags(recipe).map((t) => labels.get(t)).filter(Boolean);
 }
 // 元レシピの人数が未確認なら、材料ごとではなく1か所だけ赤いバナーで知らせる。
-function servingsUnknownBanner(recipe, canEdit) {
-  if (recipe?.sourceServings != null) return "";
-  return `<div class="servings-banner" role="note"><p><b>元のレシピが何人分か未確認です</b><br>分量は動画のまま。${dailyProfile().servings || getServingCount()}人分に合わせるには、人数を設定してください。</p>${canEdit ? `<button type="button" class="secondary-button" data-action="edit-recipe" data-recipe="${escapeAttr(recipe.id)}">人数を設定</button>` : ""}</div>`;
+// その場で数字をタップして決められる（2026-11-02：編集画面で決めても、作る画面の献立の写しには届かず、バナーが出続けていた）。
+function servingsUnknownBanner(recipe, canEdit, date = "") {
+  if (!recipe || recipe.sourceServings != null) return "";
+  const pick = canEdit ? `<div class="servings-options" role="group" aria-label="元のレシピの人数">${[1, 2, 3, 4].map((k) => `<button type="button" class="choice-button" data-action="life-servings-set" data-recipe="${escapeAttr(recipe.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} data-count="${k}">${k}人分</button>`).join("")}</div>` : "";
+  return `<div class="servings-banner" role="note"><p><b>元のレシピが何人分か未確認です</b><br>分量は動画のまま。${dailyProfile().servings || getServingCount()}人分に合わせるには、${canEdit ? "動画の人数をタップしてください。" : "レシピを編集できる人に人数を決めてもらってください。"}</p>${pick}</div>`;
+}
+// 手で決めた人数は、そう書いておく。違っていたら「⚡️ 異議あり」で知らせられる（construction2nd の「異議あり」をまねた。APP_MAP §52-11）。
+function servingsManualNote(recipe, date = "") {
+  if (!recipe || recipe.sourceServings == null || recipe.sourceServingsBy !== "manual") return "";
+  return `<div class="servings-manual" role="note"><p>✋ 元の人数は<b>手動で設定</b>（${recipe.sourceServings}人分）${tip("動画からは読み取れなかったので、この家庭で決めた人数です。違っていたら「異議あり」から知らせてください")}</p><button type="button" class="objection-button" data-action="life-obj-open" data-recipe="${escapeAttr(recipe.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} data-category="servings" title="人数・分量の間違いを知らせる">⚡️ 異議あり</button></div>`;
+}
+// 元の人数を決める：保存したレシピと、同じレシピ（同じ動画）の献立の枠の写しの全部に入れる（作る画面・買い物リストは枠の写しを見る）。
+// 返り値：変えた数。n が null なら「不明」に戻す。
+function setRecipeServings(id, n, { date = "", by = "manual" } = {}) {
+  const count = Number.isInteger(n) && n > 0 && n <= 100 ? n : null;
+  const own = state.recipes.find((x) => x.id === id);
+  const slotRecipe = date ? state.mealSlots?.[date]?.recipe : null;
+  const base = own || slotRecipe || Object.values(state.mealSlots || {}).find((sl) => sl?.recipe?.id === id)?.recipe;
+  if (!base) return 0;
+  const vid = youtubeVideoId(base.videoUrl);
+  const same = (r) => r && (r.id === id || (vid && youtubeVideoId(r.videoUrl) === vid));
+  const targets = [...state.recipes.filter(same).map((r) => ({ r, slot: null })),
+    ...Object.values(state.mealSlots || {}).filter((sl) => same(sl?.recipe) && !["cooked", "removed"].includes(sl.status)).map((sl) => ({ r: sl.recipe, slot: sl }))];
+  if (slotRecipe && !targets.some((t) => t.r === slotRecipe)) targets.push({ r: slotRecipe, slot: state.mealSlots[date] });
+  let changed = 0;
+  for (const { r, slot } of targets) {
+    if (r.sourceServings === count && (count == null || (r.sourceServingsBy || "") === (by || ""))) continue;
+    r.sourceServings = count;
+    if (count != null && by) r.sourceServingsBy = by; else delete r.sourceServingsBy;
+    // 家族の端末にも届くよう、更新日時を進める（同期は新しいほうを使う）。
+    if (slot) slot.updatedAt = nowIso(); else r.updatedAt = nowIso();
+    changed++;
+  }
+  return changed;
 }
 function renderRecipeDetail() {
   const r = detailRecipe();
@@ -2858,6 +2896,7 @@ function renderRecipeDetail() {
     ${renderSourceNote(r, saved && edit)}
     ${saved ? renderSourceReload(r, edit) : ""}
     ${servingsUnknownBanner(r, saved && edit)}
+    ${servingsManualNote(r)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
     ${cook.ingredients}
     ${cook.steps}
