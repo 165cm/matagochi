@@ -3502,7 +3502,7 @@ async function handleAction(event) {
   // 設定：新しい版を確かめる（押した時だけ。新しい版があれば、その場で読み込み直す。2026-11-01）。
   if (action === "check-app-version") {
     const version = await fetch(`./version.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((j) => String(j?.version || "")).catch(() => "");
-    if (!version) { showToast("確かめられませんでした。通信を確かめて、もう一度お試しください"); return; }
+    if (!version) { showToast("つながりませんでした。少し待ってからもう一度押してください"); return; }
     if (version === APP_VERSION) { showToast(`最新の状態です（版 ${APP_VERSION}）`); return; }
     if (hasUnsavedWork()) { showToast("入力の途中です。保存してから、もう一度押してください"); return; }
     showToast("新しい版を読み込んでいます…");

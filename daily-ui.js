@@ -1911,13 +1911,17 @@ function handleDailyAction(action, data) {
     if (setRecipeServings(data.recipe, n, { date: data.date || "" })) { saveState(); showToast(`元の人数を${n}人分にしました`); }
     render(); return true;
   }
-  if (action === "life-source-apply") { if (applySourcePending(data.recipe, data.date || "")) { showToast("新しい作り方にしました"); render(); } return true; }
+  // 決めた献立の材料が変わる時は、買い物の差分（＋増えた品／🧺 買ってある品）も出す（Gemini review #215）。
+  if (action === "life-source-apply") { const before = dailyShopping(); if (applySourcePending(data.recipe, data.date || "")) { showToast("新しい作り方にしました"); changedShopping(before); render(); } return true; }
   if (action === "life-source-keep") { if (keepSourceAsIs(data.recipe, data.date || "")) { showToast("いまの作り方のままにしました"); render(); } return true; }
   if (action === "life-source-reload") {
     if (sourceReloading) return true;
     sourceReloading = true; render();
+    const before = dailyShopping();
+    // 画面の言葉は「サーバー」「通信」を使わない（UI_RULES §1-2。Gemini review #215）。
     reloadLatest({ recipeId: data.recipe || "", date: data.date || "" }).then((res) => {
-      showToast({ updated: "📝 最新の作り方にしました", same: "いまの作り方が最新です", none: "この動画の作り方は、まだサーバーにありません", error: "サーバーに接続できませんでした。少しあとでお試しください" }[res] || "");
+      showToast({ updated: "📝 最新の作り方にしました", same: "いまの作り方が最新です", none: "この動画の新しい作り方は、まだありません", error: "つながりませんでした。少し待ってからもう一度押してください", cooking: "料理モードの間は入れ替えません。閉じてから、もう一度押してください" }[res] || "");
+      if (res === "updated") changedShopping(before);
     }).finally(() => { sourceReloading = false; render(); });
     return true;
   }
@@ -2921,7 +2925,7 @@ function renderSourceReload(r, canEdit, date = "") {
 function renderSourceNote(r, canEdit, date = "") {
   if (!r) return "";
   // 目印のないレシピ（自分で書いた・目印が外れた）は、運営が直したとは言えないので「サーバーに新しい作り方があります」（Claude review #215）。
-  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 ${sourceKind(r) ? "運営が作り方を直しました" : "この動画の作り方が、サーバーにあります"}（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : r.sourcePrint && sourcePrint(r) !== r.sourcePrint ? "いまの作り方は、あなたが直したものなので、そのままにしています。" : "いまの作り方のままにしています。新しい作り方にするか選べます。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>新しい作り方にする</button><button type="button" class="text-button" data-action="life-source-keep" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>このままにする</button></div>`;
+  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 ${sourceKind(r) ? "運営が作り方を直しました" : "この動画の新しい作り方があります"}（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : r.sourcePrint && sourcePrint(r) !== r.sourcePrint ? "いまの作り方は、あなたが直したものなので、そのままにしています。" : "いまの作り方のままにしています。新しい作り方にするか選べます。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>新しい作り方にする</button><button type="button" class="text-button" data-action="life-source-keep" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>このままにする</button></div>`;
   const at = Date.parse(r.sourceUpdatedAt || "");
   if (Number.isFinite(at) && Date.now() - at < 7 * 86_400_000) return `<p class="source-note muted small" role="note">📝 作り方が新しくなりました（${escapeHtml(formatDate(new Date(at).toISOString().slice(0, 10)))}）</p>`;
   return "";
