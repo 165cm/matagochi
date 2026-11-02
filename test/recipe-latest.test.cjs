@@ -89,7 +89,7 @@ test("the recipe screen shows the notice above the ingredients", async () => {
   run("recipeDetailId = own.id; latestAsked.set(videoOfRecipe(own), Date.now())");
   const html = run("renderRecipeDetail()");
   assert.match(html, /source-note[^>]*>📝 作り方が新しくなりました/);
-  assert.ok(html.indexOf("source-note") < html.indexOf("材料"), "shown before the ingredients");
+  assert.ok(html.indexOf("source-note") < html.indexOf(`class="detail-h">材料`), "shown before the ingredients");
 });
 
 // ── Claude のコードレビュー（PR #212）の指摘への対応 ──
