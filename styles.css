@@ -4174,3 +4174,5 @@ button.tile-variants { justify-self: start; margin: 2px 0 0; padding: 1px 8px; b
 .source-note { margin: 8px 0; }
 div.source-note { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 10px 12px; border-radius: 12px; background: #f1f7f3; border: 1.5px solid #8bbf9f; }
 div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.5; }
+.app-version-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; margin: 4px 0 0; font-size: 12px; }
+.source-reload { margin: 4px 0 8px; font-size: 13px; }
