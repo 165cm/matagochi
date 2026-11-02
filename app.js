@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261031-unmarked-recipes";
+const APP_VERSION = "20261102-reload-latest";
 const emptyDraft = { sourceServings: null, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -629,6 +629,28 @@ function saveState({ scheduleSync = true } = {}) {
   requestPersistentStorage();
   if (typeof queueUsage === "function") queueUsage();
 }
+
+// お問い合わせ用の動作の状態（名前・メモ・写真・材料は入れない）。版・同期・これからの献立の作り方の状態だけ。
+function appStatusText() {
+  const ls = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+  const at = Number(ls("ripigochi-latest-at")) || 0;
+  const slots = Object.values(state.mealSlots || {}).filter((sl) => sl?.date >= addDaysIso(today(), -14)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const lines = [
+    `リピごち 動作の状態（${new Date().toLocaleString("ja-JP")}）`,
+    `版：${APP_VERSION}`,
+    `同期：${typeof syncEnabled === "function" && syncEnabled() ? "あり" : "なし"}／閲覧者：${typeof isViewer === "function" && isViewer() ? "はい" : "いいえ"}`,
+    `最新の作り方の確かめ：${at ? new Date(at).toLocaleString("ja-JP") : "まだ"}`,
+    `保存したレシピ：${state.recipes.length}件`,
+    "献立（14日前から）：",
+    ...slots.map((sl) => {
+      const r = sl.recipe || {};
+      const kind = typeof sourceKind === "function" ? sourceKind(r) : "";
+      return `- ${sl.date} ${sl.status} 「${String(r.title || "").slice(0, 24)}」 手順${(r.steps || []).length} 動画:${(typeof videoOfRecipe === "function" && videoOfRecipe(r)) || "なし"} 種類:${kind || "目印なし"} 版:${String(r.sourceRevision || r.catalog?.revision || "").slice(0, 8) || "なし"}${r.sourcePending ? ` 新しい作り方あり(手順${(r.sourcePending.steps || []).length})` : ""}${r.sourceDismissed ? " このまま" : ""} 更新:${r.updatedAt || "なし"}`;
+    }),
+  ];
+  return lines.join("\n");
+}
+function addDaysIso(date, n) { const d = new Date(`${date}T12:00:00`); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
 function nowIso() {
   return new Date().toISOString();
@@ -2742,6 +2764,7 @@ function renderSettings() {
       <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>`)}
     </section>
     <p class="app-version">リピごち 版 ${APP_VERSION}</p>
+    <p class="app-version-actions"><button type="button" class="text-button" data-action="check-app-version">🔄 新しい版を確かめる</button><button type="button" class="text-button" data-action="copy-app-status">📋 動作の状態をコピー（お問い合わせ用）</button></p>
   `;
 }
 
@@ -3467,6 +3490,33 @@ async function handleAction(event) {
 
   if (action === "export-data") {
     exportData();
+  }
+
+  // 設定：新しい版を確かめる（押した時だけ。新しい版があれば、その場で読み込み直す。2026-11-01）。
+  if (action === "check-app-version") {
+    const version = await fetch(`./version.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((j) => String(j?.version || "")).catch(() => "");
+    if (!version) { showToast("確かめられませんでした。通信を確かめて、もう一度お試しください"); return; }
+    if (version === APP_VERSION) { showToast(`最新の状態です（版 ${APP_VERSION}）`); return; }
+    if (hasUnsavedWork()) { showToast("入力の途中です。保存してから、もう一度押してください"); return; }
+    showToast("新しい版を読み込んでいます…");
+    // 新しいサービスワーカーに替わるのを待ってから読み込み直す（古いサービスワーカーが古い画面を返さないように。5秒まで。Claude review #215）。
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration?.();
+      await reg?.update?.();
+      if (reg?.installing || reg?.waiting) await new Promise((resolve) => { navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }); setTimeout(resolve, 5000); });
+    } catch {}
+    // 自動の読み込み直しの印（1回まで）とは別の印で、読み込み直した後の「最新版になりました」を出す。
+    try { sessionStorage.setItem("ripigochi-manual-update", version); } catch {}
+    location.reload();
+    return;
+  }
+
+  // 設定：動作の状態をコピー（お問い合わせ用。名前・メモ・写真は入れない。2026-11-01）。
+  if (action === "copy-app-status") {
+    const text = appStatusText();
+    try { await navigator.clipboard.writeText(text); showToast("動作の状態をコピーしました。お問い合わせに貼り付けてください"); }
+    catch { window.prompt?.("この文字をコピーしてください", text); }
+    return;
   }
 
   if (action === "share-backup") {
@@ -4719,6 +4769,13 @@ document.addEventListener("visibilitychange", () => {
   refreshTickets();
   loadAuth();
   loadDiscover();
+  // 新しい版に自動で読み込み直した直後に、1回だけ知らせる（スマホでも新しくなったと分かるように。2026-11-01）。
+  try {
+    if ((sessionStorage.getItem("ripigochi-reloaded-for") === APP_VERSION || sessionStorage.getItem("ripigochi-manual-update") === APP_VERSION) && sessionStorage.getItem("ripigochi-updated-shown") !== APP_VERSION) {
+      sessionStorage.setItem("ripigochi-updated-shown", APP_VERSION);
+      setTimeout(() => showToast(`✨ 最新版になりました（版 ${APP_VERSION}）`), 800);
+    }
+  } catch {}
   // 端末に保存した新着・定番の写しを、運営が直した最新の版に（6時間に1回。APP_MAP §52-9）。
   setTimeout(() => refreshSavedRecipes(), 3000);
 })();

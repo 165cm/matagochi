@@ -636,6 +636,12 @@ async function insertFromUrl(date, raw) {
     const result = await importRecipeFromYouTube(url);
     const videoId = result.videoId || vid;
     const recipe = saveOwnRecipe(discoverRecipe({ ...result, videoUrl: result.videoUrl || url, videoId, thumbnailUrl: result.thumbnailUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` }, "url"));
+    // 共通レシピの目印（版）を残す（運営があとで直した時に「新しい作り方にする」を出せるように。2026-11-01）。
+    if (result.catalog?.id && !recipe.catalog) {
+      recipe.catalog = { id: result.catalog.id, revision: result.catalog.revision || "" };
+      recipe.sourceRevision = result.catalog.revision || "";
+      recipe.sourcePrint = sourcePrint(recipe);
+    }
     done(recipe, (recipe.steps || []).length ? "" : "（作り方は、作る画面の📹で動画から読めます）");
   } catch (error) {
     urlInsert = { date, status: "error", message: isLimitError(error) ? "今日の上限に達しました（明日また使えます）" : (error.message || "読み取れませんでした") };
@@ -1094,6 +1100,7 @@ function renderCooking() {
   ${slot?.side ? `<div class="cooking-side-box"><b>🥢 今日の添え物：${escapeHtml(slot.side)}</b><p class="small muted">${escapeHtml(Lifestyle.sideOf(slot.side)?.desc || "")}</p></div>` : ""}
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${slot?.recipe ? renderSourceNote(slot.recipe, !isViewer(), cookingDate) : ""}
+  ${slot?.recipe ? renderSourceReload(slot.recipe, !isViewer(), cookingDate) : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && state.recipes.some((x) => x.id === recipe.id))}
   <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${cook.ingredients}
   ${cook.steps}
@@ -1898,6 +1905,15 @@ function handleDailyAction(action, data) {
   if (action.startsWith("life-time-") && handleTimeFixAction(action, data)) return true;
   if (action === "life-reread") { withDailyLimit(() => rereadRecipe(data.recipe)); return true; }
   if (action === "life-source-apply") { if (applySourcePending(data.recipe, data.date || "")) { showToast("新しい作り方にしました"); render(); } return true; }
+  if (action === "life-source-keep") { if (keepSourceAsIs(data.recipe, data.date || "")) { showToast("いまの作り方のままにしました"); render(); } return true; }
+  if (action === "life-source-reload") {
+    if (sourceReloading) return true;
+    sourceReloading = true; render();
+    reloadLatest({ recipeId: data.recipe || "", date: data.date || "" }).then((res) => {
+      showToast({ updated: "📝 最新の作り方にしました", same: "いまの作り方が最新です", none: "この動画の作り方は、まだサーバーにありません", error: "サーバーに接続できませんでした。少しあとでお試しください" }[res] || "");
+    }).finally(() => { sourceReloading = false; render(); });
+    return true;
+  }
   if (action === "life-fill-video") { withDailyLimit(() => fillRecipeFromVideo(data.recipe)); return true; }
   if (action === "life-cooked") {
     trackDaily("meal_cooked");
@@ -2840,6 +2856,7 @@ function renderRecipeDetail() {
     ${pLine ? `<div class="dish-group-box">${pLine}</div>` : ""}
     ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? "🎬 作り方がおかしい？動画から読み直す" : "🎬 動画から読み取る"}</button></div>` : ""}
     ${renderSourceNote(r, saved && edit)}
+    ${saved ? renderSourceReload(r, edit) : ""}
     ${servingsUnknownBanner(r, saved && edit)}
     <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
     ${cook.ingredients}
@@ -2850,10 +2867,17 @@ function renderRecipeDetail() {
   </section>`;
 }
 // 運営が作り方を直した時の知らせ（APP_MAP §52-9）：入れ替えた時は7日だけ小さく。使う人が直していた時は「新しい作り方にする」。
+// 「🔄 最新の作り方を読み込む」（自動の判断が外れても、押せば確実に最新にする。2026-11-01）。動画のあるレシピだけ・閲覧者は出さない。
+let sourceReloading = false;
+function renderSourceReload(r, canEdit, date = "") {
+  if (!r || !canEdit || !videoOfRecipe(r) || !API_BASE_URL) return "";
+  return `<p class="source-reload"><button type="button" class="text-button" data-action="life-source-reload" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} ${sourceReloading ? "disabled" : ""}>${sourceReloading ? "読み込んでいます…" : "🔄 最新の作り方を読み込む"}</button></p>`;
+}
 // date：作る画面（献立の枠の写し）から出す時の、その日。
 function renderSourceNote(r, canEdit, date = "") {
   if (!r) return "";
-  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 運営が作り方を直しました（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : r.sourcePrint && sourcePrint(r) !== r.sourcePrint ? "いまの作り方は、あなたが直したものなので、そのままにしています。" : "いまの作り方のままにしています。新しい作り方にするか選べます。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>新しい作り方にする</button></div>`;
+  // 目印のないレシピ（自分で書いた・目印が外れた）は、運営が直したとは言えないので「サーバーに新しい作り方があります」（Claude review #215）。
+  if (r.sourcePending && canEdit) return `<div class="source-note" role="note"><p>📝 ${sourceKind(r) ? "運営が作り方を直しました" : "この動画の作り方が、サーバーにあります"}（手順 ${(r.steps || []).length} → ${(r.sourcePending.steps || []).length}）。${r.sourcePending.planned ? "材料が変わるので、決めた献立と買い物リストに合わせて、自動では入れ替えていません。" : r.sourcePrint && sourcePrint(r) !== r.sourcePrint ? "いまの作り方は、あなたが直したものなので、そのままにしています。" : "いまの作り方のままにしています。新しい作り方にするか選べます。"}</p><button type="button" class="secondary-button" data-action="life-source-apply" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>新しい作り方にする</button><button type="button" class="text-button" data-action="life-source-keep" data-recipe="${escapeAttr(r.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""}>このままにする</button></div>`;
   const at = Date.parse(r.sourceUpdatedAt || "");
   if (Number.isFinite(at) && Date.now() - at < 7 * 86_400_000) return `<p class="source-note muted small" role="note">📝 作り方が新しくなりました（${escapeHtml(formatDate(new Date(at).toISOString().slice(0, 10)))}）</p>`;
   return "";
