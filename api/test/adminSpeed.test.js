@@ -149,3 +149,30 @@ test('admin page shows a loading and an error message in the recipe list', async
   assert.match(fn, /レシピ一覧を読み込めませんでした/);
   assert.match(fn, /throw error/, 'callers still see the error');
 });
+
+test('admin recipes: each recipe carries its timecode level (steps, steps with a time, source) read the same way as the cooking screen', async (t) => {
+  const store = createMemorySyncStore();
+  const now = Date.now();
+  const month = new Date(now + 9 * 3_600_000).toISOString().slice(0, 7);
+  const at = new Date(now).toISOString();
+  const ids = ['tcaaaaaaaaa', 'tcbbbbbbbbb', 'tcccccccccc'];
+  await store.put(`popular/${month}`, { recipes: Object.fromEntries(ids.map((id, i) => [id, { shown: 10, planned: 10 - i, cooked: 0 }])) }, { ifGeneration: 0 });
+  const base = { videoUrl: '', channelTitle: 'ch', channelId: 'UC' + 'q'.repeat(22), ingredients: [{ name: '卵', amount: '1個' }], snippetFetchedAt: at, catalog: { analyzedAt: at } };
+  await store.put(`youtube-${ids[0]}`, { status: 'ready', result: { ...base, title: 'すべて', steps: ['切る', '焼く', '盛る'], stepTimes: [5, 30, 60], stepTimesFrom: 'transcript' } }, { ifGeneration: 0 });
+  await store.put(`youtube-${ids[1]}`, { status: 'ready', result: { ...base, title: '一部', steps: ['切る', '焼く', '盛る'], stepTimes: [5, null, null], analyzedFrom: 'video' } }, { ifGeneration: 0 });
+  await store.put(`youtube-${ids[2]}`, { status: 'ready', result: { ...base, title: 'なし', steps: ['切る', '焼く'], stepTimes: [] } }, { ifGeneration: 0 });
+  // 空の手順があっても、時刻は手順の位置ごと（空の手順は数えない）。review fix (#225)
+  await store.put(`popular/${month}`, { recipes: Object.fromEntries([...ids, 'tcddddddddd'].map((id, i) => [id, { shown: 10, planned: 10 - i, cooked: 0 }])) }, { ifGeneration: 1 });
+  await store.put('youtube-tcddddddddd', { status: 'ready', result: { ...base, title: '空の手順', steps: ['切る', '', '焼く', '盛る'], stepTimes: [5, null, 30, 60], stepTimesFrom: 'transcript' } }, { ifGeneration: 0 });
+  const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [] });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const { recipes } = await (await fetch(`http://127.0.0.1:${server.address().port}/api/admin/recipes`, { headers: { Authorization: 'Bearer admin-test-token' } })).json();
+  const tc = Object.fromEntries(recipes.map((r) => [r.title, r.tc]));
+  assert.deepEqual(tc['すべて'], { n: 3, k: 3, source: 'transcript' });
+  assert.deepEqual(tc['一部'], { n: 3, k: 1, source: 'video' });
+  assert.deepEqual(tc['なし'], { n: 2, k: 0, source: '' });
+  assert.deepEqual(tc['空の手順'], { n: 3, k: 3, source: 'transcript' });
+  assert.ok(recipes.every((r) => !('src' in r)), 'the raw steps are not sent');
+});
