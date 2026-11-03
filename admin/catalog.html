@@ -850,7 +850,18 @@
     } catch (error) { box.firstChild.textContent = error.message; }
     finally { btn.disabled = false; }
   });
-  async function loadRecipes() { const my = session; const d = await api("/api/admin/recipes"); if (my !== session) return; last.recipes = d.recipes || []; renderRecipeList(); }
+  // まだ一覧がない時は「読み込んでいます…」、読み込めなかった時はその理由を一覧の場所に出す（空の一覧と見分けられるように。2026-11-03）。
+  async function loadRecipes() {
+    const my = session, box = document.getElementById("rl-list");
+    if (!last.recipes) { box.textContent = ""; box.append(el("p", "レシピ一覧を読み込んでいます…", "empty")); }
+    let d;
+    try { d = await api("/api/admin/recipes"); }
+    catch (error) {
+      if (my === session && !last.recipes) { box.textContent = ""; box.append(el("p", `レシピ一覧を読み込めませんでした：${error.message}（上の「再読み込み」でもう一度）`, "empty")); }
+      throw error;
+    }
+    if (my !== session) return; last.recipes = d.recipes || []; renderRecipeList();
+  }
   // 親の料理名タブから、その親の子をレシピ一覧で開く（連動）。
   function showParent(key, name) { rlState.q = ""; rlState.src = "all"; rlState.group = true; rlState.open = key; document.getElementById("rl-q").value = ""; document.getElementById("rl-src").value = "all"; document.getElementById("rl-group").checked = true; showTab("recipes"); renderRecipeList(); const t = document.querySelector(`#rl-list details[data-key="${CSS.escape(key)}"]`); t?.scrollIntoView({ block: "start" }); }
   document.getElementById("rl-q").addEventListener("input", (e) => { rlState.q = e.target.value; renderRecipeList(); });
@@ -888,14 +899,15 @@
     if (!token) return;
     const my = session;
     status.textContent = "読み込んでいます…";
+    // レシピ一覧・親の料理名・異議などは、上の2つ（集める・品ぞろえ）を待たずに最初から読み始める（速さ。2026-11-03）。
+    loadRecipes().catch(() => {});
+    loadDishes().catch(() => {});
+    loadBackfill().catch(() => {});
+    loadObjections().catch(() => {});
     try {
       const [seed, catalog] = await Promise.all([api("/api/admin/trends/seed"), api("/api/admin/catalog")]);
       if (my !== session) return;
       last = { seed, catalog, dishes: last.dishes, recipes: last.recipes };
-      loadDishes().catch(() => {});
-      loadBackfill().catch(() => {});
-      loadRecipes().catch(() => {});
-      loadObjections().catch(() => {});
       renderAll();
       // 読み込めたら、合言葉の欄は畳む（上の「合言葉を消す」で戻せる）。
       document.getElementById("login-box").hidden = true;

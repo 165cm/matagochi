@@ -188,6 +188,13 @@ export function createCreatorDesk(store, { resolveChannel, now = Date.now, onCha
       if (!store) return consentsOf({});
       return effective(readApps(await store.get(APPS))[channelId]);
     },
+    // 管理画面の一覧用：たくさんの投稿者の同意を、申請のファイルを1回だけ読んで返す（{ channelId: 同意 }）。
+    async consentsForMany(channelIds) {
+      const apps = store ? readApps(await store.get(APPS)) : {};
+      const out = {};
+      for (const id of new Set(channelIds)) out[id] = store ? effective(apps[id]) : consentsOf({});
+      return out;
+    },
     // 管理者：参加申請の一覧（連絡先は管理者にだけ見せる）。
     async applications() {
       required();
