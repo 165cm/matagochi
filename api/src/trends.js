@@ -1220,12 +1220,13 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       return { total: p.total, channels: list.length, sharePct: PORTFOLIO_CHANNEL_SHARE * 100, maxPer: portfolioMax(p.total), over: list.filter((c) => c.n / Math.max(1, p.total) > PORTFOLIO_CHANNEL_SHARE).length, top: list.slice(0, 15) };
     },
     // 親料理ごとの在庫（管理の画面）：見えている新着の品数・親80品それぞれの子の数（20分以内・30分以上）・5品そろった親の数・今日の自動補充。
+    // 並びは補充の順（tier：0＝理想の12品・1＝足りない分野・2＝ほか）。lim＝その親の目標（20分以内・30分以上・最大）。
     // share：管理の画面の読み出しだけ（同時に作っている一覧を分けてもらう）。毎日の補充（refill）は自分で読み直す。
     async parentStock({ share = false } = {}) {
       const items = (await this.list({ promote: false, share }).catch(() => ({ items: [] }))).items || [];
       const stock = stockOf(items);
       const parents = prioritizedParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})), items);
-      const rows = parents.map((p) => ({ ...p, ideal: IDEAL_KEYS.has(p.key), max: limitsFor(p.key).max, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
+      const rows = parents.map((p) => ({ ...p, ideal: IDEAL_KEYS.has(p.key), max: limitsFor(p.key).max, lim: limitsFor(p.key), quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
       const today = (await store.get("trends/refill"))?.envelope;
       return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => parentFilled(r, r.key)).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX, gaps: shareGaps(items),
         today: today?.day === dayOf(now()) ? today : { day: dayOf(now()), ai: 0, added: 0 }, perDay: { ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY } };
