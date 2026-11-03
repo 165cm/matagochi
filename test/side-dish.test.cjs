@@ -161,7 +161,7 @@ test("renderDailyPlan renders rice note & quick sides, and handles life-add-side
   // Check shopping list includes tofu
   const shoppingHtml = run("renderDailyShopping()");
   assert.match(shoppingHtml, /絹豆腐/);
-  assert.match(shoppingHtml, /shop-rice-tip/); // rice stock tip displayed
+  assert.match(shoppingHtml, /shop-pantry-btn/); // pantry button displayed
 
   // Remove side
   run(`handleDailyAction("life-remove-side", { date: "${date}" });`);

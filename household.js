@@ -636,7 +636,8 @@ function renderShoppingDone(items) {
   const phase = roundPhase();
   if (isViewer() || !(phase === "open" || phase === "closed")) return "";
   const all = items.length && items.every((i) => i.status !== "buy");
-  return dailyButton("life-round-done", "買い物完了", "", all);
+  const label = all ? "✓ 買い物を終える" : "残りはあとで買う";
+  return dailyButton("life-round-done", label, "", all);
 }
 function renderRequestLog() {
   const all = Object.values(state.requests || {}).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30);
@@ -659,8 +660,22 @@ function handleRoundAction(action, data) {
     return true;
   } else if (action === "life-round-remind") { shareMessage(roundMessage(), planUrl()); return true; }
   else if (action === "life-round-done") {
-    state.round = { ...state.round, status: "done", updatedAt: nowIso() };
-    showToast("おつかれさま！ 今回のリクエストは締め切りました。");
+    const stamp = nowIso();
+    const items = typeof dailyShopping === "function" ? dailyShopping() : [];
+    const unbought = items.filter((i) => i.status === "buy" && !i.id.startsWith("manual-"));
+    if (unbought.length) {
+      state.manualShopping = state.manualShopping || {};
+      for (const item of unbought) {
+        const id = generateId("manual-");
+        state.manualShopping[id] = {
+          name: `${item.name}（あとで買う）`.slice(0, 100),
+          amount: String(item.amount || "").slice(0, 80),
+          updatedAt: stamp,
+        };
+      }
+    }
+    state.round = { ...state.round, status: "done", updatedAt: stamp };
+    showToast(unbought.length ? `残りの${unbought.length}品は次回へ引き継ぎました。買い物を完了しました。` : "おつかれさま！ 今回の買い物を完了しました。");
   } else return false;
   saveState(); render(); return true;
 }
@@ -900,10 +915,12 @@ function boardHint() {
   return untilText || "おつかれさま！";
 }
 function renderBlockShoppingDone(items) {
-  const b = shoppingBlock();
+  const sb = typeof shopBlocks === "function" ? shopBlocks() : null;
+  const b = (sb && sb.current) || shoppingBlock();
   if (isViewer() || !b) return "";
   const all = items.length && items.every((i) => i.status !== "buy");
-  return dailyButton("life-block-shopped", "買い物完了", `data-key="${b.key}"`, all);
+  const label = all ? "✓ 買い物を終える" : "残りはあとで買う";
+  return dailyButton("life-block-shopped", label, `data-key="${b.key}"`, all);
 }
 // 作る曜日を選んでいる途中（日数がそろうまでは保存しない）。
 let rhythmPick = null;
@@ -974,9 +991,22 @@ function handleRhythmAction(action, data) {
   else if (action === "life-block-shopped" && !isViewer()) {
     // One trip covers every block that is decided by now.
     const stamp = nowIso();
+    const items = typeof dailyShopping === "function" ? dailyShopping() : [];
+    const unbought = items.filter((i) => i.status === "buy" && !i.id.startsWith("manual-"));
+    if (unbought.length) {
+      state.manualShopping = state.manualShopping || {};
+      for (const item of unbought) {
+        const id = generateId("manual-");
+        state.manualShopping[id] = {
+          name: `${item.name}（あとで買う）`.slice(0, 100),
+          amount: String(item.amount || "").slice(0, 80),
+          updatedAt: stamp,
+        };
+      }
+    }
     const keys = [data.key, ...currentBlocks().filter((x) => blockStatus(x) === "decided").map((x) => x.key)];
     state.shopDone = { ...(state.shopDone || {}), ...Object.fromEntries(keys.map((k) => [k, stamp])) };
-    showToast("おつかれさま！ 次に献立を決めると、新しい買い物リストになります。");
+    showToast(unbought.length ? `残りの${unbought.length}品は次回へ引き継ぎました。買い物を完了しました。` : "おつかれさま！ 買い物を完了しました。");
   } else return false;
   saveState(); render(); return true;
 }

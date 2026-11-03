@@ -88,7 +88,15 @@ const CookMode = (() => {
   // 材料の一覧（まとまりごと）。amountOf(item) で人数に合わせた分量。
   function ingredientsHtml(ingredients, amountOf, cls = "") {
     const list = groupsOf(ingredients);
-    const row = (x) => `<li><span>${escapeHtml(x.name)}</span><span>${escapeHtml(amountOf(x))}</span></li>`;
+    const markOf = (name) => {
+      if (typeof state === "undefined" || !state.shoppingMarks) return "";
+      const k = typeof Lifestyle?.shoppingKey === "function" ? Lifestyle.shoppingKey(name) : name;
+      const m = state.shoppingMarks[k];
+      if (m?.status === "sub") return ` <span class="ing-mark-badge is-sub">🔄 代用${m.subText ? `（${escapeHtml(m.subText)}）` : ""}</span>`;
+      if (m?.status === "skip") return ' <span class="ing-mark-badge is-skip">⏭ 今回はなし</span>';
+      return "";
+    };
+    const row = (x) => `<li><span>${escapeHtml(x.name)}${markOf(x.name)}</span><span>${escapeHtml(amountOf(x))}</span></li>`;
     const plain = list.filter((x) => !x.group);
     const groups = [...new Set(list.map((x) => x.group).filter(Boolean))];
     return `<ul class="cooking-ingredients ${cls}">${plain.map(row).join("")}</ul>${groups.map((g) => `<div class="ing-group"><p>🥣 ${escapeHtml(groupLabel(g))}</p><ul class="cooking-ingredients ${cls}">${list.filter((x) => x.group === g).map(row).join("")}</ul></div>`).join("")}`;
