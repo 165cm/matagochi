@@ -28,6 +28,7 @@ import { ApiError, toErrorResponse } from "./errors.js";
 import { buildCaption, importYouTubeRecipe, normalizeImportResult, requireAnalyzer } from "./importRecipe.js";
 import { getSyncPhoto, getSyncRoom, putSyncPhoto, putSyncRoom } from "./sync.js";
 import { gzipSync } from "node:zlib";
+import { mapLimit } from "./mapLimit.js";
 import { createPhotoStore, createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
 import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes, searchYouTubeChannels, fetchChannelUploads, fetchChannelIcons, fetchChannelStats, resolveYouTubeChannel, fetchYouTubeStatuses } from "./youtube.js";
@@ -35,14 +36,6 @@ import { createHousekeeping } from "./housekeeping.js";
 
 // 管理画面の一覧で、保存場所から同時に読む数（1件ずつだと数百件で数十秒かかるため。2026-11-03）。
 const ADMIN_READ_CONCURRENCY = 20;
-// items を limit 件ずつ同時に fn に通す（結果は items と同じ順番）。
-export async function mapLimit(items, limit, fn) {
-  const out = new Array(items.length);
-  let next = 0;
-  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); } };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}
 
 export function createApp(env = process.env, deps = {}) {
   const app = express();
@@ -383,7 +376,7 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/admin/dishes", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.list({ promote: false }).then((d) => dishBook.overview(d.items || [])));
+    send(res, trendBook.list({ promote: false, share: true }).then((d) => dishBook.overview(d.items || [])));
   });
   app.post("/api/admin/dishes", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -426,23 +419,35 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/admin/trends/seed", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
-    send(res, trendBook.seedStatus().then(async (d) => ({ stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length, youtubeSearch: await searchQuota.status(), portfolio: await trendBook.portfolio().catch(() => null), parentStock: await trendBook.parentStock().catch(() => null), channelBoard: await trendBook.channelBoard().then(async (b) => { const info = await channelStats.get(b.rows.map((r) => r.id)).catch(() => ({})); return { ...b, rows: b.rows.map((r) => ({ ...r, ...(info[r.id] ? { youtube: info[r.id] } : {}) })) }; }).catch(() => null),
-      // 検索語の一覧と進み具合（済み／いまの候補を読んでいる／これから）。段階の上限の回数を出すための目安の単価。
-      queries: SEED_QUERIES.map(([q, label], i) => ({ q, label, status: i < (d.q || 0) - ((d.candidates || []).some((c) => !c.wave) ? 1 : 0) ? "done" : i < (d.q || 0) ? "current" : "todo" })),
-      waves: { ...waveStatus(d, (deps.now || Date.now)()), digReady: await trendBook.digReady().catch(() => 0) },
-      ...(await trendBook.unitYen().then((u) => ({ yenPerAi: u.yenPerAi, calibrated: u.calibrated }), () => ({ yenPerAi: Number(env.TREND_YEN_PER_AI) > 0 ? Number(env.TREND_YEN_PER_AI) : TREND_YEN_PER_AI }))) })));
+    // 互いに関係ない読み出しは、順に待たずに同時に始める（速さ。2026-11-03。返す中身は前と同じ）。
+    send(res, (async () => {
+      const [d, youtubeSearch, portfolio, parentStock, channelBoard, digReady, unit] = await Promise.all([
+        trendBook.seedStatus(),
+        searchQuota.status(),
+        trendBook.portfolio().catch(() => null),
+        trendBook.parentStock({ share: true }).catch(() => null),
+        trendBook.channelBoard().then(async (b) => { const info = await channelStats.get(b.rows.map((r) => r.id)).catch(() => ({})); return { ...b, rows: b.rows.map((r) => ({ ...r, ...(info[r.id] ? { youtube: info[r.id] } : {}) })) }; }).catch(() => null),
+        trendBook.digReady().catch(() => 0),
+        trendBook.unitYen().then((u) => ({ yenPerAi: u.yenPerAi, calibrated: u.calibrated }), () => ({ yenPerAi: Number(env.TREND_YEN_PER_AI) > 0 ? Number(env.TREND_YEN_PER_AI) : TREND_YEN_PER_AI })),
+      ]);
+      return { stages: d.stages || [], queriesLeft: Math.max(0, SEED_QUERIES.length - (d.q || 0)), candidatesLeft: (d.candidates || []).length, laterLeft: (d.later || []).length, youtubeSearch, portfolio, parentStock, channelBoard,
+        // 検索語の一覧と進み具合（済み／いまの候補を読んでいる／これから）。段階の上限の回数を出すための目安の単価。
+        queries: SEED_QUERIES.map(([q, label], i) => ({ q, label, status: i < (d.q || 0) - ((d.candidates || []).some((c) => !c.wave) ? 1 : 0) ? "done" : i < (d.q || 0) ? "current" : "todo" })),
+        waves: { ...waveStatus(d, (deps.now || Date.now)()), digReady },
+        ...unit };
+    })());
   });
   // 管理：レシピの一覧（新着＋献立の候補に出た・残した料理）を、親の料理名・採用率つきで（APP_MAP §48-2）。読み出すだけ（AI・YouTube API は呼ばない）。
   app.get("/api/admin/recipes", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, (async () => {
+      // 新着の一覧・掲載停止・採用の集計は、互いに待たずに同時に読む（速さ。2026-11-03）。
+      const [listed, excluded, stats] = await Promise.all([trendBook.list({ promote: false, share: true }), creatorDesk.optedOut().catch(() => new Set()), popularBook.stats()]);
       const byId = new Map();
-      for (const t of (await trendBook.list({ promote: false })).items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", dishName: t.dishName || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "" });
+      for (const t of listed.items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", dishName: t.dishName || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "" });
       // 集計は全件を新着に結びつける。新着でない料理を読み出す（peek）のは、多い順に500件まで。
       // 掲載停止（動画・投稿者）は、新着と同じく一覧に出さない。
-      const excluded = await creatorDesk.optedOut().catch(() => new Set());
-      const stats = await popularBook.stats();
       // 速さ（2026-11-03）：読み出す料理（多い順に500件まで）を先に決めて、20件ずつ同時に読む（中身・順番は前と同じ）。
       const toPeek = stats.filter((s) => !byId.has(s.videoId) && !excluded.has(s.videoId)).slice(0, 500).map((s) => s.videoId);
       const peeked = new Map((await mapLimit(toPeek, ADMIN_READ_CONCURRENCY, (id) => catalog.peek(`https://www.youtube.com/watch?v=${id}`).catch(() => null))).map((r, i) => [toPeek[i], r]));

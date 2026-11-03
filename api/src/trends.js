@@ -6,6 +6,7 @@ import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./
 import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH } from "./ideal.js";
 import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
+import { mapLimit } from "./mapLimit.js";
 
 // 新着レシピ：YouTubeから選んで読み取り、28日見せる。28日を過ぎた料理は休ませ、決まりを満たす間は0円でもう一度並べる（§46-8）。
 // （YouTube APIのデータは30日を超えて持たない：説明文などは後片付けで取り直す。）
@@ -421,6 +422,7 @@ export const isDinnerRecipe = (r) => !!r && !NOT_DINNER.test(`${r.title || ""} $
 export function createTrendBook(store, { catalog, search, optedOut = async () => new Set(), searchChannels = async () => [], channelUploads = async () => [], channelIcons = async () => ({}), writeCatches = async () => ({}), videoDetails = null, dishBook = null, nameDishes = null, reserveBudget = async () => {}, now = Date.now, budgetMs = 150_000, dailyLimit = 100, monthlyLimit = 1000, userShare = TREND_USER_SHARE, perDay = TREND_PER_DAY, weekMax = TREND_WEEK_MAX, aiPerDay = TREND_AI_PER_DAY, aiPerWeek = TREND_AI_PER_WEEK, yenPerMonth = TREND_YEN_PER_MONTH, yenPerAi = TREND_YEN_PER_AI, calibrate = true, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const required = () => { if (!store || !catalog) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。"); };
   let cache = null;
+  let sharedList = null; // 管理の画面で、同時に作っている途中の新着の一覧（list の share）
   // 運営がレシピを変えた時刻（recipeCatalog.changedAt）。読めない時は 0（作り置きを使う）。
   const changedAt = async () => (typeof catalog?.changedAt === "function" ? await catalog.changedAt().catch(() => 0) : 0);
   const catches = { at: 0 };
@@ -1218,8 +1220,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       return { total: p.total, channels: list.length, sharePct: PORTFOLIO_CHANNEL_SHARE * 100, maxPer: portfolioMax(p.total), over: list.filter((c) => c.n / Math.max(1, p.total) > PORTFOLIO_CHANNEL_SHARE).length, top: list.slice(0, 15) };
     },
     // 親料理ごとの在庫（管理の画面）：見えている新着の品数・親80品それぞれの子の数（20分以内・30分以上）・5品そろった親の数・今日の自動補充。
-    async parentStock() {
-      const items = (await this.list({ promote: false }).catch(() => ({ items: [] }))).items || [];
+    // share：管理の画面の読み出しだけ（同時に作っている一覧を分けてもらう）。毎日の補充（refill）は自分で読み直す。
+    async parentStock({ share = false } = {}) {
+      const items = (await this.list({ promote: false, share }).catch(() => ({ items: [] }))).items || [];
       const stock = stockOf(items);
       const parents = prioritizedParents(await (dishBook || createDishBook(store, { now })).book().catch(() => ({})), items);
       const rows = parents.map((p) => ({ ...p, ideal: IDEAL_KEYS.has(p.key), max: limitsFor(p.key).max, quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
@@ -1357,7 +1360,14 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       } finally { if (!dryRun) await unlock(); }
     },
     // promote：親の料理名の格上げもする（公開の GET /api/trends）。管理の読み出しでは false（辞書を書きかえない）。
-    async list({ promote = true } = {}) {
+    // share：管理の画面の読み出し（promote: false）だけ。同じ時に作っている途中の一覧があれば、それを分けてもらう（画面を開くと
+    // レシピ一覧・親の料理名・集めるの3か所が同時に頼むため。作り終わったら残さないので、review fix #135 の「毎回読み直す」は変わらない。2026-11-03）。
+    list({ promote = true, share = false } = {}) {
+      if (promote || !share) return this.build({ promote });
+      if (!sharedList) sharedList = this.build({ promote: false }).finally(() => { sharedList = null; });
+      return sharedList;
+    },
+    async build({ promote = true } = {}) {
       required();
       const day = new Date(now() + 9 * 3_600_000).toISOString().slice(0, 10);
       // 日ごとの順なので、日本時間の日付が変わったらキャッシュも使わない。
@@ -1370,20 +1380,22 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const excluded = await optedOut();
       const saved = (await store.get("trends/catches"))?.envelope || {};
       const items = [];
-      for (const w of (entry?.envelope.weeks || []).filter(fresh)) {
-        for (const { videoId } of [...w.items].reverse()) {
-          try {
-            const r = await peek(videoId);
-            if (!r || !isDinnerRecipe(r)) continue;
-            // 対象の国の動画だけ（説明文が残っていて、日本語がない動画は外す）。
-            if (r.caption && !TREND_MARKET.titleLooksLocal(r.caption)) continue;
-            if ((r.channelId && excluded.has(r.channelId)) || excluded.has(videoId)) continue; // 掲載停止（確認待ち・動画単位を含む）
-            const c = r.catch || saved[videoId];
-            items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
-              title: r.title, ...(r.catalog?.revision ? { revision: r.catalog.revision } : {}), channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              ...(c ? { catch: c } : {}), ...(r.dishName ? { dishName: r.dishName } : {}), sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}), tags: r.tags || [], planning: r.planning || null });
-          } catch {}
-        }
+      // 保存場所からは20件ずつ同時に読む（1件ずつだと数百件で数十秒。2026-11-03）。並べる順・外す決まりは前と同じ。
+      const order = (entry?.envelope.weeks || []).filter(fresh).flatMap((w) => [...w.items].reverse().map(({ videoId }) => ({ w, videoId })));
+      const peeked = await mapLimit(order, 20, ({ videoId }) => Promise.resolve().then(() => peek(videoId)).then((r) => ({ r }), (error) => ({ error })));
+      for (const [k, { w, videoId }] of order.entries()) {
+        try {
+          if (peeked[k].error) throw peeked[k].error;
+          const r = peeked[k].r;
+          if (!r || !isDinnerRecipe(r)) continue;
+          // 対象の国の動画だけ（説明文が残っていて、日本語がない動画は外す）。
+          if (r.caption && !TREND_MARKET.titleLooksLocal(r.caption)) continue;
+          if ((r.channelId && excluded.has(r.channelId)) || excluded.has(videoId)) continue; // 掲載停止（確認待ち・動画単位を含む）
+          const c = r.catch || saved[videoId];
+          items.push({ videoId, week: w.week, fetchedAt: w.startedAt, expiresAt: new Date(Date.parse(w.startedAt) + TREND_KEEP_DAYS * DAY).toISOString(),
+            title: r.title, ...(r.catalog?.revision ? { revision: r.catalog.revision } : {}), channelTitle: r.channelTitle || "", channelId: r.channelId || "", videoUrl: r.videoUrl || canonicalYouTubeUrl(videoId), thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            ...(c ? { catch: c } : {}), ...(r.dishName ? { dishName: r.dishName } : {}), sourceServings: r.sourceServings ?? null, ingredients: r.ingredients, steps: r.steps, stepTimes: r.stepTimes || [], ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}), tags: r.tags || [], planning: r.planning || null });
+        } catch {}
       }
       // 投稿者のアイコン：集める側が保存したものを使うだけ。
       const iconMap = pruneIcons((await store.get("trends/icons"))?.envelope, now());
