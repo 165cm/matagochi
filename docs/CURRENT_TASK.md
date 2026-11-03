@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-11-02（#216 公開。「⚡️ 異議あり」の知らせと、運営が材料・人数を直す画面を作業中に）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-11-03（#219 公開。買い物リストUX最適化を本番公開）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 買い物タブUX最適化（前回/今回/次回タブ・次回合算・スワイプ代用/パス＆リピート記憶・曜日バッジ・常備品カテゴリと周期アラート） | 実装済み（公開待ち） | feat/shopping-ux-redesign | ユーザーの依頼：3日分デフォルト＆前回/今回/次回タブ、次回分まとめ買い結合、左右スワイプ操作（代用/パス）とリピート記憶、料理写真を曜日バッジ化、主食確認を常備品に統合、上部常備品ボタン（今回使う品数表示）、常備品自動カテゴリ分け・周期アラート・1タップ買い足し。APP_MAP §62 | lifestyle.js, daily-ui.js, household.js, app.js, cook-mode.js, styles.css, sw.js, index.html, version.json, test/shopping-ux.test.cjs, docs/* |
+| 買い物タブUX最適化（前回/今回/次回タブ・次回合算・スワイプ代用/パス＆リピート記憶・曜日バッジ・常備品カテゴリと周期アラート） | 公開済み（#219） | feat/shopping-ux-redesign | ユーザーの依頼：3日分デフォルト＆前回/今回/次回タブ、次回分まとめ買い結合、左右スワイプ操作（代用/パス）とリピート記憶、料理写真を曜日バッジ化、主食確認を常備品に統合、上部常備品ボタン（今回使う品数表示）、常備品自動カテゴリ分け・周期アラート・1タップ買い足し。APP_MAP §62 | lifestyle.js, daily-ui.js, household.js, app.js, cook-mode.js, styles.css, sw.js, index.html, version.json, test/shopping-ux.test.cjs, docs/* |
 | 管理画面のレシピ修正・確認ダイアログのUI再構築（動画常時表示・左右2カラム・手順と時刻の統合編集） | 公開済み（#218） | feat/admin-recipe-dialog-redesign | ユーザーの依頼：動画と手順を常時同時に見比べながら修正・確認できるよう、2カラム（スマホは上部固定）＋3タブ（手順と時刻／材料・人数／AI作り直し・その他）へ再構築。手順の文と時刻の統合編集・リアルタイム再生連動・動画位置維持。APP_MAP §52-13 | admin/catalog.html, test/admin-recipe-ui.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | Claude：「⚡️ 異議あり」の運営への知らせ（アプリの通知）・運営が材料・人数を直す画面 | 公開済み（#217） | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-02 のユーザーの判断：知らせはアプリの通知（設定の「🛠 運営の方へ」で端末を登録・15分に1回にまとめる）。管理画面のレシピで材料・分量・元の人数を直す（版が変わり端末にも届く・読み直しでも引き継ぐ）。APP_MAP §52-12 | push.js, app.js, discover.js, styles.css, api/src/push.js, api/src/server.js, api/src/recipeCatalog.js, api/src/importRecipe.js, admin/catalog.html, sw.js, index.html, version.json, test/servings-objection.test.cjs, api/test/*, docs/* |
 | Claude：元の人数を手で決めても未確認が出続ける・「手動で設定」と「⚡️ 異議あり」（レシピ全体・画面の上の段）＋ Gemini review #215 の4点 | 公開済み（#216） | claude/youtube-captions-recipe-generation-s6h6r5 | 2026-11-02：作る画面（献立の写し）に人数が届かない・新しい版で「不明」に戻るのを直す。バナーでその場で人数を選ぶ・手動の印・construction2nd をまねた「⚡️ 異議あり」（運営の管理画面で見る）。APP_MAP §52-11 | daily-ui.js, plus.js, discover.js, app.js, styles.css, api/src/feedback.js, api/src/server.js, admin/catalog.html, sw.js, index.html, version.json, test/servings-objection.test.cjs, api/test/feedback.test.js, docs/* |
