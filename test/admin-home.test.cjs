@@ -23,7 +23,7 @@ test("the progress tab has the goal, the to-do list, the ideal 12, the shares an
   assert.match(html.slice(html.indexOf("function renderObjections"), html.indexOf("function renderObjections") + 600), /renderTodo\(\)/);
   assert.match(html.slice(html.indexOf("async function loadRecipes"), html.indexOf("function showParent(")), /renderTodo\(\)/);
   // レシピ一覧が先に届いても、親の在庫が届いたら描き直す
-  assert.match(html, /function renderAll\(\) \{ renderHome\(\); renderRecipeList\(\);/);
+  assert.match(html, /function renderAll\(\) \{ renderHome\(\); if \(!rlState\.withStock\) renderRecipeList\(\);/);
 });
 
 test("the recipe list can be narrowed to what needs checking and sorted by refill priority", () => {
@@ -37,4 +37,28 @@ test("logout clears the new progress areas", () => {
   const handler = html.slice(html.indexOf('getElementById("logout").addEventListener'), html.indexOf("load();\n</script>"));
   const cleared = JSON.parse(handler.match(/for \(const id of (\[[^\]]*\])\)/)[1]);
   for (const id of ["goal", "todo", "ideal", "shares", "parents"]) assert.ok(cleared.includes(id), id);
+});
+
+// Claude のコードレビュー（2026-11-03）の6件
+test("review fixes: counts match, empty parents explain themselves, chips say what is missing", () => {
+  assert.match(html, /nominutes: \(r\) => r\.trend && !r\.minutes,/, "the time-unknown filter counts the same items as the to-do list");
+  const sp = html.slice(html.indexOf("function showParent("), html.indexOf("function showParent(") + 1200);
+  assert.match(sp, /まだ1品もありません/, "a parent with no recipes says so");
+  assert.match(html, /20分以内あと\$\{n\.quick\}/);
+  assert.match(html, /30分以上あと\$\{n\.long\}/);
+});
+
+test("review fixes: re-rendering keeps open groups, renders once with the stock, and the demo does not change the saved tab", () => {
+  const rl = html.slice(html.indexOf("function renderRecipeList"), html.indexOf("function renderRecipeList") + 1500);
+  assert.match(rl, /details\.group\[open\]/);
+  assert.match(html, /wasOpen\.has\(g\.key\)/);
+  assert.match(html, /function renderAll\(\) \{ renderHome\(\); if \(!rlState\.withStock\) renderRecipeList\(\);/);
+  assert.match(html, /rlState\.withStock = false;/, "logout resets it");
+  assert.match(html, /showTab\("adopt", \{ save: false \}\)/);
+  assert.match(html, /if \(save\) try \{ localStorage\.setItem\(TAB_KEY, name\); \} catch \{\}/);
+});
+
+test("review fixes: ideal dishes removed from the dictionary are counted and reported", () => {
+  assert.match(html, /ps\.idealMissing/);
+  assert.match(html, /辞書から外れている/);
 });

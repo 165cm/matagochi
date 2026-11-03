@@ -314,7 +314,7 @@
       <div class="head"><h2>レシピ一覧</h2><span class="meta" id="rl-count"></span></div>
       <div class="row" style="margin-top:8px">
         <input id="rl-q" type="search" placeholder="料理名・親・投稿者で探す" aria-label="レシピを探す" style="flex:1 1 200px">
-        <select id="rl-src" aria-label="しぼりこみ"><option value="all">すべて</option><option value="ideal">⭐ 理想の12品</option><option value="short">子が足りない親</option><option value="trend">新着（28日以内）</option><option value="expiring">7日以内に新着から外れる</option><option value="nominutes">調理時間が不明</option><option value="noparent">親なし</option><option value="kept">みんなの定番（残した）</option><option value="planned">献立に入った</option></select>
+        <select id="rl-src" aria-label="しぼりこみ"><option value="all">すべて</option><option value="ideal">⭐ 理想の12品</option><option value="short">子が足りない親</option><option value="trend">新着（28日以内）</option><option value="expiring">7日以内に新着から外れる</option><option value="nominutes">調理時間が不明（新着）</option><option value="noparent">親なし</option><option value="kept">みんなの定番（残した）</option><option value="planned">献立に入った</option></select>
         <select id="rl-sort" aria-label="親の並べ方"><option value="priority">並べ方：補充の優先順</option><option value="few">並べ方：子の少ない順</option><option value="many">並べ方：子の多い順</option><option value="planned">並べ方：献立に入った順</option></select>
         <label class="chk"><input type="checkbox" id="rl-group" checked> 親ごとにまとめる</label>
         <details class="info"><summary>ⓘ</summary><div>新着（集めた料理・28日）と、献立の候補に出た・残した料理です。親の料理名は「🍲 親の料理名」と同じ決め方で、外す・まとめると、ここにもすぐ反映されます。行を押すとレシピ（手順の時刻も直せます）。<br>親の見出しの「そろい」は、見えている新着だけで数えた子の数と目標です（緑＝そろった）。「残り」は新着から外れるまでの日数で、7日以内は赤。外れた料理は休ませ、新着が足りなければ0円で戻ります。</div></details>
@@ -651,15 +651,15 @@
     const box = document.getElementById("goal"), ps = last.seed?.parentStock;
     box.hidden = !ps; box.textContent = "";
     if (!ps) return;
-    const ideal = ps.parents.filter((p) => p.ideal);
-    const idealDone = ideal.filter((p) => !lackOf(p, ps)).length;
+    const ideal = ps.parents.filter((p) => p.ideal), missing = ps.idealMissing || [];
+    const idealDone = ideal.filter((p) => !lackOf(p, ps)).length, idealAll = ideal.length + missing.length;
     const head = el("div", undefined, "goal-head");
     head.append(el("h2", "目標までの進み具合"), el("span", `約${ps.target}品＝親料理${ps.parents.length}品 × ${ps.children}品（理想の12品は8品ずつ）`, "meta"));
     const k = el("div", undefined, "kpis");
     const tile = (label, value, note, good) => { const t = el("div", undefined, "kpi"); t.append(el("small", label), el("b", value)); if (note) t.append(el("em", note, good ? "good" : "")); return t; };
     const m = (last.catalog?.cost || [])[0];
     k.append(
-      tile("⭐ 理想の12品そろった", `${idealDone} / ${ideal.length}`, idealDone === ideal.length ? "そろいました" : `あと ${ideal.reduce((a, p) => a + lackOf(p, ps), 0)}品`, idealDone === ideal.length),
+      tile("⭐ 理想の12品そろった", `${idealDone} / ${idealAll}`, missing.length ? `辞書から外れている ${missing.length}品` : idealDone === idealAll ? "そろいました" : `あと ${ideal.reduce((a, p) => a + lackOf(p, ps), 0)}品`, !missing.length && idealDone === idealAll),
       tile("子のそろった親料理", `${ps.filled} / ${ps.parents.length}`, `${Math.round((ps.filled / Math.max(1, ps.parents.length)) * 100)}%`, ps.filled >= ps.parents.length),
       tile("見えている新着", `${ps.visible}品`, `目標 ${ps.target}品`, ps.visible >= ps.target),
       tile("今日の自動補充（品）", `${ps.today.added} / ${ps.perDay.added}`, `AI ${ps.today.ai} / ${ps.perDay.ai}回`),
@@ -675,6 +675,7 @@
     const add = (level, text, action, go) => items.push({ level, text, action, go });
     const objOpen = (last.objections || []).filter((x) => x.status !== "done");
     if (objOpen.length) add("warn", `⚡️ 使う人からの間違いの知らせが ${objOpen.length}件 まだです（献立に出ているレシピの間違い）。`, "異議を見る", () => showTab("objections"));
+    if ((ps.idealMissing || []).length) add("warn", `⭐ 理想の12品のうち、親の料理名の辞書から外れている料理：${ps.idealMissing.join("・")}。外れている間は補充されません（🍲 親の料理名の「外した料理名」で戻せます）。`, "親の料理名を見る", () => showTab("dishes"));
     const idealLack = ps.parents.filter((p) => p.ideal && lackOf(p, ps)).sort((a, b) => lackOf(b, ps) - lackOf(a, ps));
     if (idealLack.length) add("warn", `⭐ 理想の12品で作り方が足りない料理：${idealLack.slice(0, 5).map((p) => `${p.name}（あと${lackOf(p, ps)}）`).join("・")}${idealLack.length > 5 ? ` ほか${idealLack.length - 5}品` : ""}。自動補充がいちばん先に探します。`, "レシピ一覧で見る", () => { setRecipeFilter("ideal"); showTab("recipes"); });
     const low = Object.entries(ps.gaps || {}).filter(([, g]) => g.gap > 0.02).sort((a, b) => b[1].gap - a[1].gap);
@@ -860,13 +861,17 @@
     all: () => true,
     ideal: (r, by) => !!by.get(r.dish?.key)?.ideal,
     short: (r, by) => { const p = by.get(r.dish?.key); return !!p && lackOf(p, last.seed?.parentStock) > 0; },
-    trend: (r) => r.trend, expiring: expiringSoon, nominutes: (r) => !r.minutes, noparent: (r) => !r.dish,
+    trend: (r) => r.trend, expiring: expiringSoon, nominutes: (r) => r.trend && !r.minutes, noparent: (r) => !r.dish,
     kept: (r) => r.kept, planned: (r) => r.planned > 0,
   };
   function setRecipeFilter(src) { rlState.src = src; rlState.q = ""; rlState.open = ""; document.getElementById("rl-src").value = src; document.getElementById("rl-q").value = ""; renderRecipeList(); }
   function renderRecipeList() {
-    const box = document.getElementById("rl-list"); if (!last.recipes) return; box.textContent = "";
+    const box = document.getElementById("rl-list"); if (!last.recipes) return;
+    // 描き直しても、開いていた親は開いたまま（自動で集めている間の読み込み直しで閉じないように）。
+    const wasOpen = new Set([...box.querySelectorAll("details.group[open]")].map((d) => d.dataset.key));
+    box.textContent = "";
     const q = rlState.q.trim().toLowerCase(), by = parentsByKey(), ps = last.seed?.parentStock;
+    rlState.withStock = !!ps;
     const keep = RL_FILTER[rlState.src] || RL_FILTER.all;
     const list = last.recipes.filter((r) => keep(r, by) && (!q || [r.title, r.dish?.name, r.channelTitle].join(" ").toLowerCase().includes(q)));
     const parents = new Set(list.filter((r) => r.dish).map((r) => r.dish.key));
@@ -890,11 +895,12 @@
     const sorted = [...groups.values()].sort((a, b) => (!a.key) - (!b.key) || cmp(a, b) || a.name.localeCompare(b.name, "ja"));
     for (const g of sorted) {
       const d = el("details", undefined, "group"); d.dataset.key = g.key;
-      if ((rlState.open && rlState.open === g.key) || (q && sorted.length <= 3)) d.open = true;
+      if ((rlState.open && rlState.open === g.key) || wasOpen.has(g.key) || (q && sorted.length <= 3)) d.open = true;
       const sum = el("summary"); const planned = plannedOf(g);
       sum.append(el("b", g.key ? `${g.p?.ideal ? "⭐ " : ""}${g.name}` : "親なし（まとまっていない料理）"), el("span", `${g.items.length}品`, "chip"));
       // そろい（見えている新着で数えた子の数／目標）。そろった＝緑、足りない＝「あと n」。
-      if (g.p) { const n = needOf(g.p, ps), lack = n.quick + n.long; sum.append(el("span", lack ? `そろい ${g.p.total}/${n.goal}・あと${lack}` : `そろい ${g.p.total}/${n.goal} ✓`, lack ? "chip current" : "chip done")); }
+      // 足りない時は、どちらが足りないか（20分以内／30分以上）まで出す（「5/5・あと1」と矛盾して見えないように）。
+      if (g.p) { const n = needOf(g.p, ps), lack = n.quick + n.long, what = [n.quick ? `20分以内あと${n.quick}` : "", n.long ? `30分以上あと${n.long}` : ""].filter(Boolean).join("・"); sum.append(el("span", lack ? `そろい ${g.p.total}/${n.goal}・${what}` : `そろい ${g.p.total}/${n.goal} ✓`, lack ? "chip current" : "chip done")); }
       const soon = g.items.filter(expiringSoon).length;
       if (soon) sum.append(el("span", `⏳ 7日以内に外れる ${soon}`, "chip warn"));
       if (planned) sum.append(el("span", `献立に入った ${planned}回`, "meta"));
@@ -1005,7 +1011,10 @@
     if (my !== session) return; last.recipes = d.recipes || []; renderRecipeList(); renderTodo();
   }
   // 親の料理名タブから、その親の子をレシピ一覧で開く（連動）。
-  function showParent(key, name) { rlState.q = ""; rlState.src = "all"; rlState.group = true; rlState.open = key; document.getElementById("rl-q").value = ""; document.getElementById("rl-src").value = "all"; document.getElementById("rl-group").checked = true; showTab("recipes"); renderRecipeList(); const t = document.querySelector(`#rl-list details[data-key="${CSS.escape(key)}"]`); t?.scrollIntoView({ block: "start" }); }
+  function showParent(key, name) { rlState.q = ""; rlState.src = "all"; rlState.group = true; rlState.open = key; document.getElementById("rl-q").value = ""; document.getElementById("rl-src").value = "all"; document.getElementById("rl-group").checked = true; showTab("recipes"); renderRecipeList(); const t = document.querySelector(`#rl-list details[data-key="${CSS.escape(key)}"]`);
+    if (t) { t.scrollIntoView({ block: "start" }); return; }
+    // まだ子が1品もない親（いちばん急ぐ親）は、一覧の上にその旨を出す（押しても何も起きないように見えないように）。
+    if (last.recipes) { const note = el("p", `「${name}」のレシピは、まだ1品もありません。毎日の自動補充が、足りない親から探して足します。`, "empty"); note.className = "warnbox"; document.getElementById("rl-list").prepend(note); note.scrollIntoView({ block: "nearest" }); } }
   document.getElementById("rl-q").addEventListener("input", (e) => { rlState.q = e.target.value; renderRecipeList(); });
   document.getElementById("rl-src").addEventListener("change", (e) => { rlState.src = e.target.value; renderRecipeList(); });
   document.getElementById("rl-group").addEventListener("change", (e) => { rlState.group = e.target.checked; renderRecipeList(); });
@@ -1038,7 +1047,7 @@
     }
   }
   // レシピ一覧は先に届くことがあるので、親の在庫（そろい・優先順）が届いたら描き直す。
-  function renderAll() { renderHome(); renderRecipeList(); renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderLearn(); renderQueries(); renderCatalog(); }
+  function renderAll() { renderHome(); if (!rlState.withStock) renderRecipeList(); renderControls(); renderStage(); renderSources(); renderStages(); renderAdded(); renderLearn(); renderQueries(); renderCatalog(); }
   async function load() {
     if (!token) return;
     const my = session;
@@ -1152,9 +1161,9 @@
   const TABS = ["home", "objections", "recipes", "seed", "dishes", "adopt", "creators"];
   // 覚える名前を変えて、並べ替えた後の最初は「🎯 進み具合」から開く（2026-11-03）。
   const TAB_KEY = "ripigochi-admin-tab-v2";
-  function showTab(name) {
+  function showTab(name, { save = true } = {}) {
     for (const t of TABS) { document.getElementById(`tab-${t}`).setAttribute("aria-selected", String(t === name)); document.getElementById(`panel-${t}`).hidden = t !== name; }
-    try { localStorage.setItem(TAB_KEY, name); } catch {}
+    if (save) try { localStorage.setItem(TAB_KEY, name); } catch {}
   }
   TABS.forEach((t) => document.getElementById(`tab-${t}`).addEventListener("click", () => showTab(t)));
   try { const saved = localStorage.getItem(TAB_KEY); if (TABS.includes(saved)) showTab(saved); } catch {}
@@ -2054,13 +2063,13 @@
     document.getElementById("login-box").hidden = true;
     for (const t of ["home", "seed", "recipes", "dishes"]) document.getElementById(`tab-${t}`).disabled = true;
     renderCatalog();
-    showTab("adopt");
+    showTab("adopt", { save: false }); // デモで開いたタブは覚えない（次にふつうに開いた時は進み具合から）
     status.textContent = "🧪 デモ";
   }
   document.getElementById("logout").addEventListener("click", () => {
     token = ""; try { sessionStorage.removeItem("ripigochi-admin"); } catch {}
     session += 1; stopAuto = true;
-    last = { seed: null, catalog: null };
+    last = { seed: null, catalog: null }; rlState.withStock = false;
     runStatus.textContent = ""; progress(false);
     document.querySelector("#added-box > summary").textContent = "増えた料理";
     const dlg = document.getElementById("recipe"); if (dlg.open) dlg.close();

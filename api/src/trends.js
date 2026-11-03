@@ -1229,6 +1229,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const rows = parents.map((p) => ({ ...p, ideal: IDEAL_KEYS.has(p.key), max: limitsFor(p.key).max, lim: limitsFor(p.key), quick: stock[p.key]?.quick || 0, long: stock[p.key]?.long || 0, total: stock[p.key]?.total || 0 }));
       const today = (await store.get("trends/refill"))?.envelope;
       return { target: REFILL_TARGET, visible: items.length, parents: rows, filled: rows.filter((r) => parentFilled(r, r.key)).length, children: REFILL_CHILDREN, max: REFILL_CHILDREN_MAX, gaps: shareGaps(items),
+        // 辞書から外した理想の12品（補充されない。管理の画面で気づけるように。2026-11-03）
+        idealMissing: IDEAL_DISHES.filter((d) => !rows.some((r) => r.key === parentKeyOf(d.name))).map((d) => d.name),
         today: today?.day === dayOf(now()) ? today : { day: dayOf(now()), ai: 0, added: 0 }, perDay: { ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY } };
     },
     // 自動の補充（毎日の新着集めの後に呼ぶ）：子が足りない親料理を、1日に料理15品・AI 25回まで埋める。
