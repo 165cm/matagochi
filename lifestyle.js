@@ -52,41 +52,144 @@
   function equipmentDefaults(current = {}) {
     return {...Object.fromEntries(equipmentGroups.flatMap(group => group.names.map(name => [name, group.defaultValue]))), ...current};
   }
+  // スーパーの売り場（棚）をイメージした常備品の分類（詳しい設定の5画面とも対応）
   const pantry = {
-    基本の調味料: ["塩", "砂糖", "しょうゆ", "みそ", "酢", "みりん", "料理酒"],
-    "油・乳製品": ["サラダ油", "オリーブ油", "ごま油", "バター", "マヨネーズ"],
-    "だし・ソース": [
-      "和風だし",
-      "鶏ガラスープの素",
-      "コンソメ",
+    "調味料・油": [
+      "塩",
+      "砂糖",
+      "しょうゆ",
+      "みそ",
+      "酢",
+      "みりん",
+      "料理酒",
+      "サラダ油",
+      "オリーブ油",
+      "ごま油",
+    ],
+    "つゆ・たれ・ソース": [
       "めんつゆ",
+      "白だし",
       "ポン酢",
+      "マヨネーズ",
       "ケチャップ",
       "中濃ソース",
       "焼肉のたれ",
-      "オイスターソース",
     ],
-    香辛料: [
+    "だし・中華・スパイス": [
+      "和風だし",
+      "鶏ガラスープの素",
+      "コンソメ",
+      "オイスターソース",
+      "豆板醤",
       "こしょう",
       "にんにく",
       "しょうが",
       "カレー粉",
       "七味",
-      "ごま",
-      "豆板醤",
     ],
-    常備する主食など: [
+    "粉・乾物・缶詰": [
+      "小麦粉",
+      "片栗粉",
+      "パン粉",
+      "ごま",
+      "のり",
+      "乾燥わかめ",
+      "かつお節",
+      "ツナ缶",
+      "トマト缶",
+    ],
+    "米・パン・麺・冷蔵": [
       "米",
       "パスタ",
       "うどん",
       "食パン",
-      "小麦粉",
-      "片栗粉",
-      "ツナ缶",
-      "トマト缶",
-      "のり",
+      "バター",
     ],
   };
+
+  // 品目ごとのデフォルト賞味期限・開封後の買い替え目安（日）
+  const DEFAULT_PANTRY_CYCLES = {
+    食パン: 7,
+    牛乳: 7,
+    豆乳: 7,
+    豆腐: 7,
+    納豆: 7,
+    卵: 14,
+    ヨーグルト: 14,
+    ハム: 14,
+    ベーコン: 14,
+    ウインナー: 14,
+    チーズ: 21,
+    ピザ用チーズ: 21,
+    スライスチーズ: 21,
+    米: 30,
+    バター: 30,
+    めんつゆ: 30,
+    白だし: 30,
+    にんにく: 30,
+    しょうが: 30,
+    マヨネーズ: 60,
+    ポン酢: 60,
+    焼肉のたれ: 60,
+    ドレッシング: 60,
+    サラダ油: 60,
+    オリーブ油: 60,
+    ごま油: 60,
+    にんにくチューブ: 60,
+    しょうがチューブ: 60,
+    わさび: 60,
+    からし: 60,
+    しょうゆ: 90,
+    みりん: 90,
+    料理酒: 90,
+    みそ: 90,
+    ケチャップ: 90,
+    中濃ソース: 90,
+    ウスターソース: 90,
+    オイスターソース: 90,
+    豆板醤: 90,
+    コチュジャン: 90,
+    ラー油: 90,
+    ごま: 90,
+    すりごま: 90,
+    のり: 90,
+    かつお節: 90,
+    酢: 180,
+    小麦粉: 180,
+    薄力粉: 180,
+    強力粉: 180,
+    片栗粉: 180,
+    パン粉: 180,
+    和風だし: 180,
+    鶏ガラスープの素: 180,
+    コンソメ: 180,
+    こしょう: 180,
+    カレー粉: 180,
+    七味: 180,
+    パスタ: 180,
+    うどん: 180,
+    乾燥わかめ: 180,
+    塩: 365,
+    砂糖: 365,
+    ツナ缶: 365,
+    トマト缶: 365,
+  };
+
+  function defaultPantryCycle(name) {
+    if (!name) return 90;
+    const raw = String(name).normalize("NFKC").trim();
+    const k = shoppingName(raw);
+    if (DEFAULT_PANTRY_CYCLES[raw]) return DEFAULT_PANTRY_CYCLES[raw];
+    if (DEFAULT_PANTRY_CYCLES[k]) return DEFAULT_PANTRY_CYCLES[k];
+    if (/食パン|牛乳|豆乳|豆腐|納豆|もやし|生麺/.test(k)) return 7;
+    if (/卵|たまご|玉子|ヨーグルト|ハム|ベーコン|ウインナー|ソーセージ/.test(k)) return 14;
+    if (/米|バター|マーガリン|チーズ|めんつゆ|白だし/.test(k)) return 30;
+    if (/マヨ|ポン酢|ぽん酢|たれ|タレ|ドレッシング|チューブ|わさび|からし|(?:油|オイル)$/.test(k) && !/ラー油|オイスター/.test(k)) return 60;
+    if (/しょうゆ|醤油|みりん|酒|みそ|味噌|ケチャップ|ソース|豆板醤|コチュジャン|甜麺醤|ラー油|ごま|胡麻|のり|海苔|かつお節/.test(k)) return 90;
+    if (/塩|砂糖|はちみつ|蜂蜜|缶/.test(k)) return 365;
+    if (/酢|粉|だし|出汁|コンソメ|鶏ガラ|ブイヨン|こしょう|胡椒|スパイス|カレー|七味|一味|パスタ|スパゲ|麺|そば|そうめん|わかめ|ひじき|昆布|乾|ルウ|ルー/.test(k)) return 180;
+    return 90;
+  }
 
   const SUBSTITUTE_HINTS = {
     みりん: "酒＋砂糖（3:1）",
@@ -132,18 +235,44 @@
     return SUBSTITUTE_HINTS[k] || SUBSTITUTE_HINTS[name] || "";
   }
 
+  // スーパーの売り場（棚）ベースで常備品を分類する
+  const PANTRY_SHELVES = [
+    "調味料・油",
+    "つゆ・たれ・ソース",
+    "だし・中華・スパイス",
+    "粉・乾物・缶詰",
+    "米・パン・麺",
+    "冷蔵・冷凍",
+    "その他",
+  ];
+
   function pantryCategoryOf(name) {
     if (!name) return "その他";
-    const k = shoppingName(name);
-    for (const [cat, items] of Object.entries(pantry)) {
-      if (items.some((i) => i === name || shoppingName(i) === k)) return cat;
+    const raw = String(name).normalize("NFKC").trim();
+    const k = shoppingName(raw);
+    if (/^冷凍|冷凍食品|[（(]冷凍|バター|マーガリン|チーズ|牛乳|豆乳|ヨーグルト|生クリーム|卵|たまご|玉子|豆腐|納豆|油揚げ|キムチ|漬物|梅干し|ハム|ベーコン|ウインナー/.test(raw)) {
+      return "冷蔵・冷凍";
     }
-    // 未知の手動追加アイテムも自動分類
-    if (/塩|砂糖|しょうゆ|醤油|みそ|味噌|酢|みりん|酒/.test(k)) return "基本の調味料";
-    if (/油|オイル|バター|マーガリン|マヨネーズ|生クリーム|チーズ/.test(k)) return "油・乳製品";
-    if (/だし|出汁|スープ|コンソメ|ブイヨン|つゆ|ポン酢|ソース|ケチャップ|たれ|タレ/.test(k)) return "だし・ソース";
-    if (/こしょう|胡椒|にんにく|ニンニク|しょうが|生姜|カレー粉|スパイス|七味|一味|ごま|胡麻|豆板醤|コチュジャン|唐辛子|わさび|からし/.test(k)) return "香辛料";
-    if (/米|ごはん|パスタ|スパゲ|うどん|そば|麺|パン|粉|缶|のり|海苔|乾物|わかめ|ひじき|かつお節/.test(k)) return "常備する主食など";
+    if (/米|ごはん|ご飯|パスタ|スパゲ|マカロニ|うどん|そば|蕎麦|そうめん|ラーメン|中華麺|食パン|(?<!フライ)パン(?!粉)|もち|餅|オートミール|シリアル/.test(k)) {
+      return "米・パン・麺";
+    }
+    if (/(?<!カレー)粉(?!チーズ|花椒|山椒)|パン粉|コーンスターチ|ベーキングパウダー|ゼラチン|ホットケーキ|缶|レトルト|ルウ|ルー|のり|海苔|わかめ|ひじき|昆布|かつお節|削り節|干し|切り干し|高野豆腐|ごま(?!油|だれ|ドレッシング)|胡麻(?!油|だれ)|はるさめ|春雨|ふりかけ|ナッツ/.test(k)) {
+      return "粉・乾物・缶詰";
+    }
+    if (/めんつゆ|白だし|ポン酢|ぽん酢|味ぽん|マヨ|ケチャップ|(?:中濃|ウスター|とんかつ|お好み)ソース|^ソース$|たれ|タレ|ドレッシング/.test(k) && !/オイスター|チリソース/.test(k)) {
+      return "つゆ・たれ・ソース";
+    }
+    if (/だし|出汁|スープの素|鶏ガラ|コンソメ|ブイヨン|オイスター|ナンプラー|豆板醤|コチュジャン|甜麺醤|ラー油|チリソース|タバスコ|チューブ|こしょう|胡椒|にんにく|ニンニク|しょうが|生姜|カレー粉|スパイス|七味|一味|山椒|花椒|唐辛子|わさび|からし|マスタード|ハーブ|ローリエ/.test(raw)) {
+      return "だし・中華・スパイス";
+    }
+    if (/塩|砂糖|はちみつ|蜂蜜|しょうゆ|醤油|みそ|味噌|酢|みりん|料理酒|酒|ワイン|(?:油|オイル)$/.test(k)) {
+      return "調味料・油";
+    }
+    for (const [cat, items] of Object.entries(pantry)) {
+      if (items.some((i) => i === name || shoppingName(i) === k)) {
+        return cat === "米・パン・麺・冷蔵" ? "米・パン・麺" : cat;
+      }
+    }
     return "その他";
   }
   // Source threshold: at least 80% in MyVoice 2024 or Nadia 2026. Only missing answers are seeded.
@@ -926,7 +1055,7 @@
   // Only normalize known equivalent names; concentration and product variants matter.
   const shoppingName = (name) =>
     String(name || "").normalize("NFKC").trim().replace(/^ごはん\(炊飯済み\)$/, "ごはん").replace(/^しょうゆ\(濃口\)$/, "しょうゆ");
-  const notPurchased = /^(?:水|お湯|湯|熱湯|冷水|氷水|ぬるま湯)$/;
+  const notPurchased = /^(?:水|お湯|湯|熱湯|冷水|氷水|ぬるま湯|氷|飲用の冷水|水道水)$/;
 
   // 1より小さい量は、レシピでよく使う分数に（0.125→1/8、0.5→1/2、0.33→1/3）。
   const NICE_FRACTIONS = [[1, 8], [1, 4], [1, 3], [1, 2], [2, 3], [3, 4]];
@@ -1274,11 +1403,17 @@
     pantry = {},
     marks = {},
     manual = {},
+    includeCooked = false,
   }) {
     const groups = new Map();
     Object.values(slots)
       .filter(
-        (s) => s.date >= start && s.date <= end && s.status === "confirmed",
+        (s) =>
+          s &&
+          s.recipe &&
+          s.date >= start &&
+          s.date <= end &&
+          (s.status === "confirmed" || (includeCooked && s.status === "cooked")),
       )
       .sort((a, b) => a.date.localeCompare(b.date))
       .forEach((s) => {
@@ -1810,6 +1945,9 @@
     pantryCommon,
     pantryDefaults,
     pantryCategoryOf,
+    PANTRY_SHELVES,
+    DEFAULT_PANTRY_CYCLES,
+    defaultPantryCycle,
     SUBSTITUTE_HINTS,
     substituteHint,
     restrictionOptions,
