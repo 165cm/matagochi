@@ -86,12 +86,20 @@ const CookMode = (() => {
     return { items, groups: hitGroups.map((g) => ({ group: g, items: list.filter((x) => x.group === g) })) };
   }
   // 材料の一覧（まとまりごと）。amountOf(item) で人数に合わせた分量。
-  function ingredientsHtml(ingredients, amountOf, cls = "") {
+  // scope：{ date, recipeId }。代用・パスの印は、その日・その料理の買い物でつけた時だけ出す
+  // （材料名だけで見ると、前の回にパスした食材が、次の回でも「今回はなし」と出てしまう）。
+  function markFor(name, scope) {
+    if (typeof state === "undefined" || !state.shoppingMarks || !scope?.date || !scope?.recipeId) return null;
+    const k = typeof Lifestyle?.shoppingKey === "function" ? Lifestyle.shoppingKey(name) : name;
+    const m = state.shoppingMarks[k];
+    if (!m || !["sub", "skip"].includes(m.status)) return null;
+    const head = `${scope.date}:${scope.recipeId}:`;
+    return String(m.signature || "").split("|").some((part) => part.startsWith(head)) ? m : null;
+  }
+  function ingredientsHtml(ingredients, amountOf, cls = "", scope = null) {
     const list = groupsOf(ingredients);
     const markOf = (name) => {
-      if (typeof state === "undefined" || !state.shoppingMarks) return "";
-      const k = typeof Lifestyle?.shoppingKey === "function" ? Lifestyle.shoppingKey(name) : name;
-      const m = state.shoppingMarks[k];
+      const m = markFor(name, scope);
       if (m?.status === "sub") return ` <span class="ing-mark-badge is-sub">🔄 代用${m.subText ? `（${escapeHtml(m.subText)}）` : ""}</span>`;
       if (m?.status === "skip") return ' <span class="ing-mark-badge is-skip">⏭ 今回はなし</span>';
       return "";
@@ -492,7 +500,7 @@ const CookMode = (() => {
     const isStart = timeTarget === "start" || curSeg?.end == null;
     const timeBar = hasVideo() ? `<div class="cm-time-bar" role="group" aria-label="動画のループ位置の微調整"><div class="cm-time-chips"><span class="cm-time-loop-icon" aria-hidden="true">🔁</span><button type="button" class="cm-time-chip ${isStart ? "is-active" : ""}" data-cook-mode="target-start" aria-pressed="${isStart ? "true" : "false"}" aria-label="開始位置：${curSeg ? fmt(curSeg.start) : "未設定"}（タップして微調整）">${curSeg ? fmt(curSeg.start) : "未設定"}</button><span class="cm-time-sep" aria-hidden="true">〜</span>${curSeg && curSeg.end != null ? `<button type="button" class="cm-time-chip ${!isStart ? "is-active" : ""}" data-cook-mode="target-end" aria-pressed="${!isStart ? "true" : "false"}" aria-label="終了位置：${fmt(curSeg.end)}（タップして微調整）">${fmt(curSeg.end)}</button>` : `<span class="cm-time-end-static">最後</span>`}</div><div class="cm-time-btns"><button type="button" class="cm-time-btn" data-cook-mode="time-minus" aria-label="${isStart ? "開始を5秒前にする" : "終了を5秒前にする"}">⏪ -5秒</button><button type="button" class="cm-time-btn cm-time-here" data-cook-mode="time-here" aria-label="${isStart ? "いま再生している位置を開始にする" : "いま再生している位置を終了にする"}">📍ここ</button><button type="button" class="cm-time-btn" data-cook-mode="time-plus" aria-label="${isStart ? "開始を5秒後にする" : "終了を5秒後にする"}">+5秒 ⏩</button></div></div>` : "";
     el.querySelector(".cm-body").innerHTML = `${riceAlert}${timeBar}<p class="cm-step">${stepHtml(steps[at], `${at + 1}. ${String(steps[at]).slice(0, 12)}`, { thumb: true })}</p>
-      ${showAll ? `<div class="cm-uses is-all"><p class="cm-uses-head">📋 材料ぜんぶ <button type="button" class="link-inline" data-cook-mode="uses">この手順だけ</button></p>${ingredientsHtml(recipe.ingredients, amount, "cm-list")}</div>`
+      ${showAll ? `<div class="cm-uses is-all"><p class="cm-uses-head">📋 材料ぜんぶ <button type="button" class="link-inline" data-cook-mode="uses">この手順だけ</button></p>${ingredientsHtml(recipe.ingredients, amount, "cm-list", recipe.markScope)}</div>`
         : `<div class="cm-uses">${usesList ? `<p class="cm-uses-head">🥄 この手順で使う <button type="button" class="link-inline" data-cook-mode="all">ぜんぶ</button></p><ul class="cm-list">${usesList}</ul>` : `<p class="cm-uses-head">🥄 <button type="button" class="link-inline" data-cook-mode="all">材料をぜんぶ見る</button></p>`}</div>`}`;
     el.querySelector('[data-cook-mode="prev"]').disabled = at === 0;
     drawVoice();
@@ -937,6 +945,6 @@ const CookMode = (() => {
     else if (ev.key === "Escape") closeMode();
   });
 
-  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, usesHtml, setRecipe, segment, refineTimes, nudgeTime, setTimeTarget: (t) => { setTarget(t); }, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll, timeTarget }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
+  return { stepHtml, timesIn, sync, supported, start, groupsOf, stepUses, ingredientsHtml, markFor, usesHtml, setRecipe, segment, refineTimes, nudgeTime, setTimeTarget: (t) => { setTarget(t); }, parseVoice, _timers: () => timers, _clearTimers: () => { timers = []; clearInterval(ticker); ticker = null; }, _mode: () => ({ at, loop, showAll, timeTarget }), _hand: () => hand, _voice: () => voice, _see: seeGesture, _hear: hearVoice, _beep: beep, openMode, closeMode };
 })();
 if (typeof module !== "undefined") module.exports = CookMode;

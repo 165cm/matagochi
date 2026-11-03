@@ -121,6 +121,25 @@ test("an old app that does not know sharedPolicies keeps the room's value; a new
   assert.deepEqual((await getSyncRoom(store, ROOM_ID)).data.sharedPolicies, {});
 });
 
+test("an old app that does not know the shopping memory fields keeps itemPrefs, pantryMeta and shopUndone (review 2026-11-03 #5)", async () => {
+  const store = createMemorySyncStore();
+  const itemPrefs = { みりん: { action: "sub", subText: "砂糖＋酒", updatedAt: "2026-11-01T00:00:00Z" } };
+  const pantryMeta = { しょうゆ: { boughtAt: "2026-10-20", cycleDays: 30, updatedAt: "2026-10-20T00:00:00Z" } };
+  const shopUndone = { "2026-11-02": "2026-11-02T10:00:00Z" };
+  const first = await putSyncRoom(store, ROOM_ID, { data: payload({ itemPrefs, pantryMeta, shopUndone }), baseRevision: "" });
+  // #219 より前の版：3つとも知らないので送らない
+  const old = await putSyncRoom(store, ROOM_ID, { data: payload({ recipes: [{ id: "r1", title: "古い版" }] }), baseRevision: first.revision });
+  const afterOld = await getSyncRoom(store, ROOM_ID);
+  assert.deepEqual(afterOld.data.itemPrefs, itemPrefs);
+  assert.deepEqual(afterOld.data.pantryMeta, pantryMeta);
+  assert.deepEqual(afterOld.data.shopUndone, shopUndone);
+  assert.equal(afterOld.data.recipes[0].title, "古い版");
+  // 新しい版：空で送れば、そのまま空になる
+  await putSyncRoom(store, ROOM_ID, { data: payload({ itemPrefs: {}, pantryMeta: {}, shopUndone: {} }), baseRevision: old.revision });
+  const afterNew = await getSyncRoom(store, ROOM_ID);
+  assert.deepEqual([afterNew.data.itemPrefs, afterNew.data.pantryMeta, afterNew.data.shopUndone], [{}, {}, {}]);
+});
+
 test('older clients cannot drop conflict-aware plan data after a room upgrades', async () => {
  const store=createMemorySyncStore();
  const first=await putSyncRoom(store,ROOM_ID,{data:payload({planProtocol:1,planDrafts:{}})});

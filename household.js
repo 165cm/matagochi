@@ -763,6 +763,19 @@ const SHOP_TIMES = ["10:00", "12:00", "17:00", "19:00"];
 function normalizeShopDone(raw) {
   return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && typeof v === "string"));
 }
+// 買い物完了（shopDone）と「買い物前に戻す」の記録（shopUndone）を、端末どうしで合わせる。
+// どちらも回ごとに新しい日時を残し、戻した日時が完了の日時と同じか新しい回は、完了を外す
+// （完了を消すだけだと、同期で相手の端末の完了が戻ってくるため）。
+function mergeShopDone(localDone, remoteDone, localUndone, remoteUndone) {
+  const newest = (a, b) => {
+    const out = { ...normalizeShopDone(a) };
+    for (const [k, v] of Object.entries(normalizeShopDone(b))) if (!out[k] || v > out[k]) out[k] = v;
+    return out;
+  };
+  const shopUndone = newest(localUndone, remoteUndone);
+  const shopDone = Object.fromEntries(Object.entries(newest(localDone, remoteDone)).filter(([k, v]) => !(shopUndone[k] && shopUndone[k] >= v)));
+  return { shopDone, shopUndone };
+}
 function normalizeRhythm(raw) {
   const preset = RHYTHMS[raw?.preset] ? raw.preset : "";
   // 週の始まりは、作る曜日と一緒の時だけ持つ（作る曜日がその週の始まりから順に並んでいる時だけ）。
@@ -996,13 +1009,17 @@ function handleRhythmAction(action, data) {
   } else if (action === "life-rhythm-off" && !isViewer()) state.rhythm = { preset: "", shopTime: state.rhythm.shopTime, updatedAt: nowIso(), dismissed: true };
   else if (action === "life-block-unshop" && data.key && !isViewer()) {
     if (state.shopDone?.[data.key]) {
+      const stamp = nowIso();
       const next = { ...state.shopDone };
       delete next[data.key];
       state.shopDone = next;
+      // 戻した記録を残す（同期で相手の端末の「完了」が戻ってこないように）。
+      state.shopUndone = { ...(state.shopUndone || {}), [data.key]: stamp };
       const b = (typeof planPageBlocks === "function" ? planPageBlocks() : currentBlocks()).find((x) => x.key === data.key);
       const dates = b ? (typeof blockAllDates === "function" ? blockAllDates(b) : b.dates) : [];
       for (const d of dates) {
-        if (state.mealSlots?.[d]?.bought) delete state.mealSlots[d].bought;
+        // 日時も新しくする（同期で相手の端末の「買った」印が戻ってこないように）。
+        if (state.mealSlots?.[d]?.bought) { delete state.mealSlots[d].bought; state.mealSlots[d].updatedAt = stamp; }
       }
       showToast("買い物前に戻しました。");
     }
