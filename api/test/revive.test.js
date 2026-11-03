@@ -180,3 +180,19 @@ test('④ on a day with no room, resting dishes are checked for free: dead ones 
   assert.ok(!ix.retired.includes(dessert), 'a non-dinner dish leaves the line once checked');
   assert.equal(catalog.ai, 0);
 });
+
+test('2026-11-03: among the checked resting dishes, the ideal 12 dishes come back first (then the short groups, then the rest)', async () => {
+  const store = createMemorySyncStore(), catalog = fakeCatalog();
+  const names = ['豚の生姜焼き', '麻婆豆腐', '鮭のムニエル', 'オムライス', '八宝菜', '肉じゃが'];
+  // 休んでいる料理：ふつうの料理がたくさん、理想の12品の作り方は列のいちばん後ろに少しだけ
+  const total = REVIVE_PER_DAY + 40, ideal = names.length * 2;
+  let i = 0;
+  const ids = await oldWeek(store, catalog, total, () => { const k = i++; return k >= total - ideal ? { title: `かんたん${names[(k - (total - ideal)) % names.length]}` } : {}; });
+  const idealIds = ids.slice(-ideal);
+  const book = make(store, catalog);
+  const r = await book.step();
+  assert.equal(r.revived.run, REVIVE_PER_DAY);
+  const back = new Set((await store.get('trends/index')).envelope.weeks.find((w) => w.revived).items.map((x) => x.videoId));
+  assert.ok(idealIds.every((v) => back.has(v)), 'every ideal-dish recipe that was checked comes back');
+  assert.equal(catalog.ai, 0, 'still free');
+});

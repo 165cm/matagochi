@@ -61,6 +61,8 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
   if (refresh?.done === true && !failed(refresh) && (empty(refill) || failed(refill))) problems.push(`親料理の補充：${failed(refill) || "サーバーから返事がありませんでした（通信の失敗・時間切れ）"}`);
   else if (refillStop && !problems.includes(refillStop)) problems.push(`親料理の補充：${refillStop}`);
   else if (PACED[refill?.reason]) notes.push(`親料理の補充：${PACED[refill.reason]}`);
+  // ai_today：1日の AI の回数（25回）を使い切った＝今日の分は終わり。止まったのではない（2026-11-03。以前は「月の予算」と書かれて赤になっていた）。
+  else if (refill?.reason === "ai_today") notes.push("親料理の補充：今日の分（AI 25回）を使い切りました。続きは明日");
   else if (refill && !refillStop && refill.done !== true && refill.reason !== "stocked") notes.push(`親料理の補充は途中です${refill.reason ? `（${refill.reason}）` : ""}`);
   const items = Array.isArray(list?.items) ? list.items : null;
   if (!items) problems.push("いま見えている新着の一覧を読めませんでした");

@@ -289,3 +289,17 @@ test('ideal: the dictionary knows the ideal names and their usual spellings', as
   assert.equal(parentOf('冷しゃぶサラダ')?.name, '冷しゃぶ');
   assert.equal(parentOf('鮭のホイル蒸し')?.name, '鮭のホイル焼き');
 });
+
+test('2026-11-03: when the refill uses up its 25 AI calls for the day, it says so (ai_today), not "monthly budget"', async () => {
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  await withList(store, catalog, times(60, ['ほかの料理', 10]));
+  await start(store);
+  // 読んだ料理がどれも晩ごはんでない＝AI は使うのに料理は増えない → 15品より先に AI 25回に届く
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
+    search: async (q) => { const name = q.split(' ')[0]; return [1, 2, 3].map(() => { const v = vid(); catalog.make.set(v, recipe(v, '簡単プリン', 10)); return { videoId: v, channelId: `c-${v}`, title: `かんたん${name}` }; }); } });
+  const r = await book.refill();
+  assert.equal(r.ran.ai, REFILL_AI_PER_DAY);
+  assert.equal(r.reason, 'ai_today');
+  assert.equal(r.done, true);
+});

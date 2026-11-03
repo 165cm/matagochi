@@ -588,20 +588,30 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     if (!week) { week = { week: weekOf(now()), revived: true, day: today, startedAt: new Date(now()).toISOString(), items: [] }; index.weeks.push(week); }
     const drop = new Set();
     let scanned = 0, revived = 0;
-    // 戻す順は、日ごとに決まるランダムな順（2026-10-28 のユーザーの判断。同じ日は同じ順）。
+    // 確かめる順は、日ごとに決まるランダムな順（2026-10-28 のユーザーの判断。同じ日は同じ順）。
     const order = [...index.retired].sort((a, b) => dailyRank(today, a) - dailyRank(today, b));
+    // 確かめた中から、理想の12品 → 目安より少ない分野（魚・卵豆腐・野菜が主役・さっぱり）の親 → ほか の順に戻す
+    // （2026-11-03 のユーザーの判断：期限切れで理想の12品の作り方が減らないように。同じ段の中はランダムな順のまま）。
+    const gaps = shareGaps(items);
+    const tierOf = (pr) => !pr ? 2 : IDEAL_KEYS.has(pr.key) ? 0 : (gaps[GROUP_OF[pr.key]]?.gap || 0) > 0 || (LIGHT_DISH.test(pr.name || "") && gaps["さっぱり"]?.gap > 0) ? 1 : 2;
+    const found = [];
     for (const v of order) {
-      if (revived >= room || scanned >= REVIVE_SCAN) break;
+      if (scanned >= REVIVE_SCAN) break;
       scanned += 1;
       let r;
       try { r = await peek(v); } catch { continue; } // 読み出せない時は、あとで
       // 読めない（削除・非公開・まだ読んでいない）・晩ごはんでない・日本語でない料理は、休みの列から外す。
       if (dead(r)) { drop.add(v); continue; }
       okSet.add(v);
+      const pr = parentOf(r.title, dbook, r.dishName);
+      found.push({ v, r, pr, tier: tierOf(pr) });
+    }
+    found.sort((a, b) => a.tier - b.tier);
+    for (const { v, r, pr } of found) {
+      if (revived >= room) break;
       // 次のどれかの時は、今日は戻さない（あとで条件が変われば戻せる）：
       //   掲載停止／説明文が30日以内に取り直されていない（caption が空）／投稿者が3%に届いている／親料理の子がそろっている・30分以上がもうある／親のない30分以上
       const quick = isQuickDish(r.planning?.minutes);
-      const pr = parentOf(r.title, dbook, r.dishName);
       const st = pr ? (stock[pr.key] ||= { quick: 0, long: 0, total: 0 }) : null;
       if (excluded.has(v) || (r.channelId && excluded.has(r.channelId)) || !r.caption || !portfolioRoom(port, r.channelId) || (st ? !parentRoom(st, quick, pr.key) : !quick)) continue;
       if (st) { if (quick) st.quick += 1; else st.long += 1; st.total += 1; }
@@ -910,7 +920,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         // 3本を同時に読むので、AI を呼んでよいかの確認（allow）の時点で1回分を確保する（確保したら、呼べなかった時も使った扱い＝多めに数える）。
         let claimed = 0;
         const gate = { allow: () => (claimed < reserved ? ((claimed += 1), true) : false), used: () => { spent += 1; } };
-        const why = () => (reserveFailed ? "cost_not_saved" : committed + claimed >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : monthUsed + claimed >= monthCap ? "month_budget" : monthUsed + claimed >= pace ? "pace_budget" : claimed >= room ? "user_reserve" : "month_budget");
+        const why = () => (reserveFailed ? "cost_not_saved" : committed + claimed >= Math.floor(stage.yen / Math.max(0.01, yenPerAi)) ? "stage_budget" : monthUsed + claimed >= monthCap ? "month_budget" : monthUsed + claimed >= pace ? "pace_budget" : claimed >= room ? "user_reserve" : claimed >= allowed ? "ai_today" : "month_budget");
+        // ai_today：自動の補充の1日の AI の回数（maxAi）を使い切った＝今日の分は終わり（止まったのではない。2026-11-03）。
         const ixEntry = await readIndex();
         const index = openIndex(ixEntry?.envelope);
         let week = index.weeks.find((w) => w.seed && w.stage === stage.n);
