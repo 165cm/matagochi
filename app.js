@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261103-shopping-ux";
+const APP_VERSION = "20261103-shopping-ux-v2";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -464,7 +464,7 @@ function normalizePantryMeta(raw) {
         k,
         {
           lastBoughtAt: normalizeDateInput(v.lastBoughtAt) || "",
-          cycleDays: Number.isInteger(Number(v.cycleDays)) && Number(v.cycleDays) > 0 ? Number(v.cycleDays) : null,
+          cycleDays: v.cycleDays === 0 || v.cycleDays === "0" ? 0 : Number.isInteger(Number(v.cycleDays)) && Number(v.cycleDays) > 0 ? Number(v.cycleDays) : null,
           updatedAt: normalizeTimestamp(v.updatedAt),
         },
       ])
@@ -2324,8 +2324,11 @@ function renderShoppingList() {
 }
 
 function shoppingListText() {
-  const items = dailyShopping().filter(item=>item.status==='buy');
-  return items.length ? [`買い物リスト（リピごち ${formatDate(today())}）`,...items.map(item=>`・${item.name} ${item.amount}`)].join('\n') : '';
+  const src = typeof shopPageItems === "function" ? shopPageItems() : dailyShopping();
+  const buyItems = src.filter((item) => item.status === "buy");
+  const items = buyItems.length ? buyItems : src.filter((item) => item.status === "purchased");
+  const head = buyItems.length ? `買い物リスト（リピごち ${formatDate(today())}）` : `購入済みメモ（リピごち ${formatDate(today())}）`;
+  return items.length ? [head, ...items.map((item) => `・${item.name} ${item.amount}`)].join("\n") : "";
 }
 
 async function copyTextToClipboard(text) {

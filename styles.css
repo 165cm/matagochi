@@ -2515,66 +2515,134 @@ button.tile-title { padding: 0; border: 0; background: none; font: inherit; font
 body.bars-hidden .topbar { transform: translateY(-110%); }
 body.bars-hidden .bottom-tabs { transform: translate(-50%, 110%); }
 body.bars-hidden .playlist-footer, body.bars-hidden .cooking-primary { bottom: env(safe-area-inset-bottom); }
-.shop-head { display: flex; flex-direction: column; gap: 8px; margin: 0 0 8px; }
-.shop-tabs-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.shop-tabs { display: flex; }
-.shop-tabs .choice-button { min-height: 32px; padding: 4px 10px; font-size: 13px; font-weight: 700; }
-.shop-tabs .choice-button.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
-.shop-combine-btn { background: #fdf5eb; border: 1.5px dashed #e8ba7a; color: #8a5814; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 12px; min-height: 32px; cursor: pointer; }
-.shop-combine-btn.is-active { background: #fff1e5; border-color: var(--tomato); color: var(--tomato); border-style: solid; }
-.shop-subhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.shop-head-actions { display: flex; align-items: center; gap: 8px; }
-.shop-pantry-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 10px; padding: 4px 8px; font-size: 12px; font-weight: 700; min-height: 34px; color: var(--ink); cursor: pointer; }
-.shop-pantry-btn strong { color: var(--tomato); font-size: 14px; margin-left: 2px; }
-.pantry-alert-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tomato); margin-left: 2px; }
+.shop-head { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; }
+.shop-plan-dots { margin: 0; }
+.shop-pantry-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 999px; padding: 0 11px; font-size: 12px; font-weight: 800; min-height: 36px; color: var(--ink); cursor: pointer; touch-action: manipulation; }
+.shop-pantry-btn strong { color: var(--tomato); font-size: 13px; margin-left: 2px; }
+.pantry-alert-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tomato); margin-left: 1px; }
+
+/* 買い物前／買い物済みステータスカード */
+.shop-status-card { display: grid; gap: 8px; padding: 12px 14px; border-radius: 18px; background: var(--surface); border: 1.5px solid var(--line); box-shadow: 0 2px 8px rgba(50, 30, 10, .04); }
+.shop-status-card.is-before { border-color: #ecd6be; background: linear-gradient(180deg, #fffdf9 0%, var(--surface) 100%); }
+.shop-status-card.is-ready { border-color: var(--tomato); background: #fff8f3; }
+.shop-status-card.is-shopped { border-color: #b7d7bd; background: linear-gradient(180deg, #f3faf4 0%, #f9fcf9 100%); }
+.shop-status-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.shop-status-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.shop-block-range { font-size: 17px; font-weight: 900; color: var(--ink); letter-spacing: .01em; }
+.shop-state-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; line-height: 1.3; white-space: nowrap; }
+.shop-state-pill.is-before { background: #fff0e6; color: #c54424; border: 1px solid #f7c7b0; }
+.shop-state-pill.is-ready { background: var(--tomato); color: #fff; }
+.shop-state-pill.is-done { background: #dff1e2; color: #1f6b2e; border: 1px solid #b3dab9; }
+.shop-state-pill.is-empty { background: #f2ede4; color: var(--muted); }
+
+.shop-combine-row { display: flex; align-items: center; }
+.shop-combine-btn { width: 100%; background: #fdf6ec; border: 1.5px dashed #e3b982; color: #7d4e12; font-size: 12.5px; font-weight: 800; padding: 6px 12px; border-radius: 12px; min-height: 34px; cursor: pointer; text-align: center; transition: background .15s, border-color .15s; }
+.shop-combine-btn.is-active { background: #fff1e6; border-color: var(--tomato); color: var(--tomato); border-style: solid; }
+.shop-combine-btn.is-undecided { background: var(--surface); border-color: var(--line); color: var(--muted); }
+
 .shop-head .trip-meals { flex: 1; min-width: 0; margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
-.shop-head .trip-range { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
-.shop-head .trip-row { display: flex; gap: 4px; overflow-x: auto; }
-.shop-head .trip-meal { position: relative; flex: 0 0 auto; width: 36px; min-height: 0; padding: 0; border: 0; background: none; }
-.shop-head .trip-meal .dish-tile { width: 36px; height: 36px; border-radius: 10px; }
+.shop-head .trip-range { margin: 0 0 4px; font-size: 11.5px; color: var(--muted); }
+.shop-head .trip-row { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
+.shop-head .trip-meal { position: relative; flex: 0 0 auto; width: 38px; min-height: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.shop-head .trip-meal .dish-tile { width: 38px; height: 38px; border-radius: 10px; }
 .shop-head .trip-meal .dish-tile small { display: none; }
-.shop-head .trip-meal > small { position: absolute; top: auto; left: auto; right: -3px; bottom: -3px; font-size: 9px; line-height: 1; padding: 2px 3px; border-radius: 6px; background: var(--surface); }
+.shop-head .trip-meal > small { position: absolute; top: auto; left: auto; right: -3px; bottom: -2px; font-size: 9.5px; font-weight: 800; line-height: 1; padding: 2px 3.5px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); }
 .shop-head .shop-progress { flex: 0 0 auto; display: grid; justify-items: end; gap: 3px; margin: 0; padding: 0; background: none; border: 0; font-size: 12px; }
-.shop-head .shop-progress strong { font-size: 18px; color: var(--tomato); margin-left: 2px; }
-.shop-head .shop-bar { width: 64px; height: 5px; }
+.shop-head .shop-progress strong { font-size: 17px; color: var(--tomato); margin: 0 2px; }
+.shop-status-card.is-shopped .shop-progress strong { color: #1f6b2e; }
+.shop-head .shop-bar { width: 68px; height: 5px; }
+.shop-status-card.is-shopped .shop-bar i { background: #2f855a; }
 .shop-head .shop-progress small { font-size: 10px; color: var(--muted); }
+
 .shop-menu { position: relative; flex: 0 0 auto; }
-.shop-menu > summary { list-style: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); font-weight: 900; cursor: pointer; }
+.shop-menu > summary { list-style: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); font-weight: 900; cursor: pointer; touch-action: manipulation; }
 .shop-menu > summary::-webkit-details-marker { display: none; }
-.shop-menu-list { position: absolute; right: 0; top: 42px; z-index: 5; display: grid; gap: 6px; width: 190px; padding: 10px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(60, 30, 10, .15); }
+.shop-menu-list { position: absolute; right: 0; top: 44px; z-index: 25; display: grid; gap: 6px; width: 204px; padding: 10px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(60, 30, 10, .16); }
 .shop-menu-list button { width: 100%; min-height: 40px; font-size: 13px; }
-.aisle-group { display: grid; grid-template-columns: 22px 1fr; border-top: 1px solid var(--line); }
+
+.shop-swipe-hint { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0 2px 6px; font-size: 11.5px; }
+.shop-sec-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 10px 2px 6px; font-size: 14px; font-weight: 800; color: var(--ink); }
+.shop-sec-head small { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--muted); }
+.shop-sec-head.is-done { color: #1f6b2e; }
+.shop-bought-board { margin-bottom: 12px; }
+.shop-list { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; margin-bottom: 10px; }
+.shop-list.is-purchased-list { border-color: #c7decb; background: #fbfdfb; }
+.shop-list.is-purchased-list .daily-shopping-check input:checked { background: #2f855a; border-color: #2f855a; }
+.shop-list.is-purchased-list .shop-line strong { color: #4c5c50; }
+
+.aisle-group { display: grid; grid-template-columns: 24px 1fr; border-top: 1px solid var(--line); }
 .aisle-group:first-child { border-top: 0; }
-.aisle-tag { margin: 0; writing-mode: vertical-rl; text-orientation: upright; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; letter-spacing: 0; line-height: 1.05; padding: 2px 0; background: var(--surface-soft, #fff4e8); color: var(--muted); overflow: hidden; white-space: nowrap; }
+.aisle-tag { margin: 0; writing-mode: vertical-rl; text-orientation: upright; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; letter-spacing: 0; line-height: 1.05; padding: 4px 0; background: var(--surface-soft, #fff4e8); color: var(--muted); overflow: hidden; white-space: nowrap; }
+.shop-list.is-purchased-list .aisle-tag { background: #edf6ee; color: #4c6b52; }
 .aisle-items { min-width: 0; }
-.aisle-items .daily-shopping-row { position: relative; display: flex; flex-direction: column; min-height: 38px; padding: 0 6px; margin: 0; border: 0; border-top: 1px dashed var(--line); border-radius: 0; background: none; box-shadow: none; overflow: hidden; }
+
+/* Gmail風 1行完結スワイプ行（買い物リスト＆常備品共通） */
+.swipe-row { position: relative; overflow: hidden; background: var(--surface); user-select: none; -webkit-user-select: none; }
+.aisle-items .daily-shopping-row { min-height: 44px; padding: 0; margin: 0; border: 0; border-top: 1px dashed var(--line); border-radius: 0; box-shadow: none; }
 .aisle-items .daily-shopping-row:first-child { border-top: 0; }
-.shop-row-main { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 38px; }
-.aisle-items .daily-shopping-check { flex: 1; min-width: 0; min-height: 38px; display: flex; align-items: center; gap: 8px; }
+.swipe-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; background: #f2ebe1; pointer-events: none; z-index: 0; }
+.swipe-row.is-dragging-right .swipe-bg { background: #dff2e2; }
+.swipe-bg-left { display: flex; align-items: center; gap: 7px; padding-left: 12px; color: #1e6b2d; font-size: 12px; font-weight: 800; opacity: 0; transition: opacity .12s ease; }
+.swipe-bg-left.is-uncheck { color: #6e5d4f; }
+.swipe-row.is-dragging-right .swipe-bg-left { opacity: 1; }
+.swipe-circle { width: 30px; height: 30px; border-radius: 50%; background: #2f855a; color: #fff; display: grid; place-items: center; font-size: 15px; font-weight: 900; box-shadow: 0 2px 6px rgba(30, 90, 45, .24); transition: transform .12s ease, background .12s ease; }
+.swipe-bg-left.is-uncheck .swipe-circle { background: #7b6c5e; }
+.swipe-row.is-armed .swipe-circle { background: #1b6e32; box-shadow: 0 0 0 4px rgba(47, 133, 90, .22); }
+
+.swipe-bg-right { margin-left: auto; height: 100%; display: flex; align-items: stretch; gap: 4px; padding: 4px 6px; opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+.swipe-row.is-dragging-left .swipe-bg-right,
+.swipe-row.is-swiped-left .swipe-bg-right,
+.swipe-row.is-peek-demo .swipe-bg-right { opacity: 1; }
+.swipe-row.is-swiped-left .swipe-bg-right { pointer-events: auto; }
+.swipe-act { width: 54px; min-width: 54px; border: 0; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 2px 4px; font: inherit; cursor: pointer; touch-action: manipulation; }
+.swipe-act span { font-size: 14px; line-height: 1.1; }
+.swipe-act small { font-size: 10.5px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.swipe-act.act-have { background: #dff1e1; color: #1f6428; }
+.swipe-act.act-sub { background: #ffe8dc; color: #b44225; }
+.swipe-act.act-skip { background: #e8e3da; color: #5c554c; }
+.swipe-act.act-buy { background: var(--tomato); color: #fff; }
+
+.swipe-front { position: relative; z-index: 1; background: var(--surface); touch-action: pan-y; will-change: transform; transition: transform .24s cubic-bezier(.22, 1, .36, 1); }
+.shop-list.is-purchased-list .swipe-front { background: #fbfdfb; }
+.shop-row-main { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 44px; padding: 2px 4px 2px 8px; }
+.daily-shopping-row.is-swiped-left .swipe-front { transform: translate3d(-178px, 0, 0); box-shadow: 4px 0 12px rgba(45, 25, 10, .10); border-radius: 0 10px 10px 0; }
+.daily-shopping-row.has-4-acts.is-swiped-left .swipe-front { transform: translate3d(-236px, 0, 0); }
+.is-purchased-list .daily-shopping-row.is-swiped-left .swipe-front,
+.shopping-fold .daily-shopping-row:not(.has-4-acts).is-swiped-left .swipe-front { transform: translate3d(-68px, 0, 0); }
+.daily-shopping-row.is-peek-demo .swipe-front { animation: swipePeek 1.25s .45s cubic-bezier(.22, 1, .36, 1) 1; }
+@keyframes swipePeek {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  38%, 58% { transform: translate3d(-56px, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .daily-shopping-row.is-peek-demo .swipe-front { animation: none; }
+}
+
+.aisle-items .daily-shopping-check { flex: 1; min-width: 0; min-height: 42px; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 2px 0; }
 .aisle-items .daily-shopping-check input { width: 24px; height: 24px; flex-shrink: 0; }
 .aisle-items .daily-shopping-check input:checked::after { width: 10px; height: 6px; }
 .shop-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex-wrap: wrap; }
-.shop-line strong { flex: 0 1 auto; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shop-line strong { flex: 0 1 auto; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .shop-line small { flex: 0 10 auto; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sub-hint { color: #b4462c; font-weight: 700; background: #fff1eb; padding: 1px 4px; border-radius: 4px; }
-.skip-hint { color: var(--muted); background: #f0ede8; padding: 1px 4px; border-radius: 4px; }
-.use-days { flex: 0 0 auto; display: flex; gap: 3px; }
+.shop-line .notice { padding: 1px 6px; margin: 0; font-size: 11px; font-weight: 700; line-height: 1.3; border-radius: 6px; flex: 0 0 auto; }
+.sub-hint { color: #b4462c; font-weight: 700; background: #fff1eb; padding: 1px 5px; border-radius: 5px; }
+.skip-hint { color: var(--muted); background: #f0ede8; padding: 1px 5px; border-radius: 5px; }
+.use-days { flex: 0 0 auto; display: flex; gap: 3px; margin-right: 2px; }
 .use-day-badge { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font-size: 10.5px; font-weight: 700; background: #ede4d6; color: var(--ink); line-height: 1; }
 .use-day-badge.is-near { background: #ffe2d6; color: var(--tomato); font-weight: 800; border: 1px solid #fec3b0; }
-.shop-pref-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: #fff0e7; border: 1px solid #f9cdb8; color: #b4462c; cursor: pointer; white-space: nowrap; }
+.shop-pref-badge { flex: 0 0 auto; display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 7px; min-height: 28px; border-radius: 8px; background: #fff0e7; border: 1px solid #f9cdb8; color: #b4462c; cursor: pointer; white-space: nowrap; touch-action: manipulation; }
 .shop-pref-badge.is-skip { background: #f4f2ee; border-color: #dcd8d0; color: #726b63; }
-.shop-opt-btn { font-size: 15px; font-weight: 900; color: var(--muted); }
-.shop-actions-drawer { display: none; align-items: center; gap: 6px; padding: 6px 4px; background: #faf4ec; border-radius: 8px; margin: 2px 0 4px; animation: slideDown .15s ease; }
-.daily-shopping-row.is-action-open .shop-actions-drawer { display: flex; }
-.drawer-action { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
-.drawer-action.drawer-have { background: #eaf5e9; border-color: #badcba; color: #2e662c; }
-.drawer-action.drawer-sub { background: #fff2eb; border-color: #f7ceba; color: #b4462c; }
-.drawer-action.drawer-skip { background: #f0ede8; border-color: #d9d4cc; color: #6e675d; }
-.drawer-action.drawer-buy { background: var(--ink); color: #fff; }
-.aisle-items .shopping-inline { flex: 0 0 auto; width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; font-size: 13px; opacity: .75; }
+
+/* 右端の「⋯」「✕」ボタン：指で確実に押せる40pxタップ領域 */
+.shop-row-btn { position: relative; z-index: 2; flex: 0 0 auto; width: 38px; min-width: 38px; height: 40px; min-height: 40px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 16px; font-weight: 900; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; }
+.shop-row-btn:hover, .shop-row-btn:active { background: rgba(60, 35, 15, .07); color: var(--ink); }
+.shop-del-btn { font-size: 13px; color: #a18878; }
+.shop-del-btn:hover, .shop-del-btn:active { background: #ffece6; color: var(--tomato); }
+
+.aisle-items .later-btn { flex: 0 0 auto; min-height: 28px; height: 28px; padding: 0 8px; border-radius: 999px; font-size: 11px; }
 .shopping-fold .aisle-group { border: 0; margin-top: 4px; }
-.shop-add { margin: 10px 0 0; }
-.shop-add > summary { cursor: pointer; font-weight: 700; color: var(--tomato); padding: 8px 2px; }
+.shop-add { margin: 10px 0 12px; }
+.shop-add > summary { cursor: pointer; font-weight: 700; color: var(--tomato); padding: 6px 2px; }
 .shop-done-sheet { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 6; width: min(calc(100% - 24px), 406px); transform: translateX(-50%); padding: 14px; border-radius: 20px; background: var(--surface); border: 2px solid var(--tomato); box-shadow: 0 12px 36px rgba(60, 30, 10, .22); animation: sheetUp .25s ease; }
 body.bars-hidden .shop-done-sheet { bottom: calc(12px + env(safe-area-inset-bottom)); }
 .shop-done-sheet p { margin: 0 0 10px; font-size: 15px; }
@@ -2582,35 +2650,44 @@ body.bars-hidden .shop-done-sheet { bottom: calc(12px + env(safe-area-inset-bott
 .shop-done-sheet div { display: flex; gap: 8px; align-items: center; }
 .shop-done-sheet .primary-button { flex: 1; }
 @keyframes sheetUp { from { transform: translate(-50%, 30px); opacity: 0; } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* 常備品画面の新スタイル */
-.pantry-head { display: flex; align-items: center; gap: 8px; }
-.pantry-head h2 { margin: 0; font-size: 22px; }
-.pantry-section-title { font-size: 15px; margin: 16px 0 8px; display: flex; align-items: center; gap: 6px; font-weight: 800; color: var(--ink); }
-.pantry-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
-.pantry-item-card { display: flex; flex-direction: column; background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 6px 8px; box-sizing: border-box; }
-.pantry-item-card.is-out { border-color: #f7a996; background: #fff7f5; }
-.pantry-item-card.is-due { border-color: #f6cca8; background: #fff9f2; }
-.pantry-item-main { display: flex; align-items: flex-start; gap: 6px; background: none; border: 0; padding: 0; width: 100%; text-align: left; cursor: pointer; color: inherit; font: inherit; }
-.pantry-emoji { font-size: 20px; line-height: 1.2; flex-shrink: 0; }
-.pantry-name-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.pantry-name { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pantry-in-trip-badge { display: inline-block; font-size: 10px; font-weight: 700; color: #b4462c; background: #fff0eb; border-radius: 4px; padding: 1px 4px; width: fit-content; margin-top: 2px; }
-.pantry-meta-text { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.pantry-status-badge { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: #eee7dc; color: #555; flex-shrink: 0; }
-.pantry-item-card.is-have .pantry-status-badge { background: #e3f2e1; color: #236522; font-weight: 800; }
-.pantry-item-card.is-out .pantry-status-badge { background: #ffe4de; color: #b4462c; font-weight: 800; }
-.pantry-item-foot { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
-.pantry-cycle-select { font-size: 11px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
-.pantry-buy-btn { font-size: 11px; font-weight: 700; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--tomato); background: #fff2ed; color: var(--tomato); cursor: pointer; }
-.pantry-search-box { margin: 8px 0; }
-.pantry-cat-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; }
-.pantry-cat-tabs .choice-button { min-height: 28px; padding: 2px 8px; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-.pantry-cat-tabs .choice-button.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
-.pantry-group-heading { font-size: 13px; margin: 12px 0 6px; color: var(--muted); font-weight: 700; }
-.pantry-add { margin-top: 14px; }
+/* 常備品画面：1行スリム一覧＋横スライド操作 */
+.pantry-page { display: grid; gap: 10px; }
+.pantry-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pantry-help-line { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.pantry-toolbar { display: grid; gap: 8px; }
+.pantry-search-input { height: 40px; border-radius: 12px; font-size: 14px; }
+.pantry-cat-tabs { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; }
+.pantry-cat-tabs .choice-button { min-height: 30px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+.pantry-cat-tabs .choice-button.is-active { background: var(--tomato); color: #fff; border-color: var(--tomato); }
+.pantry-section-title { font-size: 13.5px; margin: 4px 2px 6px; display: flex; align-items: center; gap: 6px; font-weight: 800; color: var(--ink); }
+.pantry-group-block { display: grid; gap: 4px; }
+.pantry-group-heading { font-size: 12.5px; margin: 6px 4px 2px; color: var(--muted); font-weight: 800; display: flex; align-items: center; gap: 6px; }
+.pantry-group-heading small { font-weight: 700; opacity: .75; }
+.pantry-list-box { border: 1px solid var(--line); border-radius: 15px; background: var(--surface); overflow: hidden; }
+.pantry-alert-section .pantry-list-box { border-color: #f3bda8; }
+.pantry-swipe-row { border-top: 1px solid var(--line); }
+.pantry-swipe-row:first-child { border-top: 0; }
+.pantry-swipe-row.is-out .swipe-front { background: #fffaf8; }
+.pantry-swipe-row.is-due .swipe-front { background: #fffcf5; }
+.pantry-swipe-row.is-swiped-left .swipe-front { transform: translate3d(-172px, 0, 0); box-shadow: 4px 0 12px rgba(45, 25, 10, .10); border-radius: 0 10px 10px 0; }
+.pantry-bg-right { align-items: center; gap: 6px; padding: 4px 8px; }
+.pantry-cycle-select { height: 32px; font-size: 11.5px; font-weight: 700; padding: 0 6px; border: 1px solid #d8cfc2; border-radius: 8px; background: var(--surface); color: var(--ink); }
+
+.pantry-row-front { display: flex; align-items: center; gap: 4px; min-height: 42px; padding: 0 4px 0 12px; }
+.pantry-item-main { flex: 1; min-width: 0; min-height: 42px; display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 4px 0; text-align: left; cursor: pointer; color: inherit; font: inherit; touch-action: manipulation; }
+.pantry-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; border: 2px solid #cfc5b7; background: transparent; transition: transform .12s, background .12s, border-color .12s; }
+.pantry-swipe-row.is-have .pantry-dot { background: #2f855a; border-color: #2f855a; }
+.pantry-swipe-row.is-out .pantry-dot { background: #ffe4dc; border-color: var(--tomato); }
+.pantry-name { font-size: 14px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pantry-swipe-row.is-unconfirmed .pantry-name { color: var(--muted); font-weight: 600; }
+.pantry-out-badge { flex-shrink: 0; font-size: 10.5px; font-weight: 800; color: #c53d1f; background: #ffe6df; border-radius: 6px; padding: 1px 6px; }
+.pantry-in-trip-badge { flex-shrink: 0; font-size: 10.5px; font-weight: 800; color: #8a5210; background: #fdf0db; border-radius: 6px; padding: 1px 6px; }
+.pantry-due-tag { flex-shrink: 0; font-size: 11px; font-weight: 800; color: #b4462c; background: #fff0e6; border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+.pantry-cycle-meta { margin-left: auto; padding-right: 2px; font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.pantry-quick-shop { flex-shrink: 0; min-height: 28px; padding: 0 9px; border-radius: 999px; border: 1px solid #f5bba8; background: #fff2ed; color: var(--tomato); font-size: 11.5px; font-weight: 800; cursor: pointer; touch-action: manipulation; }
+.pantry-add { margin-top: 6px; }
 
 /* 作る画面・料理モードでの代用・なしバッジ */
 .ing-mark-badge { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 1px 4px; margin-left: 6px; vertical-align: middle; }
@@ -2625,6 +2702,7 @@ body.bars-hidden .shop-done-sheet { bottom: calc(12px + env(safe-area-inset-bott
 body.has-page-title .app-logo { display: none; }
 body.has-page-title .page-title { display: block; }
 .topbar-actions { display: flex; align-items: center; gap: 6px; }
+.topbar-actions .page-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin: 0; }
 .topbar-actions:empty { display: none; }
 .topbar-actions .round-icon, .profile-button { width: 38px; height: 38px; min-height: 38px; }
 .topbar-actions .round-icon svg, .profile-button svg { width: 20px; height: 20px; }

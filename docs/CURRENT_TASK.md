@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| 買い物・常備品UXの再デザインと不具合改修（献立と同一タブUI・買い物完了後のリスト保持・新規献立反映修正・Gmail風横スワイプ・常備品1行圧縮＆デフォルト賞味期限周期・スーパー売場分類） | レビュー待ち | feat/shopping-ux-polish | 実機確認フィードバック対応：①献立の `.plan-dots` とタブ・ブロック定義を完全統一 ②買い物完了後も購入済み/買い物前が明確なリスト表示 ③新規献立が買い物リストに反映されない不具合修正 ④指追従のGmail風物理横スワイプ＆右ボタン押下修正 ⑤常備品1行スリム化・`ⓘ`格納・デフォルト賞味期限周期 ⑥スーパー売場ベースの調味料・食材分類再整理 | aisles.js, lifestyle.js, daily-ui.js, household.js, app.js, styles.css, sw.js, index.html, version.json, test/shopping-ux.test.cjs, docs/* |
 | 新着集めの健康診断の誤った赤・休んでいる料理の戻す順（2026-11-03 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 補充が1日の AI 25回に届いた時の理由を `ai_today` に（「月の予算」と出て赤になっていた）・休んでいる料理は理想の12品→足りない分野→ほかの順に戻す | api/src/trends.js, scripts/trends-health.cjs, api/test/refill.test.js, api/test/revive.test.js, test/trends-health.test.cjs, docs/* |
 | 買い物タブUX最適化（前回/今回/次回タブ・次回合算・スワイプ代用/パス＆リピート記憶・曜日バッジ・常備品カテゴリと周期アラート） | 公開済み（#219） | feat/shopping-ux-redesign | ユーザーの依頼：3日分デフォルト＆前回/今回/次回タブ、次回分まとめ買い結合、左右スワイプ操作（代用/パス）とリピート記憶、料理写真を曜日バッジ化、主食確認を常備品に統合、上部常備品ボタン（今回使う品数表示）、常備品自動カテゴリ分け・周期アラート・1タップ買い足し。APP_MAP §62 | lifestyle.js, daily-ui.js, household.js, app.js, cook-mode.js, styles.css, sw.js, index.html, version.json, test/shopping-ux.test.cjs, docs/* |
 | 管理画面のレシピ修正・確認ダイアログのUI再構築（動画常時表示・左右2カラム・手順と時刻の統合編集） | 公開済み（#218） | feat/admin-recipe-dialog-redesign | ユーザーの依頼：動画と手順を常時同時に見比べながら修正・確認できるよう、2カラム（スマホは上部固定）＋3タブ（手順と時刻／材料・人数／AI作り直し・その他）へ再構築。手順の文と時刻の統合編集・リアルタイム再生連動・動画位置維持。APP_MAP §52-13 | admin/catalog.html, test/admin-recipe-ui.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |

@@ -915,11 +915,17 @@ function boardHint() {
   return untilText || "おつかれさま！";
 }
 function renderBlockShoppingDone(items) {
-  const sb = typeof shopBlocks === "function" ? shopBlocks() : null;
-  const b = (sb && sb.current) || shoppingBlock();
+  const b = typeof activeShopBlock === "function" ? activeShopBlock() : shoppingBlock();
   if (isViewer() || !b) return "";
-  const all = items.length && items.every((i) => i.status !== "buy");
-  const label = all ? "✓ 買い物を終える" : "残りはあとで買う";
+  if (state.shopDone?.[b.key]) {
+    const hasNew = items.some((i) => i.status === "buy");
+    if (!hasNew) return `<button type="button" class="secondary-button" data-action="life-block-unshop" data-key="${b.key}">買い物前に戻す</button>`;
+  }
+  if (!items.length) return "";
+  const buyCount = items.filter((i) => i.status === "buy").length;
+  const purchasedCount = items.filter((i) => i.status === "purchased").length;
+  const all = buyCount === 0;
+  const label = all ? "✓ 買い物を終える" : purchasedCount > 0 ? "残りはあとで買う" : "✓ まとめて買い物済みにする";
   return dailyButton("life-block-shopped", label, `data-key="${b.key}"`, all);
 }
 // 作る曜日を選んでいる途中（日数がそろうまでは保存しない）。
@@ -988,14 +994,28 @@ function handleRhythmAction(action, data) {
   } else if (action === "life-rhythm-shopday" && rhythmOn() && !isViewer()) {
     applyRhythm({ preset: state.rhythm.preset, days: rhythmBlocks().flat(), start: rhythmStart(), shopBefore: data.before === "0" ? 0 : 1 });
   } else if (action === "life-rhythm-off" && !isViewer()) state.rhythm = { preset: "", shopTime: state.rhythm.shopTime, updatedAt: nowIso(), dismissed: true };
-  else if (action === "life-block-shopped" && !isViewer()) {
-    // One trip covers every block that is decided by now.
+  else if (action === "life-block-unshop" && data.key && !isViewer()) {
+    if (state.shopDone?.[data.key]) {
+      const next = { ...state.shopDone };
+      delete next[data.key];
+      state.shopDone = next;
+      const b = (typeof planPageBlocks === "function" ? planPageBlocks() : currentBlocks()).find((x) => x.key === data.key);
+      const dates = b ? (typeof blockAllDates === "function" ? blockAllDates(b) : b.dates) : [];
+      for (const d of dates) {
+        if (state.mealSlots?.[d]?.bought) delete state.mealSlots[d].bought;
+      }
+      showToast("買い物前に戻しました。");
+    }
+  } else if (action === "life-block-shopped" && !isViewer()) {
     const stamp = nowIso();
-    const items = typeof dailyShopping === "function" ? dailyShopping() : [];
-    const unbought = items.filter((i) => i.status === "buy" && !i.id.startsWith("manual-"));
+    const items = typeof shopPageItems === "function" ? shopPageItems() : typeof dailyShopping === "function" ? dailyShopping() : [];
+    const purchasedCount = items.filter((i) => i.status === "purchased").length;
+    const unbought = purchasedCount > 0 ? items.filter((i) => i.status === "buy" && !i.id.startsWith("manual-")) : [];
     if (unbought.length) {
       state.manualShopping = state.manualShopping || {};
+      state.shoppingMarks = state.shoppingMarks || {};
       for (const item of unbought) {
+        state.shoppingMarks[item.id] = { status: "later", signature: item.signature, updatedAt: stamp };
         const id = generateId("manual-");
         state.manualShopping[id] = {
           name: `${item.name}（あとで買う）`.slice(0, 100),
@@ -1004,8 +1024,24 @@ function handleRhythmAction(action, data) {
         };
       }
     }
-    const keys = [data.key, ...currentBlocks().filter((x) => blockStatus(x) === "decided").map((x) => x.key)];
-    state.shopDone = { ...(state.shopDone || {}), ...Object.fromEntries(keys.map((k) => [k, stamp])) };
+    const keys = [data.key];
+    if (typeof shopCombineNext !== "undefined" && shopCombineNext) {
+      const sb = typeof shopBlocks === "function" ? shopBlocks() : null;
+      if (sb?.next && sb.next.dates.some((d) => state.mealSlots?.[d]?.status === "confirmed")) {
+        keys.push(sb.next.key);
+      }
+      if (typeof resetShopCombine === "function") resetShopCombine();
+    }
+    const allBlocks = typeof planPageBlocks === "function" ? planPageBlocks() : currentBlocks();
+    for (const k of keys.filter(Boolean)) {
+      const b = allBlocks.find((x) => x.key === k);
+      const dates = b ? (typeof blockAllDates === "function" ? blockAllDates(b, allBlocks) : b.dates) : [];
+      for (const d of dates) {
+        const s = state.mealSlots?.[d];
+        if (s && s.status === "confirmed" && !s.bought) s.bought = stamp;
+      }
+    }
+    state.shopDone = { ...(state.shopDone || {}), ...Object.fromEntries(keys.filter(Boolean).map((k) => [k, stamp])) };
     showToast(unbought.length ? `残りの${unbought.length}品は次回へ引き継ぎました。買い物を完了しました。` : "おつかれさま！ 買い物を完了しました。");
   } else return false;
   saveState(); render(); return true;
