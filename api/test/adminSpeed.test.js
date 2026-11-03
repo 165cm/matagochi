@@ -161,6 +161,9 @@ test('admin recipes: each recipe carries its timecode level (steps, steps with a
   await store.put(`youtube-${ids[0]}`, { status: 'ready', result: { ...base, title: 'すべて', steps: ['切る', '焼く', '盛る'], stepTimes: [5, 30, 60], stepTimesFrom: 'transcript' } }, { ifGeneration: 0 });
   await store.put(`youtube-${ids[1]}`, { status: 'ready', result: { ...base, title: '一部', steps: ['切る', '焼く', '盛る'], stepTimes: [5, null, null], analyzedFrom: 'video' } }, { ifGeneration: 0 });
   await store.put(`youtube-${ids[2]}`, { status: 'ready', result: { ...base, title: 'なし', steps: ['切る', '焼く'], stepTimes: [] } }, { ifGeneration: 0 });
+  // 空の手順があっても、時刻は手順の位置ごと（空の手順は数えない）。review fix (#225)
+  await store.put(`popular/${month}`, { recipes: Object.fromEntries([...ids, 'tcddddddddd'].map((id, i) => [id, { shown: 10, planned: 10 - i, cooked: 0 }])) }, { ifGeneration: 1 });
+  await store.put('youtube-tcddddddddd', { status: 'ready', result: { ...base, title: '空の手順', steps: ['切る', '', '焼く', '盛る'], stepTimes: [5, null, 30, 60], stepTimesFrom: 'transcript' } }, { ifGeneration: 0 });
   const app = createApp({ RECIPE_ADMIN_TOKEN: 'admin-test-token' }, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [] });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -170,5 +173,6 @@ test('admin recipes: each recipe carries its timecode level (steps, steps with a
   assert.deepEqual(tc['すべて'], { n: 3, k: 3, source: 'transcript' });
   assert.deepEqual(tc['一部'], { n: 3, k: 1, source: 'video' });
   assert.deepEqual(tc['なし'], { n: 2, k: 0, source: '' });
+  assert.deepEqual(tc['空の手順'], { n: 3, k: 3, source: 'transcript' });
   assert.ok(recipes.every((r) => !('src' in r)), 'the raw steps are not sent');
 });

@@ -466,16 +466,18 @@ export function createApp(env = process.env, deps = {}) {
       }
       // 最後に、結びつけたすべての料理を掲載停止で確かめる（新着の一覧が停止前のキャッシュでも、停止した料理を出さない）。
       const recipes = [...byId.values()].filter((x) => !excluded.has(x.videoId) && !(x.channelId && excluded.has(x.channelId)));
-      const dishes = await dishBook.classify(recipes).catch(() => ({}));
-      for (const x of recipes) x.dish = dishes[x.videoId] || null;
       // 手順の時刻（2026-11-03）：作る画面と同じ選び方（timesOf）で、手順の数・時刻のある手順の数・出どころ。0円（保存済みを読むだけ）。
-      await mapLimit(recipes, ADMIN_READ_CONCURRENCY, async (x) => {
+      // 親の料理名の振り分け（classify）とは関係ないので、同時に進める。
+      // 時刻は手順の位置ごと（空の手順も位置を持つ）。保存済みの時刻（timecodes/*）は手順30個までなので、それより多い時はレシピの時刻の長さまで数える。
+      const [dishes] = await Promise.all([dishBook.classify(recipes).catch(() => ({})), mapLimit(recipes, ADMIN_READ_CONCURRENCY, async (x) => {
         const src = x.src; delete x.src;
-        const n = (src.steps || []).filter((t) => String(t || "").trim()).length;
         let times = [], source = "";
         try { ({ times, source } = await timesOf(canonicalYouTubeUrl(x.videoId), src)); } catch {}
-        x.tc = { n, k: (times || []).slice(0, n).filter((t) => Number.isFinite(t)).length, source: source || "" };
-      });
+        const steps = (src.steps || []).slice(0, Math.max(30, (times || []).length));
+        const real = steps.map((t) => !!String(t || "").trim());
+        x.tc = { n: real.filter(Boolean).length, k: real.filter((ok, i) => ok && Number.isFinite((times || [])[i])).length, source: source || "" };
+      })]);
+      for (const x of recipes) x.dish = dishes[x.videoId] || null;
       return { recipes };
     })());
   });

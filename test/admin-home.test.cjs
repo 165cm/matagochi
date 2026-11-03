@@ -23,7 +23,7 @@ test("the progress tab has the goal, the to-do list, the timecode overview, the 
   assert.match(html, /function renderHome\(\) \{ renderGoal\(\); renderTodo\(\); renderTcOverview\(\); renderIdeal\(\); renderShares\(\); renderLack\(\); \}/);
   assert.match(html.slice(html.indexOf("function renderObjections"), html.indexOf("function renderObjections") + 600), /renderTodo\(\)/);
   assert.match(html.slice(html.indexOf("async function loadRecipes"), html.indexOf("function showParent(")), /renderTodo\(\); renderTcOverview\(\)/);
-  assert.match(html, /function renderAll\(\) \{ renderHome\(\); if \(!rlState\.withStock\) renderRecipeList\(\);/);
+  assert.match(html, /function renderAll\(\) \{ renderHome\(\); if \(!rlState\.withStock\) queueRecipeList\(\);/);
 });
 
 test("timecode levels: all / some / none / no steps, with the source", () => {
@@ -63,4 +63,24 @@ test("logout clears the new progress areas", () => {
   const cleared = JSON.parse(handler.match(/for \(const id of (\[[^\]]*\])\)/)[1]);
   for (const id of ["goal", "todo", "tc-overview", "ideal", "shares", "parents"]) assert.ok(cleared.includes(id), id);
   for (const id of cleared) assert.match(html, new RegExp(`id="${id}"`), `${id} still exists`);
+});
+
+// Claude のコードレビュー（#225）の9件
+test("review fixes (#225): timecode filters match the new-only counts, sort ids are new, rows close, Enter on 外す does not toggle", () => {
+  assert.match(html, /tcnone: \(r\) => r\.trend && tcMissing\(r\), tcpart: \(r\) => r\.trend && tcLevel\(r\) === "part",/);
+  assert.match(html, /const tcNone = \(last\.recipes \|\| \[\]\)\.filter\(RL_FILTER\.tcnone\)\.length/, "the to-do count uses the same filter it opens");
+  assert.equal((html.match(/\["none", "nosteps"\]\.includes\(tcLevel\(r\)\)/g) || []).length, 1, "one helper for 'no time'");
+  assert.match(html, /id: "rl-flat2"/); assert.match(html, /id: "rl-group2"/);
+  assert.doesNotMatch(html, /id: "rl-flat"[,}]|id: "rl-group"[,}]/, "old saved sort columns are not reused");
+  assert.match(html, /!rlState\.closedKeys\.has\(g\.key\)/);
+  assert.match(html, /e\.key === "Enter" && e\.target === tr/);
+});
+
+test("review fixes (#225): redraws are coalesced and the KPI tiles share one builder", () => {
+  assert.match(html, /function queueRecipeList\(\)/);
+  const rd = html.slice(html.indexOf("function renderDishes"), html.indexOf("function renderDishes") + 700);
+  assert.match(rd, /queueRecipeList\(\)/);
+  assert.doesNotMatch(rd, /\brenderRecipeList\(\)/);
+  assert.match(html, /function kpiTile\(/);
+  assert.equal((html.match(/el\("div", undefined, "kpi"\)/g) || []).length, 0, "no hand-built tiles left");
 });
