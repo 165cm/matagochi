@@ -87,6 +87,65 @@
       "のり",
     ],
   };
+
+  const SUBSTITUTE_HINTS = {
+    みりん: "酒＋砂糖（3:1）",
+    料理酒: "白ワイン または 水",
+    砂糖: "みりん または はちみつ",
+    はちみつ: "砂糖 または メープルシロップ",
+    コンソメ: "鶏ガラスープの素 または 和風だし",
+    鶏ガラスープの素: "コンソメ または 中華だし",
+    和風だし: "めんつゆ または 白だし",
+    めんつゆ: "しょうゆ＋みりん＋和風だし",
+    白だし: "めんつゆ（薄め）または 和風だし＋塩",
+    片栗粉: "小麦粉 または コーンスターチ",
+    小麦粉: "片栗粉 または 米粉",
+    パン粉: "食パン（すりおろし）または クラッカー",
+    バター: "マーガリン または サラダ油",
+    生クリーム: "牛乳＋バター",
+    牛乳: "豆乳 または 水＋スキムミルク",
+    ヨーグルト: "牛乳＋レモン汁",
+    マヨネーズ: "ヨーグルト＋塩こしょう＋油",
+    ケチャップ: "トマト缶＋砂糖＋酢",
+    中濃ソース: "ウスターソース＋ケチャップ",
+    オイスターソース: "しょうゆ＋砂糖＋中華だし",
+    豆板醤: "味噌＋一味唐辛子＋醤油",
+    コチュジャン: "味噌＋砂糖＋一味唐辛子",
+    甜麺醤: "赤味噌＋砂糖＋ごま油",
+    レモン汁: "酢 または ポン酢",
+    酢: "レモン汁",
+    ごま油: "サラダ油＋すりごま",
+    にんにく: "にんにくチューブ または 生姜",
+    しょうが: "生姜チューブ または にんにく",
+    ローリエ: "省略可（なしでもOK）",
+    パセリ: "省略可（彩り用）",
+    トマト缶: "生トマト（刻み）または ケチャップ＋水",
+    白ワイン: "料理酒 または 酒＋レモン汁少々",
+    赤ワイン: "料理酒 または ぶどうジュース＋酢",
+    ベーコン: "豚バラ肉 または ウインナー",
+    ウインナー: "ベーコン または ハム"
+  };
+
+  function substituteHint(name) {
+    if (!name) return "";
+    const k = shoppingName(name);
+    return SUBSTITUTE_HINTS[k] || SUBSTITUTE_HINTS[name] || "";
+  }
+
+  function pantryCategoryOf(name) {
+    if (!name) return "その他";
+    const k = shoppingName(name);
+    for (const [cat, items] of Object.entries(pantry)) {
+      if (items.some((i) => i === name || shoppingName(i) === k)) return cat;
+    }
+    // 未知の手動追加アイテムも自動分類
+    if (/塩|砂糖|しょうゆ|醤油|みそ|味噌|酢|みりん|酒/.test(k)) return "基本の調味料";
+    if (/油|オイル|バター|マーガリン|マヨネーズ|生クリーム|チーズ/.test(k)) return "油・乳製品";
+    if (/だし|出汁|スープ|コンソメ|ブイヨン|つゆ|ポン酢|ソース|ケチャップ|たれ|タレ/.test(k)) return "だし・ソース";
+    if (/こしょう|胡椒|にんにく|ニンニク|しょうが|生姜|カレー粉|スパイス|七味|一味|ごま|胡麻|豆板醤|コチュジャン|唐辛子|わさび|からし/.test(k)) return "香辛料";
+    if (/米|ごはん|パスタ|スパゲ|うどん|そば|麺|パン|粉|缶|のり|海苔|乾物|わかめ|ひじき|かつお節/.test(k)) return "常備する主食など";
+    return "その他";
+  }
   // Source threshold: at least 80% in MyVoice 2024 or Nadia 2026. Only missing answers are seeded.
   const pantryCommon = ["塩", "しょうゆ", "こしょう", "砂糖", "みそ", "マヨネーズ", "ケチャップ", "めんつゆ", "酢"];
   function pantryDefaults(current = {}, names = []) {
@@ -1288,6 +1347,7 @@
         signature,
         amount: combine ? combine(g.amounts, g.name) : combineAmounts(g.amounts, g.name),
         status,
+        subText: mark?.subText || "",
         recheck: !!mark && mark.status !== "buy" && !covered && !owned,
       };
     });
@@ -1749,6 +1809,9 @@
     keeps,
     pantryCommon,
     pantryDefaults,
+    pantryCategoryOf,
+    SUBSTITUTE_HINTS,
+    substituteHint,
     restrictionOptions,
     widenHints,
     key,

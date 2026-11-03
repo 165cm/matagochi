@@ -2515,7 +2515,18 @@ button.tile-title { padding: 0; border: 0; background: none; font: inherit; font
 body.bars-hidden .topbar { transform: translateY(-110%); }
 body.bars-hidden .bottom-tabs { transform: translate(-50%, 110%); }
 body.bars-hidden .playlist-footer, body.bars-hidden .cooking-primary { bottom: env(safe-area-inset-bottom); }
-.shop-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.shop-head { display: flex; flex-direction: column; gap: 8px; margin: 0 0 8px; }
+.shop-tabs-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.shop-tabs { display: flex; }
+.shop-tabs .choice-button { min-height: 32px; padding: 4px 10px; font-size: 13px; font-weight: 700; }
+.shop-tabs .choice-button.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.shop-combine-btn { background: #fdf5eb; border: 1.5px dashed #e8ba7a; color: #8a5814; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 12px; min-height: 32px; cursor: pointer; }
+.shop-combine-btn.is-active { background: #fff1e5; border-color: var(--tomato); color: var(--tomato); border-style: solid; }
+.shop-subhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shop-head-actions { display: flex; align-items: center; gap: 8px; }
+.shop-pantry-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 10px; padding: 4px 8px; font-size: 12px; font-weight: 700; min-height: 34px; color: var(--ink); cursor: pointer; }
+.shop-pantry-btn strong { color: var(--tomato); font-size: 14px; margin-left: 2px; }
+.pantry-alert-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tomato); margin-left: 2px; }
 .shop-head .trip-meals { flex: 1; min-width: 0; margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
 .shop-head .trip-range { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
 .shop-head .trip-row { display: flex; gap: 4px; overflow-x: auto; }
@@ -2536,18 +2547,30 @@ body.bars-hidden .playlist-footer, body.bars-hidden .cooking-primary { bottom: e
 .aisle-group:first-child { border-top: 0; }
 .aisle-tag { margin: 0; writing-mode: vertical-rl; text-orientation: upright; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; letter-spacing: 0; line-height: 1.05; padding: 2px 0; background: var(--surface-soft, #fff4e8); color: var(--muted); overflow: hidden; white-space: nowrap; }
 .aisle-items { min-width: 0; }
-.aisle-items .daily-shopping-row { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 6px; margin: 0; border: 0; border-top: 1px dashed var(--line); border-radius: 0; background: none; box-shadow: none; }
+.aisle-items .daily-shopping-row { position: relative; display: flex; flex-direction: column; min-height: 38px; padding: 0 6px; margin: 0; border: 0; border-top: 1px dashed var(--line); border-radius: 0; background: none; box-shadow: none; overflow: hidden; }
 .aisle-items .daily-shopping-row:first-child { border-top: 0; }
+.shop-row-main { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 38px; }
 .aisle-items .daily-shopping-check { flex: 1; min-width: 0; min-height: 38px; display: flex; align-items: center; gap: 8px; }
-.aisle-items .daily-shopping-check input { width: 24px; height: 24px; }
+.aisle-items .daily-shopping-check input { width: 24px; height: 24px; flex-shrink: 0; }
 .aisle-items .daily-shopping-check input:checked::after { width: 10px; height: 6px; }
-.shop-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.shop-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex-wrap: wrap; }
 .shop-line strong { flex: 0 1 auto; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .shop-line small { flex: 0 10 auto; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.use-icons { flex: 0 0 auto; display: flex; }
-.use-icon { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--surface); margin-left: -6px; background: #f3e6d6; }
-.use-icon:first-child { margin-left: 0; }
-.use-letter { display: grid; place-items: center; font-size: 10px; font-weight: 700; color: var(--muted); }
+.sub-hint { color: #b4462c; font-weight: 700; background: #fff1eb; padding: 1px 4px; border-radius: 4px; }
+.skip-hint { color: var(--muted); background: #f0ede8; padding: 1px 4px; border-radius: 4px; }
+.use-days { flex: 0 0 auto; display: flex; gap: 3px; }
+.use-day-badge { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font-size: 10.5px; font-weight: 700; background: #ede4d6; color: var(--ink); line-height: 1; }
+.use-day-badge.is-near { background: #ffe2d6; color: var(--tomato); font-weight: 800; border: 1px solid #fec3b0; }
+.shop-pref-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: #fff0e7; border: 1px solid #f9cdb8; color: #b4462c; cursor: pointer; white-space: nowrap; }
+.shop-pref-badge.is-skip { background: #f4f2ee; border-color: #dcd8d0; color: #726b63; }
+.shop-opt-btn { font-size: 15px; font-weight: 900; color: var(--muted); }
+.shop-actions-drawer { display: none; align-items: center; gap: 6px; padding: 6px 4px; background: #faf4ec; border-radius: 8px; margin: 2px 0 4px; animation: slideDown .15s ease; }
+.daily-shopping-row.is-action-open .shop-actions-drawer { display: flex; }
+.drawer-action { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.drawer-action.drawer-have { background: #eaf5e9; border-color: #badcba; color: #2e662c; }
+.drawer-action.drawer-sub { background: #fff2eb; border-color: #f7ceba; color: #b4462c; }
+.drawer-action.drawer-skip { background: #f0ede8; border-color: #d9d4cc; color: #6e675d; }
+.drawer-action.drawer-buy { background: var(--ink); color: #fff; }
 .aisle-items .shopping-inline { flex: 0 0 auto; width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; font-size: 13px; opacity: .75; }
 .shopping-fold .aisle-group { border: 0; margin-top: 4px; }
 .shop-add { margin: 10px 0 0; }
@@ -2559,16 +2582,40 @@ body.bars-hidden .shop-done-sheet { bottom: calc(12px + env(safe-area-inset-bott
 .shop-done-sheet div { display: flex; gap: 8px; align-items: center; }
 .shop-done-sheet .primary-button { flex: 1; }
 @keyframes sheetUp { from { transform: translate(-50%, 30px); opacity: 0; } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 常備品画面の新スタイル */
 .pantry-head { display: flex; align-items: center; gap: 8px; }
 .pantry-head h2 { margin: 0; font-size: 22px; }
-.pantry-group { margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+.pantry-section-title { font-size: 15px; margin: 16px 0 8px; display: flex; align-items: center; gap: 6px; font-weight: 800; color: var(--ink); }
+.pantry-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.pantry-item-card { display: flex; flex-direction: column; background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 6px 8px; box-sizing: border-box; }
+.pantry-item-card.is-out { border-color: #f7a996; background: #fff7f5; }
+.pantry-item-card.is-due { border-color: #f6cca8; background: #fff9f2; }
+.pantry-item-main { display: flex; align-items: flex-start; gap: 6px; background: none; border: 0; padding: 0; width: 100%; text-align: left; cursor: pointer; color: inherit; font: inherit; }
+.pantry-emoji { font-size: 20px; line-height: 1.2; flex-shrink: 0; }
+.pantry-name-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pantry-name { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pantry-in-trip-badge { display: inline-block; font-size: 10px; font-weight: 700; color: #b4462c; background: #fff0eb; border-radius: 4px; padding: 1px 4px; width: fit-content; margin-top: 2px; }
+.pantry-meta-text { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pantry-status-badge { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: #eee7dc; color: #555; flex-shrink: 0; }
+.pantry-item-card.is-have .pantry-status-badge { background: #e3f2e1; color: #236522; font-weight: 800; }
+.pantry-item-card.is-out .pantry-status-badge { background: #ffe4de; color: #b4462c; font-weight: 800; }
+.pantry-item-foot { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.pantry-cycle-select { font-size: 11px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.pantry-buy-btn { font-size: 11px; font-weight: 700; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--tomato); background: #fff2ed; color: var(--tomato); cursor: pointer; }
+.pantry-search-box { margin: 8px 0; }
+.pantry-cat-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; }
+.pantry-cat-tabs .choice-button { min-height: 28px; padding: 2px 8px; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.pantry-cat-tabs .choice-button.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.pantry-group-heading { font-size: 13px; margin: 12px 0 6px; color: var(--muted); font-weight: 700; }
 .pantry-add { margin-top: 14px; }
-.pantry-page .pantry-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.pantry-page .equipment-choice { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 4px; min-height: 48px; padding: 6px 8px; text-align: left; }
-.pantry-page .equipment-choice .choice-emoji { grid-row: 1 / 3; font-size: 15px; margin: 0; }
-.pantry-page .equipment-choice > span:not(.choice-emoji) { font-size: 12px; line-height: 1.2; overflow-wrap: anywhere; }
-.pantry-page .equipment-choice strong { font-size: 10px; line-height: 1.1; }
+
+/* 作る画面・料理モードでの代用・なしバッジ */
+.ing-mark-badge { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 1px 4px; margin-left: 6px; vertical-align: middle; }
+.ing-mark-badge.is-sub { background: #fff0e7; border: 1px solid #fcd2bf; color: #b4462c; }
+.ing-mark-badge.is-skip { background: #f0ede8; border: 1px solid #ddd7cd; color: #6e675d; }
 /* ===== 2026-09-26 app bar: compact header, page name instead of 2-line headings ===== */
 .topbar { align-items: center; gap: 8px; min-height: 52px; padding: 6px 12px 6px 16px; }
 .brand-block { flex: 1; min-width: 0; }

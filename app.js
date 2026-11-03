@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261102-objection-notice";
+const APP_VERSION = "20261103-shopping-ux";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -48,6 +48,8 @@ const demoState = {
   planDrafts: {},
   shoppingMarks: {},
   manualShopping: {},
+  itemPrefs: {},
+  pantryMeta: {},
   planLength: 3,
   onboarded: false,
   selectedRecipeId: "r2",
@@ -379,6 +381,8 @@ function normalizeState(saved) {
     planDrafts: normalizePlanDrafts(saved.planDrafts, saved.tombstones?.recipes),
     shoppingMarks: normalizeShoppingMarks(saved.shoppingMarks),
     manualShopping: normalizeManualShopping(saved.manualShopping),
+    itemPrefs: normalizeItemPrefs(saved.itemPrefs),
+    pantryMeta: normalizePantryMeta(saved.pantryMeta),
     planLength: Number(saved.planLength) === 7 ? 7 : 3,
     planOverrides: normalizePlanOverrides(saved.planOverrides),
     shopping: normalizeShopping(saved.shopping),
@@ -424,7 +428,47 @@ function normalizePlanOverrides(overrides) {
 }
 
 function normalizeShoppingMarks(raw) {
-  return Object.fromEntries(Object.entries(raw || {}).filter(([,v])=>v && ['buy','have','purchased','later'].includes(v.status)).map(([k,v])=>[k,{status:v.status,signature:String(v.signature||''),updatedAt:normalizeTimestamp(v.updatedAt)}]));
+  return Object.fromEntries(
+    Object.entries(raw || {})
+      .filter(([, v]) => v && ["buy", "have", "purchased", "later", "sub", "skip"].includes(v.status))
+      .map(([k, v]) => [
+        k,
+        {
+          status: v.status,
+          signature: String(v.signature || ""),
+          subText: String(v.subText || "").slice(0, 50),
+          updatedAt: normalizeTimestamp(v.updatedAt),
+        },
+      ])
+  );
+}
+function normalizeItemPrefs(raw) {
+  return Object.fromEntries(
+    Object.entries(raw || {})
+      .filter(([, v]) => v && ["sub", "skip"].includes(v.action))
+      .map(([k, v]) => [
+        k,
+        {
+          action: v.action,
+          subText: String(v.subText || "").slice(0, 50),
+          updatedAt: normalizeTimestamp(v.updatedAt),
+        },
+      ])
+  );
+}
+function normalizePantryMeta(raw) {
+  return Object.fromEntries(
+    Object.entries(raw || {})
+      .filter(([k, v]) => k && typeof k === "string" && v && typeof v === "object")
+      .map(([k, v]) => [
+        k,
+        {
+          lastBoughtAt: normalizeDateInput(v.lastBoughtAt) || "",
+          cycleDays: Number.isInteger(Number(v.cycleDays)) && Number(v.cycleDays) > 0 ? Number(v.cycleDays) : null,
+          updatedAt: normalizeTimestamp(v.updatedAt),
+        },
+      ])
+  );
 }
 function normalizeManualShopping(raw) {
   return Object.fromEntries(Object.entries(raw || {}).filter(([k,v])=>k.startsWith('manual-') && v && typeof v.name==='string').map(([k,v])=>[k,{name:v.name.slice(0,100),amount:String(v.amount||'').slice(0,80),deleted:!!v.deleted,updatedAt:normalizeTimestamp(v.updatedAt)}]));
@@ -695,6 +739,8 @@ function buildSyncPayload() {
     planDrafts: state.planDrafts || {},
     shoppingMarks: state.shoppingMarks,
     manualShopping: state.manualShopping,
+    itemPrefs: state.itemPrefs || {},
+    pantryMeta: state.pantryMeta || {},
     requests: state.requests || {},
     roles: state.roles || { members: {}, updatedAt: "" },
     memberPrefs: state.memberPrefs || {},
@@ -749,6 +795,8 @@ function mergeSyncPayloads(local, remote) {
     mealSlots: Lifestyle.mergeMap(local.mealSlots, remote.mealSlots),
     shoppingMarks: Lifestyle.mergeMap(local.shoppingMarks, remote.shoppingMarks),
     manualShopping: Lifestyle.mergeMap(local.manualShopping, remote.manualShopping),
+    itemPrefs: Lifestyle.mergeMap(local.itemPrefs || {}, remote.itemPrefs || {}),
+    pantryMeta: Lifestyle.mergeMap(local.pantryMeta || {}, remote.pantryMeta || {}),
     requests: Lifestyle.mergeMap(local.requests, remote.requests),
     roles: (remote.roles?.updatedAt || "") > (local.roles?.updatedAt || "") ? remote.roles : local.roles,
     memberPrefs: Lifestyle.mergeMap(local.memberPrefs, remote.memberPrefs),
@@ -808,6 +856,8 @@ function applySyncPayload(payload) {
   state.planDrafts = normalizePlanDrafts(payload.planDrafts, payload.tombstones?.recipes);
   state.shoppingMarks = normalizeShoppingMarks(payload.shoppingMarks || state.shoppingMarks);
   state.manualShopping = normalizeManualShopping(payload.manualShopping || state.manualShopping);
+  state.itemPrefs = normalizeItemPrefs(payload.itemPrefs || state.itemPrefs);
+  state.pantryMeta = normalizePantryMeta(payload.pantryMeta || state.pantryMeta);
   state.requests = normalizeRequests(payload.requests || state.requests);
   state.roles = normalizeRoles(payload.roles || state.roles);
   state.memberPrefs = normalizeMemberPrefs(payload.memberPrefs || state.memberPrefs);
