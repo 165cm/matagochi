@@ -33,6 +33,17 @@ import { fetchTikTokOEmbed } from "./tiktok.js";
 import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes, searchYouTubeChannels, fetchChannelUploads, fetchChannelIcons, fetchChannelStats, resolveYouTubeChannel, fetchYouTubeStatuses } from "./youtube.js";
 import { createHousekeeping } from "./housekeeping.js";
 
+// 管理画面の一覧で、保存場所から同時に読む数（1件ずつだと数百件で数十秒かかるため。2026-11-03）。
+const ADMIN_READ_CONCURRENCY = 20;
+// items を limit 件ずつ同時に fn に通す（結果は items と同じ順番）。
+export async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); } };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 export function createApp(env = process.env, deps = {}) {
   const app = express();
   const syncStore = "syncStore" in deps ? deps.syncStore : createSyncStore(env);
@@ -388,13 +399,15 @@ export function createApp(env = process.env, deps = {}) {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
     send(res, (async () => {
-      const stats = await popularBook.stats();
-      const items = [];
-      for (const s of stats.slice(0, 300)) {
-        const r = await catalog.peek(`https://www.youtube.com/watch?v=${s.videoId}`).catch(() => null);
-        const consent = r?.channelId ? (await creatorDesk.consentsFor(r.channelId)).publicCatalog : false;
-        items.push({ ...s, title: r?.title || "", channelId: r?.channelId || "", channelTitle: r?.channelTitle || "", available: !!r, publicConsent: consent });
-      }
+      // 速さ（2026-11-03）：読み出しは20件ずつ同時に・投稿者の同意は申請のファイルを1回だけ読む（中身・順番は前と同じ）。
+      const top = (await popularBook.stats()).slice(0, 300);
+      const peeked = await mapLimit(top, ADMIN_READ_CONCURRENCY, (s) => catalog.peek(`https://www.youtube.com/watch?v=${s.videoId}`).catch(() => null));
+      const consents = await creatorDesk.consentsForMany(peeked.filter((r) => r?.channelId).map((r) => r.channelId));
+      const items = top.map((s, i) => {
+        const r = peeked[i];
+        const consent = r?.channelId ? !!consents[r.channelId]?.publicCatalog : false;
+        return { ...s, title: r?.title || "", channelId: r?.channelId || "", channelTitle: r?.channelTitle || "", available: !!r, publicConsent: consent };
+      });
       const ask = {};
       for (const i of items) if (i.available && !i.publicConsent && i.channelId && (i.kept || i.planned >= 3)) {
         const a = (ask[i.channelId] ||= { channelId: i.channelId, channelTitle: i.channelTitle, videos: 0, planned: 0 });
@@ -429,13 +442,15 @@ export function createApp(env = process.env, deps = {}) {
       // 集計は全件を新着に結びつける。新着でない料理を読み出す（peek）のは、多い順に500件まで。
       // 掲載停止（動画・投稿者）は、新着と同じく一覧に出さない。
       const excluded = await creatorDesk.optedOut().catch(() => new Set());
-      let extra = 0;
-      for (const s of await popularBook.stats()) {
+      const stats = await popularBook.stats();
+      // 速さ（2026-11-03）：読み出す料理（多い順に500件まで）を先に決めて、20件ずつ同時に読む（中身・順番は前と同じ）。
+      const toPeek = stats.filter((s) => !byId.has(s.videoId) && !excluded.has(s.videoId)).slice(0, 500).map((s) => s.videoId);
+      const peeked = new Map((await mapLimit(toPeek, ADMIN_READ_CONCURRENCY, (id) => catalog.peek(`https://www.youtube.com/watch?v=${id}`).catch(() => null))).map((r, i) => [toPeek[i], r]));
+      for (const s of stats) {
         let x = byId.get(s.videoId);
         if (!x) {
-          if (excluded.has(s.videoId) || extra >= 500) continue;
-          extra += 1;
-          const r = await catalog.peek(`https://www.youtube.com/watch?v=${s.videoId}`).catch(() => null);
+          if (!peeked.has(s.videoId)) continue;
+          const r = peeked.get(s.videoId);
           if (!r || (r.channelId && excluded.has(r.channelId))) continue;
           x = { videoId: s.videoId, title: r.title || "", dishName: r.dishName || "", channelTitle: r.channelTitle || "", channelId: r.channelId || "", minutes: r.planning?.minutes || null, trend: false, newUntil: "" };
           byId.set(s.videoId, x);

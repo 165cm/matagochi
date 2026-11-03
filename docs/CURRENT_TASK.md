@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-11-03（#221 公開。レビューで見つかった6件を claude/focused-ramanujan-gnx6jq で修正中）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-11-03（管理画面の読み込みを速くする修正を claude/confident-volta-1giltr で。#221 公開。レビューで見つかった6件を claude/focused-ramanujan-gnx6jq で修正中）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| Claude：管理画面の読み込みを速くする（2026-11-03 のユーザーの依頼：レシピ一覧が出るまで遅い） | レビュー待ち | claude/confident-volta-1giltr | ①保存場所の読み出しを20件ずつ同時に（レシピ一覧・品ぞろえ）②レシピ一覧などを最初から読み始める③品ぞろえの同意は1回だけ読む。中身・順番は同じ。キャッシュは様子を見てから（APP_MAP §48-2） | api/src/server.js, api/src/creators.js, admin/catalog.html, api/test/adminSpeed.test.js, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | Claude：レビュー（2026-11-03・#185以降の26件）で見つかった6件の修正 | レビュー待ち | claude/focused-ramanujan-gnx6jq | ①LPの「2秒で同期」を実態（開いていれば15秒ほど）に ②管理画面のレシピ：未保存をタブごとに持ち、片方を保存してももう片方の入力を残す ③料理の画面の代用・パスはその日・その料理の買い物の印だけ ④代用・パスの取り消しで次回用の記憶も戻す（`clear`） ⑤古い版が送らない項目（`itemPrefs`・`pantryMeta`・`shopUndone`）をサーバーが残す ⑥「買い物前に戻す」を `shopUndone` で同期 | lp/index.html, admin/catalog.html, cook-mode.js, daily-ui.js, household.js, app.js, sw.js, index.html, version.json, api/src/sync.js, api/test/sync.test.js, test/review-2026-11-03.test.cjs, test/admin-recipe-ui.test.cjs, docs/* |
 | 買い物・常備品UXの再デザインと不具合改修（献立と同一タブUI・買い物完了後のリスト保持・新規献立反映修正・Gmail風横スワイプ・常備品1行圧縮＆デフォルト賞味期限周期・スーパー売場分類） | 公開済み（#221） | feat/shopping-ux-polish | 実機確認フィードバック対応：①献立の `.plan-dots` とタブ・ブロック定義を完全統一 ②買い物完了後も購入済み/買い物前が明確なリスト表示 ③新規献立が買い物リストに反映されない不具合修正 ④指追従のGmail風物理横スワイプ＆右ボタン押下修正 ⑤常備品1行スリム化・`ⓘ`格納・デフォルト賞味期限周期 ⑥スーパー売場ベースの調味料・食材分類再整理 | aisles.js, lifestyle.js, daily-ui.js, household.js, app.js, styles.css, sw.js, index.html, version.json, test/shopping-ux.test.cjs, docs/* |
 | 新着集めの健康診断の誤った赤・休んでいる料理の戻す順（2026-11-03 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 補充が1日の AI 25回に届いた時の理由を `ai_today` に（「月の予算」と出て赤になっていた）・休んでいる料理は理想の12品→足りない分野→ほかの順に戻す | api/src/trends.js, scripts/trends-health.cjs, api/test/refill.test.js, api/test/revive.test.js, test/trends-health.test.cjs, docs/* |

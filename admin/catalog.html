@@ -888,14 +888,15 @@
     if (!token) return;
     const my = session;
     status.textContent = "読み込んでいます…";
+    // レシピ一覧・親の料理名・異議などは、上の2つ（集める・品ぞろえ）を待たずに最初から読み始める（速さ。2026-11-03）。
+    loadRecipes().catch(() => {});
+    loadDishes().catch(() => {});
+    loadBackfill().catch(() => {});
+    loadObjections().catch(() => {});
     try {
       const [seed, catalog] = await Promise.all([api("/api/admin/trends/seed"), api("/api/admin/catalog")]);
       if (my !== session) return;
       last = { seed, catalog, dishes: last.dishes, recipes: last.recipes };
-      loadDishes().catch(() => {});
-      loadBackfill().catch(() => {});
-      loadRecipes().catch(() => {});
-      loadObjections().catch(() => {});
       renderAll();
       // 読み込めたら、合言葉の欄は畳む（上の「合言葉を消す」で戻せる）。
       document.getElementById("login-box").hidden = true;
