@@ -1198,6 +1198,19 @@ function useDayBadges(item) {
   }).join("")}</span>`;
 }
 
+// 次の回のための代用・パスの記憶を書き、取り消し用の関数を返す。
+// 取り消しは前の記憶に戻す。前に記憶がなければ「clear」（消した印）を新しい日時で書く
+// （ただ消すと、同期で相手の端末の記憶が戻ってくるため）。
+function rememberItemPref(name, pref) {
+  state.itemPrefs = state.itemPrefs || {};
+  const k = Lifestyle.shoppingKey(name);
+  const prev = state.itemPrefs[k] ? { ...state.itemPrefs[k] } : null;
+  state.itemPrefs[k] = pref;
+  return () => {
+    state.itemPrefs = state.itemPrefs || {};
+    state.itemPrefs[k] = prev && prev.action !== "clear" ? { ...prev, updatedAt: nowIso() } : { action: "clear", updatedAt: nowIso() };
+  };
+}
 // リピート時の記憶バッジ（前回代用・パスした食材に表示し、1タップで即適用）
 function renderItemPrefBadge(item) {
   if (item.status !== "buy") return "";
@@ -1669,6 +1682,7 @@ function cookSections(recipe, servings) {
     photoHtml: dishTile(recipe, "cm-photo"),
     staple: Lifestyle.traits(recipe).staple,
     side: slot?.side,
+    markScope: { date: cookingDate, recipeId: recipe.id },
   });
   const timed = shown.some((st) => CookMode.timesIn(st).length);
   const fixing = typeof timeFix !== "undefined" && timeFix?.key === timecodeKey(recipe);
@@ -1677,7 +1691,7 @@ function cookSections(recipe, servings) {
   const curTimes = recipeStepTimes(recipe);
   const guideList = () => `<ol class="cooking-steps cook-list has-guide" data-steps-of="${escapeAttr(recipe.id)}">${guide.map((g, gi) => { const slotIdx = guideSlotOf(g, curTimes); return `<li><div class="cs-text"><span class="step-time-slot" data-guide-slot="${slotIdx}">${stepTimeButton(recipe, slotIdx)}</span>${guideKeyHtml(g.text, gi)}</div>${CookMode.usesHtml(g.text, recipe.ingredients || [], amountOf)}<details class="guide-src"${fixing ? " open" : ""}><summary>動画では：手順${g.from.map((j) => j + 1).join("・")}</summary><ol class="guide-orig">${g.from.map((j) => `<li value="${j + 1}">${stepTimeSlot(recipe, j)}${escapeHtml(steps[j])}</li>`).join("")}</ol></details></li>`; }).join("")}</ol>`;
   return {
-    ingredients: (recipe.ingredients || []).length ? CookMode.ingredientsHtml(recipe.ingredients, amountOf) : '<p class="muted small">材料が登録されていません。</p>',
+    ingredients: (recipe.ingredients || []).length ? CookMode.ingredientsHtml(recipe.ingredients, amountOf, "", { date: cookingDate, recipeId: recipe.id }) : '<p class="muted small">材料が登録されていません。</p>',
     steps: `<div class="cooking-steps-head"><h3>作り方 <small class="muted">${guide ? `<span class="guide-badge">✍ 覚えやすい手順${tip("動画の手順をAIが覚えやすくまとめました。数字（時間・温度・分量）は動画のまま。各手順の下の「動画では」で元の手順を見られます")}</span>${timed ? "・" : ""}` : ""}${timed ? "⏰でタイマー" : ""}${timecodeHintHtml(recipe, timed || guide ? "・" : "")}</small></h3>${steps.length ? '<div class="cook-mode-cta"><button type="button" class="primary-button cook-mode-open" data-cook-mode="open">🍳 料理モード</button><small>✋ 手をかざして進める</small></div>' : ""}</div>
       ${steps.length ? `${guide ? guideList() : `<ol class="cooking-steps cook-list" data-steps-of="${escapeAttr(recipe.id)}">${steps.map((st, index) => `<li><div class="cs-text">${stepTimeSlot(recipe, index)}${CookMode.stepHtml(st, `${index + 1}. ${String(st).slice(0, 12)}`)}</div>${CookMode.usesHtml(st, recipe.ingredients || [], amountOf)}</li>`).join("")}</ol>`}${timeFixBar(recipe)}`
         : '<p class="muted small">作り方がまだありません。動画から読み取ると、🍳 料理モードが使えます。</p>'}`,
@@ -2859,12 +2873,12 @@ function handleDailyAction(action, data) {
       const hint = Lifestyle.substituteHint?.(item.name) || "";
       const subText = hint;
       state.shoppingMarks[item.id] = { status: "sub", subText, signature: item.signature, updatedAt: nowIso() };
-      state.itemPrefs = state.itemPrefs || {};
-      state.itemPrefs[Lifestyle.shoppingKey(item.name)] = { action: "sub", subText, updatedAt: nowIso() };
+      const restorePref = rememberItemPref(item.name, { action: "sub", subText, updatedAt: nowIso() });
       shopUndo = {
         text: `🔄 ${item.name}は代用${subText ? `（${subText}）` : ""}`,
         undo: () => {
           state.shoppingMarks[item.id] = prevMark ? { ...prevMark, updatedAt: nowIso() } : { status: "buy", signature: item.signature, updatedAt: nowIso() };
+          restorePref();
         },
       };
       showToast(`🔄 ${item.name}は代用${subText ? `（${subText}）` : ""}にしました`);
@@ -2876,12 +2890,12 @@ function handleDailyAction(action, data) {
       activeSwipeId = null;
       const prevMark = state.shoppingMarks[item.id] ? { ...state.shoppingMarks[item.id] } : null;
       state.shoppingMarks[item.id] = { status: "skip", signature: item.signature, updatedAt: nowIso() };
-      state.itemPrefs = state.itemPrefs || {};
-      state.itemPrefs[Lifestyle.shoppingKey(item.name)] = { action: "skip", updatedAt: nowIso() };
+      const restorePref = rememberItemPref(item.name, { action: "skip", updatedAt: nowIso() });
       shopUndo = {
         text: `⏭ ${item.name}は今回は買わない（パス）`,
         undo: () => {
           state.shoppingMarks[item.id] = prevMark ? { ...prevMark, updatedAt: nowIso() } : { status: "buy", signature: item.signature, updatedAt: nowIso() };
+          restorePref();
         },
       };
       showToast(`⏭ ${item.name}は今回は買わない（パス）にしました`);
@@ -2890,7 +2904,7 @@ function handleDailyAction(action, data) {
   if (action === "life-apply-item-pref") {
     const item = shopPageItems().find((i) => i.id === data.id);
     const pref = item && state.itemPrefs?.[item.id];
-    if (item && pref) {
+    if (item && ["sub", "skip"].includes(pref?.action)) {
       const prevMark = state.shoppingMarks[item.id] ? { ...state.shoppingMarks[item.id] } : null;
       state.shoppingMarks[item.id] = { status: pref.action, subText: pref.subText || "", signature: item.signature, updatedAt: nowIso() };
       shopUndo = {

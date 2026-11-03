@@ -48,4 +48,9 @@ test("admin/catalog.html recipe modal redesign: 2-column, tabs, integrated step/
 
   // 9. 点検・一覧からの navList 連携
   assert.ok(html.includes("navList:"), "passes navList for continuous review");
+
+  // 10. 未保存の変更はタブごと。片方のタブを保存しても、もう片方の未保存の入力を開き直した後に引き継ぐ（review 2026-11-03 #2）
+  assert.ok(html.includes("const dirty = { steps: false, ingredients: false }"), "tracks unsaved changes per tab");
+  assert.ok(html.includes('savedAndReload("steps"') && html.includes('savedAndReload("ingredients"'), "both saves keep the other tab's edits");
+  assert.ok(html.includes("carry?.videoId === videoId"), "reopened dialog restores the carried edits");
 });

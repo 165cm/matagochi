@@ -1017,7 +1017,7 @@
     }
   }
 
-  async function openRecipe(videoId, { ingredients: openIngredients = false, navList = null, keepPlayer = false } = {}) {
+  async function openRecipe(videoId, { ingredients: openIngredients = false, navList = null, keepPlayer = false, carry = null } = {}) {
     if (DEMO) { status.textContent = "🧪 デモ：サンプルの行なので、レシピは開けません（本番では材料・手順・動画が開きます）。"; return; }
     if (Array.isArray(navList) && navList.length) currentNavList = navList;
 
@@ -1056,6 +1056,23 @@
     });
     let ingRows = (r.ingredients || []).map((i) => ({ ...i }));
     let curServings = r.sourceServings;
+    // 未保存の変更はタブごとに持つ。片方のタブを保存して開き直す時は、もう片方の未保存の入力を引き継ぐ（消さない）。
+    const dirty = { steps: false, ingredients: false };
+    const markDirty = (tab) => { dirty[tab] = true; hasUnsavedChanges = true; };
+    if (carry?.videoId === videoId) {
+      if (carry.steps) { stepRows = carry.steps.map((x) => ({ ...x, key: ++seq })); dirty.steps = true; }
+      if (carry.ingredients) { ingRows = carry.ingredients.rows.map((x) => ({ ...x })); curServings = carry.ingredients.servings; dirty.ingredients = true; }
+      hasUnsavedChanges = dirty.steps || dirty.ingredients;
+    }
+    // 保存したタブだけ未保存を外し、もう片方のタブの未保存の入力は開き直した後も残す。
+    const savedAndReload = (tab, opts) => {
+      dirty[tab] = false;
+      hasUnsavedChanges = dirty.steps || dirty.ingredients;
+      const keep = { videoId };
+      if (tab !== "steps" && dirty.steps) keep.steps = stepRows.map((x) => ({ ...x }));
+      if (tab !== "ingredients" && dirty.ingredients) keep.ingredients = { rows: ingRows.map((x) => ({ ...x })), servings: curServings };
+      openRecipe(videoId, { ...opts, keepPlayer: true, carry: keep.steps || keep.ingredients ? keep : null });
+    };
 
     // ── ヘッダー（タイトル・ナビゲーション・閉じる） ──
     const head = el("div", undefined, "dlg-head");
@@ -1306,7 +1323,7 @@
         ta.setAttribute("aria-label", `手順${i + 1}の文`);
         ta.addEventListener("input", () => {
           row.text = ta.value;
-          hasUnsavedChanges = true;
+          markDirty("steps");
           if (row.orig !== null && ta.value.trim() !== row.orig && row.time !== null && !row.autoPending) {
             row.pending = true;
             row.autoPending = true;
@@ -1330,7 +1347,7 @@
           ti.classList.toggle("is-bad", isBad);
           if (!isBad) {
             row.time = t;
-            hasUnsavedChanges = true;
+            markDirty("steps");
             setStatus("未保存の変更があります");
           }
         });
@@ -1352,7 +1369,7 @@
             row.time = nowSec;
             ti.value = sec(nowSec);
             ti.classList.remove("is-bad");
-            hasUnsavedChanges = true;
+            markDirty("steps");
             setStatus("未保存の変更があります");
           }
         });
@@ -1363,7 +1380,7 @@
           row.time = Math.max(0, cur - 1);
           ti.value = sec(row.time);
           ti.classList.remove("is-bad");
-          hasUnsavedChanges = true;
+          markDirty("steps");
           setStatus("未保存の変更があります");
         });
 
@@ -1373,7 +1390,7 @@
           row.time = cur + 1;
           ti.value = sec(row.time);
           ti.classList.remove("is-bad");
-          hasUnsavedChanges = true;
+          markDirty("steps");
           setStatus("未保存の変更があります");
         });
 
@@ -1383,7 +1400,7 @@
           row.pending = chkPending.checked;
           li.classList.toggle("is-warn", row.pending || badSteps.has(i));
           ti.classList.toggle("is-pending", row.pending);
-          hasUnsavedChanges = true;
+          markDirty("steps");
           setStatus("未保存の変更があります");
         });
         lblPending.append(chkPending, document.createTextNode(" 要確認"));
@@ -1392,7 +1409,7 @@
         btnUp.disabled = i === 0;
         btnUp.addEventListener("click", () => {
           [stepRows[i - 1], stepRows[i]] = [stepRows[i], stepRows[i - 1]];
-          hasUnsavedChanges = true;
+          markDirty("steps");
           renderStepEditor();
         });
 
@@ -1400,7 +1417,7 @@
         btnDown.disabled = i === stepRows.length - 1;
         btnDown.addEventListener("click", () => {
           [stepRows[i + 1], stepRows[i]] = [stepRows[i], stepRows[i + 1]];
-          hasUnsavedChanges = true;
+          markDirty("steps");
           renderStepEditor();
         });
 
@@ -1409,7 +1426,7 @@
         btnDel.addEventListener("click", () => {
           if (stepRows.length <= 2) { alert("手順は2つ以上必要です。"); return; }
           stepRows.splice(i, 1);
-          hasUnsavedChanges = true;
+          markDirty("steps");
           renderStepEditor();
         });
 
@@ -1434,7 +1451,7 @@
       addBtn.style.marginTop = "8px";
       addBtn.addEventListener("click", () => {
         stepRows.push({ key: ++seq, text: "", orig: null, time: null, pending: false, autoPending: false });
-        hasUnsavedChanges = true;
+        markDirty("steps");
         renderStepEditor();
       });
       panelSteps.append(addBtn);
@@ -1457,7 +1474,7 @@
       });
       sv.addEventListener("change", () => {
         curServings = sv.value === "" ? null : Number(sv.value);
-        hasUnsavedChanges = true;
+        markDirty("ingredients");
         setStatus("未保存の変更があります");
       });
       svRow.append(el("span", "元の人数（動画の基準人数）：", "meta"), sv);
@@ -1470,11 +1487,11 @@
           const row = el("div", undefined, "row");
           if (x.group) row.append(el("span", `【${x.group}】`, "meta"));
           const n = el("input"); n.value = x.name || ""; n.placeholder = "材料名"; n.maxLength = 120; n.style.flex = "1 1 140px";
-          n.addEventListener("input", () => { x.name = n.value; hasUnsavedChanges = true; setStatus("未保存の変更があります"); });
+          n.addEventListener("input", () => { x.name = n.value; markDirty("ingredients"); setStatus("未保存の変更があります"); });
           const a = el("input"); a.value = x.amount || ""; a.placeholder = "分量（例：大さじ1）"; a.maxLength = 120; a.style.flex = "0 1 120px";
-          a.addEventListener("input", () => { x.amount = a.value; hasUnsavedChanges = true; setStatus("未保存の変更があります"); });
+          a.addEventListener("input", () => { x.amount = a.value; markDirty("ingredients"); setStatus("未保存の変更があります"); });
           const del = el("button", "✕", "quiet small"); del.type = "button";
-          del.addEventListener("click", () => { ingRows.splice(i, 1); hasUnsavedChanges = true; drawIngList(); });
+          del.addEventListener("click", () => { ingRows.splice(i, 1); markDirty("ingredients"); drawIngList(); });
           row.append(n, a, del);
           ingList.append(row);
         });
@@ -1485,7 +1502,7 @@
       const addBtn = el("button", "＋ 材料を足す", "quiet small"); addBtn.type = "button";
       addBtn.style.marginTop = "8px";
       addBtn.addEventListener("click", () => {
-        if (ingRows.length < 20) { ingRows.push({ name: "", amount: "" }); hasUnsavedChanges = true; drawIngList(); }
+        if (ingRows.length < 20) { ingRows.push({ name: "", amount: "" }); markDirty("ingredients"); drawIngList(); }
       });
       panelIng.append(addBtn);
     }
@@ -1663,7 +1680,7 @@
             pending: (c.suspectTimes || []).includes(i),
             autoPending: false
           }));
-          hasUnsavedChanges = true;
+          markDirty("steps");
           renderStepEditor();
           switchSubtab("steps");
           setStatus("候補の内容を手順タブに写しました（確認して保存してください）");
@@ -1720,7 +1737,7 @@
         try {
           const x = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/reanalyze`, {});
           (x.stepTimes || []).forEach((t, i) => { if (stepRows[i]) stepRows[i].time = t; });
-          hasUnsavedChanges = true;
+          markDirty("steps");
           renderStepEditor();
           switchSubtab("steps");
           setStatus("AI が探した時刻を手順タブに入れました。確認して保存してください。");
@@ -1781,9 +1798,8 @@
             rows: stepRows.map((x) => ({ text: x.text.trim(), time: x.time, pending: x.pending }))
           };
           const res = await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/steps`, payload, "PUT");
-          hasUnsavedChanges = false;
-          setStatus(`✓ 手順 ${res.steps.length}・時刻を保存しました`);
-          openRecipe(videoId, { keepPlayer: true });
+          setStatus(`✓ 手順 ${res.steps.length}・時刻を保存しました${dirty.ingredients ? "（材料タブの未保存の変更は残っています）" : ""}`);
+          savedAndReload("steps", {});
         } catch (e) {
           setStatus(e.message, true);
           mainSaveBtn.disabled = false;
@@ -1799,9 +1815,8 @@
             sourceServings: curServings,
             ingredients: clean
           }, "PUT");
-          hasUnsavedChanges = false;
-          setStatus(`✓ 材料 ${res.ingredients.length}・${res.sourceServings ? `${res.sourceServings}人分` : "人数不明"}で保存しました`);
-          openRecipe(videoId, { ingredients: true, keepPlayer: true });
+          setStatus(`✓ 材料 ${res.ingredients.length}・${res.sourceServings ? `${res.sourceServings}人分` : "人数不明"}で保存しました${dirty.steps ? "（手順タブの未保存の変更は残っています）" : ""}`);
+          savedAndReload("ingredients", { ingredients: true });
         } catch (e) {
           setStatus(e.message, true);
           mainSaveBtn.disabled = false;

@@ -11,7 +11,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261103-shopping-ux-v2";
+const APP_VERSION = "20261103-review-fixes";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -78,6 +78,7 @@ const demoState = {
   round: { deadline: "", status: "", lastDeadline: "", updatedAt: "" },
   rhythm: { preset: "", shopTime: "17:00", dismissed: false, updatedAt: "" },
   shopDone: {},
+  shopUndone: {},
   aisleOverrides: {},
   creatorNames: {},
   folders: {},
@@ -398,6 +399,7 @@ function normalizeState(saved) {
     round: normalizeRound(saved.round),
     rhythm: normalizeRhythm(saved.rhythm),
     shopDone: normalizeShopDone(saved.shopDone),
+    shopUndone: normalizeShopDone(saved.shopUndone),
     aisleOverrides: normalizeAisleOverrides(saved.aisleOverrides),
     creatorNames: normalizeCreatorNames(saved.creatorNames),
     folders: normalizeFolders(saved.folders),
@@ -445,7 +447,8 @@ function normalizeShoppingMarks(raw) {
 function normalizeItemPrefs(raw) {
   return Object.fromEntries(
     Object.entries(raw || {})
-      .filter(([, v]) => v && ["sub", "skip"].includes(v.action))
+      // clear：取り消して記憶を消した印（同期で古い記憶が戻らないように残す）
+      .filter(([, v]) => v && ["sub", "skip", "clear"].includes(v.action))
       .map(([k, v]) => [
         k,
         {
@@ -747,6 +750,7 @@ function buildSyncPayload() {
     round: state.round || {},
     rhythm: state.rhythm || {},
     shopDone: state.shopDone || {},
+    shopUndone: state.shopUndone || {},
     aisleOverrides: state.aisleOverrides || {},
     creatorNames: state.creatorNames || {},
     folders: state.folders || {},
@@ -802,7 +806,7 @@ function mergeSyncPayloads(local, remote) {
     memberPrefs: Lifestyle.mergeMap(local.memberPrefs, remote.memberPrefs),
     round: (remote.round?.updatedAt || "") > (local.round?.updatedAt || "") ? remote.round : local.round,
     rhythm: (remote.rhythm?.updatedAt || "") > (local.rhythm?.updatedAt || "") ? remote.rhythm : local.rhythm,
-    shopDone: { ...(remote.shopDone || {}), ...(local.shopDone || {}) },
+    ...mergeShopDone(local.shopDone, remote.shopDone, local.shopUndone, remote.shopUndone),
     aisleOverrides: Lifestyle.mergeMap(local.aisleOverrides, remote.aisleOverrides),
     creatorNames: Lifestyle.mergeMap(local.creatorNames, remote.creatorNames),
     folders: Lifestyle.mergeMap(local.folders, remote.folders),
@@ -864,6 +868,7 @@ function applySyncPayload(payload) {
   state.round = normalizeRound(payload.round || state.round);
   state.rhythm = normalizeRhythm(payload.rhythm || state.rhythm);
   state.shopDone = normalizeShopDone(payload.shopDone || state.shopDone);
+  state.shopUndone = normalizeShopDone(payload.shopUndone || state.shopUndone);
   state.aisleOverrides = normalizeAisleOverrides(payload.aisleOverrides || state.aisleOverrides);
   state.creatorNames = normalizeCreatorNames(payload.creatorNames || state.creatorNames);
   state.folders = normalizeFolders(payload.folders || state.folders);
