@@ -445,7 +445,9 @@ export function createApp(env = process.env, deps = {}) {
       // 新着の一覧・掲載停止・採用の集計は、互いに待たずに同時に読む（速さ。2026-11-03）。
       const [listed, excluded, stats] = await Promise.all([trendBook.list({ promote: false, share: true }), creatorDesk.optedOut().catch(() => new Set()), popularBook.stats()]);
       const byId = new Map();
-      for (const t of listed.items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", dishName: t.dishName || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "" });
+      // src：手順の時刻を数えるための元（手順・時刻・出どころ・版）。返す前に tc（数えた結果）に置きかえる。
+      const srcOf = (r) => ({ steps: r.steps || [], stepTimes: r.stepTimes || [], stepTimesFrom: r.stepTimesFrom || "", analyzedFrom: r.analyzedFrom || "", catalog: { revision: r.revision || r.catalog?.revision || "" } });
+      for (const t of listed.items || []) byId.set(t.videoId, { videoId: t.videoId, title: t.title || "", dishName: t.dishName || "", channelTitle: t.channelTitle || "", channelId: t.channelId || "", minutes: t.planning?.minutes || null, trend: true, newUntil: t.expiresAt || "", src: srcOf(t) });
       // 集計は全件を新着に結びつける。新着でない料理を読み出す（peek）のは、多い順に500件まで。
       // 掲載停止（動画・投稿者）は、新着と同じく一覧に出さない。
       // 速さ（2026-11-03）：読み出す料理（多い順に500件まで）を先に決めて、20件ずつ同時に読む（中身・順番は前と同じ）。
@@ -457,7 +459,7 @@ export function createApp(env = process.env, deps = {}) {
           if (!peeked.has(s.videoId)) continue;
           const r = peeked.get(s.videoId);
           if (!r || (r.channelId && excluded.has(r.channelId))) continue;
-          x = { videoId: s.videoId, title: r.title || "", dishName: r.dishName || "", channelTitle: r.channelTitle || "", channelId: r.channelId || "", minutes: r.planning?.minutes || null, trend: false, newUntil: "" };
+          x = { videoId: s.videoId, title: r.title || "", dishName: r.dishName || "", channelTitle: r.channelTitle || "", channelId: r.channelId || "", minutes: r.planning?.minutes || null, trend: false, newUntil: "", src: srcOf(r) };
           byId.set(s.videoId, x);
         }
         Object.assign(x, { shown: s.shown, planned: s.planned, cooked: s.cooked, rate: s.rate, kept: s.kept });
@@ -466,6 +468,14 @@ export function createApp(env = process.env, deps = {}) {
       const recipes = [...byId.values()].filter((x) => !excluded.has(x.videoId) && !(x.channelId && excluded.has(x.channelId)));
       const dishes = await dishBook.classify(recipes).catch(() => ({}));
       for (const x of recipes) x.dish = dishes[x.videoId] || null;
+      // 手順の時刻（2026-11-03）：作る画面と同じ選び方（timesOf）で、手順の数・時刻のある手順の数・出どころ。0円（保存済みを読むだけ）。
+      await mapLimit(recipes, ADMIN_READ_CONCURRENCY, async (x) => {
+        const src = x.src; delete x.src;
+        const n = (src.steps || []).filter((t) => String(t || "").trim()).length;
+        let times = [], source = "";
+        try { ({ times, source } = await timesOf(canonicalYouTubeUrl(x.videoId), src)); } catch {}
+        x.tc = { n, k: (times || []).slice(0, n).filter((t) => Number.isFinite(t)).length, source: source || "" };
+      });
       return { recipes };
     })());
   });

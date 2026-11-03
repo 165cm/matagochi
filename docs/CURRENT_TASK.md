@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-11-03（管理画面の読み込みを速くする修正は #223 で公開。管理画面の並びの整理を claude/confident-volta-1giltr で。#221 公開。レビューで見つかった6件を claude/focused-ramanujan-gnx6jq で修正中）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-11-03（管理画面の読み込みを速くする修正は #223 で公開。管理画面の並びの整理は #224 で公開。レシピ・親の統合と手順の時刻の全体像を claude/confident-volta-1giltr で。#221 公開。レビューで見つかった6件を claude/focused-ramanujan-gnx6jq で修正中）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -13,7 +13,8 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：管理画面の並びの整理と「🎯 進み具合」（2026-11-03 のユーザーの依頼：確認の優先順で並べ直し、優先度の高いレシピを積み上げられているか判断できるように） | レビュー待ち | claude/confident-volta-1giltr | タブを毎日見る順に・🎯 進み具合（目標の数字・いま確認すること・理想の12品・分野の割合・次に補充される親）・レシピ一覧の並べ方としぼりこみ・そろい／残り日数の表示（APP_MAP §48-4） | admin/catalog.html, admin/help.html, api/src/trends.js, api/test/refill.test.js, test/admin-home.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| Claude：「📚 レシピ・親」（レシピ一覧と親の料理名をまとめる）と手順の時刻の全体像（2026-11-03 のユーザーの依頼） | レビュー待ち | claude/confident-volta-1giltr | 親1つが1行の縦をそろえた表（見出しで並べ替え・押すと子のレシピ）・各レシピの⏱ 時刻（n/手順・出どころ）・進み具合に手順の時刻の全体像（APP_MAP §48-5） | admin/catalog.html, admin/help.html, api/src/server.js, api/src/trends.js, api/test/adminSpeed.test.js, test/admin-home.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
+| Claude：管理画面の並びの整理と「🎯 進み具合」（2026-11-03 のユーザーの依頼：確認の優先順で並べ直し、優先度の高いレシピを積み上げられているか判断できるように） | 公開済み（#224） | claude/confident-volta-1giltr | タブを毎日見る順に・🎯 進み具合（目標の数字・いま確認すること・理想の12品・分野の割合・次に補充される親）・レシピ一覧の並べ方としぼりこみ・そろい／残り日数の表示（APP_MAP §48-4） | admin/catalog.html, admin/help.html, api/src/trends.js, api/test/refill.test.js, test/admin-home.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | Claude：管理画面の読み込みを速くする（2026-11-03 のユーザーの依頼：レシピ一覧が出るまで遅い） | 公開済み（#223） | claude/confident-volta-1giltr | ①保存場所の読み出しを20件ずつ同時に（レシピ一覧・品ぞろえ）②レシピ一覧などを最初から読み始める③品ぞろえの同意は1回だけ読む。Claude のコードレビュー7件も対応（新着の一覧も同時に読む・3か所で1回に・集めるのデータも同時に・読み込み中の表示・テスト）。中身・順番は同じ。キャッシュは様子を見てから（APP_MAP §48-2） | api/src/server.js, api/src/trends.js, api/src/mapLimit.js, api/src/creators.js, admin/catalog.html, api/test/adminSpeed.test.js, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | Claude：レビュー（2026-11-03・#185以降の26件）で見つかった6件の修正 | レビュー待ち | claude/focused-ramanujan-gnx6jq | ①LPの「2秒で同期」を実態（開いていれば15秒ほど）に ②管理画面のレシピ：未保存をタブごとに持ち、片方を保存してももう片方の入力を残す ③料理の画面の代用・パスはその日・その料理の買い物の印だけ ④代用・パスの取り消しで次回用の記憶も戻す（`clear`） ⑤古い版が送らない項目（`itemPrefs`・`pantryMeta`・`shopUndone`）をサーバーが残す ⑥「買い物前に戻す」を `shopUndone` で同期 | lp/index.html, admin/catalog.html, cook-mode.js, daily-ui.js, household.js, app.js, sw.js, index.html, version.json, api/src/sync.js, api/test/sync.test.js, test/review-2026-11-03.test.cjs, test/admin-recipe-ui.test.cjs, docs/* |
 | 買い物・常備品UXの再デザインと不具合改修（献立と同一タブUI・買い物完了後のリスト保持・新規献立反映修正・Gmail風横スワイプ・常備品1行圧縮＆デフォルト賞味期限周期・スーパー売場分類） | 公開済み（#221） | feat/shopping-ux-polish | 実機確認フィードバック対応：①献立の `.plan-dots` とタブ・ブロック定義を完全統一 ②買い物完了後も購入済み/買い物前が明確なリスト表示 ③新規献立が買い物リストに反映されない不具合修正 ④指追従のGmail風物理横スワイプ＆右ボタン押下修正 ⑤常備品1行スリム化・`ⓘ`格納・デフォルト賞味期限周期 ⑥スーパー売場ベースの調味料・食材分類再整理 | aisles.js, lifestyle.js, daily-ui.js, household.js, app.js, styles.css, sw.js, index.html, version.json, test/shopping-ux.test.cjs, docs/* |
