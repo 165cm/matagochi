@@ -110,6 +110,17 @@ test('refill: runs automatically up to 15 dishes and 25 AI calls a day, and does
   const st = await book.parentStock();
   assert.equal(st.target, 400);
   assert.ok(st.parents.filter((p) => p.total > 0).length >= 5);
+  // 管理の画面（🎯 進み具合）用：親ごとの目標（理想の12品は20分以内6・30分以上2・8品まで、ほかは4・1・6品まで）と補充の段（2026-11-03）
+  const idealRow = st.parents.find((p) => p.ideal), plainRow = st.parents.find((p) => !p.ideal);
+  assert.deepEqual([idealRow.lim, idealRow.tier], [{ quick: 6, long: 2, max: 8 }, 0]);
+  assert.deepEqual(plainRow.lim, { quick: 4, long: 1, max: 6 });
+  assert.ok([1, 2].includes(plainRow.tier));
+  assert.deepEqual(st.idealMissing, [], 'every ideal dish is in the dictionary');
+  // 理想の料理を辞書から外すと、補充の対象から消えるので idealMissing に出す（管理の画面で気づけるように）
+  const { createDishBook } = await import('../src/dishes.js');
+  await createDishBook(store, { now: () => NOW }).edit({ op: 'remove', key: (await import('../src/dishes.js')).dishKey('冷しゃぶ') });
+  book.clearCache?.();
+  assert.deepEqual((await book.parentStock()).idealMissing, ['冷しゃぶ']);
   // 80の親がすべて5品 → 何もしない
   const full = createMemorySyncStore();
   const cat2 = fakeCatalog();
