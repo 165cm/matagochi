@@ -47,7 +47,8 @@ export function createTimecodeBackfill(store, deps, { enabled = false, monthlyYe
         for (const row of rows) {
           const r = await deps.load(row);
           if (!r || r.protected || r.steps.length < 2 || r.steps.length > 30 || timedCount(r.steps,r.stepTimes) === r.steps.filter(Boolean).length) continue;
-          const fingerprint = createHash('sha256').update(JSON.stringify([row.videoId,r.revision,r.steps])).digest('hex').slice(0,24);
+          // 補完自身がレシピ版を上げても、同じ手順の試行履歴と待機期間は引き継ぐ。
+          const fingerprint = createHash('sha256').update(JSON.stringify([row.videoId,r.steps])).digest('hex').slice(0,24);
           const key = `timecode-backfill/attempts/${fingerprint}`;
           const previous = await store.get(key), attempt = previous?.envelope || {};
           if (attempt.finished || attempt.tries >= 3 || attempt.retryAt > now()) continue;

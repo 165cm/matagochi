@@ -108,3 +108,16 @@ test('live mode admits new recipes after pilot, without resetting the lifetime b
  assert.equal(x.counts().calls,2);
  assert.equal((await store.get('timecode-backfill/state')).envelope.totalReservedYen,4);
 });
+test('partial completion retains retry delay and three-try cap across its own recipe revisions',async()=>{
+ const store=createMemorySyncStore();
+ let now=Date.parse('2026-11-01'),revision=1,times=[10,null,null],calls=0;
+ const deps={list:async()=>[recipe],load:async()=>({...recipe,revision:String(revision),stepTimes:times}),reserveGlobal:async()=>{},measure:async fn=>({result:await fn(),yen:1}),
+ complete:async(r,paid)=>{await paid('video',async()=>{calls++;});return {stepTimes:[10,50,null],reason:'partial_or_no_match',stages:[]};},
+ save:async(r,result)=>{revision++;times=result.stepTimes;}};
+ const book=createTimecodeBackfill(store,deps,{enabled:true,now:()=>now});
+ await book.run();assert.equal(calls,1);assert.equal(revision,2);
+ assert.equal((await book.run()).reason,'no_eligible_recipes');assert.equal(calls,1);
+ for(let i=0;i<2;i++){now+=7*86400000;await book.run();}
+ assert.equal(calls,3);
+ now+=7*86400000;assert.equal((await book.run()).reason,'no_eligible_recipes');assert.equal(calls,3);
+});
