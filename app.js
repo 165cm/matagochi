@@ -1,3 +1,5 @@
+let adminEntryTaps = 0;
+let adminEntryLastTap = 0;
 const STORAGE_KEY = "matagochi-mvp-v1";
 const IDB_NAME = "matagochi";
 const IDB_STORE = "state";
@@ -11,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261104-timecode-completion";
+const APP_VERSION = "20261105-admin-entry";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2821,7 +2823,7 @@ function renderSettings() {
     ${settingRow("reset", "⚠️", "全件削除", "レシピ・記録を消す／使い直す", `<button class="secondary-button danger full-button" type="button" data-action="reset-all-data">レシピと食事の記録を全件削除</button>
       <button class="secondary-button danger full-button" type="button" data-action="reset-everything">はじめから使い直す（全データ削除）</button>`)}
     </section>
-    <p class="app-version">リピごち 版 ${APP_VERSION}</p>
+    <p class="app-version"><button type="button" class="app-version-entry" data-action="admin-entry">リピごち 版 ${APP_VERSION}</button></p>
     <p class="app-version-actions"><button type="button" class="text-button" data-action="check-app-version">🔄 新しい版を確かめる</button><button type="button" class="text-button" data-action="copy-app-status">📋 動作の状態をコピー（お問い合わせ用）</button></p>
   `;
 }
@@ -3555,6 +3557,17 @@ async function handleAction(event) {
 
   if (action === "export-data") {
     exportData();
+  }
+
+  if (action === "admin-entry") {
+    const now = Date.now();
+    adminEntryTaps = now - adminEntryLastTap <= 2000 ? adminEntryTaps + 1 : 1;
+    adminEntryLastTap = now;
+    if (adminEntryTaps >= 5) {
+      adminEntryTaps = 0;
+      window.location.assign(new URL("admin/catalog.html", window.location.href).href);
+    }
+    return;
   }
 
   // 設定：新しい版を確かめる（押した時だけ。新しい版があれば、その場で読み込み直す。2026-11-01）。
