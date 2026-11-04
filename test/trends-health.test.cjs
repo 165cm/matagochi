@@ -129,3 +129,13 @@ test("2026-11-03：補充が1日の AI 25回を使い切った日（ai_today）�
   assert.deepEqual(r.problems, []);
   assert.ok(r.notes.some((n) => n.includes("今日の分（AI 25回）を使い切りました")));
 });
+
+test("2026-11-04：手順の時刻のカバー率を表に出す（判定には使わない）", () => {
+  const r = judge({ refresh: { today: 2, ai: AI, done: true }, refill: { done: true, added: 8, ran: { ai: 25, added: 8 } }, list: { items: items(410) }, now: NOW });
+  const md = markdown(r, { timecodes: { recipes: 410, full: 300, part: 60, none: 40, nosteps: 10, steps: 2000, timed: 1700, sources: {} } });
+  assert.match(md, /### ⏱ 手順の時刻（新着）/);
+  assert.match(md, /すべての手順に時刻があるレシピ \| 300品（75%）/);
+  assert.match(md, /手順のカバー率（時刻のある手順 ÷ すべての手順） \| 85%（1700 \/ 2000）/);
+  assert.equal(r.ok, true);
+  assert.ok(!markdown(r).includes("手順の時刻"), "no table when the numbers could not be read");
+});

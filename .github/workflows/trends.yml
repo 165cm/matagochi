@@ -5,7 +5,7 @@ name: Weekly trend recipes
 # サーバー側は何回呼ばれても、採用数（1日2品・1週14品）と、新着集めが AI を呼ぶ回数（1日6回・1週30回：TREND_AI_PER_DAY・TREND_AI_PER_WEEK）の上限を超えない。
 # 続けて、親料理ごとの自動の補充（POST /api/trends/refill：1日に料理15品・AI 25回まで・月の上限の中）を done になるまで呼ぶ（docs/APP_MAP.md §46-7）。
 # 表示（GET /api/trends）は、ここで集めた結果を読み出すだけ。
-# 最後に健康診断（scripts/trends-health.cjs）：今日増えた数・見えている品数・止まった理由を実行の要約に書き、
+# 最後に健康診断（scripts/trends-health.cjs）：今日増えた数・見えている品数・止まった理由・手順の時刻のカバー率を実行の要約に書き、
 # 問題があれば実行を「失敗（赤）」にする＝GitHub からメールが届く（2026-10-28。以前は止まっていても「成功」だった）。
 # 手動で試す時は Actions → Weekly trend recipes → Run workflow。
 on:
@@ -64,7 +64,9 @@ jobs:
         if: always()
         run: |
           curl -sS --max-time 120 https://matagochi-api-292190013809.us-central1.run.app/api/trends -o trends.json || echo '{}' > trends.json
-          node scripts/trends-health.cjs refresh.json refill.jsonl trends.json
+          # 手順の時刻のカバー率（数だけ・0円。2026-11-04）。読めなくても診断は続ける（判定には使わない）。
+          curl -sS --max-time 120 https://matagochi-api-292190013809.us-central1.run.app/api/trends/timecodes -o timecodes.json || echo '{}' > timecodes.json
+          node scripts/trends-health.cjs refresh.json refill.jsonl trends.json timecodes.json
       - name: Progress toward the ideal recipe set
         # 理想の12品・主役と味の割合の目安までの進み具合（api/src/ideal.js）。健康診断が赤の日も出す。AI は使わない。
         if: always()

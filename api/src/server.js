@@ -471,11 +471,7 @@ export function createApp(env = process.env, deps = {}) {
       // 時刻は手順の位置ごと（空の手順も位置を持つ）。保存済みの時刻（timecodes/*）は手順30個までなので、それより多い時はレシピの時刻の長さまで数える。
       const [dishes] = await Promise.all([dishBook.classify(recipes).catch(() => ({})), mapLimit(recipes, ADMIN_READ_CONCURRENCY, async (x) => {
         const src = x.src; delete x.src;
-        let times = [], source = "";
-        try { ({ times, source } = await timesOf(canonicalYouTubeUrl(x.videoId), src)); } catch {}
-        const steps = (src.steps || []).slice(0, Math.max(30, (times || []).length));
-        const real = steps.map((t) => !!String(t || "").trim());
-        x.tc = { n: real.filter(Boolean).length, k: real.filter((ok, i) => ok && Number.isFinite((times || [])[i])).length, source: source || "" };
+        x.tc = await tcOf(canonicalYouTubeUrl(x.videoId), src);
       })]);
       for (const x of recipes) x.dish = dishes[x.videoId] || null;
       return { recipes };
@@ -549,6 +545,39 @@ export function createApp(env = process.env, deps = {}) {
     if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
     return { times: st?.stepTimes || [], source: st?.source || "", ...(st?.seenSeconds ? { seenSeconds: st.seenSeconds } : {}) };
   }
+  // 1品の手順の時刻の数（n＝手順の数・k＝時刻のある手順の数・source＝出どころ）。管理のレシピ一覧と、毎朝の健康診断（下の /api/trends/timecodes）で同じ数え方。
+  // 時刻は手順の位置ごと（空の手順も位置を持つ）。保存済みの時刻（timecodes/*）は手順30個までなので、それより多い時はレシピの時刻の長さまで数える。
+  async function tcOf(url, src) {
+    let times = [], source = "";
+    try { ({ times, source } = await timesOf(url, src)); } catch {}
+    const steps = (src.steps || []).slice(0, Math.max(30, (times || []).length));
+    const real = steps.map((t) => !!String(t || "").trim());
+    return { n: real.filter(Boolean).length, k: real.filter((ok, i) => ok && Number.isFinite((times || [])[i])).length, source: source || "" };
+  }
+  // 手順の時刻のカバー率（新着・毎朝の健康診断が読む。2026-11-04 のユーザーの判断）。数だけを返す（レシピの中身・動画IDは返さない）。
+  // 0円（保存済みを読むだけ）。読み出しが多いので、数え直すのは1時間に1回まで。
+  let tcCoverage = null;
+  app.get("/api/trends/timecodes", (req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=300");
+    send(res, (async () => {
+      if (tcCoverage && Date.now() - tcCoverage.at < 3_600_000) return tcCoverage.body;
+      const items = (await trendBook.list({ promote: false })).items || [];
+      const count = { full: 0, part: 0, none: 0, nosteps: 0 }, sources = {};
+      let steps = 0, timed = 0;
+      await mapLimit(items, ADMIN_READ_CONCURRENCY, async (x) => {
+        const url = canonicalYouTubeUrl(x.videoId);
+        // 一覧の料理には出どころ（stepTimesFrom など）がないので、保存済みの読み取り結果を読む（AI は呼ばない）。
+        const full = (await catalog.peek(url).catch(() => null)) || x;
+        const tc = await tcOf(url, full);
+        count[!tc.n ? "nosteps" : tc.k >= tc.n ? "full" : tc.k ? "part" : "none"] += 1;
+        steps += tc.n; timed += tc.k;
+        if (tc.k) sources[tc.source || "ほか"] = (sources[tc.source || "ほか"] || 0) + 1;
+      });
+      const body = { at: new Date().toISOString(), recipes: items.length, ...count, steps, timed, sources };
+      tcCoverage = { at: Date.now(), body };
+      return body;
+    })());
+  });
   app.get("/api/admin/timecodes/check", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden", message: "管理者認証が必要です。" } });
