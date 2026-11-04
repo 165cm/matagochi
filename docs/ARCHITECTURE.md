@@ -76,3 +76,5 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 Google Cloud（Cloud Run・Storage・Gemini）／YouTube Data API／TikTok oEmbed／Resend（メール）／GitHub Pages／jsDelivr と Google（✋手の形の認識の部品 MediaPipe を初回に読み込む。映像は外に送らない）
 
 - `api/src/syncDevices.js`：同一アカウント・共有先ごとのメイン端末と献立の確認待ち。認証付き `/api/auth/devices`、CAS更新。端末IDは1日の上限の家庭IDと独立。仕様はAPP_MAP §60。
+
+- 時刻補完：`timecodeCompletion.js`（空欄のみの照合）、`timecodeBackfill.js`（排他・予算・試行記録）、管理API `/api/admin/timecodes/backfill`。既定停止、試験累計500円。設定・起動条件は APP_MAP §63。

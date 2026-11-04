@@ -885,7 +885,7 @@
   // 残り日数（新着から外れるまで）。7日以内は赤。
   const leftCell = (r) => { const d = daysLeft(r); return d === null ? { text: "—", value: null } : { text: d <= 0 ? "今日" : `${d}日`, value: d }; };
   // 手順の時刻（2026-11-03）：full＝すべての手順に時刻／part＝一部／none＝なし／nosteps＝手順なし（古いサーバーの時は null）。
-  const TC_SRC = { fix: "運営", transcript: "字幕", video: "動画", chapters: "章", recipe: "レシピ" };
+  const TC_SRC = { completion: "補完", fix: "運営", transcript: "字幕", video: "動画", chapters: "章", recipe: "レシピ" };
   const tcLevel = (r) => (!r.tc ? null : !r.tc.n ? "nosteps" : r.tc.k >= r.tc.n ? "full" : r.tc.k ? "part" : "none");
   // 時刻が1つもない（手順が読めていないものも含む）。
   const tcMissing = (r) => ["none", "nosteps"].includes(tcLevel(r));

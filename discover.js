@@ -413,14 +413,14 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart
 const timecodes = new Map();
 const timecodeKey = (recipe) => `${youtubeVideoId(recipe?.videoUrl)}|${(recipe?.steps || []).join("\n")}`;
 // 確かさの順：だれかが直した時刻・YouTubeの字幕・説明欄のタイムスタンプ（サーバーから）→ レシピに入っている時刻 → AIが動画から探した時刻。
-const TRUSTED_TIMES = new Set(["fix", "transcript", "chapters"]);
+const TRUSTED_TIMES = new Set(["fix", "transcript", "chapters", "completion"]);
 let timeFix = null; // 時刻を直している間：{ key, recipeId, times }
 function isTimecodeFixed(recipe) {
   const key = timecodeKey(recipe);
   if (timeFix?.key === key) return true;
   const entry = timecodes.get(key);
   if (entry?.cleared || entry?.source === "fix" || entry?.source === "transcript") return true;
-  if (recipe?.stepTimesFrom === "admin" || recipe?.stepTimesFrom === "fix" || recipe?.stepTimesFrom === "transcript") return true;
+  if (recipe?.stepTimesFrom === "admin" || recipe?.stepTimesFrom === "fix" || recipe?.stepTimesFrom === "transcript" || recipe?.stepTimesFrom === "completion") return true;
   return false;
 }
 function recipeStepTimes(recipe) {
@@ -429,9 +429,10 @@ function recipeStepTimes(recipe) {
   const entry = timecodes.get(key);
   // 運営がすべて消した時刻（cleared）は、手元に古い時刻があっても使わない。
   if (entry?.cleared) return entry.times;
+  if (recipe?.stepTimesFrom === "completion" && entry?.source !== "fix" && entry?.source !== "completion") return recipe.stepTimes;
   const fixed = isTimecodeFixed(recipe);
   const refine = (arr) => (!fixed && typeof CookMode !== "undefined" && typeof CookMode.refineTimes === "function" && Array.isArray(arr) && arr.some((t) => Number.isFinite(t)) ? CookMode.refineTimes(recipe?.steps || [], arr, { durationSeconds: recipe?.durationSeconds }) : arr);
-  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return (entry.source === "fix" || entry.source === "transcript") ? entry.times : refine(entry.times);
+  if (entry?.times?.length && TRUSTED_TIMES.has(entry.source)) return (entry.source === "fix" || entry.source === "transcript" || entry.source === "completion") ? entry.times : refine(entry.times);
   if (recipe?.stepTimes?.some((t) => Number.isFinite(t))) return fixed ? recipe.stepTimes : refine(recipe.stepTimes);
   return refine(entry?.times || []);
 }

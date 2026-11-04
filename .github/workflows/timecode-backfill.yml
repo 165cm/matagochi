@@ -1,0 +1,33 @@
+name: Complete missing step times
+on:
+  schedule:
+    - cron: '35 20 * * *' # JST 05:35
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: timecode-backfill
+  cancel-in-progress: false
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Complete up to ten recipes within server budgets
+        env:
+          API: https://matagochi-api-292190013809.us-central1.run.app
+          ADMIN_TOKEN: ${{ secrets.RECIPE_ADMIN_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo 'RECIPE_ADMIN_TOKEN is not configured; no paid requests were made.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          for i in $(seq 1 10); do
+            # 応答不明時に自動再送しない。予約した予算はサーバーに残る。
+            curl --fail-with-body -sS --max-time 290 -X POST \
+              -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+              "$API/api/admin/timecodes/backfill" -o result.json || exit 1
+            jq '{done, reason, before, after, improved, reservedYen, measuredYen}' result.json >> "$GITHUB_STEP_SUMMARY"
+            if jq -e '.done == true' result.json >/dev/null; then exit 0; fi
+          done

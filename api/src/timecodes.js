@@ -10,7 +10,7 @@ import { VIDEO_TIMEOUT_MS, VIDEO_CLIENTS_MAX } from "./analyzer.js";
 // 確かさの順：① だれかが直した時刻（fix）→ ② YouTubeの字幕（transcript）→ ③ 説明欄の投稿者のタイムスタンプ（chapters）→ ④ AIが動画から探した時刻（video）。
 // AIの1日の上限（全体）の中で動き、1家庭1日20本まで。利用者の1日の上限（tickets.js）は使わない。
 export const TIMECODES_PER_DAY = 20;
-const TRUSTED = new Set(["fix", "transcript", "chapters"]);
+const TRUSTED = new Set(["fix", "transcript", "chapters", "completion"]);
 // 管理の探し直しの鍵の長さ：3つの接続先がそれぞれ時間切れまでかかっても切れない長さ＋余裕5分（これより古い鍵は止まったもの。review fix #138 r2）。
 export const REANALYZE_LOCK_MS = VIDEO_TIMEOUT_MS * VIDEO_CLIENTS_MAX + 5 * 60_000;
 // 手順の並びはそのまま（空の手順も位置を保つ）。返す時刻は手順と同じ数・同じ順。
@@ -244,7 +244,7 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
           info = await snippet(videoId).catch(() => null);
           return info?.durationSeconds ?? null;
         })());
-        const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || (entry?.source === "chapters" && transcriptDone(entry, now()));
+        const isFullyChecked = entry?.source === "fix" || entry?.source === "transcript" || entry?.source === "completion" || (entry?.source === "chapters" && transcriptDone(entry, now()));
         if (found(entry?.stepTimes) && isFullyChecked) return answer(entry, true, dur);
         // 管理で採用した候補に「要確認」の時刻がある間は、探し直さない（確かめ済みの時刻だけを返す。APP_MAP §52-6）。
         // 確かめ済みの時刻が1つもない時は cleared を付ける（作る画面が端末に残った古い時刻へ戻らない）。
@@ -338,13 +338,23 @@ export function createTimecodeBook(store, { analyze, matchChapters, matchTranscr
         await store.remove(lockKey, { ifGeneration: lock.generation }).catch(() => {});
       }
     },
+    // 自動補完は読んだ世代だけ更新。手動修正・全消去・要確認は上書きしない。
+    async saveCompletion({ url, steps, stepTimes, sources, recipeRevision, generation = 0, guard }) {
+      const key = keyOf(extractYouTubeVideoId(url), normalize(steps));
+      const cached = await store.get(key);
+      if ((cached?.generation ?? 0) !== generation || cached?.envelope.source === "fix" || cached?.envelope.cleared || cached?.envelope.pendingCheck || !(await guard())) return { superseded: true };
+      const saved = await save(key, { stepTimes, stepSources: sources, source: "completion", recipeRevision, chaptersChecked: true, ...transcriptMarks(cached?.envelope) }, cached);
+      if (!saved) return { superseded: true };
+      return { saved: true };
+    },
     // 管理の点検用：保存済みの時刻を読むだけ（AI も YouTube も呼ばない）。なければ null。
     async stored({ url, steps }) {
       required();
       const list = normalize(steps);
       if (list.filter(Boolean).length < 2) return null;
-      const entry = (await store.get(keyOf(extractYouTubeVideoId(url), list)))?.envelope;
-      return entry ? { ...(entry.recipeRevision ? { recipeRevision: entry.recipeRevision } : {}), stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
+      const stored = await store.get(keyOf(extractYouTubeVideoId(url), list));
+      const entry = stored?.envelope;
+      return entry ? { generation: stored.generation, pendingCheck: !!entry.pendingCheck, ...(entry.recipeRevision ? { recipeRevision: entry.recipeRevision } : {}), stepTimes: entry.cleared ? list.map(() => null) : cleanTimes(entry.stepTimes, list), source: entry.source || "", cleared: !!entry.cleared, ...(Number.isFinite(entry.seenSeconds) ? { seenSeconds: entry.seenSeconds } : {}) } : null;
     },
     // すでに保存済みの時刻（AI・章）を0円で補正して保存し直す（だれかが直した時刻 fix や消した時刻 cleared は触らない）。
     async repair({ url, steps, stepTimes, source = "video", durationSeconds = null, fillGaps = true, allowEmpty = false }) {

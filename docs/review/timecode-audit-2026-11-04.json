@@ -1,0 +1,510 @@
+{
+  "at": "2026-11-04T11:49:14.177Z",
+  "population": 410,
+  "sample": 50,
+  "method": "35 none / 10 partial / 5 full; channel round-robin; descriptive sample, not population success estimate",
+  "aiCalls": 0,
+  "aiYen": 0,
+  "rows": [
+    {
+      "videoId": "__viARKpFw4",
+      "title": "鶏のジャム照り焼き",
+      "channel": "デリッシュキッチン",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "_RfkfeRz5WE",
+      "title": "揚げない豚こま南蛮",
+      "channel": "簡単レシピ🤍東京OLむむちゃん",
+      "steps": 6,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "_ufhXaomjhQ",
+      "title": "なすの煮浸し",
+      "channel": "Aosトラットリア〜青池のオッティモな食卓",
+      "steps": 6,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "_UUfm1lZE5Q",
+      "title": "小松菜の肉味噌炒め",
+      "channel": "奥薗壽子の日めくりレシピ【家庭料理研究家公式チャンネル】",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "_VHmpYkFomk",
+      "title": "マルちゃん製麺で油そば",
+      "channel": "なべのだいどころ。",
+      "steps": 4,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "-9aNw2_UMVk",
+      "title": "プロが教える本格クリームシチュー",
+      "channel": "コックさん食堂",
+      "steps": 10,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "-c04DABgWr4",
+      "title": "厚焼卵サンド",
+      "channel": "【田舎そば川原】料理・漬物",
+      "steps": 8,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "-dnlb0hzds0",
+      "title": "本格カルボナーラ",
+      "channel": "Tasty Japan",
+      "steps": 4,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "-ujyKHL3tC0",
+      "title": "白菜とミンチのとろみ丼",
+      "channel": "四毒抜きご飯",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "0_P6zJWowe8",
+      "title": "ふわとろ天津飯",
+      "channel": "料理研究家ゆかりのおうちで簡単レシピ / Yukari's Kitchen",
+      "steps": 6,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "0DK5cYpv5Sw",
+      "title": "コンビニ食材で和風ホットサンド",
+      "channel": "トピラボ",
+      "steps": 10,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "0dZnlmv4RDM",
+      "title": "プロの豚蒸ししゃぶ",
+      "channel": "桝谷のSimple is best",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "0LoIVZHbtmg",
+      "title": "サラダチキン油淋鶏",
+      "channel": "りょうさん食堂",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "0MRnEt_OJBs",
+      "title": "ぶりと大根の赤ワイン煮",
+      "channel": "シェフ三國清三",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "0ohr6mw05wM",
+      "title": "レンジで超簡単♡茄子の煮浸し",
+      "channel": "ねこまる",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "1BKNtVs3IiU",
+      "title": "とろとろナスの煮浸し",
+      "channel": "こじまぽん助【分子調理学研究家】",
+      "steps": 7,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "1ghMDVkKQQw",
+      "title": "レンジ肉じゃが",
+      "channel": "五十嵐ゆかり",
+      "steps": 3,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "2gB75FiVqZM",
+      "title": "レンジで焼き魚2種",
+      "channel": "おたからキッチン",
+      "steps": 16,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "2PmGJkfMjL8",
+      "title": "レンジでスタミナ肉豆腐",
+      "channel": "北斗晶のYouTube",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "3_NGzM2pX1k",
+      "title": "鮭のちゃんちゃん焼き",
+      "channel": "ガチャピンちゃんねる【公式】",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "3_QOPOtWpx4",
+      "title": "赤エビとホタテのタルタルソース和え",
+      "channel": "🐟あにキッチン🐟",
+      "steps": 10,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "3QiZLioLbfs",
+      "title": "だし豆腐",
+      "channel": "武島たけしの極み飯 / Kiwami-Meshi",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "4kNJxvZJAO4",
+      "title": "レンチン麻婆茄子",
+      "channel": "ぽちゃぽちゃチャッキー簡単cooking",
+      "steps": 6,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "4pRilt4HE7s",
+      "title": "シャキシャキ野菜炒め",
+      "channel": "ポテヒロの楽メシ",
+      "steps": 10,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "4v-tetiH-U0",
+      "title": "材料4つで簡単★豆腐ハンバーグ",
+      "channel": "食堂あさごはん",
+      "steps": 4,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "4ZAzFrYm2O0",
+      "title": "塩麹サラダチキン",
+      "channel": "榎本美沙の季節料理",
+      "steps": 5,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "510KKufjFS8",
+      "title": "プロに教わったお店の味の中華丼",
+      "channel": "元料理人の時短レシピ",
+      "steps": 8,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "5bSXG1HgRYQ",
+      "title": "チーズ入りとろとろ卵の豚・小松菜・しめじあんかけ",
+      "channel": "【賛否両論】笠原将弘の料理のほそ道",
+      "steps": 10,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "5erEu7b9Mpk",
+      "title": "麻婆茄子丼弁当",
+      "channel": "ちこちゃんのキッチン",
+      "steps": 6,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "5mBII5V-nWk",
+      "title": "ひき肉とニラの春巻き",
+      "channel": "wakana's cookingチャンネル",
+      "steps": 9,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "5TglNOvsIMA",
+      "title": "湯豆腐",
+      "channel": "marronrecipe",
+      "steps": 14,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "6Fqddukgz30",
+      "title": "だしパックで究極だし巻き卵",
+      "channel": "やすまる食堂 / やすまるだし公式【5分でカンタン料亭の味】",
+      "steps": 4,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "6GbgAt9QYR0",
+      "title": "厚揚げ大根煮",
+      "channel": "ともオカン358節約料理チャンネル",
+      "steps": 8,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "7pyRzddtKH8",
+      "title": "八宝菜",
+      "channel": "Party Kitchen - パーティーキッチン",
+      "steps": 10,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "7wUs9LogyuI",
+      "title": "鯛のアクアパッツァ",
+      "channel": "Firadis",
+      "steps": 4,
+      "timed": 0,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "-hfUDQK_5sI",
+      "title": "ねぎ塩鶏レバー",
+      "channel": "料理研究家リュウジのバズレシピ",
+      "steps": 16,
+      "timed": 14,
+      "analyzedFrom": "description",
+      "source": "chapters",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "6cvhkoYcYLI",
+      "title": "万能オクラ",
+      "channel": "シクロエの家",
+      "steps": 4,
+      "timed": 2,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "83gqcjK0o-w",
+      "title": "10分で豚コギ",
+      "channel": "コウズキッチン",
+      "steps": 4,
+      "timed": 3,
+      "analyzedFrom": "description",
+      "source": "chapters",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "8T2he3f-kcM",
+      "title": "青海苔とパルミジャーノのリゾット",
+      "channel": "クチーナチャンネル",
+      "steps": 9,
+      "timed": 6,
+      "analyzedFrom": "description",
+      "source": "chapters",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "EZ06AnF_w7A",
+      "title": "なすと豚肉の味噌だれ炒め",
+      "channel": "Riokoko Cooking",
+      "steps": 8,
+      "timed": 7,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "gx2kJ5M3gJk",
+      "title": "フライパンひとつ！鶏むね肉チキン南蛮",
+      "channel": "Koh Kentetsu Kitchen【料理研究家コウケンテツ公式チャンネル】",
+      "steps": 3,
+      "timed": 2,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "IAOmNiWvb34",
+      "title": "焼かない・揚げない・煮ない！ご飯がすすむ茄子レシピ",
+      "channel": "Aosトラットリア〜青池のオッティモな食卓",
+      "steps": 10,
+      "timed": 5,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "KiQXMVnlXVo",
+      "title": "サバの味噌煮",
+      "channel": "寿司職人Yoshi",
+      "steps": 10,
+      "timed": 8,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "KvgV85acs0w",
+      "title": "麻婆なすトマト",
+      "channel": "【めぐりやさい】世田谷のキッチンでつくる、野菜料理",
+      "steps": 9,
+      "timed": 2,
+      "analyzedFrom": "description",
+      "source": "chapters",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "l57i2-Defgw",
+      "title": "サーモンのムニエル 焦がしバターソース",
+      "channel": "辻クッキング / Tsuji cooking",
+      "steps": 10,
+      "timed": 5,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "_ovVdRNY6EY",
+      "title": "蒸し焼き肉じゃが",
+      "channel": "きじまごはん 【料理家きじまりゅうた公式チャンネル】",
+      "steps": 9,
+      "timed": 9,
+      "analyzedFrom": "description",
+      "source": "chapters",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "-oFLAM5rN70",
+      "title": "ゴーヤとひき肉の絶品スタミナ丼",
+      "channel": "Riokoko Cooking",
+      "steps": 6,
+      "timed": 6,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "0LSSZgz7CCE",
+      "title": "白菜と豚肉の中華丼",
+      "channel": "元気ママキッチン",
+      "steps": 6,
+      "timed": 6,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "143uA6rrYjs",
+      "title": "ふっくら仕上がる「サーモンのムニエル」！イタリアンシェフが失敗しない焼き方教えます",
+      "channel": "kufura",
+      "steps": 8,
+      "timed": 8,
+      "analyzedFrom": "description",
+      "source": "unknown",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    },
+    {
+      "videoId": "1V0sAwEkKno",
+      "title": "レンチン・プルコギ",
+      "channel": "ズボラごはんキッチン",
+      "steps": 6,
+      "timed": 6,
+      "analyzedFrom": "description",
+      "source": "chapters",
+      "executionReason": "unknown_public_api_has_no_attempt_history"
+    }
+  ]
+}
