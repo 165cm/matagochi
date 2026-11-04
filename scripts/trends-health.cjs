@@ -2,7 +2,8 @@
    集めた結果（POST /api/trends/refresh・/refill の最後の返事）と、いま見えている新着（GET /api/trends。読み出すだけで AI は使わない）から、
    「今日は集められたか」「見えている品数は足りているか」を判定し、GitHub の実行の要約（Job Summary）に日本語で書く。
    問題があれば終了コード1で実行を「失敗（赤）」にする＝GitHub からメールが届く（以前は止まっていても毎回「成功（緑）」だった）。
-   使い方：node scripts/trends-health.cjs refresh.json refill.jsonl trends.json
+   使い方：node scripts/trends-health.cjs refresh.json refill.jsonl trends.json [timecodes.json]
+           （timecodes.json は GET /api/trends/timecodes：手順の時刻のカバー率。2026-11-04 から。判定には使わず数を出すだけ）
            （refill.jsonl は補充の返事を1行ずつ。最後の行で状態を見て、各回の ran.ai を月の費用に足す）
            （どれも無い・読めない時は「返事なし」として扱う。要約の書き先は環境変数 GITHUB_STEP_SUMMARY） */
 const fs = require("node:fs");
@@ -89,7 +90,26 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
   };
 }
 
-function markdown(result, { minVisible = MIN_VISIBLE } = {}) {
+// 手順の時刻のカバー率（GET /api/trends/timecodes の数から。管理の画面の「🎯 進み具合 → ⏱ 手順の時刻（新着）」と同じ数え方）。
+function timecodeRows(tc) {
+  if (!tc || !Number.isFinite(tc.recipes)) return [];
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : "—");
+  const withSteps = tc.recipes - (tc.nosteps || 0);
+  return [
+    "",
+    "### ⏱ 手順の時刻（新着）",
+    "",
+    "| 項目 | 数 |",
+    "|---|---:|",
+    `| すべての手順に時刻があるレシピ | ${tc.full || 0}品（${pct(tc.full || 0, withSteps)}） |`,
+    `| 一部の手順だけ | ${tc.part || 0}品（${pct(tc.part || 0, withSteps)}） |`,
+    `| 時刻なし | ${tc.none || 0}品（${pct(tc.none || 0, withSteps)}） |`,
+    `| 手順が読めていない | ${tc.nosteps || 0}品 |`,
+    `| 手順のカバー率（時刻のある手順 ÷ すべての手順） | ${pct(tc.timed || 0, tc.steps || 0)}（${tc.timed || 0} / ${tc.steps || 0}） |`,
+  ];
+}
+
+function markdown(result, { minVisible = MIN_VISIBLE, timecodes = null } = {}) {
   const n = result.numbers;
   const show = (v, unit = "") => (v === null || v === undefined ? "不明" : `${v}${unit}`);
   const lines = [
@@ -105,6 +125,7 @@ function markdown(result, { minVisible = MIN_VISIBLE } = {}) {
     `| ${SOON_DAYS}日以内に見えなくなる料理 | ${show(n.soon, "品")} |`,
     `| 今月の新着集めの費用（目安） | ${n.monthYen === null ? "不明" : `${n.monthYen}円 / ${show(n.monthYenCap, "円")}`} |`,
   ];
+  lines.push(...timecodeRows(timecodes));
   if (result.problems.length) lines.push("", "### 問題", ...result.problems.map((p) => `- ❌ ${p}`));
   if (result.notes.length) lines.push("", "### メモ", ...result.notes.map((p) => `- ${p}`));
   lines.push("", "くわしくは管理の画面（admin/catalog.html の「集める」タブ）で確かめられます。");
@@ -112,9 +133,9 @@ function markdown(result, { minVisible = MIN_VISIBLE } = {}) {
 }
 
 if (require.main === module) {
-  const [refreshFile, refillFile, listFile] = process.argv.slice(2);
+  const [refreshFile, refillFile, listFile, timecodesFile] = process.argv.slice(2);
   const result = judge({ refresh: readJson(refreshFile), ...readRefill(refillFile), list: readJson(listFile) });
-  const text = markdown(result);
+  const text = markdown(result, { timecodes: timecodesFile ? readJson(timecodesFile) : null });
   console.log(text);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
   // 実行の画面のいちばん上にも出す（::error:: は赤い注記になる）。

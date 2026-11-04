@@ -13,6 +13,7 @@
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| 毎朝の健康診断に手順の時刻のカバー率（2026-11-04 のユーザーの依頼） | レビュー待ち | claude/nice-shannon-6g1g5m | `GET /api/trends/timecodes`（数だけ・0円）と健康診断の「⏱ 手順の時刻（新着）」の表。毎日17時ごろ（16:49）に健康診断を読んで報告する予定の作業 | api/src/server.js, scripts/trends-health.cjs, .github/workflows/trends.yml, api/test/adminSpeed.test.js, test/trends-health.test.cjs, docs/* |
 | Claude：「📚 レシピ・親」（レシピ一覧と親の料理名をまとめる）と手順の時刻の全体像（2026-11-03 のユーザーの依頼） | レビュー待ち | claude/confident-volta-1giltr | 親1つが1行の縦をそろえた表（見出しで並べ替え・押すと子のレシピ）・各レシピの⏱ 時刻（n/手順・出どころ）・進み具合に手順の時刻の全体像（APP_MAP §48-5） | admin/catalog.html, admin/help.html, api/src/server.js, api/src/trends.js, api/test/adminSpeed.test.js, test/admin-home.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | Claude：管理画面の並びの整理と「🎯 進み具合」（2026-11-03 のユーザーの依頼：確認の優先順で並べ直し、優先度の高いレシピを積み上げられているか判断できるように） | 公開済み（#224） | claude/confident-volta-1giltr | タブを毎日見る順に・🎯 進み具合（目標の数字・いま確認すること・理想の12品・分野の割合・次に補充される親）・レシピ一覧の並べ方としぼりこみ・そろい／残り日数の表示（APP_MAP §48-4） | admin/catalog.html, admin/help.html, api/src/trends.js, api/test/refill.test.js, test/admin-home.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |
 | Claude：管理画面の読み込みを速くする（2026-11-03 のユーザーの依頼：レシピ一覧が出るまで遅い） | 公開済み（#223） | claude/confident-volta-1giltr | ①保存場所の読み出しを20件ずつ同時に（レシピ一覧・品ぞろえ）②レシピ一覧などを最初から読み始める③品ぞろえの同意は1回だけ読む。Claude のコードレビュー7件も対応（新着の一覧も同時に読む・3か所で1回に・集めるのデータも同時に・読み込み中の表示・テスト）。中身・順番は同じ。キャッシュは様子を見てから（APP_MAP §48-2） | api/src/server.js, api/src/trends.js, api/src/mapLimit.js, api/src/creators.js, admin/catalog.html, api/test/adminSpeed.test.js, docs/APP_MAP.md, docs/CURRENT_TASK.md |

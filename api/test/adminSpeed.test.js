@@ -176,3 +176,23 @@ test('admin recipes: each recipe carries its timecode level (steps, steps with a
   assert.deepEqual(tc['空の手順'], { n: 3, k: 3, source: 'transcript' });
   assert.ok(recipes.every((r) => !('src' in r)), 'the raw steps are not sent');
 });
+
+test('2026-11-04: GET /api/trends/timecodes gives only the counts of step-time coverage for the new arrivals (for the morning health check)', async (t) => {
+  const store = createMemorySyncStore();
+  const at = new Date().toISOString();
+  const base = { videoUrl: '', channelTitle: 'ch', ingredients: [{ name: '豚こま', amount: '200g' }, { name: 'キャベツ' }, { name: 'しょうゆ' }], caption: '材料 豚こま', snippetFetchedAt: at, catalog: { analyzedAt: at }, planning: { minutes: 10 }, tags: [] };
+  const rows = [['tcaaaaaaaaa', '豚こま炒め', ['切る', '焼く', '盛る'], [5, 30, 60], 'transcript'], ['tcbbbbbbbbb', '豚こま丼', ['切る', '焼く', '盛る'], [5, null, null], ''], ['tcccccccccc', '豚こま煮', ['切る', '煮る'], [], '']];
+  for (const [id, title, steps, stepTimes, from] of rows) await store.put(`youtube-${id}`, { status: 'ready', result: { ...base, channelId: `UC${id}`.padEnd(24, 'x'), title, videoUrl: `https://www.youtube.com/watch?v=${id}`, steps, stepTimes, ...(from ? { stepTimesFrom: from } : {}), analyzedFrom: 'video' } }, { ifGeneration: 0 });
+  await store.put('trends/index', { weeks: [{ week: '2026-11-02', startedAt: at, candidates: [], tried: [], items: rows.map(([videoId]) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
+  const app = createApp({}, { recipeStore: store, syncStore: null, photoStore: null, resolveChannel: async () => null, searchRecipes: async () => [] });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }));
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/trends/timecodes`);
+  assert.equal(res.status, 200, 'no admin token needed');
+  const got = await res.json();
+  assert.equal(got.recipes, 3);
+  assert.deepEqual([got.full, got.part, got.none, got.nosteps], [1, 1, 1, 0]);
+  assert.deepEqual([got.timed, got.steps], [4, 8]);
+  assert.ok(!JSON.stringify(got).includes('tcaaaaaaaaa') && !JSON.stringify(got).includes('豚こま'), 'counts only, no recipe data');
+});
