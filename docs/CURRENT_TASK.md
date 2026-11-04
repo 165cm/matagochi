@@ -9,6 +9,8 @@
 
 ## 作業中（担当を1行ずつ。同じファイルを触らない）
 
+Codex：codex/backfill-progress で補完済みフィルターと健康診断の補完進捗を追加済み・レビュー待ち（admin/catalog.html・scripts・workflows・test・docs）。
+
 Codex：codex/admin-hidden-entry で設定の版番号から管理画面への隠し入口を追加済み・レビュー待ち（app.js・styles.css・版関連・docs）。アプリ469件PASS。
 
 状態：作業中／レビュー待ち／実装済み（マージ済み・公開待ち）／公開済み

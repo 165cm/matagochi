@@ -326,7 +326,7 @@
       <div class="head"><h2>レシピと親の料理名</h2><span class="meta" id="rl-count"></span></div>
       <div class="row" style="margin-top:8px">
         <input id="rl-q" type="search" placeholder="料理名・親・投稿者で探す" aria-label="レシピを探す" style="flex:1 1 200px">
-        <select id="rl-src" aria-label="しぼりこみ"><option value="all">すべて</option><option value="ideal">⭐ 理想の12品</option><option value="short">子が足りない親</option><option value="tcnone">⏱ 手順の時刻なし（新着）</option><option value="tcpart">⏱ 時刻が一部だけ（新着）</option><option value="trend">新着（28日以内）</option><option value="expiring">7日以内に新着から外れる</option><option value="nominutes">調理時間が不明（新着）</option><option value="noparent">親なし</option><option value="kept">みんなの定番（残した）</option><option value="planned">献立に入った</option></select>
+        <select id="rl-src" aria-label="しぼりこみ"><option value="all">すべて</option><option value="ideal">⭐ 理想の12品</option><option value="short">子が足りない親</option><option value="tcnone">⏱ 手順の時刻なし（新着）</option><option value="tccompleted">⏱ 補完できた動画</option><option value="tcpart">⏱ 時刻が一部だけ（新着）</option><option value="trend">新着（28日以内）</option><option value="expiring">7日以内に新着から外れる</option><option value="nominutes">調理時間が不明（新着）</option><option value="noparent">親なし</option><option value="kept">みんなの定番（残した）</option><option value="planned">献立に入った</option></select>
         <label class="chk"><input type="checkbox" id="rl-group" checked> 親ごとにまとめる</label>
         <details class="info"><summary>ⓘ 見方</summary><div>
           新着（集めた料理・28日）と、献立の候補に出た・残した料理です。<b>親ごとにまとめる</b>と、親の料理名1つが1行になります。行を押すと子のレシピが開き、レシピの行を押すと材料・手順・時刻を見て直せます。見出しを押すと並べ替えます（もう一度押すと逆順）。<br>
@@ -907,6 +907,7 @@
   // しぼりこみ（進み具合の「一覧で見る」からも使う）。
   const RL_FILTER = {
     all: () => true,
+    tccompleted: (r) => r.tc?.source === "completion" && r.tc.k > 0,
     ideal: (r, by) => !!by.get(r.dish?.key)?.ideal,
     short: (r, by) => { const p = by.get(r.dish?.key); return !!p && lackOf(p, last.seed?.parentStock) > 0; },
     // 時刻のしぼりこみは、進み具合の数（新着だけ）とそろえる。

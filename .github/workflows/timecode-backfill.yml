@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
       - name: Complete up to ten recipes within server budgets
         env:
           API: https://matagochi-api-292190013809.us-central1.run.app
@@ -31,3 +34,15 @@ jobs:
             jq '{done, reason, before, after, improved, reservedYen, measuredYen}' result.json >> "$GITHUB_STEP_SUMMARY"
             if jq -e '.done == true' result.json >/dev/null; then exit 0; fi
           done
+
+      - name: Report timecode completion progress (read only)
+        if: always()
+        env:
+          ADMIN_TOKEN: ${{ secrets.RECIPE_ADMIN_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "$ADMIN_TOKEN" ]; then
+            curl --fail -sS --max-time 120 -H "Authorization: Bearer $ADMIN_TOKEN" \
+              https://matagochi-api-292190013809.us-central1.run.app/api/admin/timecodes/backfill -o backfill.json || rm -f backfill.json
+          fi
+          node scripts/timecode-progress.cjs backfill.json result.json
