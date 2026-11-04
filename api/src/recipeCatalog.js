@@ -582,7 +582,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       return { ingredients: result.ingredients, sourceServings: result.sourceServings, revision: result.catalog.revision };
     },
     // baseRevision：管理画面が開いた時の版（渡された時は、違えば断る）。時刻を変えたら版を新しくする（古い編集画面・候補で上書きしない）。
-    async setStepTimes(rawUrl, stepTimes, { from = "admin", baseRevision } = {}) {
+    async setStepTimes(rawUrl, stepTimes, { from = "admin", baseRevision, sources } = {}) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
       const current = await store.get(key);
@@ -592,8 +592,13 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       result.catalog = { ...(result.catalog || {}), revision: randomUUID() };
       const count = (result.steps || []).length;
       const raw = Array.isArray(stepTimes) ? stepTimes : [];
-      result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : Math.floor(Number(t)); });
+      result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : from === "completion" ? Number(t) : Math.floor(Number(t)); });
       if (from) result.stepTimesFrom = from;
+      if (from === "completion") {
+        if (current.envelope.result.stepTimesFrom === "admin" || (current.envelope.result.stepTimesPending || []).some(Number.isFinite)) throw new ApiError(409,"timecode_protected","運営が確認中の時刻は変更できません。");
+        result.timesCompletedAt = new Date(now()).toISOString();
+        result.stepTimeSources = sources;
+      }
       // 運営が時刻を保存した日時（0円の一括補正は運営の判断ではないので残さない。Claude review #214）。
       if (from === "admin") result.timesEditedAt = new Date(now()).toISOString();
       // 運営が時刻を保存した＝要確認だった時刻も確かめた（▶ で見て保存した）。0円の一括補正では確かめていないので残す。

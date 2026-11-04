@@ -106,7 +106,7 @@ export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env, {
 
 // すでにある手順に、動画の中の時刻だけを付ける（「▶ 2:15」用）。長い動画は頭から maxSeconds まで。
 // beforeRetry：接続先を切り替える直前ごとに AI の予算を確かめる（断られたら次へ進まずに止め、その理由のまま伝える）。
-export async function analyzeStepTimes(videoUrl, steps, env = process.env, { clipSeconds = null, durationSeconds = null, beforeRetry, clients, fps = null } = {}) {
+export async function analyzeStepTimes(videoUrl, steps, env = process.env, { clipSeconds = null, durationSeconds = null, beforeRetry, clients, fps = null, completion = false } = {}) {
   const baseFps = Number(env.TIMECODE_FPS) > 0 ? Number(env.TIMECODE_FPS) : TIMECODE_FPS;
   const effectiveFps = Number(fps) > 0 ? Number(fps) : fpsForDuration(durationSeconds || clipSeconds, baseFps);
   const prompt = `この料理動画を見て、次の各手順の調理作業が実際に始まる時刻を「MM:SS」形式（例: "00:15", "02:35"）で答えてください。
@@ -120,7 +120,7 @@ JSONのみ: {"stepCues":["根拠またはnullを手順と同じ数"],"stepTimes"
 手順:
 ${steps.map((s, i) => `${i + 1}. ${String(s).slice(0, 200) || "（なし）"}`).join("\n")}`;
   const { response } = await generateFromVideo(env, { videoUrl, videoMetadata: clipMetadata(clipSeconds, effectiveFps), prompt,
-    config: { mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 4096, temperature: 0.1, responseMimeType: "application/json" } }, { beforeRetry, clients }).catch((error) => {
+    config: { mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 4096, temperature: 0.1, responseMimeType: "application/json", ...(completion ? { thinkingConfig: { thinkingBudget: 0 } } : {}) } }, { beforeRetry, clients }).catch((error) => {
     if (error?.fromBudget) throw error;
     throw new ApiError(502, "video_analysis_failed", "動画の場面を見つけられませんでした。", error?.detail || "");
   });

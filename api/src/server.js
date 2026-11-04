@@ -1,4 +1,6 @@
 import express from "express";
+import { createTimecodeBackfill } from "./timecodeBackfill.js";
+import { completeStepTimes } from "./timecodeCompletion.js";
 import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createTicketBook, DAILY_USES } from "./tickets.js";
@@ -300,7 +302,7 @@ export function createApp(env = process.env, deps = {}) {
       for (const [videoId, r] of read) {
         if (!r?.catalog?.revision || !(r.steps || []).length) continue;
         // changedAt：運営が最後に作り方を変えた日時（候補の採用・手順の手直し・時刻の保存・読み直し）。目印のない端末のレシピに、ボタンを出すかの判断に使う。
-        const changedAt = [r.adoptedFrom?.at, r.stepsEditedAt, r.ingredientsEditedAt, r.timesEditedAt, r.rereadAt, r.catalog?.analyzedAt].map((x) => Date.parse(x || "") || 0).reduce((a, b) => Math.max(a, b), 0);
+        const changedAt = [r.adoptedFrom?.at, r.stepsEditedAt, r.ingredientsEditedAt, r.timesEditedAt, r.timesCompletedAt, r.rereadAt, r.catalog?.analyzedAt].map((x) => Date.parse(x || "") || 0).reduce((a, b) => Math.max(a, b), 0);
         items[videoId] = { revision: r.catalog.revision, ...(changedAt ? { changedAt: new Date(changedAt).toISOString() } : {}), title: r.title || "", sourceServings: r.sourceServings ?? null, ingredients: r.ingredients || [], steps: r.steps, stepTimes: r.stepTimes || [], planning: r.planning || null,
           ...(r.stepTimesFrom ? { stepTimesFrom: r.stepTimesFrom } : {}), ...(listedGuide(r) ? { guide: listedGuide(r), guideOf: r.guide.of } : {}) };
       }
@@ -533,7 +535,7 @@ export function createApp(env = process.env, deps = {}) {
   }
   // レシピに付いた時刻の出どころ：運営が直した → fix／字幕から読んだ → transcript／説明欄の章 → chapters／動画から読んだ（最初の10分だけも）→ video／それ以外 → recipe（review fix #136）。
   // 説明欄から読んだレシピの時刻は、説明欄の章からしか付かない（importRecipe.js）。出どころを残す前（#136 より前）に読んだものも章とみなす。
-  const ownSource = (r) => (r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "transcript" ? "transcript" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
+  const ownSource = (r) => (r.stepTimesFrom === "completion" ? "completion" : r.stepTimesFrom === "admin" ? "fix" : r.stepTimesFrom === "transcript" ? "transcript" : r.stepTimesFrom === "chapters" ? "chapters" : ["video", "video-clip"].includes(r.analyzedFrom) ? "video" : r.analyzedFrom === "description" ? "chapters" : "recipe");
   // 作る画面と同じ順で選ぶ（review fix #136 r2）：① 保存済みの直した時刻・消した時刻・YouTube字幕・説明欄の章（timecodes/* の fix・cleared・transcript・chapters）
   // → ② レシピに付いた時刻 → ③ 保存済みの AI（動画）の時刻。利用者が直した時刻を、レシピの古い時刻より先にする。
   // 管理の保存が書いた時刻（recipeRevision つき）は、そのレシピの版のものだけ使う（古い版の時刻を出さない）。
@@ -541,10 +543,56 @@ export function createApp(env = process.env, deps = {}) {
   async function timesOf(url, r) {
     let st = await timecodeBook.stored({ url, steps: r.steps || [] }).catch(() => null);
     if (st?.recipeRevision && st.recipeRevision !== (r.catalog?.revision || "")) st = null;
-    if (st && (st.cleared || ["fix", "transcript", "chapters"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
+    if (r.stepTimesFrom === "completion" && !st?.cleared && !st?.pendingCheck && st?.source !== "fix") return { times: r.stepTimes || [], source: "completion" };
+    if (st && (st.cleared || ["fix", "transcript", "chapters", "completion"].includes(st.source))) return { times: st.stepTimes || [], source: st.source };
     if ((r.stepTimes || []).some((t) => Number.isFinite(t))) return { times: r.stepTimes, source: ownSource(r) };
     return { times: st?.stepTimes || [], source: st?.source || "", ...(st?.seenSeconds ? { seenSeconds: st.seenSeconds } : {}) };
   }
+  const timecodeBackfill = createTimecodeBackfill(recipeStore, {
+    list: async () => (await trendBook.list({ promote: false })).items || [],
+    load: async (row) => {
+      const url = canonicalYouTubeUrl(row.videoId), r = await catalog.peek(url);
+      if (!r || r.unavailable) return null;
+      const shared = await timecodeBook.stored({ url, steps: r.steps });
+      const selected = await timesOf(url,r);
+      return { url, videoId: row.videoId, steps: r.steps || [], stepTimes: (r.steps || []).map((_,i) => Number.isFinite(selected.times?.[i]) ? selected.times[i] : null), source: selected.source,
+        stepTimeSources: r.stepTimeSources, revision: r.catalog?.revision || "", sharedGeneration: shared?.generation || 0,
+        protected: r.stepTimesFrom === "admin" || (r.stepTimesPending || []).some(Number.isFinite) || shared?.source === "fix" || shared?.cleared || shared?.pendingCheck };
+    },
+    reserveGlobal: () => catalog.reserveAnalysisBudget(),
+    measure: async (fn) => {
+      const collector = {};
+      const result = await usage.run(collector,fn);
+      return { result, yen: !collector.calls || collector.unmetered ? null : usageYen(collector,env) };
+    },
+    complete: async (r,paid) => {
+      const info = await (deps.fetchYouTubeSnippet || fetchYouTubeSnippet)(r.videoId,env);
+      return completeStepTimes({ ...r, durationSeconds: info.durationSeconds, description: info.description }, {
+        paid, fetchTranscript: deps.fetchYouTubeTranscript || fetchYouTubeTranscript,
+        matchTranscript: deps.matchStepsToTranscript || ((steps,text) => matchStepsToTranscript(steps,text,env)),
+        matchChapters: deps.matchStepsToChapters || ((steps,chapters) => matchStepsToChapters(steps,chapters,env)),
+        analyze: deps.analyzeStepTimes || ((url,steps,o) => analyzeStepTimes(url,steps,env,{ ...o, fps: 0.2, completion: true }))
+      });
+    },
+    save: async (r,result) => {
+      const shared = await timecodeBook.stored({ url: r.url, steps: r.steps });
+      if ((shared?.generation || 0) !== r.sharedGeneration) throw new ApiError(409,"timecode_conflict","時刻が変更されました。");
+      const saved = await catalog.setStepTimes(r.url,result.stepTimes,{ from: "completion", baseRevision: r.revision, sources: result.sources });
+      const sharing = await timecodeBook.saveCompletion({ url: r.url, steps: r.steps, stepTimes: saved.stepTimes, sources: result.sources, recipeRevision: saved.revision, generation: r.sharedGeneration, guard: stillCurrent(r.url,saved.revision) });
+      catalogChanged(); tcCoverage = null;
+      if (sharing.superseded) throw new ApiError(409,"timecode_conflict","補完中に時刻が変更されました。");
+    }
+  }, { enabled: env.TIMECODE_BACKFILL_ENABLED === "true" && (env.GEMINI_MODEL || "gemini-2.5-flash") === "gemini-2.5-flash" && (env.GEMINI_VIDEO_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash") === "gemini-2.5-flash", pilot: env.TIMECODE_BACKFILL_PILOT !== "false", monthlyYen: Number(env.TIMECODE_BACKFILL_MONTHLY_YEN ?? 500), totalYen: Number(env.TIMECODE_BACKFILL_TOTAL_YEN ?? 500), dailyRecipes: Number(env.TIMECODE_BACKFILL_DAILY_RECIPES ?? 10), now: deps.now || Date.now });
+  app.get("/api/admin/timecodes/backfill", (req,res) => {
+    res.setHeader("Cache-Control","no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden" } });
+    send(res,timecodeBackfill.report());
+  });
+  app.post("/api/admin/timecodes/backfill", (req,res) => {
+    res.setHeader("Cache-Control","no-store");
+    if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden" } });
+    send(res,timecodeBackfill.run());
+  });
   // 1品の手順の時刻の数（n＝手順の数・k＝時刻のある手順の数・source＝出どころ）。管理のレシピ一覧と、毎朝の健康診断（下の /api/trends/timecodes）で同じ数え方。
   // 時刻は手順の位置ごと（空の手順も位置を持つ）。保存済みの時刻（timecodes/*）は手順30個までなので、それより多い時はレシピの時刻の長さまで数える。
   async function tcOf(url, src) {
