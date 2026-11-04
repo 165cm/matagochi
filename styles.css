@@ -4334,3 +4334,6 @@ div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.
 .admin-push { margin-top: 10px; font-size: 13px; }
 .admin-push summary { cursor: pointer; color: var(--muted); font-size: 12.5px; min-height: 32px; display: flex; align-items: center; }
 .admin-push .input { margin: 6px 0; }
+
+/* 設定の版番号：5回押すと管理画面（認証は管理画面側）。 */
+.app-version-entry { border: 0; background: transparent; color: inherit; font: inherit; padding: 12px; min-height: 44px; cursor: pointer; }
