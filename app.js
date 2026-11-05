@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261105-admin-entry";
+const APP_VERSION = "20261105-recipe-link";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1434,7 +1434,7 @@ function render() {
     bindEvents();
     return;
   }
-  if (!state.onboarded || profileEditing) {
+  if ((!state.onboarded && !(state.view === "recipe" && linkedRecipe)) || profileEditing) {
     renderOnboarding();
     return;
   }
@@ -4808,6 +4808,17 @@ document.addEventListener("visibilitychange", () => {
     history.replaceState(null, "", location.pathname);
     startSkillQuiz(skillParams.get("from") === "lp");
   }
+  const linkedVideo = new URLSearchParams(location.search).get("recipe");
+  if (/^[\w-]{11}$/.test(linkedVideo || "")) {
+    try {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/api/recipes/youtube-${encodeURIComponent(linkedVideo)}`, {}, 15000);
+      if (!response.ok) throw new Error("not_found");
+      const item = await response.json();
+      linkedRecipe = discoverRecipe({ ...item, videoId: linkedVideo, videoUrl: `https://www.youtube.com/watch?v=${linkedVideo}`, revision: item.catalog?.revision }, "catalog");
+      recipeDetailId = linkedRecipe.id;
+      state.view = "recipe";
+    } catch { setTimeout(() => showToast("レシピを開けませんでした。少し待ってからもう一度お試しください。"), 500); }
+  }
   const hasSharedUrl = applySharedUrlFromLocation();
   if (!hasSharedUrl && new URLSearchParams(location.search).get("quiz") === "1") {
     const draft = profileDraft();
@@ -4828,7 +4839,7 @@ document.addEventListener("visibilitychange", () => {
   }
   // 通知から開いた時：?view=plan など
   const viewParam = new URLSearchParams(location.search).get("view");
-  if (!hasSharedUrl && state.onboarded && ["today", "plan", "shopping"].includes(viewParam)) {
+  if (!linkedRecipe && !hasSharedUrl && state.onboarded && ["today", "plan", "shopping"].includes(viewParam)) {
     state.view = viewParam;
     history.replaceState(null, "", location.pathname);
   }

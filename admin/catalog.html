@@ -1486,7 +1486,8 @@
     const linksRow = el("div", undefined, "row");
     const ytLink = el("a", "YouTube で開く"); ytLink.href = r.videoUrl; ytLink.target = "_blank"; ytLink.rel = "noopener";
     const appLink = el("a", "アプリの取り込み画面で開く"); appLink.href = `${APP}?url=${encodeURIComponent(r.videoUrl)}`; appLink.target = "_blank"; appLink.rel = "noopener";
-    linksRow.append(ytLink, el("span", "・", "meta"), appLink);
+    const recipeLink = el("a", "アプリでレシピを見る"); recipeLink.href = `${APP}?recipe=${encodeURIComponent(videoId)}`; recipeLink.target = "_blank"; recipeLink.rel = "noopener";
+    linksRow.append(recipeLink, el("span", "・", "meta"), ytLink, el("span", "・", "meta"), appLink);
     mediaCol.append(linksRow);
 
     // 「⚡️ 異議あり」がある場合：動画下に目立たせて表示（対応ボタン付き）

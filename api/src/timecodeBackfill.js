@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { ApiError } from './errors.js';
 import { sampleRecipes } from './timecodeSample.js';
-import { timedCount } from './timecodeCompletion.js';
+import { timedCount, invalidTimeOrder } from './timecodeCompletion.js';
 
 // 1要求1品。全インスタンス共通の排他、呼ぶ前の予算予約、再試行の打ち切り。
 export function createTimecodeBackfill(store, deps, { enabled = false, monthlyYen = 500, totalYen = 500, dailyRecipes = 10, pilot = true, now = Date.now } = {}) {
@@ -46,7 +46,7 @@ export function createTimecodeBackfill(store, deps, { enabled = false, monthlyYe
         rows.sort((a,b) => Number(!!timedCount(b.steps || [],b.stepTimes)) - Number(!!timedCount(a.steps || [],a.stepTimes)) || a.videoId.localeCompare(b.videoId));
         for (const row of rows) {
           const r = await deps.load(row);
-          if (!r || r.protected || r.steps.length < 2 || r.steps.length > 30 || timedCount(r.steps,r.stepTimes) === r.steps.filter(Boolean).length) continue;
+          if (!r || r.protected || r.steps.length < 2 || r.steps.length > 30 || (!invalidTimeOrder(r.steps,r.stepTimes) && timedCount(r.steps,r.stepTimes) === r.steps.filter(Boolean).length)) continue;
           // 補完自身がレシピ版を上げても、同じ手順の試行履歴と待機期間は引き継ぐ。
           const fingerprint = createHash('sha256').update(JSON.stringify([row.videoId,r.steps])).digest('hex').slice(0,24);
           const key = `timecode-backfill/attempts/${fingerprint}`;
@@ -82,7 +82,7 @@ export function createTimecodeBackfill(store, deps, { enabled = false, monthlyYe
             const improved = timedCount(r.steps,result.stepTimes) > timedCount(r.steps,r.stepTimes);
             if (improved) await deps.save(r,result);
             outcome = { ...claim, reason: result.reason, stages: result.stages, before: timedCount(r.steps,r.stepTimes), after: timedCount(r.steps,result.stepTimes), improved,
-              finished: result.reason === 'complete' || result.reason === 'duration_unsupported', retryAt: now() + (result.reason === 'partial_or_no_match' ? 7 : 1) * 86400000 };
+              finished: result.reason === 'complete' || result.reason === 'duration_unsupported' || result.reason === 'existing_times_invalid', retryAt: now() + (result.reason === 'partial_or_no_match' ? 7 : 1) * 86400000 };
           } catch (error) { outcome = { ...claim, reason: error?.code || 'temporary_error' }; }
           if (!await store.put(key,outcome,{ ifGeneration: claimed.generation })) throw new ApiError(409,'backfill_result_not_saved','結果を保存できません。');
           state.last = { videoId: row.videoId, ...outcome }; await persist();

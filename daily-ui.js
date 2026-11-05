@@ -2665,7 +2665,7 @@ function handleDailyAction(action, data) {
     creatorEditing = "";
   }
   if (action === "life-save-starter") {
-    const r = findDiscover(data.recipe) || Lifestyle.curated.find((x) => x.id === data.recipe);
+    const r = (linkedRecipe?.id === data.recipe ? linkedRecipe : null) || findDiscover(data.recipe) || Lifestyle.curated.find((x) => x.id === data.recipe);
     if (r) {
       const own = saveOwnRecipe(r);
       if (state.view === "recipe") recipeDetailId = own.id;
@@ -3777,8 +3777,9 @@ function starterRecipeList() {
 
 // ----- レシピの詳細（閲覧が基本。編集は「編集する」から） -----
 let recipeDetailId = "";
+let linkedRecipe = null;
 function detailRecipe() {
-  return recipeById(recipeDetailId) || findDiscover(recipeDetailId) || Lifestyle.curated.find((r) => r.id === recipeDetailId) || null;
+  return (linkedRecipe?.id === recipeDetailId ? linkedRecipe : null) || recipeById(recipeDetailId) || findDiscover(recipeDetailId) || Lifestyle.curated.find((r) => r.id === recipeDetailId) || null;
 }
 function tagLabels(recipe) {
   const labels = new Map(Lifestyle.FACETS.flatMap((f) => f.options));
@@ -3832,7 +3833,7 @@ function setRecipeServings(id, n, { date = "", by = "manual" } = {}) {
 }
 function renderRecipeDetail() {
   const r = detailRecipe();
-  ensureTimecodes(r);
+  if (r && linkedRecipe?.id !== r.id) ensureTimecodes(r);
   if (r && !r.curated) ensureLatest(r);
   if (!r) return `<section class="panel"><p>レシピが見つかりません。</p>${dailyButton("go-view", "レシピ一覧へ", 'data-view="collection"')}</section>`;
   const saved = !r.curated;
