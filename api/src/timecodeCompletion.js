@@ -1,3 +1,4 @@
+import { timecodeIssues } from './timecodeQuality.js';
 import { parseChapters, timesFromChapterIndexes, parseTimeValue } from './chapters.js';
 import { formatTranscriptForPrompt, resolveTranscriptTimes } from './transcript.js';
 
@@ -36,7 +37,7 @@ export async function completeStepTimes({ url, videoId, steps, stepTimes, source
     next.forEach((t,i) => { if (times[i] === null && t !== null) sources[i] = from; });
     times = next;
   };
-  if (invalidTimeOrder(steps, times)) return { stepTimes: times, sources, stages, reason: 'existing_times_invalid' };
+  if (timecodeIssues(steps, times, durationSeconds).length) return { stepTimes: times, sources, stages, reason: 'existing_times_invalid' };
   if (!(durationSeconds > 0) || durationSeconds > 1800) return { stepTimes: times, sources, stages, reason: durationSeconds > 1800 ? 'duration_unsupported' : 'duration_unknown' };
   if (full()) return { stepTimes: times, sources, stages, reason: 'complete' };
   const missingSteps = () => steps.map((s,i) => Number.isFinite(times[i]) ? '' : s);
@@ -62,8 +63,8 @@ export async function completeStepTimes({ url, videoId, steps, stepTimes, source
       merge(raw?.stepTimes, 'video');
       stages.push({ stage: 'video', timed: timedCount(steps,times) });
     }
-    return { stepTimes: times, sources, stages, reason: full() ? 'complete' : 'partial_or_no_match' };
+    return { stepTimes: times, sources, stages, durationSeconds, reason: full() ? 'complete' : 'partial_or_no_match' };
   } catch (error) {
-    return { stepTimes: times, sources, stages, reason: error?.code || 'temporary_error' };
+    return { stepTimes: times, sources, stages, durationSeconds, reason: error?.code || 'temporary_error' };
   }
 }
