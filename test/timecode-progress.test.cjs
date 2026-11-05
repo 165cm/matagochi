@@ -13,3 +13,10 @@ test('取得失敗は0件0円と報告せず、未測定費用も不明', () => 
   assert.match(markdown(null),/取得できません/);
   assert.match(markdown({attempts:[]}),/今月の実測費用.*不明/);
 });
+test('品質検査と人の確認を分け、長さ不明と集計範囲を表示する', () => {
+ const md=markdown({attempts:[],quality:{checked:8,needsReview:5,structurePassed:3,reviewed:1,unreviewed:7,durationUnknown:8,scope:'新着と試行記録',partial:true}});
+ assert.match(md,/逆転・重複など要点検 \| 5/);
+ assert.match(md,/管理者確認済み \| 1/);
+ assert.match(md,/尺外の検査未実施/);
+ assert.match(md,/記録の一部のみ/);
+});

@@ -130,3 +130,17 @@ test('既存の逆転・重複は全欄が埋まっても成功にせず、有�
   assert.deepEqual(result.stages,[]);
  }
 });
+test('保存拒否でも生成候補と検査結果を履歴に残し、改善に数えない',async()=>{
+ for (const invalid of [true,false]) {
+  const store=createMemorySyncStore();
+  const x=setup(store,{complete:async()=>({stepTimes:invalid?[10,50,20]:[10,50,100],sources:['chapters','video','video'],stages:[{stage:'video'}],reason:'complete'}),save:async()=>{throw Object.assign(new Error(),{code:'timecode_conflict'});}});
+  const a=createTimecodeBackfill(store,x.deps,{enabled:true});
+  const r=await a.run();
+  assert.equal(r.improved,false);
+  assert.equal(r.reason,invalid?'timecode_quality_failed':'timecode_conflict');
+  const h=(await a.report()).attempts[0].history[0];
+  assert.deepEqual(h.afterTimes,invalid?[10,50,20]:[10,50,100]);
+  assert.equal(h.stages[0].stage,'video');
+  assert.equal(h.qualityIssues.length,invalid?1:0);
+ }
+});

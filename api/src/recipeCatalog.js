@@ -1,3 +1,4 @@
+import { timecodeIssues } from "./timecodeQuality.js";
 import { randomUUID } from "node:crypto";
 import { cleanDishName } from "./dishes.js";
 import { ApiError } from "./errors.js";
@@ -582,7 +583,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       return { ingredients: result.ingredients, sourceServings: result.sourceServings, revision: result.catalog.revision };
     },
     // baseRevision：管理画面が開いた時の版（渡された時は、違えば断る）。時刻を変えたら版を新しくする（古い編集画面・候補で上書きしない）。
-    async setStepTimes(rawUrl, stepTimes, { from = "admin", baseRevision, sources } = {}) {
+    async setStepTimes(rawUrl, stepTimes, { from = "admin", baseRevision, sources, durationSeconds } = {}) {
       required();
       const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
       const current = await store.get(key);
@@ -595,6 +596,8 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       result.stepTimes = Array.from({ length: count }, (_, i) => { const t = raw[i]; return t === null || t === undefined || t === "" || !Number.isFinite(Number(t)) || Number(t) < 0 || Number(t) >= 36_000 ? null : from === "completion" ? Number(t) : Math.floor(Number(t)); });
       if (from) result.stepTimesFrom = from;
       if (from === "completion") {
+        if (Number.isFinite(durationSeconds) && durationSeconds > 0) result.durationSeconds = durationSeconds;
+        if (timecodeIssues(result.steps,raw,result.durationSeconds).length) throw new ApiError(400,"timecode_quality_failed","時刻に矛盾があるため保存しません。管理者の点検が必要です。");
         if (current.envelope.result.stepTimesFrom === "admin" || (current.envelope.result.stepTimesPending || []).some(Number.isFinite)) throw new ApiError(409,"timecode_protected","運営が確認中の時刻は変更できません。");
         result.timesCompletedAt = new Date(now()).toISOString();
         result.stepTimeSources = sources;

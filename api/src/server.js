@@ -1,3 +1,4 @@
+import { timecodeIssues, qualitySummary } from "./timecodeQuality.js";
 import express from "express";
 import { createTimecodeBackfill } from "./timecodeBackfill.js";
 import { completeStepTimes } from "./timecodeCompletion.js";
@@ -579,7 +580,7 @@ export function createApp(env = process.env, deps = {}) {
     save: async (r,result) => {
       const shared = await timecodeBook.stored({ url: r.url, steps: r.steps });
       if ((shared?.generation || 0) !== r.sharedGeneration) throw new ApiError(409,"timecode_conflict","時刻が変更されました。");
-      const saved = await catalog.setStepTimes(r.url,result.stepTimes,{ from: "completion", baseRevision: r.revision, sources: result.sources });
+      const saved = await catalog.setStepTimes(r.url,result.stepTimes,{ from: "completion", baseRevision: r.revision, sources: result.sources, durationSeconds: result.durationSeconds });
       const sharing = await timecodeBook.saveCompletion({ url: r.url, steps: r.steps, stepTimes: saved.stepTimes, sources: result.sources, recipeRevision: saved.revision, generation: r.sharedGeneration, guard: stillCurrent(r.url,saved.revision) });
       catalogChanged(); tcCoverage = null;
       if (sharing.superseded) throw new ApiError(409,"timecode_conflict","補完中に時刻が変更されました。");
@@ -588,7 +589,21 @@ export function createApp(env = process.env, deps = {}) {
   app.get("/api/admin/timecodes/backfill", (req,res) => {
     res.setHeader("Cache-Control","no-store");
     if (!isAdmin(req)) return res.status(403).json({ error: { code: "forbidden" } });
-    send(res,timecodeBackfill.report());
+    send(res,(async () => {
+      const report = await timecodeBackfill.report();
+      try {
+        const listed = (await trendBook.list({ promote:false })).items || [];
+        const ids = [...new Set([...listed.filter(r=>r.stepTimesFrom === "completion").map(r=>r.videoId), ...(report.attempts || []).filter(Boolean).map(r=>r.videoId)])];
+        const rows = await mapLimit(ids, ADMIN_READ_CONCURRENCY, async videoId => {
+          const url = canonicalYouTubeUrl(videoId), r = await catalog.peek(url);
+          if (!r) return {videoId,issues:[{code:"missing_recipe"}],reviewed:false,durationKnown:false};
+          const {times,source} = await timesOf(url,r);
+          return {videoId,title:r.title,source,issues:timecodeIssues(r.steps,times,r.durationSeconds), reviewed:reviewStatus(r,times).status === "reviewed",durationKnown:r.durationSeconds > 0};
+        });
+        report.quality = { ...qualitySummary(rows), at:new Date().toISOString(), scope:"新着の補完済み動画と取得できた試行記録の動画", partial:!!report.next };
+      } catch { report.quality = { error:"unavailable" }; }
+      return report;
+    })());
   });
   app.post("/api/admin/timecodes/backfill", (req,res) => {
     res.setHeader("Cache-Control","no-store");
