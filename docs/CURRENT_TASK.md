@@ -9,6 +9,8 @@
 
 ## 作業中（担当を1行ずつ。同じファイルを触らない）
 
+Codex：codex/timecode-quality でサバ味噌煮の補完品質調査、矛盾する時刻の成功判定防止、管理画面からレシピを開く導線（api/src/timecode*.js・admin/catalog.html・app.js・daily-ui.js・版・test・docs）。
+
 Codex：codex/admin-mobile-review でiPhone SEの手順点検画面の重なりを修正済み・レビュー待ち（admin/catalog.html・docs）。
 
 Codex：codex/backfill-progress で補完済みフィルターと健康診断の補完進捗を追加済み・レビュー待ち（admin/catalog.html・scripts・workflows・test・docs）。
@@ -241,3 +243,5 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 - `.github/AGENTS.md` は案内だけにした（本体はルートの `AGENTS.md`）
 
 - Codex：PR #229 に管理者の時刻確認を追加。日時と確認内容を保存、確認済み／再確認フィルター。API431件・アプリ471件PASS。公開待ち。
+
+- Codex：サバ味噌煮 KiQXMVnlXVo の保存済み時刻 [14,103,20,45,45,126,138,181,220,239] を確認。既存値保持の補完では元の誤りが残る。順序矛盾の成功防止とレシピ直リンクを実装、公開待ち。動画場面の目視確認・既存データの修正は未実施。

@@ -1,6 +1,6 @@
 // 管理APIの読み取り結果のみを集計。有料処理は呼ばない。
 const fs = require('node:fs');
-const reasons = { complete: 'すべて補完', partial_or_no_match: '一部補完・一致なし', running: '処理中', daily_limit: '今日の上限', monthly_limit: '月または累計の予算上限', disabled: '停止中', no_eligible_recipes: '今すぐ試せる対象なし', busy: 'ほかの処理が実行中', duration_unknown: '動画の長さが不明', duration_unsupported: '動画が長さの対象外', ai_budget: 'AI全体の利用枠' };
+const reasons = { existing_times_invalid: '既存時刻に逆転・重複あり（管理者の点検が必要）', complete: 'すべて補完', partial_or_no_match: '一部補完・一致なし', running: '処理中', daily_limit: '今日の上限', monthly_limit: '月または累計の予算上限', disabled: '停止中', no_eligible_recipes: '今すぐ試せる対象なし', busy: 'ほかの処理が実行中', duration_unknown: '動画の長さが不明', duration_unsupported: '動画が長さの対象外', ai_budget: 'AI全体の利用枠' };
 function markdown(data, result = {}) {
   if (!data || !Array.isArray(data.attempts)) return '\n### ⏱ 時刻の補完作業\n\n進捗を取得できませんでした（0件・0円とは扱いません）。\n';
   const attempts = data.attempts.filter(Boolean);

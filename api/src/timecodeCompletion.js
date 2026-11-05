@@ -15,6 +15,15 @@ export function mergeMissingTimes(steps, existing, proposed, duration) {
   }
   return out;
 }
+export function invalidTimeOrder(steps, times) {
+  let prev = -1;
+  for (let i = 0; i < steps.length; i++) {
+    if (!steps[i] || !Number.isFinite(times?.[i])) continue;
+    if (times[i] < 0 || times[i] <= prev) return true;
+    prev = times[i];
+  }
+  return false;
+}
 export const timedCount = (steps, times) => steps.filter((s,i) => String(s || '').trim() && Number.isFinite(times?.[i])).length;
 
 // 呼び出し元が永続の排他・予算を確保する。手順は書き換えず、残った穴だけを次の経路へ送る。
@@ -27,6 +36,7 @@ export async function completeStepTimes({ url, videoId, steps, stepTimes, source
     next.forEach((t,i) => { if (times[i] === null && t !== null) sources[i] = from; });
     times = next;
   };
+  if (invalidTimeOrder(steps, times)) return { stepTimes: times, sources, stages, reason: 'existing_times_invalid' };
   if (!(durationSeconds > 0) || durationSeconds > 1800) return { stepTimes: times, sources, stages, reason: durationSeconds > 1800 ? 'duration_unsupported' : 'duration_unknown' };
   if (full()) return { stepTimes: times, sources, stages, reason: 'complete' };
   const missingSteps = () => steps.map((s,i) => Number.isFinite(times[i]) ? '' : s);

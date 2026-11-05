@@ -121,3 +121,12 @@ test('partial completion retains retry delay and three-try cap across its own re
  assert.equal(calls,3);
  now+=7*86400000;assert.equal((await book.run()).reason,'no_eligible_recipes');assert.equal(calls,3);
 });
+
+test('既存の逆転・重複は全欄が埋まっても成功にせず、有料処理せず点検待ちにする', async () => {
+ for (const times of [[14,103,20],[14,45,45]]) {
+  const result = await completeStepTimes({...recipe,stepTimes:times},{fetchTranscript:()=>{throw new Error('must not fetch');}});
+  assert.equal(result.reason,'existing_times_invalid');
+  assert.deepEqual(result.stepTimes,times);
+  assert.deepEqual(result.stages,[]);
+ }
+});

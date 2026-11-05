@@ -3777,8 +3777,9 @@ function starterRecipeList() {
 
 // ----- レシピの詳細（閲覧が基本。編集は「編集する」から） -----
 let recipeDetailId = "";
+let linkedRecipe = null;
 function detailRecipe() {
-  return recipeById(recipeDetailId) || findDiscover(recipeDetailId) || Lifestyle.curated.find((r) => r.id === recipeDetailId) || null;
+  return (linkedRecipe?.id === recipeDetailId ? linkedRecipe : null) || recipeById(recipeDetailId) || findDiscover(recipeDetailId) || Lifestyle.curated.find((r) => r.id === recipeDetailId) || null;
 }
 function tagLabels(recipe) {
   const labels = new Map(Lifestyle.FACETS.flatMap((f) => f.options));
