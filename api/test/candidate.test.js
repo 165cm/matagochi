@@ -552,3 +552,20 @@ test('review #211: "やめる" really discards the candidate (it does not come b
   assert.deepEqual((await call(`/api/admin/recipes/${V}/candidate/discard`, { candidateId: b.candidateId })).body, { discarded: true });
   assert.equal((await call(`/api/admin/recipes/${V}/candidate`)).body.candidate, null);
 });
+
+test('candidate evidence survives reopening without mutating the published recipe', async () => {
+  const store = createMemorySyncStore();
+  await store.put(`youtube-${V}`, {status:'ready',result:oldRecipe}, {ifGeneration:0});
+  const evidence = [{kind:'action',detail:'湯に入れる'}, {kind:'unknown',detail:''}];
+  const catalog = createRecipeCatalog(store, async (url, opts) => {
+    assert.equal(opts.candidateEvidence, true);
+    return {...oldRecipe, analyzedFrom:'video',steps:['ゆでる','和える'],stepTimes:[30,null],durationSeconds:675,evidenceVersion:1,stepEvidence:evidence};
+  });
+  const c = await catalog.makeCandidate(URL_, {mode:'video'});
+  assert.deepEqual(c.stepEvidence, evidence);
+  assert.equal(c.check.ok, false);
+  assert.ok(c.check.reasons.includes('evidence_missing'));
+  assert.deepEqual((await store.get(`youtube-${V}`)).envelope.result.steps, oldRecipe.steps);
+  const saved = (await store.get(`reread-candidate/${V}`)).envelope;
+  assert.deepEqual(saved.stepEvidence, evidence);
+});

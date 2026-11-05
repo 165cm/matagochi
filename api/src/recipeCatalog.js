@@ -296,11 +296,11 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
   const candidateCheck = (c) => {
     const n = c.result.steps.length, times = (c.result.stepTimes || []).filter(Number.isFinite).length;
     const dups = c.duplicateTimes || [], back = (c.suspectTimes || []).filter((i) => !dups.includes(i));
-    const reasons = [...(times < Math.ceil(n / 2) ? ["times_few"] : []), ...(dups.length ? ["duplicates"] : []), ...(back.length ? ["goes_back"] : [])];
+    const reasons = [...(c.evidenceVersion && (c.stepEvidence || []).some(e => !["action", "admin"].includes(e?.kind)) ? ["evidence_missing"] : []), ...(times < Math.ceil(n / 2) ? ["times_few"] : []), ...(dups.length ? ["duplicates"] : []), ...(back.length ? ["goes_back"] : [])];
     return { ok: !reasons.length, reasons };
   };
   const candidateView = (c) => c && { check: candidateCheck(c), candidateId: c.candidateId, mode: c.mode, createdAt: c.createdAt, expiresAt: c.expiresAt, analyzedFrom: c.result.analyzedFrom, stepTimesFrom: c.result.stepTimesFrom || "",
-    title: c.result.title, dishName: c.result.dishName || "", ingredients: c.result.ingredients, steps: c.result.steps, stepTimes: c.result.stepTimes || [], durationSeconds: c.durationSeconds ?? null,
+    stepEvidence: c.stepEvidence || [], evidenceVersion: c.evidenceVersion || null, title: c.result.title, dishName: c.result.dishName || "", ingredients: c.result.ingredients, steps: c.result.steps, stepTimes: c.result.stepTimes || [], durationSeconds: c.durationSeconds ?? null,
     droppedTimes: c.droppedTimes || 0, suspectTimes: c.suspectTimes || [], duplicateTimes: c.duplicateTimes || [], timesFrom: c.timesFrom || "", carriedAdminTimes: c.carriedAdminTimes || 0, aiCalls: c.aiCalls || 0, yen: c.yen ?? null, yenUnknown: !!c.yenUnknown, logs: c.logs || [] };
   return {
     async reserveAnalysisBudget() { required(); await reserveBudget(); },
@@ -344,7 +344,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       try {
         await gate();
         // videoFullOnly：最後まで見られる動画だけ読む。時刻も補正せずに渡してもらう（下の checkCandidate で検査を一本にする）。
-        const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, reread: true, forceVideo: mode === "video", videoIfNeeded: mode === "auto", videoFullOnly: true,
+        const raw = await analyze(canonicalYouTubeUrl(id), { reserveBudget: gate, reread: true, forceVideo: mode === "video", videoIfNeeded: mode === "auto", videoFullOnly: true, candidateEvidence: true,
           videoMaxSeconds: candidateMaxSeconds, reserveVideo: spendCandidateVideo, onProgress: tracker.update, ...(mode === "transcript" ? { transcriptItems } : {}) });
         tracker.update({ stage: 4, detail: "手順・時刻・材料を確認中" });
         const analyzedFrom = ["video", "video-clip", "description+transcript"].includes(raw?.analyzedFrom) ? raw.analyzedFrom : "description";
@@ -383,6 +383,7 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
         const yen = typeof cost === "function" ? cost() : null;
         const createdAt = new Date(now()).toISOString();
         const record = { candidateId: randomUUID(), videoId: id, mode, createdAt, expiresAt: new Date(now() + CANDIDATE_TTL_MS).toISOString(),
+          stepEvidence: raw?.evidenceVersion === 1 ? (raw.stepEvidence || []).map((e, i) => carriedAt.has(i) ? { kind: "admin", detail: "同じ手順の管理者修正時刻を引き継ぎました" } : e) : [], evidenceVersion: raw?.evidenceVersion === 1 ? 1 : null,
           base: { generation: current.generation, revision: before.catalog?.revision || "" }, result, durationSeconds, droppedTimes: dropped, suspectTimes: [...new Set(suspects)].sort((a, b) => a - b), duplicateTimes: [...new Set(duplicates)].sort((a, b) => a - b), timesFrom, carriedAdminTimes: carried, aiCalls,
           yen: Number.isFinite(yen) ? Math.round(yen * 100) / 100 : null, yenUnknown: !Number.isFinite(yen) };
         const candKey = `reread-candidate/${id}`;

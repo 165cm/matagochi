@@ -241,6 +241,16 @@
     .step-editor-tools label { display: inline-flex; align-items: center; gap: 4px; width: auto; }
     .step-editor-tools input[type="checkbox"] { width: auto; }
   }
+  .timecode-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .timecode-tag { display: inline-flex; align-items: center; gap: 4px; border: 1px solid currentColor; border-radius: 999px; padding: 3px 9px; font-size: 13px; font-weight: 700; line-height: 1.5; }
+  .timecode-tag.ai { color: #164c83; background: #e7f1fd; }
+  .timecode-tag.admin { color: #653980; background: #f3eafa; }
+  .timecode-tag.source { color: #655747; background: #f4efe8; }
+  .timecode-tag.attention { color: #813b00; background: #fff0cf; }
+  .timecode-tag.danger { color: #a32217; background: #ffe3dc; border-width: 2px; }
+  .steps > li.needs-timecode-review { border: 2px solid #c63820; border-radius: 12px; background: #fff6f2; padding: 10px; }
+  .timecode-evidence { margin: 6px 0; overflow-wrap: anywhere; }
+  .timecode-evidence summary { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -415,6 +425,27 @@
   }
   const yen = (n) => `${Math.round(Number(n || 0) * 100) / 100}円`;
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : "—");
+  function candidateTimeTags(c, i) {
+    const e = c.stepEvidence?.[i], time = c.stepTimes?.[i];
+    const tags = [];
+    if (e?.kind === "admin") tags.push({ label: "✏ 管理者修正", tone: "admin" });
+    else if (e?.kind === "action") tags.push({ label: e.cueId != null ? "💬 字幕AI" : "🎬 動画AI", tone: "ai" });
+    else if (c.evidenceVersion) tags.push({ label: "⚠ 根拠なし", tone: "danger" });
+    else {
+      const from = c.timesFrom || c.stepTimesFrom;
+      if (from === "chapters") tags.push({ label: "📑 章", tone: "source" });
+      else if (from === "transcript") tags.push({ label: "💬 字幕AI", tone: "ai" });
+      else if (from === "video" || c.analyzedFrom?.startsWith("video")) tags.push({ label: "🎬 動画AI", tone: "ai" });
+      else if (from === "description") tags.push({ label: "📄 説明欄", tone: "source" });
+      else tags.push({ label: "⚠ 根拠なし", tone: "danger" });
+    }
+    if (!Number.isFinite(time)) tags.push({ label: "⚠ 時刻なし", tone: "danger" });
+    if ((c.duplicateTimes || []).includes(i)) tags.push({ label: "⚠ 時刻重複", tone: "danger" });
+    if ((c.suspectTimes || []).includes(i) && !(c.duplicateTimes || []).includes(i)) tags.push({ label: "⚠ 順序を確認", tone: "danger" });
+    if (tags.some(t => t.tone === "source")) tags.push({ label: "△ 場面を確認", tone: "attention" });
+    return tags;
+  }
+
   const sec = (s) => (Number.isFinite(s) && s !== null ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "");
   const parseSec = (v) => { const t = String(v || "").trim(); if (!t) return null; const m = t.match(/^(\d+):([0-5]?\d)$/); if (m) return Number(m[1]) * 60 + Number(m[2]); return /^\d+$/.test(t) ? Number(t) : NaN; };
   // 表。nums の列は右寄せ。bars の列は、値の大きさの薄い棒を文字の下に重ねる（{ text, value }）。
@@ -1935,18 +1966,32 @@
         const box = el("div", undefined, "warnbox"); box.style.background = "#fff";
         box.append(el("b", "🧩 できた候補（まだ保存していません）"));
 
-        const WHY = { times_few: "時刻が半分の手順にもありません", duplicates: "同じ時刻の手順があります", goes_back: "前に戻る時刻がありました" };
-        const verdict = el("p", check.ok ? "✅ よさそうです：手順の時刻がそろっていて、重なりもありません。" : `⚠ ${check.reasons.map((x) => WHY[x] || x).join("・")}`);
+        const WHY = { evidence_missing: "開始位置の根拠がない手順があります", times_few: "時刻が半分の手順にもありません", duplicates: "同じ時刻の手順があります", goes_back: "前に戻る時刻がありました" };
+        const verdict = el("p", check.ok ? "時刻の数・順序の検査を通りました。作業の場面と合うかは動画で確認してください。" : `⚠ ${check.reasons.map((x) => WHY[x] || x).join("・")}`);
         verdict.style.fontWeight = "700";
         box.append(verdict);
 
         const FROMC = { video: "動画（最後まで）", "video-clip": "動画（途中まで）", "description+transcript": "説明欄＋字幕", description: "説明欄" };
         box.append(el("p", `元：${FROMC[c.analyzedFrom] || c.analyzedFrom}・手順 ${(r.steps || []).length} → ${c.steps.length}・有効な時刻 ${(c.stepTimes || []).filter(Number.isFinite).length}個・費用 ${c.yenUnknown ? "不明" : `約${c.yen}円`}`, "meta"));
 
+        const warningCount = c.steps.filter((_, i) => candidateTimeTags(c, i).some(t => t.tone === "danger")).length;
+        if (warningCount) {
+          const summary = el("div", undefined, "timecode-tags");
+          summary.append(el("span", `⚠ 要確認 ${warningCount}手順`, "timecode-tag danger"));
+          box.append(summary);
+        }
+        const legend = el("details", undefined, "meta timecode-evidence");
+        legend.append(el("summary", "ⓘ タグの見方"), el("p", "青＝AIが挙げた根拠、紫＝管理者の修正、茶＝章・説明欄。赤は優先して確認してください。AIの根拠や管理者修正のタグは、動画と照合した確認済みの印ではありません。"));
+        box.append(legend);
         const ol = el("ol", undefined, "steps");
         c.steps.forEach((step, i) => {
           const li = el("li"); li.append(el("span", `${i + 1}`, "n"));
           const right = el("div"); right.append(el("div", step));
+          const tags = candidateTimeTags(c, i);
+          const tagRow = el("div", undefined, "timecode-tags");
+          tags.forEach(tag => tagRow.append(el("span", tag.label, `timecode-tag ${tag.tone}`)));
+          right.append(tagRow);
+          if (tags.some(tag => tag.tone === "danger")) li.classList.add("needs-timecode-review");
           const t = c.stepTimes?.[i];
           const tools = el("div", undefined, "tools");
           tools.append(el("span", Number.isFinite(t) ? sec(t) : "時刻なし", "meta"));
@@ -1954,6 +1999,13 @@
             const play = el("button", "▶", "quiet small"); play.type = "button";
             play.addEventListener("click", () => { if (player?.seekTo) { player.seekTo(t, true); player.playVideo?.(); } });
             tools.append(play);
+          }
+          const evidence = c.stepEvidence?.[i];
+          if (evidence?.detail) {
+            const detail = el("details", undefined, "meta timecode-evidence");
+            detail.append(el("summary", evidence.kind === "admin" ? "修正の情報" : "根拠を見る"));
+            detail.append(el("p", `${evidence.detail}${evidence.cueId != null ? `（字幕 ${evidence.cueId}）` : ""}`));
+            right.append(detail);
           }
           right.append(tools); li.append(right); ol.append(li);
         });

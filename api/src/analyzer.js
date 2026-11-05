@@ -1,3 +1,4 @@
+import { evidenceInstructions, evidenceVideoPrompt, parseEvidenceRecipe } from "./recipeEvidence.js";
 import { unitPromptTable } from "./units.js";
 import { cleanDishName } from "./dishes.js";
 import { GoogleGenAI } from "@google/genai";
@@ -93,15 +94,16 @@ export async function analyzeRecipeDescription(snippet, env = process.env) {
 
 // 説明文に手順がない動画向け：公開YouTube動画を映像と音声ごと読む（低画質で費用を抑える）。
 // clipSeconds を渡すと、動画の頭からその秒数だけを見る（長い動画の後半の感想・雑談は読まない）。
-export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env, { clipSeconds = null, beforeRetry, clients } = {}) {
-  const { response } = await generateFromVideo(env, { videoUrl, videoMetadata: clipMetadata(clipSeconds), prompt: buildVideoPrompt(snippet, clipSeconds),
+export async function analyzeRecipeVideo(videoUrl, snippet, env = process.env, { clipSeconds = null, beforeRetry, clients, candidateEvidence = false } = {}) {
+  const { response } = await generateFromVideo(env, { videoUrl, videoMetadata: clipMetadata(clipSeconds), prompt: candidateEvidence ? evidenceVideoPrompt(snippet) : buildVideoPrompt(snippet, clipSeconds),
     config: { mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 4096, temperature: 0.2, responseMimeType: "application/json" } }, { beforeRetry, clients }).catch((error) => {
     // 予算で断られたのは、読み取りの失敗ではない（包み直さずに伝える）。
     if (error?.fromBudget) throw error;
     console.error(JSON.stringify({ event: "video_analysis_failed", message: String(error?.detail || error?.message || "").slice(0, 300) }));
     throw new ApiError(502, "video_analysis_failed", "動画から作り方を読み取れませんでした。", error?.detail || "");
   });
-  return parseJsonResponse(response.text || "");
+  const raw = parseJsonResponse(response.text || "");
+  return candidateEvidence ? { ...raw, ...parseEvidenceRecipe(raw) } : raw;
 }
 
 // すでにある手順に、動画の中の時刻だけを付ける（「▶ 2:15」用）。長い動画は頭から maxSeconds まで。
@@ -173,14 +175,20 @@ ${formattedTranscript}`;
 }
 
 // 説明欄の材料・手順と字幕（発話ログ）を統合し、動画の実際の調理段取り・作業単位に沿った手順とタイムコードを生成する。
-export async function buildHybridRecipeSteps({ title, ingredients, steps, formattedTranscript, cues }, env = process.env) {
+export async function buildHybridRecipeSteps({ title, ingredients, steps, formattedTranscript, cues, description = "", candidateEvidence = false }, env = process.env) {
   const project = env.GOOGLE_CLOUD_PROJECT;
   if (!project && !env.GEMINI_API_KEY) throw new ApiError(500, "missing_google_cloud_project", "Google Cloudプロジェクトが設定されていません。");
   const ai = env.GEMINI_API_KEY
     ? new GoogleGenAI({ apiKey: env.GEMINI_API_KEY })
     : new GoogleGenAI({ vertexai: true, project, location: env.GOOGLE_CLOUD_LOCATION || "us-central1" });
   const model = env.GEMINI_MODEL || "gemini-2.5-flash";
-  const prompt = `料理動画の字幕（[番号] 時刻 発話内容）と、説明欄の材料・手順があります。
+  const prompt = candidateEvidence ? `料理動画の字幕から手順と開始字幕を組み立ててください。${evidenceInstructions}
+開始位置は提供された字幕の整数cueIdのみ。説明欄のみにある作業や映像でしか確認できない作業はcueId:null。字幕の根拠は発話の位置であり映像の一致を保証しません。
+JSON: {"stepsComplete":true,"steps":[{"text":"手順","cueId":1,"evidence":{"kind":"action","detail":"開始を示す発話の要約"}}]}
+材料: ${JSON.stringify(ingredients || []).slice(0, 6000)}
+説明欄の手順: ${JSON.stringify(steps || []).slice(0, 10000)}
+説明欄の原文（後半も照合）: ${String(description).slice(0, 10000)}
+字幕: ${formattedTranscript}` : `料理動画の字幕（[番号] 時刻 発話内容）と、説明欄の材料・手順があります。
 家で実際に料理する人が動画やタイマーを見ながら迷わず作れるよう、実際の動画の調理進行・段取りに沿った「わかりやすい作り方（4〜7手順）」を組み立ててください。
 
 制約:
@@ -208,13 +216,14 @@ ${formattedTranscript}`;
     contents: prompt,
     config: {
       httpOptions: { timeout: 60_000, retryOptions: { attempts: 1 } },
-      maxOutputTokens: 2048,
+      maxOutputTokens: candidateEvidence ? 4096 : 2048,
       temperature: 0.1,
       responseMimeType: "application/json"
     }
   });
   recordUsage(model, response);
   const raw = parseJsonResponse(response.text || "");
+  if (candidateEvidence) return parseEvidenceRecipe(raw, { cues });
   const rawSteps = Array.isArray(raw?.steps) ? raw.steps : [];
   if (rawSteps.length < 2) return null;
 
