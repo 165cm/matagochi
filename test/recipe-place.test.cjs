@@ -86,3 +86,11 @@ test("a day the dish does not fit (e.g. too long for the weekday time) cannot be
   run(`handleDailyAction("life-place",{recipe:${JSON.stringify(id)},date:"${date}"})`);
   assert.equal(shown(run, date), before, "nothing changes");
 });
+
+test('直リンクのレシピを保存でき、詳細の表示で時刻解析しない', () => {
+ const run = app();
+ run('linkedRecipe = {...Lifestyle.curated[0], id:"catalog-abcdefghijk", curated:true}; recipeDetailId=linkedRecipe.id; state.view="recipe"; ensureTimecodes=()=>{throw new Error("paid lookup");}');
+ run('renderRecipeDetail()');
+ run('handleDailyAction("life-save-starter",{recipe:"catalog-abcdefghijk"})');
+ assert.equal(run('state.recipes.some(r=>r.starterId === "catalog-abcdefghijk")'),true);
+});
