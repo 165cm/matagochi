@@ -77,17 +77,18 @@ export function createTimecodeBackfill(store, deps, { enabled = false, monthlyYe
             }
             return result;
           };
-          let outcome;
+          let outcome, generated = {};
           try {
             const result = await deps.complete(r, paid);
             const improved = timedCount(r.steps,result.stepTimes) > timedCount(r.steps,r.stepTimes);
             const issues = timecodeIssues(r.steps,result.stepTimes,result.durationSeconds);
+            generated = { afterTimes: result.stepTimes, sources: result.sources, stages: result.stages, qualityIssues: issues, durationSeconds: result.durationSeconds };
             if (improved && issues.length) throw new ApiError(400,'timecode_quality_failed','補完結果の時刻に矛盾があります。');
             if (improved) await deps.save(r,result);
             outcome = { ...claim, reason: result.reason, stages: result.stages, qualityIssues: issues, beforeTimes: r.stepTimes, afterTimes: result.stepTimes, sources: result.sources, baseRevision: r.revision, durationSeconds: result.durationSeconds, before: timedCount(r.steps,r.stepTimes), after: timedCount(r.steps,result.stepTimes), improved,
               finished: result.reason === 'complete' || result.reason === 'duration_unsupported' || result.reason === 'existing_times_invalid', retryAt: now() + (result.reason === 'partial_or_no_match' ? 7 : 1) * 86400000 };
-          } catch (error) { outcome = { ...claim, reason: error?.code || 'temporary_error' }; }
-          outcome.history = [...(attempt.history || []), { at: claim.at, reason: outcome.reason, beforeTimes: r.stepTimes, afterTimes: outcome.afterTimes || null, sources: outcome.sources || null, baseRevision: r.revision, stages: outcome.stages || [] }].slice(-3);
+          } catch (error) { outcome = { ...claim, ...generated, improved: false, reason: error?.code || 'temporary_error' }; }
+          outcome.history = [...(attempt.history || []), { at: claim.at, reason: outcome.reason, beforeTimes: r.stepTimes, afterTimes: outcome.afterTimes || null, sources: outcome.sources || null, baseRevision: r.revision, stages: outcome.stages || [], qualityIssues: outcome.qualityIssues || [] }].slice(-3);
           if (!await store.put(key,outcome,{ ifGeneration: claimed.generation })) throw new ApiError(409,'backfill_result_not_saved','結果を保存できません。');
           state.last = { videoId: row.videoId, ...outcome }; await persist();
           return { done: false, ...state.last, reservedYen: state.reservedYen, measuredYen: state.measuredYen || 0 };
