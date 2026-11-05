@@ -218,6 +218,29 @@
   .steps input.is-bad { border-color: var(--tomato); }
   .demo-banner { margin: 0 0 10px; padding: 10px 12px; border: 2px dashed var(--s4); border-radius: 12px; background: #fff6dc; }
   .sticky { position: sticky; bottom: 0; background: var(--surface); padding: 10px 0 0; border-top: 1px solid var(--line); }
+  /* 小さい画面は動画と編集欄を同じスクロールに載せ、高さを縮めない。 */
+  @media (max-width: 899px) {
+    dialog#recipe { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); box-sizing: border-box; }
+    .dlg-head { flex-wrap: wrap; }
+    .dlg-head-title { flex-basis: 100%; }
+    .dlg-head-nav { flex-wrap: wrap; max-width: 100%; }
+    .dlg-col-media { position: static; flex: 0 0 auto; min-width: 0; padding-right: 0; }
+    .dlg-col-media > * { flex-shrink: 0; }
+    .dlg-col-editor { flex: 0 0 auto; }
+    .subtab-panel { flex: none; overflow: visible; padding-bottom: 8px; }
+    .dlg-footer-bar { position: static; flex: 0 0 auto; padding: 8px 0 max(8px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
+    .dlg-footer-bar .footer-status { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+    .player-ctrl { flex-wrap: wrap; }
+    .player-ctrl button { flex: 1 1 70px; padding: 6px; min-height: 44px; }
+    .player-ctrl .time-badge { flex: 1 0 100%; text-align: center; }
+    .dlg-col-media a { overflow-wrap: anywhere; }
+    .dlg-col-media input { min-width: 0; max-width: 100%; box-sizing: border-box; }
+    .step-editor-item { grid-template-columns: 20px minmax(0, 1fr); gap: 6px; padding: 8px; }
+    #recipe input, #recipe textarea { font-size: 16px; }
+    .step-editor-tools button { min-height: 44px; }
+    .step-editor-tools label { display: inline-flex; align-items: center; gap: 4px; width: auto; }
+    .step-editor-tools input[type="checkbox"] { width: auto; }
+  }
 </style>
 </head>
 <body>
