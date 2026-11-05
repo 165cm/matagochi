@@ -83,7 +83,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       await options.reserveBudget?.();
       progress(2, "動画から作り方を読み取り中（AI応答待ち・1〜3分）");
       // 接続先を切り替えて読み直す時も、その直前ごとに予算を通す（beforeRetry）。
-      const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds, beforeRetry: options.reserveBudget });
+      const video = await deps.analyzeRecipeVideo(`https://www.youtube.com/watch?v=${videoId}`, snippet, { clipSeconds, beforeRetry: options.reserveBudget, candidateEvidence: !!options.candidateEvidence });
       const complete = video.stepsComplete !== false;
       const videoSteps = complete ? normalizeSteps(video.steps) : [];
       const videoIngredients = normalizeIngredients(video.ingredients);
@@ -95,6 +95,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
         sourceServings: Number.isInteger(analysis.sourceServings) ? analysis.sourceServings : video.sourceServings,
         ingredients: normalizeIngredients(analysis.ingredients).length ? analysis.ingredients : videoIngredients,
         steps: videoSteps.length ? videoSteps : analysis.steps,
+        ...(videoSteps.length && video.evidenceVersion ? { stepEvidence: video.stepEvidence, evidenceVersion: video.evidenceVersion } : {}),
         stepTimes: videoSteps.length && Array.isArray(video.stepTimes)
           ? video.stepTimes.map((t) => (clipSeconds !== null && Number.isFinite(t) && t >= clipSeconds ? null : t))
           : undefined,
@@ -138,8 +139,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       if (truncated) progress(1, `字幕が長いため、最初の ${formatTime(cues[cues.length - 1]?.start || 0)} までを使います`);
       // 字幕が文字数や動画尺上限で途中で切れており、かつ説明欄に元の手順がない場合（rawSteps.length < 2）、
       // 後半が抜けた不完全な手順になるため、ハイブリッド生成をスキップして動画読み取り待ちを維持する
-      const skipTruncatedWithoutSteps = truncated && rawSteps.length < 2;
-      if (skipTruncatedWithoutSteps) progress(1, "字幕が長すぎて途中までしか使えず、説明欄にも手順がないため、字幕での整理をスキップしました");
+      const skipTruncatedWithoutSteps = truncated && (options.candidateEvidence || rawSteps.length < 2);
+      if (skipTruncatedWithoutSteps) progress(1, "字幕が長すぎて途中までしか使えないため、字幕での整理をスキップしました");
       if (!skipTruncatedWithoutSteps) {
         const budgetOk = options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true;
         if (!budgetOk) progress(2, "AI の予算の上限のため、字幕での整理をスキップしました");
@@ -151,7 +152,9 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
             ingredients: rawIngredients,
             steps: rawSteps,
             formattedTranscript: text,
-            cues
+            cues,
+            description: options.candidateEvidence ? snippet.description : "",
+            candidateEvidence: !!options.candidateEvidence
           }).catch((err) => {
             hybridErr = String(err?.message || err);
             console.error(JSON.stringify({ event: "hybrid_recipe_failed", videoId, message: hybridErr.slice(0, 300) }));
@@ -166,7 +169,8 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
             analysis = {
               ...analysis,
               steps: hybrid.steps,
-              stepTimes: hybrid.stepTimes
+              stepTimes: hybrid.stepTimes,
+              ...(hybrid.evidenceVersion ? { stepEvidence: hybrid.stepEvidence, evidenceVersion: hybrid.evidenceVersion } : {})
             };
             analyzedFrom = "description+transcript";
             progress(2, "字幕に沿った整理結果を採用しました");
@@ -192,7 +196,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
   const chapters = parseChapters(snippet.description);
   const finalSteps = normalizeSteps(analysis.steps);
   // チャプターとの対応付けも AI の1回。字幕タイムコードがまだない場合のみ行う。
-  const chaptersAllowed = !analyzedTimes && chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function" && (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
+  const chaptersAllowed = !analysis.evidenceVersion && !analyzedTimes && chapters.length && finalSteps.length >= 2 && typeof deps.matchStepsToChapters === "function" && (options.reserveBudget ? await options.reserveBudget().then(() => true, () => false) : true);
   if (chaptersAllowed) {
     progress(3, "説明欄の章と照合中（AI応答待ち）");
     const matched = await deps.matchStepsToChapters(finalSteps, chapters).catch(() => null);
@@ -228,6 +232,7 @@ export async function importYouTubeRecipe(rawUrl, deps = {}, options = {}) {
       embeddable: snippet.embeddable
     }),
     analyzedFrom,
+    ...(analysis.evidenceVersion ? { stepEvidence: analysis.stepEvidence, evidenceVersion: analysis.evidenceVersion } : {}),
     ...(analyzedTimes ? { stepTimesFrom: analyzedTimes } : {}),
     // 動画の長さ（管理の候補づくりで、時刻が動画の中かを確かめる。保存する結果には入れない）。
     ...(duration ? { durationSeconds: duration } : {}),

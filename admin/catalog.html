@@ -1935,8 +1935,8 @@
         const box = el("div", undefined, "warnbox"); box.style.background = "#fff";
         box.append(el("b", "🧩 できた候補（まだ保存していません）"));
 
-        const WHY = { times_few: "時刻が半分の手順にもありません", duplicates: "同じ時刻の手順があります", goes_back: "前に戻る時刻がありました" };
-        const verdict = el("p", check.ok ? "✅ よさそうです：手順の時刻がそろっていて、重なりもありません。" : `⚠ ${check.reasons.map((x) => WHY[x] || x).join("・")}`);
+        const WHY = { evidence_missing: "開始位置の根拠がない手順があります", times_few: "時刻が半分の手順にもありません", duplicates: "同じ時刻の手順があります", goes_back: "前に戻る時刻がありました" };
+        const verdict = el("p", check.ok ? "時刻の数・順序の検査を通りました。作業の場面と合うかは動画で確認してください。" : `⚠ ${check.reasons.map((x) => WHY[x] || x).join("・")}`);
         verdict.style.fontWeight = "700";
         box.append(verdict);
 
@@ -1954,6 +1954,10 @@
             const play = el("button", "▶", "quiet small"); play.type = "button";
             play.addEventListener("click", () => { if (player?.seekTo) { player.seekTo(t, true); player.playVideo?.(); } });
             tools.append(play);
+          }
+          if (c.evidenceVersion) {
+            const e = c.stepEvidence?.[i];
+            right.append(el("p", e?.kind === "admin" ? e.detail : e?.kind === "action" ? `AIが挙げた根拠：${e.detail}${e.cueId != null ? `（字幕 ${e.cueId}）` : ""}` : "開始位置の根拠なし：動画で確認してください", "meta"));
           }
           right.append(tools); li.append(right); ol.append(li);
         });
