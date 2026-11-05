@@ -606,6 +606,19 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) throw new ApiError(409, "catalog_conflict", "ほかの更新と重なりました。もう一度保存してください。");
       return { stepTimes: result.stepTimes, revision: result.catalog.revision };
     },
+    async reviewTimes(rawUrl, { baseRevision, steps, stepTimes } = {}) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      const r = current?.envelope.result;
+      if (current?.envelope.status !== "ready" || !r || r.unavailable) throw new ApiError(404,"recipe_not_found","レシピが見つかりません。");
+      if (typeof baseRevision !== "string" || baseRevision !== (r.catalog?.revision || "") || JSON.stringify(steps) !== JSON.stringify(r.steps) || JSON.stringify(stepTimes) !== JSON.stringify(r.stepTimes)) throw new ApiError(409,"catalog_conflict","内容が変わりました。開き直して確認してください。");
+      if (!(r.stepTimes || []).some(Number.isFinite) || (r.stepTimesPending || []).some(Number.isFinite)) throw new ApiError(400,"review_not_ready","時刻なし・要確認の手順は、先に保存してください。");
+      const result = structuredClone(r);
+      result.timecodeReview = { at: new Date(now()).toISOString(), steps: r.steps, stepTimes: r.stepTimes, source: r.stepTimesFrom || "" };
+      if (!await store.put(key,{ ...current.envelope,result },{ ifGeneration:current.generation })) throw new ApiError(409,"catalog_conflict","ほかの更新と重なりました。開き直してください。");
+      return { reviewedAt: result.timecodeReview.at };
+    },
     // 定期実行用：保存済みの結果の説明文・チャンネル名を、30日ルールに沿って取り直す（AIでの読み直しはしない）。
     async refresh(rawUrl) {
       required();

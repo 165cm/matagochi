@@ -326,7 +326,7 @@
       <div class="head"><h2>レシピと親の料理名</h2><span class="meta" id="rl-count"></span></div>
       <div class="row" style="margin-top:8px">
         <input id="rl-q" type="search" placeholder="料理名・親・投稿者で探す" aria-label="レシピを探す" style="flex:1 1 200px">
-        <select id="rl-src" aria-label="しぼりこみ"><option value="all">すべて</option><option value="ideal">⭐ 理想の12品</option><option value="short">子が足りない親</option><option value="tcnone">⏱ 手順の時刻なし（新着）</option><option value="tcpart">⏱ 時刻が一部だけ（新着）</option><option value="trend">新着（28日以内）</option><option value="expiring">7日以内に新着から外れる</option><option value="nominutes">調理時間が不明（新着）</option><option value="noparent">親なし</option><option value="kept">みんなの定番（残した）</option><option value="planned">献立に入った</option></select>
+        <select id="rl-src" aria-label="しぼりこみ"><option value="all">すべて</option><option value="ideal">⭐ 理想の12品</option><option value="short">子が足りない親</option><option value="tcnone">⏱ 手順の時刻なし（新着）</option><option value="tccompleted">⏱ 補完・未確認</option><option value="tcreviewed">⏱ 確認済み</option><option value="tcchanged">⏱ 再確認が必要</option><option value="tcpart">⏱ 時刻が一部だけ（新着）</option><option value="trend">新着（28日以内）</option><option value="expiring">7日以内に新着から外れる</option><option value="nominutes">調理時間が不明（新着）</option><option value="noparent">親なし</option><option value="kept">みんなの定番（残した）</option><option value="planned">献立に入った</option></select>
         <label class="chk"><input type="checkbox" id="rl-group" checked> 親ごとにまとめる</label>
         <details class="info"><summary>ⓘ 見方</summary><div>
           新着（集めた料理・28日）と、献立の候補に出た・残した料理です。<b>親ごとにまとめる</b>と、親の料理名1つが1行になります。行を押すと子のレシピが開き、レシピの行を押すと材料・手順・時刻を見て直せます。見出しを押すと並べ替えます（もう一度押すと逆順）。<br>
@@ -889,7 +889,7 @@
   const tcLevel = (r) => (!r.tc ? null : !r.tc.n ? "nosteps" : r.tc.k >= r.tc.n ? "full" : r.tc.k ? "part" : "none");
   // 時刻が1つもない（手順が読めていないものも含む）。
   const tcMissing = (r) => ["none", "nosteps"].includes(tcLevel(r));
-  const tcCell = (r) => { const l = tcLevel(r); if (!l) return { text: "—", value: null }; if (l === "nosteps") return { text: "手順なし", value: -1 }; return { text: `${r.tc.k}/${r.tc.n}${TC_SRC[r.tc.source] ? ` ${TC_SRC[r.tc.source]}` : ""}`, value: r.tc.k / r.tc.n }; };
+  const tcCell = (r) => { const l = tcLevel(r); if (!l) return { text: "—", value: null }; if (l === "nosteps") return { text: "手順なし", value: -1 }; return { text: `${r.tc.k}/${r.tc.n}${r.timecodeReview?.status === "reviewed" ? " 確認済み" : r.timecodeReview?.status === "changed" ? " 再確認" : TC_SRC[r.tc.source] ? ` ${TC_SRC[r.tc.source]}` : ""}`, value: r.tc.k / r.tc.n }; };
   const timeCell = (r) => (r.minutes ? { text: `${r.minutes}分`, value: r.minutes } : { text: "不明", value: null });
   // 子のレシピの表（親の行を開いた中・まとめない時）。数字・状況だけを列に、同じ言葉は見出しに。
   function recipeTable(list, { parent = true } = {}) {
@@ -907,6 +907,9 @@
   // しぼりこみ（進み具合の「一覧で見る」からも使う）。
   const RL_FILTER = {
     all: () => true,
+    tccompleted: (r) => r.tc?.source === "completion" && r.tc.k > 0 && r.timecodeReview?.status !== "reviewed",
+    tcreviewed: (r) => r.timecodeReview?.status === "reviewed",
+    tcchanged: (r) => r.timecodeReview?.status === "changed",
     ideal: (r, by) => !!by.get(r.dish?.key)?.ideal,
     short: (r, by) => { const p = by.get(r.dish?.key); return !!p && lackOf(p, last.seed?.parentStock) > 0; },
     // 時刻のしぼりこみは、進み具合の数（新着だけ）とそろえる。
@@ -1572,6 +1575,21 @@
       const pMeta = el("p", `手順の文と開始時刻（分:秒）をそのまま直せます。▶ で動画を再生、⏱ で現在の再生位置を反映できます。${r.stepTimesFrom === "admin" ? "（運営が直した時刻）" : ""}`, "meta");
       pMeta.style.margin = "0 0 6px";
       panelSteps.append(pMeta);
+      const review = r.timecodeReview || {};
+      const reviewInfo = el("p", `${review.status === "reviewed" ? "✓ 確認済み" : review.status === "changed" ? "手順や時刻が変わったため再確認が必要です" : "管理者による確認はまだです"}${review.at ? `（前回確認：${new Date(review.at).toLocaleString("ja-JP")}）` : ""}`, "meta");
+      const reviewBtn = el("button", "✓ 動画と時刻を確認済みにする", "quiet small"); reviewBtn.type = "button";
+      reviewBtn.disabled = review.status === "reviewed";
+      reviewBtn.addEventListener("click", async () => {
+        if (dirty.steps) { setStatus("手順と時刻の変更を先に保存してください。", true); return; }
+        reviewBtn.disabled = true;
+        try {
+          await api(`/api/admin/recipes/${encodeURIComponent(videoId)}/timecodes/review`, { baseRevision: r.revision || "", steps: r.steps, stepTimes: r.stepTimes }, "POST");
+          loadRecipes().catch(() => {});
+          savedAndReload("steps", {});
+        } catch (e) { setStatus(e.message, true); reviewBtn.disabled = false; }
+      });
+      panelSteps.append(reviewInfo, reviewBtn);
+
 
       const list = el("ol", undefined, "step-editor-list");
 

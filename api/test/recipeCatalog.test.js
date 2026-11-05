@@ -195,3 +195,21 @@ test('peek only reads saved results (no AI, no YouTube); refresh re-fetches old 
   assert.equal(await catalog.refresh('https://youtu.be/zzzzzzzzzzz'), false, 'refresh does not read unknown videos');
   assert.equal(analyses, 1);
 });
+
+test('管理者の時刻確認は版と内容を照合し、時刻を変えず日時と出所を記録する', async () => {
+  const catalog = createRecipeCatalog(createMemorySyncStore(), async () => ({ ...sample(), steps:['炊く','盛る'], stepTimes:[10,20] }));
+  await catalog.import(url);
+  await catalog.setStepTimes(url,[10,20],{from:'completion'});
+  const r = await catalog.peek(url);
+  await assert.rejects(catalog.reviewTimes(url,{baseRevision:'old',steps:r.steps,stepTimes:r.stepTimes}),e=>e.code==='catalog_conflict');
+  await assert.rejects(catalog.reviewTimes(url,{baseRevision:r.catalog.revision,steps:r.steps,stepTimes:[11,20]}),e=>e.code==='catalog_conflict');
+  const reviewed = await catalog.reviewTimes(url,{baseRevision:r.catalog.revision,steps:r.steps,stepTimes:r.stepTimes});
+  const saved = await catalog.peek(url);
+  assert.ok(reviewed.reviewedAt);
+  assert.equal(saved.stepTimesFrom,'completion');
+  assert.deepEqual(saved.stepTimes,r.stepTimes);
+  assert.equal(saved.timecodeReview.at,reviewed.reviewedAt);
+  await catalog.setStepTimes(url,[12,20]);
+  const changed = await catalog.peek(url);
+  assert.notDeepEqual(changed.stepTimes,changed.timecodeReview.stepTimes);
+});

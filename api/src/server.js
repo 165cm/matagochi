@@ -473,6 +473,8 @@ export function createApp(env = process.env, deps = {}) {
       // 時刻は手順の位置ごと（空の手順も位置を持つ）。保存済みの時刻（timecodes/*）は手順30個までなので、それより多い時はレシピの時刻の長さまで数える。
       const [dishes] = await Promise.all([dishBook.classify(recipes).catch(() => ({})), mapLimit(recipes, ADMIN_READ_CONCURRENCY, async (x) => {
         const src = x.src; delete x.src;
+        const full = await catalog.peek(canonicalYouTubeUrl(x.videoId));
+        x.timecodeReview = reviewStatus(full, (await timesOf(canonicalYouTubeUrl(x.videoId), full || src)).times);
         x.tc = await tcOf(canonicalYouTubeUrl(x.videoId), src);
       })]);
       for (const x of recipes) x.dish = dishes[x.videoId] || null;
@@ -516,7 +518,7 @@ export function createApp(env = process.env, deps = {}) {
       const { times, source, seenSeconds } = await timesOf(url, r);
       const durationSeconds = (await durationsOf([videoId]))[videoId] ?? null;
       const check = checkStepTimes(r.steps || [], times, { durationSeconds, source, seenSeconds });
-      return { videoId, revision: r.catalog?.revision || "", stepTimesPending: r.stepTimesPending || [], title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredientsFrom: r.ingredientsFrom || "", ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
+      return { videoId, timecodeReview: reviewStatus(r, times), revision: r.catalog?.revision || "", stepTimesPending: r.stepTimesPending || [], title: r.title || "", dish, dishName: r.dishName || "", dishNameFrom: r.dishNameFrom || "", channelTitle: r.channelTitle || "", videoUrl: r.videoUrl || url, embeddable: r.embeddable !== false, sourceServings: r.sourceServings ?? null, ingredientsFrom: r.ingredientsFrom || "", ingredients: r.ingredients || [], steps: r.steps || [], stepTimes: times, stepTimesFrom: r.stepTimesFrom || "", stepTimesSource: source, durationSeconds, check: { ...check, labels: ISSUE_LABEL }, planning: r.planning || null,
         // 書き直した手順（APP_MAP §49）と、その時間の上限。
         guide: listedGuide(r), guideLimit: guideLimit(r.planning?.minutes), guideLabels: GUIDE_ISSUE_LABEL };
     }));
@@ -595,6 +597,12 @@ export function createApp(env = process.env, deps = {}) {
   });
   // 1品の手順の時刻の数（n＝手順の数・k＝時刻のある手順の数・source＝出どころ）。管理のレシピ一覧と、毎朝の健康診断（下の /api/trends/timecodes）で同じ数え方。
   // 時刻は手順の位置ごと（空の手順も位置を持つ）。保存済みの時刻（timecodes/*）は手順30個までなので、それより多い時はレシピの時刻の長さまで数える。
+  function reviewStatus(r, times) {
+    const review = r?.timecodeReview;
+    if (!review) return { status: "unreviewed" };
+    const valid = JSON.stringify(review.steps) === JSON.stringify(r.steps) && JSON.stringify(review.stepTimes) === JSON.stringify(times) && review.source === (r.stepTimesFrom || "") && !(r.stepTimesPending || []).some(Number.isFinite);
+    return { status: valid ? "reviewed" : "changed", at: review.at };
+  }
   async function tcOf(url, src) {
     let times = [], source = "";
     try { ({ times, source } = await timesOf(url, src)); } catch {}
@@ -928,6 +936,13 @@ export function createApp(env = process.env, deps = {}) {
       const sharedTimes = await shareFixed(url, saved.steps, saved.stepTimes, saved.revision);
       catalogChanged();
       return { ...saved, sharedTimes };
+    })());
+  });
+  app.post("/api/admin/recipes/:videoId/timecodes/review", (req,res) => {
+    const videoId = adminVideo(req,res); if (!videoId) return;
+    send(res,(async () => {
+      const saved = await catalog.reviewTimes(canonicalYouTubeUrl(videoId), req.body || {});
+      catalogChanged(); return saved;
     })());
   });
   app.put("/api/admin/recipes/:videoId/step-times", (req, res) => {

@@ -71,3 +71,15 @@ jobs:
         # 理想の12品・主役と味の割合の目安までの進み具合（api/src/ideal.js）。健康診断が赤の日も出す。AI は使わない。
         if: always()
         run: node scripts/catalog-taste.cjs trends.json --ideal || true
+
+      - name: Report timecode completion progress (read only)
+        if: always()
+        env:
+          ADMIN_TOKEN: ${{ secrets.RECIPE_ADMIN_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "$ADMIN_TOKEN" ]; then
+            curl --fail -sS --max-time 120 -H "Authorization: Bearer $ADMIN_TOKEN" \
+              https://matagochi-api-292190013809.us-central1.run.app/api/admin/timecodes/backfill -o backfill.json || rm -f backfill.json
+          fi
+          node scripts/timecode-progress.cjs backfill.json result.json
