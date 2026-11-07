@@ -4383,12 +4383,19 @@ body.has-sheet { overflow: hidden; }
 .swap-pick { display: grid; align-content: start; gap: 4px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
 .swap-pick:focus-visible .swap-photo { outline-color: var(--sage); }
 .swap-card .swap-check { left: 5px; right: auto; }
-.swap-x { position: absolute; right: 0; top: 0; z-index: 1; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
-.swap-x span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(40, 25, 15, .62); color: #fff; font-size: 14px; font-weight: 900; line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
-.swap-x:focus-visible span { outline: 3px solid var(--sage); outline-offset: 1px; }
-.swap-hint { margin: 0 0 8px; color: var(--muted); }
-.swap-learned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; }
-.swap-learned > span { color: var(--muted); font-weight: 700; }
-.swap-learn-chip { min-height: 44px; padding: 2px 12px; border: 1px dashed var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-.swap-learned .link-inline { margin-left: auto; }
 @media (prefers-reduced-motion: reduce) { .swap-card.is-fresh { animation: none; } }
+/* 第3回の相談（§64-2）：「✕ パス」は写真の下の行の右はし。状態の行・下の操作の場所は高さを固定（写真がずれない） */
+.swap-panel.swap-sheet { min-height: min(88vh, 760px); min-height: min(88dvh, 760px); }
+.swap-name { min-height: calc(14px * 1.35 * 2); }
+.swap-meta { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; margin-top: -2px; }
+.swap-meta .swap-min { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swap-x { flex: none; display: inline-flex; align-items: center; min-height: 44px; margin: -6px -4px -6px 0; padding: 0 6px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.swap-x:focus-visible { outline: 3px solid var(--sage); outline-offset: -2px; border-radius: 10px; }
+.swap-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin: 0 0 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.swap-status .link-inline { min-height: 32px; }
+.swap-bottom { min-height: 72px; }
+.swap-chip.is-less { border: 1.5px dashed var(--tomato); background: #fff3ee; color: var(--ink); }
+.swap-chip.is-less u { margin-left: 4px; color: var(--tomato); font-size: 12px; }
+.pass-ask .todo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.todo-row.pass-ask { grid-template-columns: 24px minmax(0, 1fr); }
+.todo-row.pass-ask .todo-actions { grid-column: 1 / -1; justify-content: flex-end; }
