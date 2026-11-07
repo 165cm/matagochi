@@ -4352,11 +4352,12 @@ body.has-sheet { overflow: hidden; }
 .swap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
 .swap-card { display: grid; align-content: start; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
 .swap-photo { position: relative; display: block; border-radius: 16px; overflow: hidden; outline: 3px solid transparent; outline-offset: -3px; transition: outline-color .15s ease; }
-.swap-photo .dish-tile.swap-tile { width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover; object-position: center 40%; border-radius: 16px; }
+/* YouTube のサムネイル（16:9）を前提に、見切れない形で（2026-11-07 のユーザーの判断）。4:3 の画像の黒い帯は切り落とす（献立のカードと同じ） */
+.swap-photo .dish-tile.swap-tile { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; object-position: center; border-radius: 14px; }
 .swap-card.is-picked .swap-photo { outline-color: var(--tomato); }
 .swap-card:focus-visible .swap-photo { outline-color: var(--sage); }
-.swap-badge { position: absolute; left: 6px; top: 6px; max-width: calc(100% - 12px); padding: 2px 8px; border-radius: 999px; background: rgba(255, 252, 246, .92); color: var(--ink); font-size: 12px; font-style: normal; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.swap-check { position: absolute; right: 6px; top: 6px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--tomato); color: #fff; font-style: normal; font-weight: 900; }
+.swap-badge { position: absolute; left: 5px; top: 5px; max-width: calc(100% - 44px); padding: 1px 7px; border-radius: 999px; background: rgba(255, 252, 246, .92); color: var(--ink); font-size: 11px; font-style: normal; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swap-check { position: absolute; right: 5px; top: 5px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--tomato); color: #fff; font-style: normal; font-weight: 900; }
 .swap-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .swap-min { color: var(--muted); font-size: 12px; }
 .swap-folder { margin: 0 0 8px; font-size: 14px; }
@@ -4375,10 +4376,4 @@ body.has-sheet { overflow: hidden; }
 .plan-reason-badge { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); padding: 1px 7px; border-radius: 999px; background: rgba(255, 252, 246, .92); color: var(--ink); font-size: 11px; font-style: normal; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .swap-panel.swap-sheet, .swap-backdrop { animation: none; } }
 .swap-chip { border-radius: 999px; }
-/* 横持ち（高さが低い）：4枚を1列に並べて、ひと目で比べられるように */
-@media (max-height: 500px) and (orientation: landscape) {
-  .swap-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-  .swap-name { font-size: 12px; }
-  .swap-badge { font-size: 10px; padding: 1px 6px; }
-}
 .swap-chip[aria-pressed="false"] { border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); }
