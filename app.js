@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261106-timecode-tags";
+const APP_VERSION = "20261107-four-dishes-review3";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -44,6 +44,8 @@ const demoState = {
   sharedPolicies: {},
   // 残っている食材（本人が確かめたもの）。家族で共有。{ items: { 名前: { at } }, updatedAt }（APP_MAP §14）。
   leftovers: { items: {}, updatedAt: "" },
+  // 今夜の4皿の「パス」の覚え書き（この端末だけ・家族の同期にもAIにも送らない。APP_MAP §64-3）。
+  passMemo: { rests: {}, log: {}, asked: {} },
   onboardingDraft: null,
   householdProfile: null,
   mealSlots: {},
@@ -378,6 +380,7 @@ function normalizeState(saved) {
     tasteProfile: typeof ProfileTalk === "undefined" ? saved.tasteProfile || null : ProfileTalk.normalize(saved.tasteProfile),
     sharedPolicies: typeof ProfileTalk === "undefined" ? {} : ProfileTalk.normalizeShared(saved.sharedPolicies),
     leftovers: normalizeLeftovers(saved.leftovers),
+    passMemo: normalizePassMemo(saved.passMemo),
     onboardingDraft: saved.onboardingDraft ? Lifestyle.profile(saved.onboardingDraft) : null,
     householdProfile: saved.householdProfile ? {equipment:Lifestyle.profile(saved.householdProfile).equipment,pantry:Lifestyle.profile(saved.householdProfile).pantry,updatedAt:normalizeTimestamp(saved.householdProfile.updatedAt)} : null,
     mealSlots: Lifestyle.normalizeSlots(saved.mealSlots),
@@ -659,6 +662,16 @@ function requestPersistentStorage() {
 }
 
 let stateWriteQueue = Promise.resolve();
+// パスの覚え書き：rests＝パスした料理を自動の献立で休ませる日（id → この日まで）／log＝「少なめ」になった特徴を見た日（特徴 → 日付の並び・30日まで）／
+// asked＝「少なめにしますか？」への答え（特徴 → { answer: "less" | "keep", at }）。
+function normalizePassMemo(v) {
+  const o = v && typeof v === "object" ? v : {};
+  const day = (x) => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x);
+  const rests = Object.fromEntries(Object.entries(o.rests || {}).filter(([k, d]) => k && day(d)).slice(-200));
+  const log = Object.fromEntries(Object.entries(o.log || {}).filter(([k, list]) => /^[gst]:[a-z]+$/.test(k) && Array.isArray(list)).map(([k, list]) => [k, [...new Set(list.filter(day))].sort().slice(-30)]));
+  const asked = Object.fromEntries(Object.entries(o.asked || {}).filter(([k, a]) => /^[gst]:[a-z]+$/.test(k) && a && ["less", "keep"].includes(a.answer)).map(([k, a]) => [k, { answer: a.answer, at: String(a.at || "") }]));
+  return { rests, log, asked };
+}
 function saveState({ scheduleSync = true } = {}) {
   if (scheduleSync && state.sync?.planBase && syncEnabled()) captureAccountDrafts();
   state.savedAtMs = Math.max(Date.now(), (state.savedAtMs || 0) + 1);
@@ -1473,6 +1486,7 @@ function render() {
   placePageChrome();
   bindEvents();
   if (state.view === "plan" && typeof placePlanPages === "function") placePlanPages();
+  if (typeof bindSwapSheet === "function") bindSwapSheet();
   if (state.view === "settings") mountGoogleButton();
 }
 

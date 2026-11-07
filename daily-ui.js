@@ -1,9 +1,14 @@
 /* Daily experience. Existing recipe importing/editing remains in app.js. */
 let profileEditing = false;
 let swapDate = "";
-// 「⇄ ほかの一皿」で答えた理由（その日の候補を開いている間だけ）。time・many はごはん方針にも入る（ProfileTalk.react）。
-let swapWhy = "";
-// 決めた料理を変える時、買った材料をどうするか（use＝使える料理から選ぶ／skip＝気にせず選ぶ。その日の候補を開いている間だけ）。
+// 「⇄ 変更」の今夜の4皿（2026-11-07 のユーザーの判断・APP_MAP §64）。どれも、その日の候補を開いている間だけ。
+// swapMood：上の気分の札（1つだけ）／swapPick：押して✓をつけた料理。
+let swapMood = "";
+let swapPick = "";
+// 消去法（2026-11-07 のユーザーの判断・APP_MAP §64-2）：消した料理（順番どおり）と、「少なめ」から外した特徴。
+let swapRemoved = [];
+let swapIgnore = [];
+// 決めた料理を変える時、買った材料をどうするか（"" か use＝使う料理を先に〔はじめからON〕／skip＝気にせず選ぶ）。
 let swapBought = "";
 let cookingDate = "";
 let analyzingDate = "";
@@ -335,7 +340,8 @@ function dailyPlan({ exclude = [] } = {}) {
     start: today(),
     length: rhythmOn() ? rhythmPlanDays() : state.planLength || p.period,
     addDays,
-    overrides: { ...Object.fromEntries(Object.entries(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(([d, r]) => !hiddenParents().has(parentKeyOf(r)) && !starterHidden().has(r.id) && Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
+    // 自動提案の保存分（planDrafts）は、パスして休ませている料理を使わない（自分で選んだ planOverrides はそのまま。Codex review #234）。
+    overrides: { ...Object.fromEntries(Object.entries(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(([d, r]) => !hiddenParents().has(parentKeyOf(r)) && !starterHidden().has(r.id) && !passRested(r) && Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
     // 子の評価がなければ親の評価を引き継ぐ（APP_MAP §48）。
     cyclesOf: plannedCycles(),
     offUntil: prestartUntil(),
@@ -345,9 +351,16 @@ function dailyPlan({ exclude = [] } = {}) {
     pins: folderPins(),
     parentOf: parentKeyOf,
     // 「もう出さない」にした親の作り方は、自分で選んだ日だけ（ほかの日に自動では入れない）。
-    autoBlocked: (() => { const hp = hiddenParents(); return hp.size ? (r) => hp.has(parentKeyOf(r)) : () => false; })(),
+    // パスした料理は3日休ませる（§64-3）。「もう出さない」にした親の作り方も（自分で選んだ日だけ入る）。
+    autoBlocked: (() => { const hp = hiddenParents(); return (r) => (hp.size && hp.has(parentKeyOf(r))) || passRested(r); })(),
     // わが家のごはん方針で、この端末の人が「合ってる」と確かめた好みと、家族が「見せる」にした好み（✓ だけ）を加点に使う。
-    preferenceOf: state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : undefined,
+    preferenceOf: (() => {
+      const base = state.tasteProfile || state.sharedPolicies ? ProfileTalk.leaner(state.tasteProfile, me(), ProfileTalk.othersFrom(state.sharedPolicies, me(), state.family)) : null;
+      const anyLess = Object.values(state.passMemo?.asked || {}).some((a) => a.answer === "less");
+      if (!anyLess) return base || undefined;
+      // 「少なめにする」と答えた特徴は、少し後ろへ（§64-3）。理由の文は出さない。
+      return (recipe, date) => { const b = base?.(recipe, date) || null; const less = passLessOf(recipe); return less ? { ...(b || { reason: "", ids: [] }), score: (b?.score || 0) - less } : b; };
+    })(),
   });
   for (const day of plan) {
     if (day.candidate && state.planDrafts?.[day.date] && !state.planOverrides[day.date]) day.candidate.chosen = false;
@@ -730,7 +743,7 @@ function renderDailyPlan() {
       const more = day.slot?.status === "cooked" || isViewer() ? "" : `<button type="button" class="plan-icon plan-more-btn" data-action="life-more" data-date="${day.date}" aria-expanded="${moreDate === day.date}" aria-label="${dateLabel}のその他の操作">${moreDate === day.date ? "×" : "⋯"}</button>`;
       const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">変更</span>'}</button>`;
       // 写真を上に大きく（動画のサムネイルと同じ16:9）。日付・状態・時間は1行に、料理名、ボタンの行（ごはん準備・添え物も同じ行）。
-      return `<article class="plan-card is-dish ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}${minutes ? ` · ${minutes}` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${recipeTitleHtml(recipe)}</button>${note ? `<p class="hand plan-note">${escapeHtml(note)}</p>` : ""}${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : "🎬 動画で作り方をそろえる"}</button>` : ""}<div class="plan-controls">${renderPlanStapleNote(recipe, day.slot, day.date)}${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${swapDate === day.date ? renderSwapChoices() : ""}${renderPlanMenu(plan, day)}${renderSkipPanel(day.date)}`;
+      return `<article class="plan-card is-dish ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" data-action="life-cook" data-date="${day.date}" aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}${(() => { const b = day.slot?.status === "cooked" ? "" : planBadge(day); return b ? `<i class="plan-reason-badge">${escapeHtml(b)}</i>` : ""; })()}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}${minutes ? ` · ${minutes}` : ""}</p><button type="button" class="plan-title" data-action="life-cook" data-date="${day.date}">${recipeTitleHtml(recipe)}</button>${note ? `<p class="hand plan-note">${escapeHtml(note)}</p>` : ""}${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : "🎬 動画で作り方をそろえる"}</button>` : ""}<div class="plan-controls">${renderPlanStapleNote(recipe, day.slot, day.date)}${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${renderPlanMenu(plan, day)}${renderSkipPanel(day.date)}`;
     })
     ;
   // 条件に合う料理が足りず、同じ料理が2回出ている時は、条件をゆるめずにそう伝える（PR 4a・docs/PERSONALIZE_PLAN.md §7.2）。
@@ -745,7 +758,7 @@ function renderDailyPlan() {
   // 外したもの：週のカレンダー（ページと同じ情報）・バランスの内訳・まとめて評価（ページの「評価する」と今日の画面で）・
   // 動画の読み取りの案内・ふたりで使う誘い（最初の献立の画面で1回）・「お試しの提案」・食材制限の ⓘ（作る画面と設定にある）。
   const list = `<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}</section>`;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${renderFreeUsedCard(plan)}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${renderFreeUsedCard(plan)}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}`;
 }
 // ---- 献立のページ（買い物のひとかたまりごと・横スライド） ----
 let planPage = ""; // 見ているページ（ひとかたまりの key）。描き直しても同じページのまま
@@ -810,15 +823,12 @@ function placePlanPages({ smooth = false } = {}) {
     }, 120);
   }, { passive: true });
 }
-let swapShowAll = false;
 // 好きの度合い（評価）：「明日でも」がいちばん。家族の中でいちばん低い評価で比べる。
 const LOVE = { tomorrow: 5, weekly: 4, twice_month: 3, monthly: 2, pause: 1 };
 function loveScore(r) {
   const c = Object.values(recipeRatings(r)).filter((x) => LOVE[x]);
   return c.length ? Math.min(...c.map((x) => LOVE[x])) : 0;
 }
-// 「選択」：まだ作っていないレシピの上位3件 → 評価順のベスト3 → ほかの候補。
-// 定番フォルダの料理なら、フォルダの中の「まだ作っていない作り方」と「ランキング」。
 // 🔗 動画のURLから、その日の献立に入れる。YouTubeは説明文をその場で読む（1日の上限は使わない）。
 // ほかのURL（TikTokなど）は登録画面で読み取り、保存したらその日に入れる（urlInsertDate）。
 let urlInsert = { date: "", status: "idle", message: "" };
@@ -873,18 +883,8 @@ function renderUrlInsert() {
   if (isViewer()) return "";
   const u = urlInsert.date === swapDate ? urlInsert : { status: "idle" };
   if (u.status === "loading") return `<div class="swap-url is-busy" aria-live="polite">🤖 動画を読んでいます…</div>`;
-  return `<div class="swap-url"><input id="swap-url" class="input" type="url" inputmode="url" placeholder="🔗 動画のURLを貼って入れる" aria-label="動画のURL"><button type="button" class="primary-button" data-action="life-url-insert" data-date="${swapDate}">入れる</button></div>${u.status === "error" ? `<p class="form-error small">${escapeHtml(u.message)}</p>` : ""}`;
-}
-// 「⇄ ほかの一皿」の理由。答えると、その理由に合う料理を先に並べる。
-const SWAP_WHY = [["time", "⏱ 時間がかかる"], ["many", "🧺 材料が多い"], ["mood", "🤔 気分じゃない"]];
-const SWAP_WHY_ECHO = { time: "早くできる料理を先に並べました。この先の献立でも先に出します", many: "材料が少ない料理を先に並べました。この先の献立でも先に出します", mood: "わかりました。ほかの候補から選んでください" };
-function renderSwapBoughtEcho(reuse) {
-  return `<p class="swap-why-echo" role="status">${reuse.length ? `🧺 ${escapeHtml(namesOf(reuse))}を使う料理を先に並べました` : "買った材料は気にせず並べています（使わなくなった材料は、選んだあとに知らせます）"}</p>`;
-}
-function renderSwapWhy() {
-  if (isViewer()) return "";
-  if (swapWhy) return `<p class="swap-why-echo" role="status">💬 ${escapeHtml(SWAP_WHY_ECHO[swapWhy])}${ProfileTalk.REACTIONS[swapWhy] ? ` <button type="button" class="link-inline" data-action="life-talk-view">ごはん方針</button>` : ""}</p>`;
-  return `<div class="swap-why" role="group" aria-label="変えたい理由（任意）"><span>変えたい理由は？</span>${SWAP_WHY.map(([kind, label]) => `<button type="button" class="chip-button" data-action="life-swap-why" data-kind="${kind}">${label}</button>`).join("")}</div>`;
+  // ふだんは閉じた1行（今夜を決める画面では写真を主役に。2026-11-07）。読み取りに失敗した時は開いたまま。
+  return `<details class="swap-url-fold"${u.status === "error" ? " open" : ""}><summary>🔗 動画から入れる</summary><div class="swap-url"><input id="swap-url" class="input" type="url" inputmode="url" placeholder="動画のURLを貼る" aria-label="動画のURL"><button type="button" class="primary-button" data-action="life-url-insert" data-date="${swapDate}">入れる</button></div>${u.status === "error" ? `<p class="form-error small">${escapeHtml(u.message)}</p>` : ""}</details>`;
 }
 // 買った材料を使い切る時の重み（売り場で決める）：主役で傷みやすい肉・魚・豆腐など3、野菜・卵など1。
 // 調味料・乾物・缶詰・米や麺は買い置きできるので0（聞かない・数えない。ごはんはほとんどの料理で使うので手がかりにもならない）。
@@ -906,53 +906,308 @@ function swapBoughtItems(date) {
 const usesNames = (r, items) => items.filter((x) => (r.ingredients || []).some((i) => Lifestyle.shoppingName(i.name) === x.name));
 const reuseScore = (r, items) => usesNames(r, items).reduce((n, x) => n + x.weight, 0);
 const namesOf = (items, n = 3) => items.slice(0, n).map((x) => x.name).join("・");
-function renderSwapChoices() {
+// 気分の札（「何なら食べたい？」。押すとその場で、その札に合う料理だけにしぼる。ごはん方針は変えない）。
+// 合う料理が0品の札は出さない（レシピタブの気分のボタンと同じ決まり）。第2回ブレストで5つに（2026-11-07）。
+const SWAP_MOODS = [
+  ["usual", "😋 いつもの", (r) => cookCount(r) > 0 && loveScore(r) >= 3],
+  ["quick", "⚡ 15分以内", (r) => (r.planning?.minutes || 99) <= 15],
+  ["meat", "🥩 肉", (r) => Lifestyle.traits(r).protein === "meat"],
+  ["fish", "🐟 魚", (r) => Lifestyle.traits(r).protein === "fish"],
+  ["light", "🍋 さっぱり", (r) => Lifestyle.tags(r).includes("light")],
+];
+const SWAP_SIZE = 4;
+// 料理の札（1つだけ）。今夜の4皿では写真の外（料理名の下の行）に出す（YouTube のサムネイルの文字とぶつけない）。
+function dishBadge(r, { reuse = [], medal = "" } = {}) {
+  if (medal) return medal;
+  if (openRequestFor(r)) return "🙋 リクエスト";
+  if (reuse.length && usesNames(r, reuse).length) return `🧺 ${usesNames(r, reuse)[0].name}`;
+  const love = loveScore(r);
+  if (love >= 4) return "😋 好物";
+  if (lastEatenLabel(r) === "はじめて") return "🆕 はじめて";
+  return "";
+}
+// ---- 消去法で寄せる（§64-2。第3回の相談で直した：2026-11-07） ----
+// 料理の特徴と重み。パスした料理と同じ特徴をもつ料理を、その場だけ後ろへ回す。
+// 主役（鶏・豚・魚 など）1.5／主役の大きな種類だけ同じ 0.5（魚は1.5）・主役と二重に足さない／食べ方の形（おかず・丼・麺・パン）2／
+// こってり・ピリ辛・さっぱり・汁もの 2（合わせて3まで）／和洋中 0.5／時間は使わない（「⚡ 15分以内」の札で選ぶ）。
+const SWAP_FEATURE_LABEL = {
+  "g:meat": "🍖 肉", "g:fish": "🐟 魚", "g:eggtofu": "🥚 卵・豆腐", "g:veg": "🥬 野菜",
+  "s:rice": "🍚 丼・ごはんもの", "s:noodle": "🍜 麺", "s:bread": "🍞 パン", "s:other": "🍽 おかず",
+  "c:japanese": "和風", "c:western": "洋風", "c:chinese": "中華",
+  "t:rich": "こってり", "t:spicy": "ピリ辛", "t:light": "さっぱり", "t:soup": "汁もの",
+};
+const SWAP_MAIN = ["chicken", "pork", "beef", "mince", "fish", "egg", "tofu"];
+const SWAP_WEIGHT = { p: 1.5, s: 2, t: 2, c: 0.5, g: 0.5, "g:fish": 1.5 };
+// 気分の札で選んだ特徴は「少なめ」にしない（本人の指定を推測より優先。Codex の案）。
+const SWAP_MOOD_KEEPS = { meat: ["g:meat"], fish: ["g:fish"], light: ["t:light"] };
+const swapFeatureMemo = new Map();
+function swapFeatures(r) {
+  if (swapFeatureMemo.has(r)) return swapFeatureMemo.get(r);
+  const t = Lifestyle.traits(r), tags = Lifestyle.tags(r);
+  const main = SWAP_MAIN.find((k) => tags.includes(k)) || "veg";
+  const out = [`p:${main}`, `g:${t.protein}`, `s:${t.staple}`, `c:${t.cuisine}`, ...["rich", "spicy", "light", "soup"].filter((k) => tags.includes(k)).map((k) => `t:${k}`)];
+  swapFeatureMemo.set(r, out);
+  return out;
+}
+const swapWeight = (k) => SWAP_WEIGHT[k] ?? SWAP_WEIGHT[k.slice(0, 1)] ?? 0;
+// 同じ特徴を何品パスしたかの強さ：1品=1・2品=1.5・3品以上=2 で頭打ち（0.5品＝元の献立の料理）。
+const swapMult = (n) => (n <= 0 ? 0 : n < 1 ? n : n < 2 ? 1 + (n - 1) * 0.5 : Math.min(2, 1.5 + (n - 2) * 0.5));
+// パスした料理たちから、特徴ごとの数と「どちらか分からない」特徴（魚の丼だけを2品＝魚と丼が同じ顔ぶれ）を数える。
+function swapEvidence(removed, original = null) {
+  const ignore = new Set([...swapIgnore, ...(SWAP_MOOD_KEEPS[swapMood] || [])]);
+  const who = new Map();
+  removed.forEach((r, i) => swapFeatures(r).forEach((k) => { if (!ignore.has(k)) who.set(k, [...(who.get(k) || []), i]); }));
+  const count = new Map([...who].map(([k, list]) => [k, list.length]));
+  if (original) swapFeatures(original).forEach((k) => { if (!ignore.has(k)) count.set(k, (count.get(k) || 0) + 0.5); });
+  // 見せる特徴（主役の大きな種類・食べ方の形・味）で、2品以上が同じ顔ぶれの組は、どちらが理由か分からない → 強くしない・見せない。
+  const shown = [...who].filter(([k, list]) => /^[gst]:/.test(k) && list.length >= 2);
+  const unsure = new Set();
+  shown.forEach(([k, list], i) => shown.forEach(([k2, list2], j) => { if (i !== j && list.join() === list2.join()) { unsure.add(k); unsure.add(k2); } }));
+  return { count, unsure, who };
+}
+// パスした料理たちとの重なり（大きいほど後ろへ）。
+function swapPenalty(r, ev) {
+  if (!ev.count.size) return 0;
+  const mine = swapFeatures(r);
+  let n = 0, taste = 0;
+  const main = mine.find((k) => k.startsWith("p:"));
+  for (const k of mine) {
+    const c = ev.count.get(k);
+    if (!c) continue;
+    if (k.startsWith("g:") && ev.count.get(main)) continue; // 主役が同じなら、大きな種類は足さない
+    const w = swapWeight(k) * swapMult(c) * (ev.unsure.has(k) ? 0.5 : 1);
+    if (k.startsWith("t:")) taste += w; else n += w;
+  }
+  return n + Math.min(3, taste);
+}
+// いま並んでいる料理と重なる分（散らすため。肉・魚などの大きな種類2・食べ方の形1.5・味の系統1）。
+function swapCrowd(r, shown) {
+  const t = Lifestyle.traits(r);
+  return shown.reduce((n, x) => { const u = Lifestyle.traits(x); return n + (u.protein === t.protein ? 2 : 0) + (u.staple === t.staple ? 1.5 : 0) + (u.cuisine === t.cuisine ? 1 : 0); }, 0);
+}
+// 次の1皿：点数の順（list の並び）を土台に、パスした料理と似ているほど・並んでいる料理と同じ種類ほど後ろへ。
+function swapBest(list, exclude, ev, shown, diverse) {
+  let best = null, bestScore = -Infinity;
+  list.forEach((x, i) => {
+    if (exclude.has(x.r.id)) return;
+    const score = -i * 0.05 - swapPenalty(x.r, ev) - (diverse ? swapCrowd(x.r, shown) : 0);
+    if (score > bestScore) { best = x; bestScore = score; }
+  });
+  return best;
+}
+// 最初の4皿：好物を1枚（周期が来ている＝前回から7日以上）＋散らした3皿（主役・食べ方の形・味がなるべく重ならない）。
+// 元の献立の料理は 0.5品ぶんパスした扱い（変更を開いた＝今夜の気分ではない。Gemini の案）。
+function swapFirstFour(list, diverse, original) {
+  const picks = [];
+  const ev = swapEvidence([], original);
+  const gap = (r) => { const m = /(\d+)日前/.exec(lastEatenLabel(r)); return m ? Number(m[1]) : 0; };
+  const fav = diverse && list.find((x) => cookCount(x.r) > 0 && loveScore(x.r) >= 4 && gap(x.r) >= 7);
+  if (fav) picks.push(fav);
+  while (picks.length < SWAP_SIZE) {
+    const next = swapBest(list, new Set(picks.map((x) => x.r.id)), ev, picks.map((x) => x.r), diverse);
+    if (!next) break;
+    picks.push(next);
+  }
+  return picks;
+}
+// swapRemoved の1件：{ id, bulk }。bulk＝「🔄 別の4皿」（その4皿は出さないが、特徴は学ばない）。
+const swapEntry = (x) => (typeof x === "string" ? { id: x, bulk: false } : x);
+// 今の4皿：最初の4皿から、パスした順に1枚ずつ入れ替えた結果（描き直しても同じ＝「↩ 戻す」は最後の1つを消すだけ）。
+// 1回ごとに「その時までの手がかり」で選ぶので、前に入った料理は、あとのパスで入れ替わらない（パスした枠だけ変わる。Codex review #234）。
+function swapSlots(list, first, diverse, original) {
+  const byId = new Map(list.map((x) => [x.r.id, x]));
+  const entries = swapRemoved.map(swapEntry);
+  const removed = [], gone = new Set(), goneParents = new Set();
+  const slots = [...first], placed = new Set(first.map((x) => x.r.id));
+  for (const e of entries) {
+    gone.add(e.id);
+    if (!e.bulk) {
+      const r = byId.get(e.id)?.r || allDinnerRecipes().find((x) => x.id === e.id);
+      if (r) {
+        removed.push(r);
+        // パスした料理と同じ料理名（親）は、その場では別の作り方も出さない（Claude・Codex の案）。
+        const k = parentKeyOf(r);
+        if (k) goneParents.add(k);
+      }
+    }
+    const at = slots.findIndex((x) => x?.r.id === e.id);
+    if (at < 0) continue;
+    const ev = swapEvidence(removed, original);
+    const pool = list.filter((x) => !gone.has(x.r.id) && !placed.has(x.r.id) && !goneParents.has(parentKeyOf(x.r)));
+    const next = swapBest(pool, new Set(), ev, slots.filter((x, i) => x && i !== at).map((x) => x.r), diverse);
+    slots[at] = next || null;
+    if (next) placed.add(next.r.id);
+  }
+  const ev = swapEvidence(removed, original);
+  // いちばん最近入った料理（ふわっと出す）。
+  const last = entries.length ? entries[entries.length - 1] : null;
+  const fresh = last ? slots.filter((x, i) => x && x.r.id !== first[i]?.r.id && (last.bulk || first[i]?.r.id === last.id || !first.some((f) => f.r.id === last.id))).map((x) => x.r.id) : [];
+  const left = list.filter((x) => !gone.has(x.r.id) && !placed.has(x.r.id) && !goneParents.has(parentKeyOf(x.r))).length;
+  return { slots, removed, ev, fresh: last?.bulk ? fresh : fresh.slice(-1), left };
+}
+// 今並んでいる4皿の id（「4皿とも消す」で使う）。
+function swapCurrentIds() {
+  return [...renderSwapChoices().matchAll(/data-action="life-swap-remove" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+}
+// 「少なめ」：パスした料理に2品以上で共通する特徴（主役の大きな種類・食べ方の形・味）。どちらが理由か分からない組は出さない。多い順に2つまで。
+function swapLearned(ev) {
+  return [...ev.who].filter(([k, list]) => /^[gst]:/.test(k) && SWAP_FEATURE_LABEL[k] && list.length >= 2 && !ev.unsure.has(k))
+    .sort((a, b) => b[1].length - a[1].length || swapWeight(b[0]) - swapWeight(a[0])).slice(0, 2).map(([k]) => k);
+}
+// 献立のカードの札：理由（planReason）を短い札にする（2026-11-07 のユーザーの判断で、理由を札1つだけ戻す）。
+function planBadge(day) {
+  const reason = planReason(day);
+  if (!reason) return "";
+  if (/リクエスト/.test(reason)) return "🙋 リクエスト";
+  if (/自分で決めた/.test(reason)) return "";
+  if (/好物/.test(reason)) return "😋 好物";
+  if (/挑戦/.test(reason)) return "★ 挑戦";
+  if (/使い回し/.test(reason)) return "🧺 使い回し";
+  if (/毎週/.test(reason) && /📌/.test(reason)) return reason.slice(0, 8);
+  if (/^[🌸🌻🍂⛄]/u.test(reason)) return reason.slice(0, 7);
+  if (/日ぶり|久しぶり|ちょうどいい頃/.test(reason)) return "🔁 久しぶり";
+  return "";
+}
+// 今夜の4皿の候補：条件に合う料理だけ（食べられないもの・器具・時間はゆるめない）。料理名（親）ごとに1枚。
+function swapCandidates() {
   const p = dailyProfile();
-  // 買った材料がある決めた料理を変える時は、まず1つだけ聞く（2026-10-28 のユーザーの判断。理由の質問は出さない）。
   const bought = isViewer() ? [] : swapBoughtItems(swapDate);
-  if (bought.length && !swapBought) return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ"><div class="swap-bought"><p>🧺 買った<b>${escapeHtml(namesOf(bought))}${bought.length > 3 ? ` ほか${bought.length - 3}品` : ""}</b>は？</p><div class="swap-bought-actions">${dailyButton("life-swap-bought", "使う料理から選ぶ", 'data-use="use"', true)}${dailyButton("life-swap-bought", "気にせず選ぶ", 'data-use="skip"')}</div></div></section>`;
+  const reuse = bought.length && swapBought !== "skip" ? bought : [];
   const current = dailyPlan().find((d) => d.date === swapDate);
   const currentRecipe = current?.slot?.recipe || current?.candidate?.recipe;
-  const id = currentRecipe?.id;
-  const used = new Set(
-    dailyPlan()
-      .filter((d) => d.date !== swapDate)
-      .map((d) => d.slot?.recipe?.id || d.candidate?.recipe.id),
-  );
+  const used = new Set(dailyPlan().filter((d) => d.date !== swapDate).map((d) => d.slot?.recipe?.id || d.candidate?.recipe.id));
+  const currentParent = currentRecipe ? parentKeyOf(currentRecipe) : "";
   const all = allDinnerRecipes()
-    .filter((r) => r.id !== id && !Object.values(recipeRatings(r)).includes("never"))
-    .map((r) => ({ r, fit: Lifestyle.fit(r, p, swapDate) }))
-    .filter(({ r, fit }) => fit.ok || (!r.curated && Lifestyle.reviewable(r, p, swapDate)))
-    .sort((a, b) => Number(!!a.r.curated) - Number(!!b.r.curated) || Number(used.has(a.r.id)) - Number(used.has(b.r.id)) || Number(!a.fit.ok) - Number(!b.fit.ok) || (b.fit.score || 0) - (a.fit.score || 0));
-  // 理由に合う料理（早くできる・材料が少ない）を先に。並びはそのまま（sort は安定）。
-  const why = ProfileTalk.REACTIONS[swapWhy] && ProfileTalk.LEANS[ProfileTalk.REACTIONS[swapWhy]].match;
-  if (why) all.sort((a, b) => Number(!(a.fit.ok && why(a.r))) - Number(!(b.fit.ok && why(b.r))));
-  // 買った材料を使う料理を先に（重みの合計が大きい順＝主役の食材を使う料理が先、その中で野菜も使う料理が先）。
-  const reuse = bought.length && swapBought === "use" ? bought : [];
-  if (reuse.length) all.sort((a, b) => (b.fit.ok ? reuseScore(b.r, reuse) : 0) - (a.fit.ok ? reuseScore(a.r, reuse) : 0));
-  const option = ({ r, fit }, medal = "") => isViewer()
-    ? (fit.ok ? `<button type="button" class="swap-option" data-action="life-request-swap" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>${escapeHtml(lastEatenLabel(r))}</small></span><b aria-hidden="true">送る</b></button>` : "")
-    : fit.ok
-    ? `<button type="button" class="swap-option" data-action="life-choose" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${medal ? `<i class="swap-medal">${medal}</i>` : ""}${recipeTitleHtml(r)}</strong><small>${reuse.length && usesNames(r, reuse).length ? `🧺 ${escapeHtml(namesOf(usesNames(r, reuse), 2))}を使う · ` : ""}${escapeHtml(planMeta(r, fit.reasons) || "保存したレシピ")}${used.has(r.id) ? " · ほかの日と同じ" : ""}</small></span><b aria-hidden="true">選ぶ</b></button>`
-    : `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`;
-  const group = (title, items, medals = false) => items.length ? `<p class="swap-group">${title}</p>${items.map((x, i) => option(x, medals ? MEDALS[i] : "")).join("")}` : "";
-  const folder = currentRecipe && folderOfRecipe(currentRecipe);
-  const shownIds = new Set();
-  const take = (list, n) => list.filter((x) => !shownIds.has(x.r.id)).slice(0, n).map((x) => (shownIds.add(x.r.id), x));
-  let head = "";
-  if (folder && !isViewer()) {
-    const mine = all.filter((x) => x.r.folder === folder.key);
-    const ranked = folderRanking(folder).map((r) => mine.find((x) => x.r.id === r.id)).filter(Boolean);
-    head = `<p class="swap-folder">📁 <b>${escapeHtml(folder.name)}</b>の作り方</p>${group("🆕 まだ作っていない", take(mine.filter((x) => !cookCount(x.r)), 3))}${group("🏆 ランキング", take(ranked, 3), true)}
-      <button type="button" class="text-button" data-action="life-folder-open" data-folder="${folder.key}" data-search="true">🔍 ほかの作り方を探す</button>`;
-  } else if (!isViewer()) {
-    head = `${group("🆕 まだ作っていない", take(all.filter((x) => x.fit.ok && lastEatenLabel(x.r) === "はじめて"), 3))}${group("⭐ 評価順ベスト3", take(all.filter((x) => x.fit.ok && loveScore(x.r)).sort((a, b) => loveScore(b.r) - loveScore(a.r) || cookCount(b.r) - cookCount(a.r)), 3))}`;
+    .filter((r) => r.id !== currentRecipe?.id && !Object.values(recipeRatings(r)).includes("never"))
+    .map((r) => ({ r, fit: Lifestyle.fit(r, p, swapDate) }));
+  const ok = all.filter((x) => x.fit.ok)
+    .sort((a, b) => Number(!!a.r.curated) - Number(!!b.r.curated) || Number(used.has(a.r.id)) - Number(used.has(b.r.id)) || (b.fit.score || 0) - (a.fit.score || 0));
+  // 買った材料を使う料理を先に（重みの合計が大きい順＝主役の食材を使う料理が先）。sort は安定なので、同じ重みは今の並びのまま。
+  if (reuse.length) ok.sort((a, b) => reuseScore(b.r, reuse) - reuseScore(a.r, reuse));
+  const review = isViewer() ? [] : all.filter((x) => !x.fit.ok && !x.r.curated && Lifestyle.reviewable(x.r, p, swapDate));
+  const folder = currentRecipe && !isViewer() ? folderOfRecipe(currentRecipe) : null;
+  return { ok, review, reuse, bought, folder, currentParent, used, original: currentRecipe || null };
+}
+// パスを覚える（閉じた時・決めた時。§64-3・2026-11-07 のユーザーの判断 B）：
+// ①パスした料理そのものは、3日間は自動の献立に出さない（評価は変えない。自分で選ぶ・URLから入れるのはできる）
+// ②その時「少なめ」になった特徴を、日付つきで残す（30日まで）。別の日に3回そろったら、今日の画面で1回だけ聞く。
+function swapCommit() {
+  if (!swapDate || isViewer() || !swapRemoved.length) return;
+  const memo = state.passMemo = normalizePassMemo(state.passMemo);
+  const until = addDays(today(), 3);
+  for (const e of swapRemoved.map(swapEntry)) if (!e.bulk) memo.rests[e.id] = until;
+  const keys = [...renderSwapChoices().matchAll(/data-action="life-swap-unlearn" data-key="([^"]+)"/g)].map((m) => m[1]);
+  const from = addDays(today(), -30);
+  for (const k of keys) memo.log[k] = [...new Set([...(memo.log[k] || []), today()])].filter((d) => d >= from).sort();
+  for (const [id, d] of Object.entries(memo.rests)) if (d <= today()) delete memo.rests[id];
+}
+const passRested = (r) => { const d = state.passMemo?.rests?.[r?.id]; return !!d && today() < d; };
+// 「少なめにする」と答えた特徴（自動の献立で少し後ろへ。−6＝「好き」1人分と同じくらい）。
+const PASS_LESS = 6;
+function passLessOf(r) {
+  const keys = Object.entries(state.passMemo?.asked || {}).filter(([, a]) => a.answer === "less").map(([k]) => k);
+  if (!keys.length || !r) return 0;
+  const mine = new Set(swapFeatures(r));
+  return keys.some((k) => mine.has(k)) ? PASS_LESS : 0;
+}
+// 聞いてよい特徴：ここ30日の別の日に3回「少なめ」になり、まだ答えていないもの。
+function passAskKey() {
+  if (isViewer()) return "";
+  const memo = state.passMemo || {}, from = addDays(today(), -30);
+  return Object.entries(memo.log || {}).find(([k, list]) => !memo.asked?.[k] && SWAP_FEATURE_LABEL[k] && list.filter((d) => d >= from).length >= 3)?.[0] || "";
+}
+function renderPassAsk() {
+  const k = passAskKey();
+  if (!k) return "";
+  const label = SWAP_FEATURE_LABEL[k];
+  return `<div class="todo-row pass-ask"><span>🙅</span><p>ここ30日で3回、<b>${escapeHtml(label)}</b>をパスしました。献立でも少なめにしますか？</p><div class="todo-actions">${dailyButton("life-pass-ask", "少なめにする", `data-key="${k}" data-answer="less"`, true)}${dailyButton("life-pass-ask", "このままでいい", `data-key="${k}" data-answer="keep"`)}</div></div>`;
+}
+// 決めた日の料理を r に変えたら、買い物リストに新しく「買う」が付く品（Codex review #234：常備品・購入済みの印も、
+// 実際の買い物リストと同じ計算で見る）。いったんその日の料理を r に置きかえて dailyShopping() を作り、すぐ元に戻す。
+function swapNewToBuy(r) {
+  const slot = state.mealSlots?.[swapDate];
+  if (slot?.status !== "confirmed" || !r) return null;
+  const before = dailyShopping();
+  let after = before;
+  // 決めた時と同じ枠（新しい日時・買った印なし）と、同じ買い物ページで計算する（買い物を終えたあとでも、ずれない。Codex review #234）。
+  const page = shopPage;
+  try {
+    state.mealSlots[swapDate] = confirmedSlot(swapDate, r);
+    syncShopPageForDate(swapDate);
+    after = dailyShopping();
+  } finally {
+    state.mealSlots[swapDate] = slot;
+    shopPage = page;
   }
-  const rest = all.filter((x) => !shownIds.has(x.r.id)).slice(0, 12);
-  // 確認が必要な自分のレシピは、畳まずに見せる（確認すれば選べるので）。
-  const shown = swapShowAll || !head ? rest.slice(0, swapShowAll ? 12 : 4) : rest.filter((x) => !x.fit.ok).slice(0, 2);
-  const more = rest.length > shown.length ? `<button type="button" class="text-button" data-action="life-swap-more">${folder ? "別の料理にする" : "ほかの候補を見る"}（${rest.length - shown.length}品）</button>` : "";
-  return `<section class="swap-panel" tabindex="-1" aria-label="${formatDate(swapDate)}の料理を選ぶ">${bought.length ? renderSwapBoughtEcho(reuse) : renderSwapWhy()}${renderUrlInsert()}${head}${shown.length ? `${head ? '<p class="swap-group">ほかの候補</p>' : ""}${shown.map((x) => option(x)).join("")}` : ""}${!head && !shown.length ? "<p>別の候補がありません。条件をゆるめるかレシピを追加してください。</p>" : ""}${more}</section>`;
+  return [...new Set(after.filter((x) => x.status === "buy" && !before.some((b) => b.id === x.id)).map((x) => x.name))];
+}
+function swapPickBar(r, reuse) {
+  if (!r) return "";
+  if (isViewer()) return `<div class="swap-pickbar">${dailyButton("life-request-swap", `🙋 「${r.title.slice(0, 14)}」がいいと送る`, `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`, true)}</div>`;
+  // 決めた日（買い物リストに入る日）だけ、新しく買う物を先に見せる（Codex の案：選ぶ前に差がわかる）。
+  let need = "";
+  const names = swapNewToBuy(r);
+  if (names) need = names.length ? `🛒 新しく買う：${names.slice(0, 3).join("・")}${names.length > 3 ? ` ほか${names.length - 3}品` : ""}` : "🛒 新しく買う物はありません";
+  const uses = reuse.length ? usesNames(r, reuse) : [];
+  return `<div class="swap-pickbar">${need || uses.length ? `<p class="swap-pick-note">${uses.length ? `🧺 ${escapeHtml(namesOf(uses, 2))}を使う${need ? " · " : ""}` : ""}${escapeHtml(need)}</p>` : ""}${dailyButton("life-choose", `✓ 「${r.title.slice(0, 14)}」にする`, `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`, true)}</div>`;
+}
+function swapCard({ r }, opts) {
+  const badge = opts.badge ?? dishBadge(r, opts);
+  const minutes = r.planning?.minutes ? `⏱${r.planning.minutes}分` : "";
+  const picked = swapPick === r.id;
+  const meta = [minutes, badge, opts.used?.has(r.id) ? "ほかの日と同じ" : ""].filter(Boolean).map(escapeHtml).join(" · ");
+  // 写真の上は ✓（左上）だけ。札と「✕ パス」は写真の下の行に（サムネイルの文字とぶつけない・写真を押して選ぶ時に押し間違えない）。
+  return `<div class="swap-card${picked ? " is-picked" : ""}${opts.fresh ? " is-fresh" : ""}"><button type="button" class="swap-pick" data-action="life-swap-pick" data-recipe="${escapeAttr(r.id)}" aria-pressed="${picked}"><span class="swap-photo">${dishTile(r, "swap-tile")}${picked ? '<i class="swap-check" aria-hidden="true">✓</i>' : ""}</span><strong class="swap-name">${recipeTitleHtml(r)}</strong></button><div class="swap-meta"><small class="swap-min">${meta}</small>${opts.removable ? `<button type="button" class="swap-x" data-action="life-swap-remove" data-recipe="${escapeAttr(r.id)}" aria-label="「${escapeAttr(r.title.slice(0, 20))}」をパス">✕ パス</button>` : ""}</div></div>`;
+}
+function renderSwapChoices() {
+  const { ok, review, reuse, bought, folder, currentParent, used, original } = swapCandidates();
+  const mood = SWAP_MOODS.find(([k]) => k === swapMood);
+  const counts = SWAP_MOODS.map(([k, label, match]) => [k, label, ok.filter((x) => match(x.r)).length]).filter(([, , n]) => n > 0);
+  // 定番フォルダの料理の日：最初の4皿は、そのフォルダの作り方（まだ作っていない作り方 → ランキング）。消すとほかの料理が入る。
+  let folderFour = [];
+  const medals = new Map();
+  if (folder && !mood) {
+    const mine = ok.filter((x) => x.r.folder === folder.key);
+    const ranked = folderRanking(folder).map((r, i) => (medals.set(r.id, MEDALS[i]), mine.find((x) => x.r.id === r.id))).filter(Boolean);
+    folderFour = [...new Map([...mine.filter((x) => !cookCount(x.r)), ...ranked].map((x) => [x.r.id, x])).values()].slice(0, SWAP_SIZE);
+  }
+  // 料理名（親）ごとに1枚（八宝菜が2枚並ばない）。今の料理と同じ親は出さない（フォルダの4皿は別）。
+  const seenParent = new Set([currentParent]);
+  const list = ok.filter((x) => !mood || mood[2](x.r)).filter((x) => { if (folderFour.some((f) => f.r.id === x.r.id)) return true; const k = parentKeyOf(x.r); if (!k) return true; if (seenParent.has(k)) return false; seenParent.add(k); return true; });
+  // 買った材料を使う時は、散らさずに「使う料理」の順のまま。
+  const diverse = !reuse.length;
+  // 元の献立の料理を「0.5品パス」とみなすのは、買った材料を使わない時だけ（使う時は、元の料理と同じ材料の料理を先に出したい）。
+  const orig = diverse ? original : null;
+  const first = folderFour.length ? folderFour : swapFirstFour(list, diverse, orig);
+  const { slots, ev, fresh, left } = swapSlots(list, first, diverse, orig);
+  // 気分の札の列：2品以上パスして共通した特徴は、その札が「🙅 魚 少なめ 解除」に変わる（行を増やさない。Gemini の案）。
+  // 札にない特徴（丼・こってり など）は、列の先頭に足す。
+  const learned = isViewer() ? [] : swapLearned(ev);
+  const MOOD_OF = { "g:meat": "meat", "g:fish": "fish", "t:light": "light" };
+  const learnChip = (k) => `<button type="button" class="chip-button swap-chip is-less" data-action="life-swap-unlearn" data-key="${k}" aria-label="${escapeAttr(SWAP_FEATURE_LABEL[k])}を少なめにするのをやめる">🙅 ${escapeHtml(SWAP_FEATURE_LABEL[k].replace(/^\S+\s/, ""))} 少なめ <u>解除</u></button>`;
+  const chips = `${bought.length ? `<button type="button" class="chip-button swap-chip" data-action="life-swap-bought" data-use="${swapBought === "skip" ? "use" : "skip"}" aria-pressed="${swapBought !== "skip"}">🧺 買った${escapeHtml(namesOf(bought, 2))}を使う</button>` : ""}${learned.filter((k) => !MOOD_OF[k] || !counts.some(([m]) => m === MOOD_OF[k])).map(learnChip).join("")}${counts.map(([k, label]) => { const lk = learned.find((x) => MOOD_OF[x] === k); return lk ? learnChip(lk) : `<button type="button" class="chip-button swap-chip" data-action="life-swap-mood" data-mood="${k}" aria-pressed="${swapMood === k}">${label}</button>`; }).join("")}`;
+  const cards = slots.filter(Boolean);
+  const picked = swapPick && cards.find((x) => x.r.id === swapPick)?.r;
+  const isFolder = folderFour.length && !swapRemoved.length;
+  const viewer = isViewer();
+  const grid = cards.length
+    ? `${isFolder ? `<p class="swap-folder">📁 <b>${escapeHtml(folder.name)}</b>の作り方 <button type="button" class="link-inline" data-action="life-folder-open" data-folder="${folder.key}" data-search="true">🔍 ほかの作り方を探す</button></p>` : ""}<div class="swap-grid">${(() => {
+      // 4枚とも同じ札（はじめたばかりで全部「🆕 はじめて」など）なら、札は出さない（違いがわかる時だけ）。
+      const opts = cards.map((x) => ({ reuse, medal: medals.get(x.r.id) || "", used, removable: !viewer, fresh: fresh.includes(x.r.id) }));
+      const badges = cards.map((x, i) => dishBadge(x.r, opts[i]));
+      const same = cards.length > 1 && badges.every((b) => b === badges[0]);
+      return cards.map((x, i) => swapCard(x, { ...opts[i], badge: same ? "" : badges[i] })).join("");
+    })()}</div>`
+    : `<p class="swap-empty">${mood && !swapRemoved.length ? `${mood[1]}で、条件に合う料理はありません` : "読み込み済みの候補はここまでです"}</p>`;
+  // 状態の行（高さは固定＝写真がずれない。Codex の案）：パスする前は案内、パスしたら「↩ 戻す」。
+  const passed = swapRemoved.map(swapEntry).filter((e) => !e.bulk).length;
+  const status = viewer ? "" : `<div class="swap-status" role="status">${swapRemoved.length ? `<span>🙅 パス ${passed}品</span><button type="button" class="link-inline" data-action="life-swap-undo">↩ 戻す</button>` : `<span>今日ちがう料理は「✕ パス」</span>`}</div>`;
+  // 下の操作の場所（高さは固定）：✓ をつけたら「✓ ◯◯にする」、つけていない時は「🔄 別の4皿」（特徴は学ばない）。
+  const nav = picked ? "" : viewer || !cards.length ? "" : `<div class="swap-nav">${left ? `<button type="button" class="secondary-button swap-more" data-action="life-swap-remove-all">🔄 別の4皿</button>` : `<p class="swap-end small" role="status">読み込み済みの候補はここまで（${list.length}品）</p>`}</div>`;
+  // 時間・材料を確かめれば選べる自分のレシピは、閉じた1行に（確認すれば選べるので隠さない）。
+  const reviewRows = review.length ? `<details class="swap-review"><summary>確認すると選べる ${review.length}品</summary>${review.slice(0, 6).map(({ r }) => `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`).join("")}</details>` : "";
+  const day = `${formatDate(swapDate)}（${weekdayLabel(swapDate)}）`;
+  return `<div class="swap-backdrop" data-action="life-close-swap" aria-hidden="true"></div><section class="swap-panel swap-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="${day}の料理を選ぶ"><div class="swap-head"><b>${day}</b><button type="button" class="round-icon swap-close" data-action="life-close-swap" aria-label="閉じる">✕</button></div>${chips ? `<div class="swap-chips" role="group" aria-label="食べたい気分">${chips}</div>` : ""}${status}${grid}<div class="swap-bottom">${nav}${picked ? swapPickBar(picked, reuse) : ""}</div><div class="swap-foot">${reviewRows}${renderUrlInsert()}</div></section>`;
 }
 // Photo when we have one, otherwise a warm tile with a staple emoji (clearly labelled as an image).
 // よはく：画面の余白にこっそり住んでいるキャラクター。1画面に1匹まで、文字やボタンには重ねない。
@@ -1059,7 +1314,9 @@ function renderTodayTodos() {
   if (!isViewer() && !saveGuideSeen() && !state.recipes.some((r) => r.videoUrl)) more.push([false, `<div class="todo-row"><span>📋</span><p><b>保存した動画を、献立に使えます</b>　YouTubeのレシピ動画を1本入れてみよう（1分）</p>${dailyButton("life-save-guide", "やってみる")}<button type="button" class="todo-x" data-action="life-save-guide-x" aria-label="閉じる">×</button></div>`]);
   // 記録からの提案（「また食べたい」とごはん方針の差）を、追加の質問より先に1件だけ（2026-10-28：行動から学ぶのを主に）。
   const ev = isViewer() ? [] : talkEvidence(1);
-  const next = ev.length ? [false, `<div class="today-evidence">${renderTalkEvidence(ev)}</div>`] : more.find(([started]) => started) || more[0];
+  // パスの「少なめにしますか？」（別の日に3回そろった時だけ・1回だけ。§64-3）も、記録からの提案と同じく先に1件。
+  const pass = renderPassAsk();
+  const next = ev.length ? [false, `<div class="today-evidence">${renderTalkEvidence(ev)}</div>`] : pass ? [false, pass] : more.find(([started]) => started) || more[0];
   if (next) rows.push(next[1]);
   if (typeof backupReminderDue === "function" && backupReminderDue() && !isViewer()) {
     rows.push(`<div class="todo-row is-backup-row"><span>🛡</span><p><b>レシピ${state.recipes.length}品・記録${state.evaluations.length}回</b>をバックアップして保護</p>${dailyButton("export-data", "保存する")}<button type="button" class="todo-x" data-action="snooze-backup" aria-label="2週間後に再通知">×</button></div>`);
@@ -1929,9 +2186,14 @@ function confirmDaily(day, recipe = day.candidate?.recipe) {
   // 今週の人気・みんなの定番は、献立に入れた時点で自分のレシピとして保存する（28日で消えても献立は残る）。
   if (recipe.discover) recipe = saveOwnRecipe(recipe);
   sharePopular(recipe, "planned");
-  const existingSide = state.mealSlots[day.date]?.side;
-  state.mealSlots[day.date] = {
-    date: day.date,
+  state.mealSlots[day.date] = confirmedSlot(day.date, recipe);
+  syncShopPageForDate(day.date);
+}
+// 決めた日の枠（confirmDaily と、今夜の4皿の「新しく買う」の予告で同じものを使う＝予告と実際がずれない）。
+function confirmedSlot(date, recipe) {
+  const existingSide = state.mealSlots[date]?.side;
+  return {
+    date,
     mealType: "dinner",
     servings: dailyProfile().servings,
     recipe: clone(recipe),
@@ -1939,7 +2201,6 @@ function confirmDaily(day, recipe = day.candidate?.recipe) {
     updatedAt: nowIso(),
     ...(existingSide ? { side: existingSide } : {}),
   };
-  syncShopPageForDate(day.date);
 }
 // 献立を変えた時の買い物の差分を、品名で残す（買い物タブの上に出す。×で閉じる）。
 // bought：もう買ってあるのに、使わなくなった品（残りの食材として使える）。more：買ってあるが、分量が増えた・別の料理にも使う品。
@@ -2609,27 +2870,50 @@ function handleDailyAction(action, data) {
   if (action === "life-swap") {
     const b = rhythmOn() && planPageBlocks().find((x) => x.dates.includes(data.date));
     if (b) planPage = b.key;
-    swapShowAll = false;
-    swapWhy = "";
+    swapMood = "";
+    swapPick = "";
+    swapRemoved = [];
+    swapIgnore = [];
+    swapFocusAt = -1;
+    swapFocusWhat = null;
     swapBought = "";
     swapDate = data.date;
     state.view = "plan";
+    trackDaily("swap_opened");
   }
-  if (action === "life-close-swap") swapDate = "";
-  // 変えたい理由（任意・1タップ）。⏱ 時間・🧺 材料は、ごはん方針の ✓ になり、この先の献立にも効く（2026-10-28：行動から学ぶのを主に）。
-  if (action === "life-swap-bought" && swapDate && ["use", "skip"].includes(data.use)) { swapBought = data.use; trackDaily("swap_bought", { use: data.use }); }
-  if (action === "life-swap-why" && swapDate && SWAP_WHY.some(([k]) => k === data.kind)) {
-    swapWhy = data.kind;
-    if (ProfileTalk.REACTIONS[data.kind]) {
-      const who = talkWho(), lean = ProfileTalk.REACTIONS[data.kind];
-      const before = ProfileTalk.interpret(talkProfile(), who).some((x) => x.id === lean && x.status === "confirmed");
-      talkSet(ProfileTalk.react(talkProfile(), { member: who, kind: data.kind, at: nowIso() }));
-      if (!before) trackDaily("talk_fixed", { via: "swap" });
-      publishTalkPolicy();
-    }
-    trackDaily("swap_why", { kind: data.kind });
+  if (action === "life-close-swap") { if (swapDate && !swapPick) trackDaily("swap_closed"); swapCommit(); swapDate = ""; }
+  if (action === "life-pass-ask" && SWAP_FEATURE_LABEL[data.key] && ["less", "keep"].includes(data.answer) && !isViewer()) {
+    const memo = state.passMemo = normalizePassMemo(state.passMemo);
+    memo.asked[data.key] = { answer: data.answer, at: nowIso() };
+    trackDaily("pass_asked", { answer: data.answer });
+    showToast(data.answer === "less" ? `${SWAP_FEATURE_LABEL[data.key]}を少なめにします（設定の「おすすめレシピ」で戻せます）` : "このままにします");
   }
-  if (action === "life-swap-more") swapShowAll = true;
+  if (action === "life-pass-unless" && !isViewer()) {
+    const memo = state.passMemo = normalizePassMemo(state.passMemo);
+    for (const [k, a] of Object.entries(memo.asked)) if (a.answer === "less") memo.asked[k] = { answer: "keep", at: nowIso() };
+    showToast("少なめにしていた料理を、元に戻しました");
+  }
+  // 今夜の4皿（APP_MAP §64）：気分の札・🔀 ほかの4皿・写真を押して✓。好みとして学ぶのは「選んだ・作った・評価した」だけ
+  // （見送った料理は下げない。Codex の案）。
+  if (action === "life-swap-bought" && swapDate && ["use", "skip"].includes(data.use)) { swapBought = data.use; swapPick = ""; trackDaily("swap_bought", { use: data.use }); }
+  // 気分の札を変えても、消した料理の手がかりはそのまま（その場の消去法は続く）。
+  if (action === "life-swap-mood" && swapDate) { swapMood = swapMood === data.mood ? "" : String(data.mood || ""); swapPick = ""; trackDaily("swap_mood", { mood: swapMood }); }
+  if (action === "life-swap-pick" && swapDate) swapPick = swapPick === data.recipe ? "" : String(data.recipe || "");
+  // 消去法（§64-2）：✕ で1皿消す → その枠に、消した料理と似ていない料理が入る。消した特徴はその場だけ（好みとしては残さない）。
+  if (action === "life-swap-remove" && swapDate && data.recipe && !isViewer()) {
+    if (!swapRemoved.some((e) => swapEntry(e).id === data.recipe)) swapRemoved = [...swapRemoved, { id: String(data.recipe), bulk: false }];
+    if (swapPick === data.recipe) swapPick = "";
+    trackDaily("swap_removed");
+  }
+  if (action === "life-swap-remove-all" && swapDate && !isViewer()) {
+    const now = swapCurrentIds();
+    // 「🔄 別の4皿」：その4皿は出さないが、特徴は学ばない（Codex・Gemini の案）。
+    swapRemoved = [...swapRemoved, ...now.filter((id) => !swapRemoved.some((e) => swapEntry(e).id === id)).map((id) => ({ id, bulk: true }))];
+    swapPick = "";
+    trackDaily("swap_more");
+  }
+  if (action === "life-swap-undo" && swapDate) { swapRemoved = swapRemoved.slice(0, -1); trackDaily("swap_undo"); }
+  if (action === "life-swap-unlearn" && swapDate && SWAP_FEATURE_LABEL[data.key]) swapIgnore = [...new Set([...swapIgnore, data.key])];
   if (action === "life-save-guide" || action === "life-save-guide-x") {
     try { localStorage.setItem("ripigochi-save-guide", "seen"); } catch {}
     saveGuideMemo = true;
@@ -2676,7 +2960,9 @@ function handleDailyAction(action, data) {
   if (action === "life-place-close") placeRecipeId = "";
   if (action === "life-place") { placeFromRecipe(data.recipe, data.date); placeRecipeId = ""; }
   if (action === "life-choose") {
-    trackDaily("plan_swapped");
+    trackDaily("plan_swapped", swapDate ? { removed: swapRemoved.length, mood: swapMood } : {});
+    swapCommit();
+    swapPick = "";
     const r = allDinnerRecipes().find((r) => r.id === data.recipe);
     if (r && Lifestyle.fit(r, dailyProfile(), data.date).ok) {
       if (state.mealSlots[data.date]?.status === "confirmed")
@@ -3104,7 +3390,7 @@ function handleDailyAction(action, data) {
   if (oldView !== state.view)
     globalThis.scrollTo?.({ top: 0, behavior: "instant" });
   if (action === "life-swap")
-    document.querySelector(".swap-panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    document.querySelector(".swap-panel")?.focus?.({ preventScroll: true });
   else if (
     [
       "life-next",
@@ -3507,6 +3793,41 @@ function renderFunnelStep(key) {
       <button type="button" class="primary-button full-button" data-action="life-finish">最初の提案を見る</button>`];
   }
   return ["", ""];
+}
+// 今夜の4皿のシート：開いている間は後ろの画面を動かさない・Esc で閉じる（描き直すたびに呼ぶ）。
+// 描き直した後も、押した場所（の近く）にフォーカスを戻し、Tab はシートの中だけで回す（Codex review #234）。
+let swapFocusAt = -1;
+let swapFocusWhat = null;
+const swapFocusables = (sheet) => [...(sheet?.querySelectorAll?.("button, input, summary, [tabindex]:not([tabindex='-1'])") || [])].filter((el) => !el.disabled && el.offsetParent !== null && (el.tagName === "SUMMARY" || !el.closest?.("details:not([open])")));
+function bindSwapSheet() {
+  document.body?.classList?.toggle("has-sheet", !!swapDate && state.view === "plan");
+  const sheet = document.querySelector(".swap-sheet");
+  if (!sheet) { swapFocusAt = -1; return; }
+  sheet.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") { ev.preventDefault?.(); handleDailyAction("life-close-swap", {}); return; }
+    if (ev.key !== "Tab") return;
+    const list = swapFocusables(sheet);
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    if (ev.shiftKey && (document.activeElement === first || document.activeElement === sheet)) { ev.preventDefault?.(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault?.(); first.focus(); }
+  });
+  sheet.addEventListener("click", (ev) => {
+    const el = ev.target?.closest?.("[data-action]");
+    const i = swapFocusables(sheet).indexOf(el);
+    if (i < 0) return;
+    const card = el.closest?.(".swap-card");
+    swapFocusAt = i;
+    swapFocusWhat = { action: el.dataset.action, mood: el.dataset.mood || "", recipe: el.dataset.recipe || "", slot: card ? [...sheet.querySelectorAll(".swap-card")].indexOf(card) : -1 };
+  }, true);
+  if (sheet.contains(document.activeElement)) return;
+  const list = swapFocusables(sheet);
+  const w = swapFocusWhat;
+  // 同じボタン（同じ札・同じ料理）→ パスした時は同じ枠の「✕ パス」→ 同じ順番の場所。
+  const same = w && list.find((el) => el.dataset?.action === w.action && (el.dataset.mood || "") === w.mood && (el.dataset.recipe || "") === w.recipe);
+  const slot = w && w.slot >= 0 ? sheet.querySelectorAll(".swap-card")[w.slot]?.querySelector(w.action === "life-swap-pick" ? ".swap-pick" : ".swap-x") : null;
+  const target = same || slot || (swapFocusAt >= 0 && list.length ? list[Math.min(swapFocusAt, list.length - 1)] : sheet);
+  target?.focus?.({ preventScroll: true });
 }
 function bindFunnel() {
   document.querySelector("#swap-url")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) document.querySelector('[data-action="life-url-insert"]')?.click(); });
@@ -3967,6 +4288,7 @@ function renderStarterSettings() {
     <button type="button" class="role-toggle" data-action="life-starters" data-show="${!showStarters()}" aria-pressed="${showStarters()}"><span>最初から入っている料理を使う<small>${showStarters() ? "レシピ一覧と献立に、おすすめも出します" : "自分のレシピだけで献立を作ります"}</small></span><i aria-hidden="true"></i></button>
     <button type="button" class="role-toggle" data-action="life-share-stats" aria-pressed="${shareStatsOn()}"><span>みんなの定番づくりに協力する<small>献立に入れた・作ったYouTubeレシピを、名前を伏せて数えます。写真・メモ・手入力のレシピは送りません。</small></span><i aria-hidden="true"></i></button>
     ${state.starterPref?.hidden?.length || state.starterPref?.hiddenDishes?.length ? `<p class="small starter-hidden">非表示にしたおすすめ <b>${state.starterPref.hidden?.length || 0}品</b>${state.starterPref.hiddenDishes?.length ? `・出さない料理名 <b>${state.starterPref.hiddenDishes.length}</b>` : ""} <button type="button" class="text-button" data-action="life-starters-unhide">すべて戻す</button></p>` : ""}
+    ${(() => { const less = Object.entries(state.passMemo?.asked || {}).filter(([, a]) => a.answer === "less").map(([k]) => SWAP_FEATURE_LABEL[k]).filter(Boolean); return less.length ? `<p class="small starter-hidden">🙅 少なめにしている：<b>${escapeHtml(less.join("・"))}</b> <button type="button" class="text-button" data-action="life-pass-unless">元に戻す</button></p>` : ""; })()}
     ${!showStarters() && n < 6 ? `<p class="notice">自分の夜ごはんのレシピが${n}品です。少ないと、献立が組めない日があります。</p>` : ""}</section>`;
 }
 
