@@ -329,8 +329,16 @@ function lastEatenLabel(recipe) {
   const gap = daysBetween(hit.date, today());
   return gap === 0 ? "今日" : gap === 1 ? "昨日" : gap === 2 ? "一昨日" : `前回は${gap}日前`;
 }
+// 描き直しの間だけ、献立の計算結果を覚えておく（render() が始めと終わりを決める。入れ子の描き直しでも、いちばん外で消す）。
+let planMemo = null, planMemoDepth = 0;
+function beginPlanMemo() { if (planMemoDepth++ === 0) planMemo = { plan: null }; }
+function endPlanMemo() { if (--planMemoDepth <= 0) { planMemoDepth = 0; planMemo = null; } }
 // exclude：出さない料理のID（わが家のごはん方針の「変えるなら？」で外した料理）。
 function dailyPlan({ exclude = [] } = {}) {
+  if (planMemo && !exclude.length) return (planMemo.plan ||= dailyPlanNow());
+  return dailyPlanNow({ exclude });
+}
+function dailyPlanNow({ exclude = [] } = {}) {
   const p = dailyProfile();
   const plan = Lifestyle.propose({
     history: mealHistory(120),
@@ -1047,6 +1055,10 @@ function swapSlots(list, first, diverse, original) {
 }
 // 今並んでいる4皿の id（「4皿とも消す」で使う）。
 function swapCurrentIds() {
+  beginPlanMemo();
+  try { return swapCurrentIdsNow(); } finally { endPlanMemo(); }
+}
+function swapCurrentIdsNow() {
   return [...renderSwapChoices().matchAll(/data-action="life-swap-remove" data-recipe="([^"]+)"/g)].map((m) => m[1]);
 }
 // 「少なめ」：パスした料理に2品以上で共通する特徴（主役の大きな種類・食べ方の形・味）。どちらが理由か分からない組は出さない。多い順に2つまで。
@@ -1073,9 +1085,10 @@ function swapCandidates() {
   const p = dailyProfile();
   const bought = isViewer() ? [] : swapBoughtItems(swapDate);
   const reuse = bought.length && swapBought !== "skip" ? bought : [];
-  const current = dailyPlan().find((d) => d.date === swapDate);
+  const plan = dailyPlan();
+  const current = plan.find((d) => d.date === swapDate);
   const currentRecipe = current?.slot?.recipe || current?.candidate?.recipe;
-  const used = new Set(dailyPlan().filter((d) => d.date !== swapDate).map((d) => d.slot?.recipe?.id || d.candidate?.recipe.id));
+  const used = new Set(plan.filter((d) => d.date !== swapDate).map((d) => d.slot?.recipe?.id || d.candidate?.recipe.id));
   const currentParent = currentRecipe ? parentKeyOf(currentRecipe) : "";
   const all = allDinnerRecipes()
     .filter((r) => r.id !== currentRecipe?.id && !Object.values(recipeRatings(r)).includes("never"))
@@ -1096,7 +1109,10 @@ function swapCommit() {
   const memo = state.passMemo = normalizePassMemo(state.passMemo);
   const until = addDays(today(), 3);
   for (const e of swapRemoved.map(swapEntry)) if (!e.bulk) memo.rests[e.id] = until;
-  const keys = [...renderSwapChoices().matchAll(/data-action="life-swap-unlearn" data-key="([^"]+)"/g)].map((m) => m[1]);
+  beginPlanMemo();
+  let html = "";
+  try { html = renderSwapChoices(); } finally { endPlanMemo(); }
+  const keys = [...html.matchAll(/data-action="life-swap-unlearn" data-key="([^"]+)"/g)].map((m) => m[1]);
   const from = addDays(today(), -30);
   for (const k of keys) memo.log[k] = [...new Set([...(memo.log[k] || []), today()])].filter((d) => d >= from).sort();
   for (const [id, d] of Object.entries(memo.rests)) if (d <= today()) delete memo.rests[id];
@@ -1130,14 +1146,16 @@ function swapNewToBuy(r) {
   const before = dailyShopping();
   let after = before;
   // 決めた時と同じ枠（新しい日時・買った印なし）と、同じ買い物ページで計算する（買い物を終えたあとでも、ずれない。Codex review #234）。
-  const page = shopPage;
+  const page = shopPage, memo = planMemo;
   try {
+    planMemo = null; // その日の料理を仮に置きかえている間は、覚えた献立を使わない・残さない
     state.mealSlots[swapDate] = confirmedSlot(swapDate, r);
     syncShopPageForDate(swapDate);
     after = dailyShopping();
   } finally {
     state.mealSlots[swapDate] = slot;
     shopPage = page;
+    planMemo = memo;
   }
   return [...new Set(after.filter((x) => x.status === "buy" && !before.some((b) => b.id === x.id)).map((x) => x.name))];
 }

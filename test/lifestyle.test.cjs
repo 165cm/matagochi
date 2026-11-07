@@ -1076,6 +1076,39 @@ test("定番フォルダ: make one by name, then add recipes from a picker", () 
   assert.doesNotMatch(run(`renderFolderPicker(state.folders["${key}"])`), new RegExp(`data-recipe="${first}"`), "already in: not offered again");
 });
 
+test("speed (2026-11-07): remembered answers per recipe follow edits, and are copies", () => {
+  const r = { id: "m1", title: "鶏の照り焼き", ingredients: [{ name: "鶏もも肉", amount: "1枚" }], steps: ["焼く"] };
+  assert.equal(L.traits(r).protein, "meat");
+  assert.ok(L.tags(r).includes("chicken"));
+  // 材料を書きかえたら、覚えた答えは使わない
+  r.title = "鮭の照り焼き"; r.ingredients = [{ name: "鮭", amount: "2切れ" }];
+  assert.equal(L.traits(r).protein, "fish");
+  assert.ok(L.tags(r).includes("fish") && !L.tags(r).includes("chicken"));
+  r.ingredients.push({ name: "キャベツ", amount: "1/4個" });
+  assert.ok(L.useUpKeys(r).has("キャベツ"), "pushing into the same array also counts");
+  // 返す値は写し（書きかえても次の答えは変わらない）
+  L.tags(r).push("x"); L.traits(r).protein = "veg"; L.useUpKeys(r).clear();
+  assert.ok(!L.tags(r).includes("x"));
+  assert.equal(L.traits(r).protein, "fish");
+  assert.ok(L.useUpKeys(r).has("キャベツ"));
+  // 手順を変えたら、難しさも計算し直す
+  const S = require("../skills.js");
+  const d = { id: "m2", steps: ["混ぜる"] };
+  assert.equal(S.rate(d).level, 1);
+  d.steps = ["たっぷりの揚げ油で揚げる"];
+  assert.equal(S.rate(d).level, 5);
+});
+
+test("speed (2026-11-07): one screen draw makes the plan once, even with the 4-dish sheet open", () => {
+  const run = app();
+  run(`state.onboarded=true;state.rhythm=null;state.view="plan";swapDate=addDays(today(),1);globalThis.planCalls=0;const orig=dailyPlanNow;dailyPlanNow=(...a)=>{planCalls++;return orig(...a);}`);
+  // render() と同じく、描き直しの始めと終わりで囲む
+  run("beginPlanMemo(); try { renderDailyPlan(); renderSwapChoices(); renderToday(); } finally { endPlanMemo(); }");
+  assert.equal(run("planCalls"), 1);
+  run("planCalls=0; dailyPlan(); dailyPlan()");
+  assert.equal(run("planCalls"), 2, "outside a draw, nothing is remembered (state may have changed)");
+});
+
 test("今夜の4皿 (§64): four photos of different kinds (main, rice/noodle, taste), a ✓ before choosing, no old headings", () => {
   const run = app();
   run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
