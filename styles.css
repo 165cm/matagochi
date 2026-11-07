@@ -3721,7 +3721,7 @@ button.stamp { cursor: pointer; }
 /* 献立の入れ替え：🔗 動画のURLから入れる */
 .swap-url { display: flex; gap: 6px; align-items: center; margin: 0 0 10px; }
 .swap-url .input { flex: 1; min-width: 0; }
-.swap-url .primary-button { flex: none; padding: 10px 14px; min-height: 0; }
+.swap-url .primary-button { flex: none; padding: 10px 14px; min-height: 44px; }
 .swap-url.is-busy { padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px dashed var(--line); font-size: 14px; }
 
 /* ⭐ まとめて評価（今日・献立の上） */
@@ -4347,7 +4347,7 @@ body.has-sheet { overflow: hidden; }
 .swap-close { flex: none; font-size: 18px; }
 .swap-chips { display: flex; gap: 6px; margin: 0 -16px 10px; padding: 2px 16px 4px; overflow-x: auto; scrollbar-width: none; }
 .swap-chips::-webkit-scrollbar { display: none; }
-.swap-chip { flex: none; min-height: 40px; white-space: nowrap; }
+.swap-chip { flex: none; min-height: 44px; white-space: nowrap; }
 .swap-chip[aria-pressed="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }
 .swap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
 .swap-card { display: grid; align-content: start; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
@@ -4377,3 +4377,18 @@ body.has-sheet { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .swap-panel.swap-sheet, .swap-backdrop { animation: none; } }
 .swap-chip { border-radius: 999px; }
 .swap-chip[aria-pressed="false"] { border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); }
+/* 消去法（§64-2）：写真の上は ✓（左上）と ✕（右上）だけ。札は写真の下の行 */
+.swap-card { position: relative; display: block; min-width: 0; }
+.swap-card.is-fresh { animation: fd-in .25s ease-out both; }
+.swap-pick { display: grid; align-content: start; gap: 4px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.swap-pick:focus-visible .swap-photo { outline-color: var(--sage); }
+.swap-card .swap-check { left: 5px; right: auto; }
+.swap-x { position: absolute; right: 0; top: 0; z-index: 1; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
+.swap-x span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(40, 25, 15, .62); color: #fff; font-size: 14px; font-weight: 900; line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.swap-x:focus-visible span { outline: 3px solid var(--sage); outline-offset: 1px; }
+.swap-hint { margin: 0 0 8px; color: var(--muted); }
+.swap-learned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; }
+.swap-learned > span { color: var(--muted); font-weight: 700; }
+.swap-learn-chip { min-height: 44px; padding: 2px 12px; border: 1px dashed var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.swap-learned .link-inline { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) { .swap-card.is-fresh { animation: none; } }

@@ -772,7 +772,7 @@ test("今夜の4皿 (§64): the mood chips narrow the four right away and do not
   run("handleDailyAction('life-swap',{date:today()})");
   let html = run("renderSwapChoices()");
   assert.ok(!html.includes("変えたい理由は？"), "no question first");
-  assert.ok(html.includes("⚡ すぐできる") && html.includes('data-action="life-swap-mood"'));
+  assert.ok(html.includes("⚡ 15分以内") && html.includes('data-action="life-swap-mood"'));
   run("handleDailyAction('life-swap-mood',{mood:'quick'})");
   html = run("renderSwapChoices()");
   const ids = [...html.matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
