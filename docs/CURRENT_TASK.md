@@ -19,6 +19,8 @@ Codex：codex/backfill-progress で補完済みフィルターと健康診断の
 
 Codex：codex/admin-hidden-entry で設定の版番号から管理画面への隠し入口を追加済み・レビュー待ち（app.js・styles.css・版関連・docs）。アプリ469件PASS。
 
+Claude：claude/relaxed-allen-5utqli で献立決め（⇄ 変更）の抜本見直しに向けたブレスト用アジェンダを作成（docs/review/MENU_DECISION_BRAINSTORM_AGENDA.md のみ）。Claude・Codex・Gemini・Grok の案を集めてから方針を決める。
+
 状態：作業中／レビュー待ち／実装済み（マージ済み・公開待ち）／公開済み
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
