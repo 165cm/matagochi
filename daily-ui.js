@@ -340,7 +340,8 @@ function dailyPlan({ exclude = [] } = {}) {
     start: today(),
     length: rhythmOn() ? rhythmPlanDays() : state.planLength || p.period,
     addDays,
-    overrides: { ...Object.fromEntries(Object.entries(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(([d, r]) => !hiddenParents().has(parentKeyOf(r)) && !starterHidden().has(r.id) && Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
+    // 自動提案の保存分（planDrafts）は、パスして休ませている料理を使わない（自分で選んだ planOverrides はそのまま。Codex review #234）。
+    overrides: { ...Object.fromEntries(Object.entries(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(([d, r]) => !hiddenParents().has(parentKeyOf(r)) && !starterHidden().has(r.id) && !passRested(r) && Lifestyle.fit(r, p, d).ok).map(([d, r]) => [d, r.id])), ...state.planOverrides },
     // 子の評価がなければ親の評価を引き継ぐ（APP_MAP §48）。
     cyclesOf: plannedCycles(),
     offUntil: prestartUntil(),
@@ -1012,36 +1013,37 @@ function swapFirstFour(list, diverse, original) {
 // swapRemoved の1件：{ id, bulk }。bulk＝「🔄 別の4皿」（その4皿は出さないが、特徴は学ばない）。
 const swapEntry = (x) => (typeof x === "string" ? { id: x, bulk: false } : x);
 // 今の4皿：最初の4皿から、パスした順に1枚ずつ入れ替えた結果（描き直しても同じ＝「↩ 戻す」は最後の1つを消すだけ）。
-// 入れ替える料理は、いまの手がかり（パスした料理ぜんぶ）で選ぶ。残している料理は動かさない（比べる相手を残す）。
+// 1回ごとに「その時までの手がかり」で選ぶので、前に入った料理は、あとのパスで入れ替わらない（パスした枠だけ変わる。Codex review #234）。
 function swapSlots(list, first, diverse, original) {
   const byId = new Map(list.map((x) => [x.r.id, x]));
   const entries = swapRemoved.map(swapEntry);
   const removed = [], gone = new Set(), goneParents = new Set();
-  for (const e of entries) {
-    gone.add(e.id);
-    if (e.bulk) continue;
-    const r = byId.get(e.id)?.r || allDinnerRecipes().find((x) => x.id === e.id);
-    if (!r) continue;
-    removed.push(r);
-    // パスした料理と同じ料理名（親）は、その場では別の作り方も出さない（Claude・Codex の案）。
-    const k = parentKeyOf(r);
-    if (k) goneParents.add(k);
-  }
-  const ev = swapEvidence(removed, original);
-  const pool = list.filter((x) => !gone.has(x.r.id) && !goneParents.has(parentKeyOf(x.r)));
   const slots = [...first], placed = new Set(first.map((x) => x.r.id));
   for (const e of entries) {
+    gone.add(e.id);
+    if (!e.bulk) {
+      const r = byId.get(e.id)?.r || allDinnerRecipes().find((x) => x.id === e.id);
+      if (r) {
+        removed.push(r);
+        // パスした料理と同じ料理名（親）は、その場では別の作り方も出さない（Claude・Codex の案）。
+        const k = parentKeyOf(r);
+        if (k) goneParents.add(k);
+      }
+    }
     const at = slots.findIndex((x) => x?.r.id === e.id);
     if (at < 0) continue;
-    const exclude = new Set([...gone, ...placed]);
-    const next = swapBest(pool, exclude, ev, slots.filter((x, i) => x && i !== at).map((x) => x.r), diverse);
+    const ev = swapEvidence(removed, original);
+    const pool = list.filter((x) => !gone.has(x.r.id) && !placed.has(x.r.id) && !goneParents.has(parentKeyOf(x.r)));
+    const next = swapBest(pool, new Set(), ev, slots.filter((x, i) => x && i !== at).map((x) => x.r), diverse);
     slots[at] = next || null;
     if (next) placed.add(next.r.id);
   }
+  const ev = swapEvidence(removed, original);
   // いちばん最近入った料理（ふわっと出す）。
   const last = entries.length ? entries[entries.length - 1] : null;
   const fresh = last ? slots.filter((x, i) => x && x.r.id !== first[i]?.r.id && (last.bulk || first[i]?.r.id === last.id || !first.some((f) => f.r.id === last.id))).map((x) => x.r.id) : [];
-  return { slots, removed, ev, fresh: last?.bulk ? fresh : fresh.slice(-1), left: pool.filter((x) => !placed.has(x.r.id)).length };
+  const left = list.filter((x) => !gone.has(x.r.id) && !placed.has(x.r.id) && !goneParents.has(parentKeyOf(x.r))).length;
+  return { slots, removed, ev, fresh: last?.bulk ? fresh : fresh.slice(-1), left };
 }
 // 今並んでいる4皿の id（「4皿とも消す」で使う）。
 function swapCurrentIds() {

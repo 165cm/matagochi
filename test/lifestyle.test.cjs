@@ -1113,7 +1113,12 @@ test("今夜の4皿 §64-2 消去法: ✕ swaps one card in place, what was remo
   const html = run("renderSwapChoices()");
   assert.match(html, /data-action="life-swap-unlearn" data-key="g:fish"[^>]*>🙅 魚 少なめ/, "the 🐟 chip turns into 「🙅 魚 少なめ 解除」");
   const isFish = (id) => run(`Lifestyle.traits(allDinnerRecipes().find((r) => r.id === ${JSON.stringify(id)})).protein`) === "fish";
-  assert.ok(!ids().some(isFish), "no fish now");
+  // 残している料理は動かさない。次にパスした枠に入る料理から、魚を後ろへ（Codex review #234）
+  const keep = ids();
+  run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(keep[0])}})`);
+  const now = ids();
+  assert.deepEqual(now.slice(1), keep.slice(1), "the other three stay");
+  assert.ok(!isFish(now[0]), "the new one is not fish");
   // 「🐟 魚 ✕」で、魚は数えない（戻せる）
   run(`handleDailyAction("life-swap-unlearn",{key:"g:fish"})`);
   assert.doesNotMatch(run("renderSwapChoices()"), /data-key="g:fish"/);
@@ -1174,6 +1179,39 @@ test("今夜の4皿 §64-2 (第3回): 「🔄 別の4皿」 learns nothing, 「�
   assert.ok(run(`swapLearned(${ev}).includes("g:fish")`));
   run(`swapMood="fish"`);
   assert.ok(!run(`swapLearned(${ev}).includes("g:fish")`), "your own 🐟 choice wins");
+});
+
+test("review #234: passing a second card keeps the dish that came into the first card (and its ✓)", () => {
+  const run = app();
+  run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
+  const ids = () => [...run("renderSwapChoices()").matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+  const first = ids();
+  run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(first[0])}})`);
+  const a = ids();
+  run(`handleDailyAction("life-swap-pick",{recipe:${JSON.stringify(a[0])}})`);
+  run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(a[3])}})`);
+  const b = ids();
+  assert.equal(b[0], a[0], "the dish that came in first stays");
+  assert.deepEqual(b.slice(1, 3), a.slice(1, 3));
+  assert.notEqual(b[3], a[3]);
+  assert.match(run("renderSwapChoices()"), /swap-pickbar[\s\S]*data-action="life-choose"/, "the ✓ stays too");
+});
+
+test("review #234: a passed dish also rests when it sits in a saved automatic draft (not in a dish you chose yourself)", () => {
+  const run = app();
+  run(`state.onboarded=true;state.rhythm=null;state.family=["わたし"];state.me="わたし"`);
+  const d1 = run("addDays(today(),1)"), d2 = run("addDays(today(),2)");
+  // 2日後の自動提案を保存したことにする（ログイン中の captureAccountDrafts と同じ形）
+  const draft = run(`dailyPlan().find((x) => x.date === ${JSON.stringify(d2)}).candidate.recipe.id`);
+  run(`state.planDrafts = { [${JSON.stringify(d2)}]: clone(allDinnerRecipes().find((r) => r.id === ${JSON.stringify(draft)})) }`);
+  assert.equal(run(`dailyPlan().find((x) => x.date === ${JSON.stringify(d2)}).candidate.recipe.id`), draft);
+  run(`handleDailyAction("life-swap",{date:${JSON.stringify(d1)}})`);
+  run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(draft)}})`);
+  run(`handleDailyAction("life-close-swap",{})`);
+  assert.notEqual(run(`dailyPlan().find((x) => x.date === ${JSON.stringify(d2)}).candidate?.recipe.id`), draft, "the draft does not keep it");
+  // 自分で選んだ日は、そのまま
+  run(`state.planOverrides[${JSON.stringify(d2)}] = ${JSON.stringify(draft)}`);
+  assert.equal(run(`dailyPlan().find((x) => x.date === ${JSON.stringify(d2)}).candidate.recipe.id`), draft);
 });
 
 test("今夜の4皿 §64-3 (ユーザーの判断 B): a passed dish rests 3 days in the automatic plan; 少なめ on 3 different days asks once; the answer can be undone", () => {
