@@ -834,6 +834,22 @@ test("a decided dinner can be changed from the today card; bought ingredients st
   assert.ok(!run("renderSwapChoices()").includes("🧺 買った"));
 });
 
+test("review #234: the 「🛒 新しく買う」 preview uses the same pantry and bought marks as the shopping list", () => {
+  const run = app();
+  run(`state.family=["わたし"]; state.me="わたし"; state.view='today';
+    const r = Lifestyle.curated.find((x) => x.title === "豚こまキャベツ丼");
+    confirmDaily({ date: today() }, r);
+    setPantry("卵", "have");
+    handleDailyAction('life-swap',{date:today()});`);
+  const egg = run(`Lifestyle.curated.find((x) => x.title === "豆腐と卵のやさしい丼").id`);
+  const preview = JSON.parse(run(`JSON.stringify(swapNewToBuy(allDinnerRecipes().find((x) => x.id === ${JSON.stringify(egg)})))`));
+  assert.ok(!preview.includes("卵"), `an egg you have is not 「新しく買う」 (${preview})`);
+  const before = JSON.parse(run(`JSON.stringify(dailyShopping().map((x) => x.id))`));
+  run(`handleDailyAction("life-choose",{recipe:${JSON.stringify(egg)},date:today()})`);
+  const actual = JSON.parse(run(`JSON.stringify([...new Set(dailyShopping().filter((x) => x.status === "buy" && !${JSON.stringify(before)}.includes(x.id)).map((x) => x.name))])`));
+  assert.deepEqual(preview, actual, "the preview matches the list after choosing");
+});
+
 test("reusing bought ingredients weighs the main ones (meat, fish, tofu 3 / vegetables 1 / seasonings and rice 0)", () => {
   const run = app();
   run(`state.family=["わたし"]; state.me="わたし"; state.view='today';

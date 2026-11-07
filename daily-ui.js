@@ -1120,16 +1120,28 @@ function renderPassAsk() {
   const label = SWAP_FEATURE_LABEL[k];
   return `<div class="todo-row pass-ask"><span>🙅</span><p>ここ30日で3回、<b>${escapeHtml(label)}</b>をパスしました。献立でも少なめにしますか？</p><div class="todo-actions">${dailyButton("life-pass-ask", "少なめにする", `data-key="${k}" data-answer="less"`, true)}${dailyButton("life-pass-ask", "このままでいい", `data-key="${k}" data-answer="keep"`)}</div></div>`;
 }
+// 決めた日の料理を r に変えたら、買い物リストに新しく「買う」が付く品（Codex review #234：常備品・購入済みの印も、
+// 実際の買い物リストと同じ計算で見る）。いったんその日の料理を r に置きかえて dailyShopping() を作り、すぐ元に戻す。
+function swapNewToBuy(r) {
+  const slot = state.mealSlots?.[swapDate];
+  if (slot?.status !== "confirmed" || !r) return null;
+  const before = dailyShopping();
+  let after = before;
+  try {
+    state.mealSlots[swapDate] = { ...slot, recipe: clone(r) };
+    after = dailyShopping();
+  } finally {
+    state.mealSlots[swapDate] = slot;
+  }
+  return [...new Set(after.filter((x) => x.status === "buy" && !before.some((b) => b.id === x.id)).map((x) => x.name))];
+}
 function swapPickBar(r, reuse) {
   if (!r) return "";
   if (isViewer()) return `<div class="swap-pickbar">${dailyButton("life-request-swap", `🙋 「${r.title.slice(0, 14)}」がいいと送る`, `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`, true)}</div>`;
   // 決めた日（買い物リストに入る日）だけ、新しく買う物を先に見せる（Codex の案：選ぶ前に差がわかる）。
   let need = "";
-  if (state.mealSlots?.[swapDate]?.status === "confirmed") {
-    const planned = plannedIngredients(), seen = new Set();
-    const names = (r.ingredients || []).map((i) => Lifestyle.shoppingName(i.name)).filter((n) => n && Lifestyle.isBought(n) && !planned.has(n) && !seen.has(n) && seen.add(n));
-    need = names.length ? `🛒 新しく買う：${names.slice(0, 3).join("・")}${names.length > 3 ? ` ほか${names.length - 3}品` : ""}` : "🛒 新しく買う物はありません";
-  }
+  const names = swapNewToBuy(r);
+  if (names) need = names.length ? `🛒 新しく買う：${names.slice(0, 3).join("・")}${names.length > 3 ? ` ほか${names.length - 3}品` : ""}` : "🛒 新しく買う物はありません";
   const uses = reuse.length ? usesNames(r, reuse) : [];
   return `<div class="swap-pickbar">${need || uses.length ? `<p class="swap-pick-note">${uses.length ? `🧺 ${escapeHtml(namesOf(uses, 2))}を使う${need ? " · " : ""}` : ""}${escapeHtml(need)}</p>` : ""}${dailyButton("life-choose", `✓ 「${r.title.slice(0, 14)}」にする`, `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`, true)}</div>`;
 }
@@ -2852,6 +2864,8 @@ function handleDailyAction(action, data) {
     swapPick = "";
     swapRemoved = [];
     swapIgnore = [];
+    swapFocusAt = -1;
+    swapFocusWhat = null;
     swapBought = "";
     swapDate = data.date;
     state.view = "plan";
@@ -3771,9 +3785,39 @@ function renderFunnelStep(key) {
   return ["", ""];
 }
 // 今夜の4皿のシート：開いている間は後ろの画面を動かさない・Esc で閉じる（描き直すたびに呼ぶ）。
+// 描き直した後も、押した場所（の近く）にフォーカスを戻し、Tab はシートの中だけで回す（Codex review #234）。
+let swapFocusAt = -1;
+let swapFocusWhat = null;
+const swapFocusables = (sheet) => [...(sheet?.querySelectorAll?.("button, input, summary, [tabindex]:not([tabindex='-1'])") || [])].filter((el) => !el.disabled && el.offsetParent !== null && (el.tagName === "SUMMARY" || !el.closest?.("details:not([open])")));
 function bindSwapSheet() {
   document.body?.classList?.toggle("has-sheet", !!swapDate && state.view === "plan");
-  document.querySelector(".swap-sheet")?.addEventListener("keydown", (ev) => { if (ev.key === "Escape") handleDailyAction("life-close-swap", {}); });
+  const sheet = document.querySelector(".swap-sheet");
+  if (!sheet) { swapFocusAt = -1; return; }
+  sheet.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") { ev.preventDefault?.(); handleDailyAction("life-close-swap", {}); return; }
+    if (ev.key !== "Tab") return;
+    const list = swapFocusables(sheet);
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    if (ev.shiftKey && (document.activeElement === first || document.activeElement === sheet)) { ev.preventDefault?.(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault?.(); first.focus(); }
+  });
+  sheet.addEventListener("click", (ev) => {
+    const el = ev.target?.closest?.("[data-action]");
+    const i = swapFocusables(sheet).indexOf(el);
+    if (i < 0) return;
+    const card = el.closest?.(".swap-card");
+    swapFocusAt = i;
+    swapFocusWhat = { action: el.dataset.action, mood: el.dataset.mood || "", recipe: el.dataset.recipe || "", slot: card ? [...sheet.querySelectorAll(".swap-card")].indexOf(card) : -1 };
+  }, true);
+  if (sheet.contains(document.activeElement)) return;
+  const list = swapFocusables(sheet);
+  const w = swapFocusWhat;
+  // 同じボタン（同じ札・同じ料理）→ パスした時は同じ枠の「✕ パス」→ 同じ順番の場所。
+  const same = w && list.find((el) => el.dataset?.action === w.action && (el.dataset.mood || "") === w.mood && (el.dataset.recipe || "") === w.recipe);
+  const slot = w && w.slot >= 0 ? sheet.querySelectorAll(".swap-card")[w.slot]?.querySelector(w.action === "life-swap-pick" ? ".swap-pick" : ".swap-x") : null;
+  const target = same || slot || (swapFocusAt >= 0 && list.length ? list[Math.min(swapFocusAt, list.length - 1)] : sheet);
+  target?.focus?.({ preventScroll: true });
 }
 function bindFunnel() {
   document.querySelector("#swap-url")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) document.querySelector('[data-action="life-url-insert"]')?.click(); });
