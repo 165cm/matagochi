@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261106-timecode-tags";
+const APP_VERSION = "20261107-four-dishes";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1473,6 +1473,7 @@ function render() {
   placePageChrome();
   bindEvents();
   if (state.view === "plan" && typeof placePlanPages === "function") placePlanPages();
+  if (typeof bindSwapSheet === "function") bindSwapSheet();
   if (state.view === "settings") mountGoogleButton();
 }
 

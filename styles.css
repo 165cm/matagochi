@@ -4337,3 +4337,48 @@ div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.
 
 /* 設定の版番号：5回押すと管理画面（認証は管理画面側）。 */
 .app-version-entry { border: 0; background: transparent; color: inherit; font: inherit; padding: 12px; min-height: 44px; cursor: pointer; }
+
+/* 今夜の4皿（「⇄ 変更」のシート。2026-11-07・APP_MAP §56）：写真4枚が主役。文字は料理名と時間だけ */
+body.has-sheet { overflow: hidden; }
+.swap-backdrop { position: fixed; inset: 0; z-index: 34; background: rgba(40, 25, 15, .38); animation: fd-in .2s ease-out both; }
+.swap-panel.swap-sheet { position: fixed; left: 50%; bottom: 0; z-index: 35; display: block; width: min(100%, 430px); max-height: 90vh; max-height: 90dvh; margin: 0; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border: 0; border-radius: 22px 22px 0 0; background: var(--bg, #fffaf3); box-shadow: 0 -10px 30px rgba(40, 25, 15, .18); overflow-y: auto; overscroll-behavior: contain; transform: translateX(-50%); animation: sheetUp .25s ease; }
+.swap-sheet:focus { outline: none; }
+.swap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-size: 16px; }
+.swap-close { flex: none; font-size: 18px; }
+.swap-chips { display: flex; gap: 6px; margin: 0 -16px 10px; padding: 2px 16px 4px; overflow-x: auto; scrollbar-width: none; }
+.swap-chips::-webkit-scrollbar { display: none; }
+.swap-chip { flex: none; min-height: 40px; white-space: nowrap; }
+.swap-chip[aria-pressed="true"] { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+.swap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
+.swap-card { display: grid; align-content: start; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.swap-photo { position: relative; display: block; border-radius: 16px; overflow: hidden; outline: 3px solid transparent; outline-offset: -3px; transition: outline-color .15s ease; }
+.swap-photo .dish-tile.swap-tile { width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover; object-position: center 40%; border-radius: 16px; }
+.swap-card.is-picked .swap-photo { outline-color: var(--tomato); }
+.swap-card:focus-visible .swap-photo { outline-color: var(--sage); }
+.swap-badge { position: absolute; left: 6px; top: 6px; max-width: calc(100% - 12px); padding: 2px 8px; border-radius: 999px; background: rgba(255, 252, 246, .92); color: var(--ink); font-size: 12px; font-style: normal; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swap-check { position: absolute; right: 6px; top: 6px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--tomato); color: #fff; font-style: normal; font-weight: 900; }
+.swap-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.swap-min { color: var(--muted); font-size: 12px; }
+.swap-folder { margin: 0 0 8px; font-size: 14px; }
+.swap-empty { margin: 8px 0; font-size: 14px; }
+.swap-nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; margin: 12px 0 4px; }
+.swap-more { min-height: 48px; padding: 0 22px; font-size: 15px; }
+.swap-end { margin: 0; color: var(--muted); text-align: center; }
+.swap-pickbar { position: sticky; bottom: calc(-12px - env(safe-area-inset-bottom)); z-index: 1; display: grid; gap: 6px; margin: 8px -16px 0; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg, #fffaf3); box-shadow: 0 -6px 16px rgba(40, 25, 15, .08); }
+.swap-pickbar .primary-button { width: 100%; min-height: 48px; }
+.swap-pick-note { margin: 0; font-size: 13px; line-height: 1.5; }
+.swap-foot { display: grid; gap: 6px; margin-top: 10px; }
+.swap-review > summary, .swap-url-fold > summary { min-height: 44px; display: flex; align-items: center; color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }
+.swap-review[open] { display: grid; gap: 6px; }
+.swap-url-fold .swap-url { margin: 4px 0 6px; }
+/* 献立のカードの札（理由を1つだけ）。左下に小さく */
+.plan-reason-badge { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); padding: 1px 7px; border-radius: 999px; background: rgba(255, 252, 246, .92); color: var(--ink); font-size: 11px; font-style: normal; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .swap-panel.swap-sheet, .swap-backdrop { animation: none; } }
+.swap-chip { border-radius: 999px; }
+/* 横持ち（高さが低い）：4枚を1列に並べて、ひと目で比べられるように */
+@media (max-height: 500px) and (orientation: landscape) {
+  .swap-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .swap-name { font-size: 12px; }
+  .swap-badge { font-size: 10px; padding: 1px 6px; }
+}
+.swap-chip[aria-pressed="false"] { border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); }
