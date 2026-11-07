@@ -1129,11 +1129,15 @@ function swapNewToBuy(r) {
   if (slot?.status !== "confirmed" || !r) return null;
   const before = dailyShopping();
   let after = before;
+  // 決めた時と同じ枠（新しい日時・買った印なし）と、同じ買い物ページで計算する（買い物を終えたあとでも、ずれない。Codex review #234）。
+  const page = shopPage;
   try {
-    state.mealSlots[swapDate] = { ...slot, recipe: clone(r) };
+    state.mealSlots[swapDate] = confirmedSlot(swapDate, r);
+    syncShopPageForDate(swapDate);
     after = dailyShopping();
   } finally {
     state.mealSlots[swapDate] = slot;
+    shopPage = page;
   }
   return [...new Set(after.filter((x) => x.status === "buy" && !before.some((b) => b.id === x.id)).map((x) => x.name))];
 }
@@ -2182,9 +2186,14 @@ function confirmDaily(day, recipe = day.candidate?.recipe) {
   // 今週の人気・みんなの定番は、献立に入れた時点で自分のレシピとして保存する（28日で消えても献立は残る）。
   if (recipe.discover) recipe = saveOwnRecipe(recipe);
   sharePopular(recipe, "planned");
-  const existingSide = state.mealSlots[day.date]?.side;
-  state.mealSlots[day.date] = {
-    date: day.date,
+  state.mealSlots[day.date] = confirmedSlot(day.date, recipe);
+  syncShopPageForDate(day.date);
+}
+// 決めた日の枠（confirmDaily と、今夜の4皿の「新しく買う」の予告で同じものを使う＝予告と実際がずれない）。
+function confirmedSlot(date, recipe) {
+  const existingSide = state.mealSlots[date]?.side;
+  return {
+    date,
     mealType: "dinner",
     servings: dailyProfile().servings,
     recipe: clone(recipe),
@@ -2192,7 +2201,6 @@ function confirmDaily(day, recipe = day.candidate?.recipe) {
     updatedAt: nowIso(),
     ...(existingSide ? { side: existingSide } : {}),
   };
-  syncShopPageForDate(day.date);
 }
 // 献立を変えた時の買い物の差分を、品名で残す（買い物タブの上に出す。×で閉じる）。
 // bought：もう買ってあるのに、使わなくなった品（残りの食材として使える）。more：買ってあるが、分量が増えた・別の料理にも使う品。

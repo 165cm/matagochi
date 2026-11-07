@@ -850,6 +850,24 @@ test("review #234: the 「🛒 新しく買う」 preview uses the same pantry a
   assert.deepEqual(preview, actual, "the preview matches the list after choosing");
 });
 
+test("review #234: after the shopping is done, the 「🛒 新しく買う」 preview still matches what choosing adds", () => {
+  const run = app();
+  run(`state.family=["わたし"]; state.me="わたし"; state.view='today'; state.rhythm=null;
+    const r = Lifestyle.curated.find((x) => x.title === "豚こまキャベツ丼");
+    confirmDaily({ date: today() }, r);
+    state.shoppingMarks = Object.fromEntries(dailyShopping().map((i) => [i.id, { status: "purchased", updatedAt: nowIso() }]));
+    state.mealSlots[today()].updatedAt = new Date(Date.now() - 60000).toISOString();
+    state.round = { status: "done", updatedAt: new Date(Date.now() - 30000).toISOString() };
+    handleDailyAction('life-swap',{date:today()});`);
+  const egg = run(`Lifestyle.curated.find((x) => x.title === "豆腐と卵のやさしい丼").id`);
+  const preview = JSON.parse(run(`JSON.stringify(swapNewToBuy(allDinnerRecipes().find((x) => x.id === ${JSON.stringify(egg)})))`));
+  const before = JSON.parse(run(`JSON.stringify(dailyShopping().map((x) => x.id))`));
+  run(`handleDailyAction("life-choose",{recipe:${JSON.stringify(egg)},date:today()})`);
+  const actual = JSON.parse(run(`JSON.stringify([...new Set(dailyShopping().filter((x) => x.status === "buy" && !${JSON.stringify(before)}.includes(x.id)).map((x) => x.name))])`));
+  assert.ok(actual.length > 0, "choosing adds things to buy");
+  assert.deepEqual(preview, actual);
+});
+
 test("reusing bought ingredients weighs the main ones (meat, fish, tofu 3 / vegetables 1 / seasonings and rice 0)", () => {
   const run = app();
   run(`state.family=["わたし"]; state.me="わたし"; state.view='today';
