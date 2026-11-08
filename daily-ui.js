@@ -928,9 +928,12 @@ const SWAP_MOODS = [
 ];
 // 並べる数：スマホは4皿（2×2）。画面が広い（幅600px以上）か、縦に長い（高さ900px以上）時は6皿（2026-11-08 のユーザーの判断）。
 // 広い画面は3列×2段、縦に長いスマホは2列×3段（列の数は CSS で決める）。
+// 縦の長さは、Safari のアドレスバーが出たり引っ込んだりしても変わらない画面の高さ（screen.height）で決める（見えている高さで決めると、
+// 下へ動かすたびに4皿と6皿が入れ替わってしまう。レビューで見つけた）。縦持ちの時だけ見る（iPhone は横にしても screen の値が縦のまま）。
 function swapSize() {
   const w = Number(globalThis.innerWidth) || 0, h = Number(globalThis.innerHeight) || 0;
-  return w >= 600 || h >= 900 ? 6 : 4;
+  const tall = h > w && Math.max(h, Number(globalThis.screen?.height) || 0) >= 900;
+  return w >= 600 || tall ? 6 : 4;
 }
 // 料理の札（1つだけ）。今夜の4皿では写真の外（料理名の下の行）に出す（YouTube のサムネイルの文字とぶつけない）。
 function dishBadge(r, { reuse = [], medal = "" } = {}) {

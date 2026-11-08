@@ -700,6 +700,20 @@ test("app: invite members fill the placeholders and carry earlier ratings", () =
   assert.equal(run("me()"), "パパ");
 });
 
+test("review (2026-11-08): a viewer who sends 「🙋 がいいと送る」 from the recipe page goes back to the plan", () => {
+  const run = app();
+  run('state.family=["パパ","むすめ"];state.me="むすめ";state.sync={code:"x",roomId:"a".repeat(64),lastSyncAt:""};state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()};syncEnabled=()=>true');
+  const d = run("addDays(today(),1)");
+  run(`handleDailyAction("life-swap",{date:${JSON.stringify(d)}})`);
+  const id = run("swapCurrentIds()[0] || allDinnerRecipes()[0].id");
+  run(`handleDailyAction("life-swap-detail",{recipe:${JSON.stringify(id)}})`);
+  assert.equal(run("state.view"), "recipe");
+  run(`handleDailyAction("life-request-swap",{date:${JSON.stringify(d)},recipe:${JSON.stringify(id)}})`);
+  assert.equal(run("openRequests()[0].recipeId"), id);
+  assert.equal(run("state.view"), "plan");
+  assert.equal(run("swapDetailId"), "");
+});
+
 test("app: viewers see the plan but only send requests; the owner applies a dated request", () => {
   const run = app();
   run('state.family=["パパ","むすめ"];state.me="むすめ";state.sync={code:"x",roomId:"a".repeat(64),lastSyncAt:""};state.roles={members:{"パパ":"owner","むすめ":"viewer"},updatedAt:nowIso()};syncEnabled=()=>true');
@@ -1128,6 +1142,12 @@ test("今夜の4皿 (§64): four photos of different kinds (main, rice/noodle, t
   assert.match(run("renderSwapChoices()"), /🔄 別の6皿/);
   run("globalThis.innerWidth = 430; globalThis.innerHeight = 932");
   assert.equal([...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="/g)].length, 6);
+  // Safari のアドレスバーで見えている高さが縮んでも、画面の高さが900以上なら6皿のまま（下へ動かすたびに入れ替わらない）
+  run("globalThis.innerHeight = 760; globalThis.screen = { width: 430, height: 932 }");
+  assert.equal(run("swapSize()"), 6);
+  run("globalThis.screen = { width: 390, height: 844 }; globalThis.innerHeight = 760");
+  assert.equal(run("swapSize()"), 4);
+  run("delete globalThis.screen");
   run("globalThis.innerWidth = 390; globalThis.innerHeight = 844");
   assert.equal([...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="/g)].length, 4);
   run("delete globalThis.innerWidth; delete globalThis.innerHeight");
