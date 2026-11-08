@@ -330,6 +330,8 @@ function handleHouseholdAction(action, data) {
       const id = generateId("req-");
       state.requests[id] = { id, recipeId: recipe.id, recipeTitle: recipe.title, from: me(), date: data.date, status: "open", createdAt: nowIso(), updatedAt: nowIso() };
       swapDate = "";
+      // 今夜の4皿から開いたレシピで送った時は、献立の画面へ戻る（レビューで見つけた）。
+      if (typeof swapDetailId !== "undefined" && swapDetailId) { swapDetailId = ""; state.view = "plan"; }
       showToast(`「${recipe.title}」を送りました。`);
     }
     saveState(); render(); return true;

@@ -775,7 +775,7 @@ test("今夜の4皿 (§64): the mood chips narrow the four right away and do not
   assert.ok(html.includes("⚡ 15分以内") && html.includes('data-action="life-swap-mood"'));
   run("handleDailyAction('life-swap-mood',{mood:'quick'})");
   html = run("renderSwapChoices()");
-  const ids = [...html.matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+  const ids = [...html.matchAll(/data-action="life-swap-detail" data-recipe="([^"]+)"/g)].map((m) => m[1]);
   assert.ok(ids.length > 0 && ids.every((id) => run(`allDinnerRecipes().find((r) => r.id === ${JSON.stringify(id)}).planning.minutes`) <= 15), "only quick dishes");
   assert.match(html, /data-mood="quick" aria-pressed="true"/);
   assert.equal(run("JSON.stringify(state.tasteProfile?.decisions || {})"), "{}", "a mood is for tonight only, not a policy");
@@ -787,9 +787,10 @@ test("今夜の4皿 (§64): the mood chips narrow the four right away and do not
   // 家族の画面を見ているだけの人：押すと「送る」
   run("isViewer = () => true");
   html = run("renderSwapChoices()");
-  const one = html.match(/data-action="life-swap-pick" data-recipe="([^"]+)"/)[1];
-  run(`handleDailyAction('life-swap-pick',{recipe:${JSON.stringify(one)}})`);
-  assert.match(run("renderSwapChoices()"), /data-action="life-request-swap"[\s\S]*がいいと送る/);
+  const one = html.match(/data-action="life-swap-detail" data-recipe="([^"]+)"/)[1];
+  assert.ok(!run("renderSwapChoices()").includes("life-swap-remove"), "no pass for viewers");
+  run(`handleDailyAction('life-swap-detail',{recipe:${JSON.stringify(one)}})`);
+  assert.match(run("renderRecipeDetail()"), /data-action="life-request-swap"[\s\S]*がいいと送る/);
 });
 
 test("D: a records-based suggestion shows on the today screen (one at a time, before the extra questions) and can be answered there", () => {
@@ -819,11 +820,12 @@ test("a decided dinner can be changed from the today card; bought ingredients st
   let html = run("renderSwapChoices()");
   assert.ok(html.includes(`🧺 買った${name}を使う`) && /data-action="life-swap-bought" data-use="skip" aria-pressed="true"/.test(html), "ON from the start");
   assert.ok(!html.includes("使う料理から選ぶ"), "no question");
-  const first = html.match(/data-action="life-swap-pick" data-recipe="([^"]+)"/)[1];
+  const first = html.match(/data-action="life-swap-detail" data-recipe="([^"]+)"/)[1];
   assert.ok(run(`allDinnerRecipes().find((r) => r.id === ${JSON.stringify(first)}).ingredients.some((i) => Lifestyle.shoppingName(i.name) === boughtName)`), "a dish using it comes first");
   // ✓ をつけると、使う材料と新しく買う物を先に見せる（4枚とも同じ札の時は、写真の札は出さない）
-  run(`handleDailyAction('life-swap-pick',{recipe:${JSON.stringify(first)}})`);
-  const bar = run("renderSwapChoices()");
+  run(`handleDailyAction('life-swap-detail',{recipe:${JSON.stringify(first)}})`);
+  const bar = run("renderRecipeDetail()");
+  run(`handleDailyAction('life-swap-back',{})`);
   assert.match(bar, /swap-pickbar[\s\S]*🛒 新しく(買う：|買う物はありません)/);
   assert.ok(bar.includes(`🧺 ${name}`), "it says the bought one is used");
   // 外すと、並びはふつうに
@@ -877,7 +879,7 @@ test("reusing bought ingredients weighs the main ones (meat, fish, tofu 3 / vege
     handleDailyAction('life-swap',{date:today()});`);
   assert.deepEqual(JSON.parse(run("JSON.stringify(swapBoughtItems(today()))")), [{ name: "豚こま", weight: 3 }, { name: "キャベツ", weight: 1 }], "no rice, soy sauce or oil; the main one first");
   assert.ok(run("renderSwapChoices()").includes("🧺 買った豚こま・キャベツを使う"));
-  const ids = [...run("renderSwapChoices()").matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+  const ids = [...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="([^"]+)"/g)].map((m) => m[1]);
   const uses = (id, n) => run(`allDinnerRecipes().find((r) => r.id === ${JSON.stringify(id)}).ingredients.some((i) => Lifestyle.shoppingName(i.name) === ${JSON.stringify(n)})`);
   assert.ok(uses(ids[0], "豚こま") && uses(ids[0], "キャベツ"), "both first");
   const lastPork = ids.map((id) => uses(id, "豚こま")).lastIndexOf(true);
