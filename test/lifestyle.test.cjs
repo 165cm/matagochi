@@ -1109,31 +1109,46 @@ test("speed (2026-11-07): one screen draw makes the plan once, even with the 4-d
   assert.equal(run("planCalls"), 2, "outside a draw, nothing is remembered (state may have changed)");
 });
 
-test("今夜の4皿 (§64): four photos of different kinds (main, rice/noodle, taste), a ✓ before choosing, no old headings", () => {
+test("今夜の4皿 (§64): four photos of different kinds (main, rice/noodle, taste); a photo opens the recipe, where you choose or go back", () => {
   const run = app();
   run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
   const html = run("renderSwapChoices()");
-  const ids = [...html.matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+  const ids = [...html.matchAll(/data-action="life-swap-detail" data-recipe="([^"]+)"/g)].map((m) => m[1]);
   assert.ok(!/まだ作っていない|評価順ベスト3|ほかの候補|変えたい理由は？|🔀/.test(html), "the old headings, the why-question and the shuffle are gone");
   assert.equal(ids.length, 4, "four photos");
   const trait = (id, k) => run(`Lifestyle.traits(allDinnerRecipes().find((r) => r.id === ${JSON.stringify(id)})).${k}`);
   assert.ok(new Set(ids.map((id) => trait(id, "protein"))).size >= 3, "different main ingredients");
   assert.ok(new Set(ids.map((id) => trait(id, "staple"))).size >= 2, "not four rice bowls");
   assert.ok(!html.includes('data-action="life-choose"'), "nothing is chosen by a single tap");
-  assert.ok(!/swap-photo">[^]*?swap-badge/.test(html), "no badge on the photo (it would hit the thumbnail's own words)");
-  run(`handleDailyAction("life-swap-pick",{recipe:${JSON.stringify(ids[1])}})`);
-  assert.match(run("renderSwapChoices()"), /is-picked[\s\S]*swap-pickbar[\s\S]*data-action="life-choose"/);
+  // 2026-11-08：時間・札と「✕ パス」は写真の上（どの料理の情報か一目で）
+  assert.match(html, /class="swap-photo">[\s\S]*?swap-min[\s\S]*?<\/span><strong class="swap-name">[\s\S]*?class="swap-x"/);
+  // 写真 → レシピ（上は「‹ 4皿に戻る」、下に「✓ この料理にする／‹ 4皿に戻る」）
+  run(`handleDailyAction("life-swap-detail",{recipe:${JSON.stringify(ids[1])}})`);
+  assert.equal(run("state.view"), "recipe");
+  let detail = run("renderRecipeDetail()");
+  assert.match(detail, /data-action="life-swap-back">‹ 4皿に戻る[\s\S]*swap-pickbar[\s\S]*data-action="life-choose"[\s\S]*✓ この料理にする[\s\S]*life-swap-back/);
+  assert.ok(!detail.includes("life-place-open"), "not the usual 「献立に入れる」");
+  // 戻ると4皿（パスなどはそのまま）
+  run(`handleDailyAction("life-swap-back",{})`);
+  assert.equal(run("state.view"), "plan");
+  assert.equal(run("swapDate"), run("addDays(today(),1)"));
+  // もう一度開いて決める → 献立の画面へ
+  run(`handleDailyAction("life-swap-detail",{recipe:${JSON.stringify(ids[1])}})`);
   run(`handleDailyAction("life-choose",{recipe:${JSON.stringify(ids[1])},date:addDays(today(),1)})`);
   assert.equal(run("state.planOverrides[addDays(today(),1)]"), ids[1]);
   assert.equal(run("swapDate"), "");
+  assert.equal(run("state.view"), "plan");
+  // ふつうにレシピを開いた時は、いつもの画面
+  run(`handleDailyAction("life-recipe-open",{recipe:${JSON.stringify(ids[1])}})`);
+  assert.ok(run("renderRecipeDetail()").includes("life-place-open"));
 });
 
 test("今夜の4皿 §64-2 消去法: ✕ swaps one card in place, what was removed is pushed back for now, and it can be undone", () => {
   const run = app();
   run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
-  const ids = () => [...run("renderSwapChoices()").matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+  const ids = () => [...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="([^"]+)"/g)].map((m) => m[1]);
   const before = ids();
-  assert.match(run("renderSwapChoices()"), /「✕ パス」/);
+  assert.match(run("renderSwapChoices()"), /swap-bubble">食べたくないのは「✕ パス」してね/);
   run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(before[2])}})`);
   const after = ids();
   assert.equal(after.length, 4);
@@ -1144,7 +1159,8 @@ test("今夜の4皿 §64-2 消去法: ✕ swaps one card in place, what was remo
   const fish = JSON.parse(run(`JSON.stringify(swapCandidates().ok.filter((x) => Lifestyle.traits(x.r).protein === "fish").slice(0, 2).map((x) => x.r.id))`));
   fish.forEach((id) => run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(id)}})`));
   const html = run("renderSwapChoices()");
-  assert.match(html, /data-action="life-swap-unlearn" data-key="g:fish"[^>]*>🙅 魚 少なめ/, "the 🐟 chip turns into 「🙅 魚 少なめ 解除」");
+  assert.match(html, /少なめ：<\/span><button[^>]*data-action="life-swap-unlearn" data-key="g:fish"[^>]*>魚 ✕/, "少なめ：[魚 ✕]");
+  assert.match(html, /swap-bubble">魚の気分じゃないんだね/, "よはく says it for you");
   const isFish = (id) => run(`Lifestyle.traits(allDinnerRecipes().find((r) => r.id === ${JSON.stringify(id)})).protein`) === "fish";
   // 残している料理は動かさない。次にパスした枠に入る料理から、魚を後ろへ（Codex review #234）
   const keep = ids();
@@ -1173,7 +1189,7 @@ test("今夜の4皿 (§64): one card per dish name, an honest end (only what was
   run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
   const seen = [];
   for (let i = 0; i < 80; i += 1) {
-    const page = [...run("renderSwapChoices()").matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+    const page = [...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="([^"]+)"/g)].map((m) => m[1]);
     if (!page.length) break;
     seen.push(...page.filter((id) => !seen.includes(id)));
     run(`handleDailyAction("life-swap-remove-all",{})`);
@@ -1190,7 +1206,7 @@ test("今夜の4皿 §64-2 (第3回): 「🔄 別の4皿」 learns nothing, 「�
   run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
   run(`handleDailyAction("life-swap-remove-all",{})`);
   assert.doesNotMatch(run("renderSwapChoices()"), /life-swap-unlearn/, "no 少なめ from a bulk change");
-  assert.match(run("renderSwapChoices()"), /🙅 パス 0品[\s\S]*↩ 戻す/);
+  assert.match(run("renderSwapChoices()"), /ぜんぶちがった？[\s\S]*↩ 戻す/);
   // 魚の丼だけを2品パス → 魚か丼か分からないので、どちらも「少なめ」に出さない
   run(`swapRemoved=[]`);
   const pair = JSON.parse(run(`JSON.stringify(allDinnerRecipes().filter((r) => { const t = Lifestyle.traits(r); return t.protein === "fish" && t.staple === "rice"; }).slice(0, 2).map((r) => r.id))`));
@@ -1214,20 +1230,38 @@ test("今夜の4皿 §64-2 (第3回): 「🔄 別の4皿」 learns nothing, 「�
   assert.ok(!run(`swapLearned(${ev}).includes("g:fish")`), "your own 🐟 choice wins");
 });
 
-test("review #234: passing a second card keeps the dish that came into the first card (and its ✓)", () => {
+test("2026-11-08: よはく says what you mean (a guess after one pass, sure after two, and when you take it back)", () => {
   const run = app();
   run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
-  const ids = () => [...run("renderSwapChoices()").matchAll(/data-action="life-swap-pick" data-recipe="([^"]+)"/g)].map((m) => m[1]);
+  const bubble = () => (run("renderSwapChoices()").match(/swap-bubble">([^<]+)</) || [])[1];
+  assert.match(bubble(), /「✕ パス」してね/);
+  const rich = JSON.parse(run(`JSON.stringify(swapCandidates().ok.filter((x) => Lifestyle.tags(x.r).includes("rich")).map((x) => x.r.id))`));
+  assert.ok(rich.length >= 2, "two rich dishes in the starters");
+  run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(rich[0])}})`);
+  assert.match(bubble(), /じゃない気分かな？/, "a guess after one");
+  run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(rich[1])}})`);
+  const html = run("renderSwapChoices()");
+  if (/data-key="t:rich"/.test(html)) assert.match(bubble(), /こってりの気分じゃないんだね/);
+  run(`handleDailyAction("life-swap-undo",{})`);
+  assert.equal(bubble(), "戻したよ");
+  run(`handleDailyAction("life-swap-mood",{mood:"quick"})`);
+  assert.equal(bubble(), "15分以内だね。しぼったよ");
+  assert.match(run("renderSwapChoices()"), /class="yohaku yohaku-\w+ swap-yohaku"/, "one よはく in the sheet");
+});
+
+test("review #234: passing a second card keeps the dish that came into the first card", () => {
+  const run = app();
+  run(`state.onboarded=true;state.rhythm=null;swapDate=addDays(today(),1)`);
+  const ids = () => [...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="([^"]+)"/g)].map((m) => m[1]);
   const first = ids();
   run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(first[0])}})`);
   const a = ids();
-  run(`handleDailyAction("life-swap-pick",{recipe:${JSON.stringify(a[0])}})`);
   run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(a[3])}})`);
   const b = ids();
   assert.equal(b[0], a[0], "the dish that came in first stays");
   assert.deepEqual(b.slice(1, 3), a.slice(1, 3));
   assert.notEqual(b[3], a[3]);
-  assert.match(run("renderSwapChoices()"), /swap-pickbar[\s\S]*data-action="life-choose"/, "the ✓ stays too");
+
 });
 
 test("review #234: a passed dish also rests when it sits in a saved automatic draft (not in a dish you chose yourself)", () => {
