@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261107-four-dishes-review3";
+const APP_VERSION = "20261107-faster";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1426,7 +1426,13 @@ function setView(view) {
   globalThis.scrollTo?.({top:0,behavior:"instant"});
 }
 
+// 1回の描き直しの間は、献立の計算（dailyPlan）を1回だけにする（献立の画面と今夜の4皿で何度も作り直さない。2026-11-07）。
 function render() {
+  if (typeof beginPlanMemo !== "function") return renderView();
+  beginPlanMemo();
+  try { return renderView(); } finally { endPlanMemo(); }
+}
+function renderView() {
   // Google側の画面が開いている間は元のiframeを壊さない。
   if (typeof googleAuthPending === "function" && googleAuthPending() && state.view === "settings") return;
   cancelAutoAdvance();

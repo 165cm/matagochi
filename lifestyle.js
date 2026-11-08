@@ -5,6 +5,22 @@
   const SkillDB = () => (typeof module !== "undefined" && module.exports ? require("./skills.js") : root.Skills);
   const Starter = typeof module !== "undefined" && module.exports ? require("./starter-recipes.js") : root.StarterRecipes;
   const copy = (value) => JSON.parse(JSON.stringify(value));
+  // 料理ごとの答えを覚えて使い回す（同じ料理なら答えが変わらない判定だけ。2026-11-07：400品でも速く）。
+  // 料理の中身（料理名・材料・手順など sigOf の文字）が変わったら計算し直す。返す値は写しにする（呼んだ側が書きかえても覚えた値は変わらない）。
+  function memoByRecipe(fn, sigOf, out = (v) => v) {
+    const cache = new WeakMap();
+    return function (recipe, ...rest) {
+      if (!recipe || typeof recipe !== "object" || rest.length) return fn(recipe, ...rest);
+      const sig = sigOf(recipe);
+      const hit = cache.get(recipe);
+      if (hit && hit.sig === sig) return out(hit.value);
+      const value = fn(recipe);
+      cache.set(recipe, { sig, value });
+      return out(value);
+    };
+  }
+  const namesSig = (r) => (r.ingredients || []).map((i) => (i && i.name) || "").join("\u0001");
+  const recipeSig = (r) => [r.title || "", namesSig(r), (r.steps || []).join("\u0001"), (r.planning?.equipment || []).join("\u0001"), r.planning?.minutes || "", (r.planning?.tastes || r.tags || []).join("\u0001"), r.id || "", r.starterId || ""].join("\u0002");
   const list = (value) =>
     Array.isArray(value)
       ? [
@@ -602,7 +618,8 @@
   const FISH_RE = /鮭|さけ|サケ|サーモン|さば|サバ|鯖|ぶり|ブリ|鰤|かれい|カレイ|鰈|たら(?!し)|タラ|鱈|あじ|アジ|鯵|いわし|イワシ|鰯|さんま|サンマ|秋刀魚|まぐろ|マグロ|鮪|かつお|カツオ|鰹|鯛|めかじき|かじき|カジキ|ひらめ|すずき|うなぎ|ししゃも|えび|エビ|海老|いか|イカ|たこ(?!焼)|タコ(?!ライス)|ほたて|ホタテ|帆立|あさり|アサリ|しじみ|かき|カキ|牡蠣|しらす|ちりめん|ツナ|明太|たらこ|かに(?!かま)|カニ(?!カマ)|蟹|白身|切り身|魚/;
   const SEASONING_RE = /(かつお|カツオ|鰹)(節|ぶし|だし|風味)|削り節|花かつお|だしの素|ほんだし|顆粒だし|和風だし|白だし|めんつゆ|魚醤|ナンプラー|オイスター(ソース)?|えびせん|鶏ガラ|鶏がら|ガラスープ|コンソメ|ブイヨン|豚骨|とんこつ|牛脂|中華だし|ウェイパー|味の素/g;
   const mainText = (s) => String(s || "").replace(SEASONING_RE, " ");
-  function traits(recipe) {
+  const traits = memoByRecipe(traitsRaw, recipeSig, (v) => ({ ...v }));
+  function traitsRaw(recipe) {
     const title = String(recipe?.title || "");
     const raw = (recipe?.ingredients || []).map((i) => i.name).join(" ");
     const names = mainText(raw);
@@ -636,7 +653,8 @@
     soup: /スープ|汁|麻辣湯/, ethnic: /ナンプラー|ガパオ|タコライス|ビリヤニ|ヤンニョム|コチュジャン|エスニック/,
     micro: /レンジ/, pan: /フライパン|炒め|焼き/, pot: /鍋|ゆで|茹で|煮/,
   };
-  function tags(recipe = {}) {
+  const tags = memoByRecipe(tagsRaw, recipeSig, (v) => [...v]);
+  function tagsRaw(recipe = {}) {
     const names = (recipe.ingredients || []).map((x) => x.name).join(" ");
     const text = [recipe.title, names, ...(recipe.steps || []), ...(recipe.planning?.equipment || [])].join(" ");
     const t = traits(recipe);
@@ -784,7 +802,8 @@
   ];
   // 冷凍品・乾物・缶詰・加工品は急がない（「冷凍えび」「ツナ缶」など）。
   const KEEPS = /冷凍|缶|乾燥|干し|ツナ|ベーコン|ハム|ソーセージ|ウインナー|ちくわ|かまぼこ|カニカマ|練り物/;
-  function freshness(recipe = {}) {
+  const freshness = memoByRecipe(freshnessRaw, namesSig, (v) => ({ ...v }));
+  function freshnessRaw(recipe = {}) {
     let urgency = 0, total = 0, label = "";
     for (const i of recipe.ingredients || []) {
       const name = String(i?.name || "");
@@ -806,7 +825,8 @@
     [/きゅうり|胡瓜/, "きゅうり"], [/トマト(?!ケチャップ|ピューレ|ペースト)/, "トマト"], [/じゃがいも|ジャガイモ/, "じゃがいも"],
     [/さつまいも/, "さつまいも"], [/しめじ/, "しめじ"], [/えのき/, "えのき"], [/しいたけ|椎茸/, "しいたけ"], [/まいたけ|舞茸/, "まいたけ"], [/エリンギ/, "エリンギ"],
   ];
-  function useUpKeys(recipe = {}) {
+  const useUpKeys = memoByRecipe(useUpKeysRaw, namesSig, (v) => new Set(v));
+  function useUpKeysRaw(recipe = {}) {
     const found = new Set();
     for (const i of recipe.ingredients || []) {
       const name = String(i?.name || "").normalize("NFKC");
@@ -853,7 +873,10 @@
     // 自動では選ばない料理（「もう出さない」にした親の作り方など）。自分で選んだ日・ピン留めの日だけ入る。
     autoBlocked = () => false,
   }) {
-    const between = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
+    // 日付の差は何千回も聞かれるので、日付ごとの通し番号を覚えて引き算だけにする（2026-11-07：400品でも速く）。
+    const dayNo = new Map();
+    const dayOf = (d) => { let n = dayNo.get(d); if (n === undefined) { n = Math.round(Date.parse(d + "T12:00:00Z") / 86400000); dayNo.set(d, n); } return n; };
+    const between = (a, b) => dayOf(b) - dayOf(a);
     // What was eaten before the plan starts, plus what the plan has picked so far.
     const timeline = history.filter((m) => m?.date && m.recipe && m.date < start).map((m) => ({ date: m.date, recipe: m.recipe }));
     const used = new Set(

@@ -29,7 +29,18 @@
   const LEVELS = { 1: "はじめて", 2: "慣れてきた", 3: "ふつう", 4: "得意", 5: "上級" };
   // Hand-checked where the text alone misleads (id → level). Kept small on purpose.
   const OVERRIDES = {};
+  // 同じ手順なら答えは同じなので、料理ごとに覚えて使い回す（手順・id が変わったら計算し直す。2026-11-07：400品でも速く）。
+  const rateMemo = new WeakMap();
   function rate(recipe = {}) {
+    if (!recipe || typeof recipe !== "object") return rateRaw(recipe);
+    const sig = `${recipe.starterId || recipe.id || ""}\u0002${(recipe.steps || []).join("\u0001")}`;
+    const hit = rateMemo.get(recipe);
+    if (hit && hit.sig === sig) return { ...hit.value, skills: [...hit.value.skills] };
+    const value = rateRaw(recipe);
+    rateMemo.set(recipe, { sig, value });
+    return { ...value, skills: [...value.skills] };
+  }
+  function rateRaw(recipe = {}) {
     // Techniques come from the steps; titles such as 焼きうどん / 包まない小籠包 would mislead.
     const text = (recipe.steps || []).join(" ");
     const found = SKILLS.filter((s) => s.re.test(text));
