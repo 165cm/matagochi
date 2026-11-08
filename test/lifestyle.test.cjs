@@ -1120,8 +1120,17 @@ test("今夜の4皿 (§64): four photos of different kinds (main, rice/noodle, t
   assert.ok(new Set(ids.map((id) => trait(id, "protein"))).size >= 3, "different main ingredients");
   assert.ok(new Set(ids.map((id) => trait(id, "staple"))).size >= 2, "not four rice bowls");
   assert.ok(!html.includes('data-action="life-choose"'), "nothing is chosen by a single tap");
-  // 2026-11-08：時間・札と「✕ パス」は写真の上（どの料理の情報か一目で）
-  assert.match(html, /class="swap-photo">[\s\S]*?swap-min[\s\S]*?<\/span><strong class="swap-name">[\s\S]*?class="swap-x"/);
+  // 2026-11-08（2回目）：写真の上には重ねない。写真のすぐ下の1行に「⏱時間 · 札」と「✕ パス」、その下に料理名
+  assert.match(html, /<span class="swap-photo"><img[^>]*><\/span><\/button><div class="swap-meta"><small class="swap-min">[^<]*<\/small><button type="button" class="swap-x"[\s\S]*?<\/div><button[^>]*><strong class="swap-name">/);
+  // 広い画面（タブレット・パソコン）や縦に長いスマホでは6皿
+  run("globalThis.innerWidth = 1024; globalThis.innerHeight = 768");
+  assert.equal([...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="/g)].length, 6);
+  assert.match(run("renderSwapChoices()"), /🔄 別の6皿/);
+  run("globalThis.innerWidth = 430; globalThis.innerHeight = 932");
+  assert.equal([...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="/g)].length, 6);
+  run("globalThis.innerWidth = 390; globalThis.innerHeight = 844");
+  assert.equal([...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="/g)].length, 4);
+  run("delete globalThis.innerWidth; delete globalThis.innerHeight");
   // 写真 → レシピ（上は「‹ 4皿に戻る」、下に「✓ この料理にする／‹ 4皿に戻る」）
   run(`handleDailyAction("life-swap-detail",{recipe:${JSON.stringify(ids[1])}})`);
   assert.equal(run("state.view"), "recipe");

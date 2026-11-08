@@ -4392,17 +4392,18 @@ body.has-sheet { overflow: hidden; }
 .pass-ask .todo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .todo-row.pass-ask { grid-template-columns: 24px minmax(0, 1fr); }
 .todo-row.pass-ask .todo-actions { grid-column: 1 / -1; justify-content: flex-end; }
-/* 2026-11-08 のユーザーの判断：時間・札と「✕ パス」は写真の上（どの料理の情報か一目で）。料理名の下に隙間を作らない。
-   「✕ パス」は右上に目立たせる。写真・料理名を押すとレシピへ（その中で「この料理にする／4皿に戻る」） */
-.swap-card { position: relative; }
-.swap-photo .swap-min { position: absolute; left: 5px; bottom: 5px; max-width: calc(100% - 10px); padding: 2px 8px; border-radius: 999px; background: rgba(30, 20, 12, .68); color: #fff; font-size: 11px; font-weight: 800; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.swap-x { position: absolute; top: 0; right: 0; z-index: 1; display: grid; place-items: start end; width: 76px; height: 44px; padding: 5px 5px 0 0; border: 0; background: none; cursor: pointer; }
-.swap-x span { display: inline-flex; align-items: center; height: 30px; padding: 0 11px; border-radius: 999px; background: var(--tomato); color: #fff; font-size: 13px; font-weight: 900; line-height: 1; white-space: nowrap; box-shadow: 0 2px 8px rgba(40, 20, 10, .35); border: 1.5px solid rgba(255, 255, 255, .85); }
+/* 2026-11-08 のユーザーの判断（2回目）：写真の上には重ねない。写真のすぐ下の1行に「⏱時間 · 札」と目立つ「✕ パス」、その下に料理名 */
+.swap-card { position: relative; display: grid; align-content: start; }
+.swap-meta { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; min-height: 36px; }
+.swap-meta .swap-min { min-width: 0; color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swap-x { flex: none; display: grid; place-items: center end; min-width: 64px; height: 44px; margin: -4px 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.swap-x span { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--tomato); color: #fff; font-size: 12px; font-weight: 900; line-height: 1; white-space: nowrap; box-shadow: 0 2px 6px rgba(238, 106, 76, .35); }
 .swap-x:active span { transform: scale(.94); }
 .swap-x:focus-visible span { outline: 3px solid var(--sage); outline-offset: 2px; }
 .swap-card.is-hint .swap-x span { animation: swap-x-hint 1.6s ease-in-out 2; }
 @keyframes swap-x-hint { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
-.swap-name { margin-top: 2px; }
+.swap-title { padding: 0; }
+.swap-name { margin-top: 0; }
 /* 秘書のよはく：吹き出しで気持ちを代弁し、その下に「少なめ：[こってり ✕]」だけ（高さは固定＝写真がずれない） */
 .swap-status { display: flex; align-items: center; gap: 8px; min-height: 72px; margin: 0 0 8px; }
 .swap-status .swap-yohaku { flex: none; width: 56px; height: 56px; }
@@ -4417,3 +4418,8 @@ body.has-sheet { overflow: hidden; }
 .swap-pick-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .swap-pick-actions .primary-button, .swap-pick-actions .secondary-button { min-height: 48px; }
 @media (prefers-reduced-motion: reduce) { .swap-card.is-hint .swap-x span { animation: none; } }
+/* 6皿：広い画面（幅600px以上）は3列×2段で、シートも広く。縦に長いスマホ（高さ900px以上）は2列×3段のまま */
+@media (min-width: 600px) {
+  .swap-panel.swap-sheet { width: min(100%, 720px); }
+  .swap-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

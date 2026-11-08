@@ -926,7 +926,12 @@ const SWAP_MOODS = [
   ["fish", "🐟 魚", (r) => Lifestyle.traits(r).protein === "fish"],
   ["light", "🍋 さっぱり", (r) => Lifestyle.tags(r).includes("light")],
 ];
-const SWAP_SIZE = 4;
+// 並べる数：スマホは4皿（2×2）。画面が広い（幅600px以上）か、縦に長い（高さ900px以上）時は6皿（2026-11-08 のユーザーの判断）。
+// 広い画面は3列×2段、縦に長いスマホは2列×3段（列の数は CSS で決める）。
+function swapSize() {
+  const w = Number(globalThis.innerWidth) || 0, h = Number(globalThis.innerHeight) || 0;
+  return w >= 600 || h >= 900 ? 6 : 4;
+}
 // 料理の札（1つだけ）。今夜の4皿では写真の外（料理名の下の行）に出す（YouTube のサムネイルの文字とぶつけない）。
 function dishBadge(r, { reuse = [], medal = "" } = {}) {
   if (medal) return medal;
@@ -1014,7 +1019,7 @@ function swapFirstFour(list, diverse, original) {
   const gap = (r) => { const m = /(\d+)日前/.exec(lastEatenLabel(r)); return m ? Number(m[1]) : 0; };
   const fav = diverse && list.find((x) => cookCount(x.r) > 0 && loveScore(x.r) >= 4 && gap(x.r) >= 7);
   if (fav) picks.push(fav);
-  while (picks.length < SWAP_SIZE) {
+  while (picks.length < swapSize()) {
     const next = swapBest(list, new Set(picks.map((x) => x.r.id)), ev, picks.map((x) => x.r), diverse);
     if (!next) break;
     picks.push(next);
@@ -1164,7 +1169,7 @@ function swapNewToBuy(r) {
 }
 function swapPickBar(r, reuse) {
   if (!r) return "";
-  const back = `<button type="button" class="secondary-button" data-action="life-swap-back">‹ 4皿に戻る</button>`;
+  const back = `<button type="button" class="secondary-button" data-action="life-swap-back">‹ ${swapSize()}皿に戻る</button>`;
   if (isViewer()) return `<div class="swap-pickbar">${dailyButton("life-request-swap", `🙋 「${r.title.slice(0, 14)}」がいいと送る`, `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`, true)}${back}</div>`;
   let need = "";
   const names = swapNewToBuy(r);
@@ -1172,13 +1177,16 @@ function swapPickBar(r, reuse) {
   const uses = reuse.length ? usesNames(r, reuse) : [];
   return `<div class="swap-pickbar">${need || uses.length ? `<p class="swap-pick-note">${uses.length ? `🧺 ${escapeHtml(namesOf(uses, 2))}を使う${need ? " · " : ""}` : ""}${escapeHtml(need)}</p>` : ""}<div class="swap-pick-actions">${dailyButton("life-choose", "✓ この料理にする", `data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}"`, true)}${back}</div></div>`;
 }
-// カード（2026-11-08 のユーザーの判断）：時間・札と「✕ パス」は写真の上に（どの料理の情報か一目でわかる・料理名の下に隙間を作らない）。
-// 「✕ パス」は右上に目立たせる（この画面はパスして好みに寄せていく作り）。写真・料理名を押すとレシピへ（レシピの中で「決める／戻る」）。
+// カード（2026-11-08 のユーザーの判断・2回目）：写真の上には何も重ねない（サムネイルの文字とぶつけない）。
+// 写真のすぐ下の1行に「⏱時間 · 札」と目立つ「✕ パス」（写真に付いた行なので、どの料理の情報か一目でわかる）。その下に料理名（隙間は作らない）。
+// 写真・料理名を押すとレシピへ（レシピの中で「この料理にする／戻る」）。
 function swapCard({ r }, opts) {
   const badge = opts.badge ?? dishBadge(r, opts);
   const minutes = r.planning?.minutes ? `⏱${r.planning.minutes}分` : "";
   const meta = [minutes, badge, opts.used?.has(r.id) ? "ほかの日と同じ" : ""].filter(Boolean).map(escapeHtml).join(" · ");
-  return `<div class="swap-card${opts.fresh ? " is-fresh" : ""}${opts.hint ? " is-hint" : ""}"><button type="button" class="swap-pick" data-action="life-swap-detail" data-recipe="${escapeAttr(r.id)}" aria-label="${escapeAttr(r.title)}のレシピを見る"><span class="swap-photo">${dishTile(r, "swap-tile")}${meta ? `<small class="swap-min">${meta}</small>` : ""}</span><strong class="swap-name">${recipeTitleHtml(r)}</strong></button>${opts.removable ? `<button type="button" class="swap-x" data-action="life-swap-remove" data-recipe="${escapeAttr(r.id)}" aria-label="「${escapeAttr(r.title.slice(0, 20))}」をパス"><span>✕ パス</span></button>` : ""}</div>`;
+  // 写真と料理名のどちらからでもレシピへ（料理名のボタンは、読み上げでは写真と重ならないように隠す）。
+  const open = (inner, cls, title = false) => `<button type="button" class="${cls}" ${title ? `data-recipe="${escapeAttr(r.id)}" data-action="life-swap-detail" tabindex="-1" aria-hidden="true"` : `data-action="life-swap-detail" data-recipe="${escapeAttr(r.id)}" aria-label="${escapeAttr(r.title)}のレシピを見る"`}>${inner}</button>`;
+  return `<div class="swap-card${opts.fresh ? " is-fresh" : ""}${opts.hint ? " is-hint" : ""}">${open(`<span class="swap-photo">${dishTile(r, "swap-tile")}</span>`, "swap-pick")}<div class="swap-meta"><small class="swap-min">${meta}</small>${opts.removable ? `<button type="button" class="swap-x" data-action="life-swap-remove" data-recipe="${escapeAttr(r.id)}" aria-label="「${escapeAttr(r.title.slice(0, 20))}」をパス"><span>✕ パス</span></button>` : ""}</div>${open(`<strong class="swap-name">${recipeTitleHtml(r)}</strong>`, "swap-pick swap-title", true)}</div>`;
 }
 // よはくのひとこと（秘書のように、パスした気持ちを代弁する。2026-11-08 のユーザーの判断）。
 const swapWord = (k) => (SWAP_FEATURE_LABEL[k] || "").replace(/^\S+\s/, "");
@@ -1215,7 +1223,7 @@ function renderSwapChoices() {
   if (folder && !mood) {
     const mine = ok.filter((x) => x.r.folder === folder.key);
     const ranked = folderRanking(folder).map((r, i) => (medals.set(r.id, MEDALS[i]), mine.find((x) => x.r.id === r.id))).filter(Boolean);
-    folderFour = [...new Map([...mine.filter((x) => !cookCount(x.r)), ...ranked].map((x) => [x.r.id, x])).values()].slice(0, SWAP_SIZE);
+    folderFour = [...new Map([...mine.filter((x) => !cookCount(x.r)), ...ranked].map((x) => [x.r.id, x])).values()].slice(0, swapSize());
   }
   // 料理名（親）ごとに1枚（八宝菜が2枚並ばない）。今の料理と同じ親は出さない（フォルダの4皿は別）。
   const seenParent = new Set([currentParent]);
@@ -1246,7 +1254,7 @@ function renderSwapChoices() {
   const less = learned.length ? `<div class="swap-less"><span>少なめ：</span>${learned.map((k) => `<button type="button" class="swap-less-chip" data-action="life-swap-unlearn" data-key="${k}" aria-label="${escapeAttr(swapWord(k))}を少なめにするのをやめる">${escapeHtml(swapWord(k))} ✕</button>`).join("")}</div>` : "";
   const status = viewer ? "" : `<div class="swap-status" role="status">${yohaku(pose, "swap-yohaku")}<div class="swap-talk"><p class="swap-bubble">${escapeHtml(words)}</p>${less}</div>${swapRemoved.length ? `<button type="button" class="link-inline swap-undo" data-action="life-swap-undo">↩ 戻す</button>` : ""}</div>`;
   // 下の操作の場所：「🔄 別の4皿」（特徴は学ばない）。決めるのは、写真からレシピを開いて「この料理にする」。
-  const nav = viewer || !cards.length ? "" : `<div class="swap-nav">${left ? `<button type="button" class="secondary-button swap-more" data-action="life-swap-remove-all">🔄 別の4皿</button>` : `<p class="swap-end small" role="status">読み込み済みの候補はここまで（${list.length}品）</p>`}</div>`;
+  const nav = viewer || !cards.length ? "" : `<div class="swap-nav">${left ? `<button type="button" class="secondary-button swap-more" data-action="life-swap-remove-all">🔄 別の${swapSize()}皿</button>` : `<p class="swap-end small" role="status">読み込み済みの候補はここまで（${list.length}品）</p>`}</div>`;
   // 時間・材料を確かめれば選べる自分のレシピは、閉じた1行に（確認すれば選べるので隠さない）。
   const reviewRows = review.length ? `<details class="swap-review"><summary>確認すると選べる ${review.length}品</summary>${review.slice(0, 6).map(({ r }) => `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`).join("")}</details>` : "";
   const day = `${formatDate(swapDate)}（${weekdayLabel(swapDate)}）`;
@@ -3850,8 +3858,12 @@ function renderFunnelStep(key) {
 let swapFocusAt = -1;
 let swapFocusWhat = null;
 const swapFocusables = (sheet) => [...(sheet?.querySelectorAll?.("button, input, summary, [tabindex]:not([tabindex='-1'])") || [])].filter((el) => !el.disabled && el.offsetParent !== null && (el.tagName === "SUMMARY" || !el.closest?.("details:not([open])")));
+let swapSizeSeen = 0;
 function bindSwapSheet() {
   document.body?.classList?.toggle("has-sheet", !!swapDate && state.view === "plan");
+  // 画面の向き・大きさが変わって並べる数（4皿／6皿）が変わったら、描き直す。
+  if (!swapSizeSeen && globalThis.addEventListener) globalThis.addEventListener("resize", () => { if (swapDate && state.view === "plan" && swapSize() !== swapSizeSeen) render(); });
+  swapSizeSeen = swapSize();
   const sheet = document.querySelector(".swap-sheet");
   if (!sheet) { swapFocusAt = -1; return; }
   sheet.addEventListener("keydown", (ev) => {
@@ -4231,7 +4243,7 @@ function renderRecipeDetail() {
   // 今夜の4皿から開いた時：上は「‹ 4皿に戻る」、下に「✓ この料理にする／‹ 4皿に戻る」（新しく買う物も先に見せる）。
   const fromSwap = !!swapDate && swapDetailId === r.id;
   return `<section class="recipe-detail${fromSwap ? " is-from-swap" : ""}">
-    <div class="detail-top">${fromSwap ? `<button type="button" class="text-button cooking-back" data-action="life-swap-back">‹ 4皿に戻る</button>` : `<button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button>`}<div class="detail-top-end">${objectionButton(r)}${more}</div></div>
+    <div class="detail-top">${fromSwap ? `<button type="button" class="text-button cooking-back" data-action="life-swap-back">‹ ${swapSize()}皿に戻る</button>` : `<button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button>`}<div class="detail-top-end">${objectionButton(r)}${more}</div></div>
     ${renderCreatorCredit(r) || dishTile(r, "detail-photo")}
     <h2 class="detail-title">${escapeHtml(r.title)}</h2>
     <p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>
