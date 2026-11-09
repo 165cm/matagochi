@@ -4,7 +4,13 @@ const DISCOVER_KEY = "ripigochi-discover";
 let discover = (() => { try { return JSON.parse(localStorage.getItem(DISCOVER_KEY) || "null") || { trends: [], popular: [], savedAt: "" }; } catch { return { trends: [], popular: [], savedAt: "" }; } })();
 let discoverLoading = false;
 const liveItem = (x) => !x.expiresAt || Date.parse(x.expiresAt) > Date.now();
-function saveDiscover() { try { localStorage.setItem(DISCOVER_KEY, JSON.stringify(discover)); } catch {} }
+// 保存できる量（約5MB）を超えた時は、新着を先頭から減らして保存し直す（画面では全部使える。次に開いた時は届くまで少なめ。§66）。
+function saveDiscover() {
+  try { localStorage.setItem(DISCOVER_KEY, JSON.stringify(discover)); return; } catch {}
+  for (const n of [300, 120]) {
+    try { localStorage.setItem(DISCOVER_KEY, JSON.stringify({ ...discover, trends: (discover.trends || []).slice(0, n) })); return; } catch {}
+  }
+}
 // 期限（取得から28日）を過ぎた人気レシピは、端末からも消す。
 function pruneDiscover() {
   const before = discover.trends.length;
@@ -17,8 +23,24 @@ function tasteSegment() {
   return `${code}-${Math.max(0, Math.min(5, Number(state.skillProfile?.level) || 0))}`;
 }
 let discoverTriedAt = 0;
-// 新着として受け取る数の上限（28日分の新着を、献立の候補にほぼすべて入れる。4週間かぶらない量のため。2026-10-01 に40から広げた）。
-const DISCOVER_TREND_MAX = 120;
+// 新着として受け取る数の上限。2026-11-08 から、届いた新着を全部使う（以前は日ごとのくじの順で先頭120品だけ。
+// 速くした #235 のあとに測って、400品でも保存量・速さとも問題なし。APP_MAP §66）。
+// 上限は、料理が増えすぎた時の保険。超えた時だけ、自分の条件（食べられないもの・時間・器具）に合う料理を先に残す。
+const DISCOVER_TREND_MAX = 600;
+function keepTrends(items, max = DISCOVER_TREND_MAX) {
+  const live = (items || []).filter(liveItem);
+  if (live.length <= max) return live;
+  let fits = () => true;
+  try {
+    const p = dailyProfile(), day = today();
+    // 1品の形がおかしくても、ほかの料理の選び直しを止めない（その料理は残す側に）。
+    fits = (x) => { try { return Lifestyle.fit(discoverRecipe(x, "trend"), p, day).ok; } catch { return true; } };
+  } catch {}
+  // 並びはサーバーの順（日ごとのくじ）のまま、合う料理を前へ（sort は安定）。
+  const marked = live.map((x) => ({ x, ok: fits(x) }));
+  marked.sort((a, b) => Number(b.ok) - Number(a.ok));
+  return marked.slice(0, max).map((m) => m.x);
+}
 async function loadDiscover({ force = false } = {}) {
   if (!API_BASE_URL || discoverLoading) return;
   pruneDiscover();
@@ -39,9 +61,9 @@ async function loadDiscover({ force = false } = {}) {
       fetchWithTimeout(`${API_BASE_URL}/api/trends`, {}, 15_000).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       fetchWithTimeout(`${API_BASE_URL}/api/popular?segment=${encodeURIComponent(tasteSegment())}`, {}, 15_000).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ]);
-    if (t?.items) discover.trends = t.items.filter(liveItem).slice(0, DISCOVER_TREND_MAX);
+    if (t?.items) discover.trends = keepTrends(t.items);
     if (p?.items) discover.popular = p.items.slice(0, 20);
-    // 書き直した手順は、受け取った全部の料理の分を覚える（献立に入れた料理が、今日の新着の上位120品から外れていても使えるように。2026-10-04）。
+    // 書き直した手順は、受け取った全部の料理の分を覚える（献立に入れた料理が、上限から外れていても使えるように。2026-10-04）。
     if (t?.items || p?.items) discover.guides = { trends: t?.items ? guidesOf(t.items) : discover.guides?.trends || {}, popular: p?.items ? guidesOf(p.items) : discover.guides?.popular || {} };
     if (t || p) { discover.savedAt = discover.trends.length ? new Date().toISOString() : ""; if (newVersion) discover.appVersion = APP_VERSION; saveDiscover(); }
   } finally { discoverLoading = false; }
