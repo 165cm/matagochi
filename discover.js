@@ -4,7 +4,13 @@ const DISCOVER_KEY = "ripigochi-discover";
 let discover = (() => { try { return JSON.parse(localStorage.getItem(DISCOVER_KEY) || "null") || { trends: [], popular: [], savedAt: "" }; } catch { return { trends: [], popular: [], savedAt: "" }; } })();
 let discoverLoading = false;
 const liveItem = (x) => !x.expiresAt || Date.parse(x.expiresAt) > Date.now();
-function saveDiscover() { try { localStorage.setItem(DISCOVER_KEY, JSON.stringify(discover)); } catch {} }
+// 保存できる量（約5MB）を超えた時は、新着を先頭から減らして保存し直す（画面では全部使える。次に開いた時は届くまで少なめ。§66）。
+function saveDiscover() {
+  try { localStorage.setItem(DISCOVER_KEY, JSON.stringify(discover)); return; } catch {}
+  for (const n of [300, 120]) {
+    try { localStorage.setItem(DISCOVER_KEY, JSON.stringify({ ...discover, trends: (discover.trends || []).slice(0, n) })); return; } catch {}
+  }
+}
 // 期限（取得から28日）を過ぎた人気レシピは、端末からも消す。
 function pruneDiscover() {
   const before = discover.trends.length;
@@ -27,7 +33,8 @@ function keepTrends(items, max = DISCOVER_TREND_MAX) {
   let fits = () => true;
   try {
     const p = dailyProfile(), day = today();
-    fits = (x) => Lifestyle.fit(discoverRecipe(x, "trend"), p, day).ok;
+    // 1品の形がおかしくても、ほかの料理の選び直しを止めない（その料理は残す側に）。
+    fits = (x) => { try { return Lifestyle.fit(discoverRecipe(x, "trend"), p, day).ok; } catch { return true; } };
   } catch {}
   // 並びはサーバーの順（日ごとのくじ）のまま、合う料理を前へ（sort は安定）。
   const marked = live.map((x) => ({ x, ok: fits(x) }));

@@ -33,6 +33,17 @@ test("the app keeps every new dish the server sends (was the first 120 by the da
   ], 2).map((x) => x.videoId))`, ctx));
   assert.deepEqual(kept, ["b", "d"], "the dishes you can eat stay when there are too many");
   assert.equal(JSON.parse(vm.runInContext(`JSON.stringify(keepTrends([{ videoId: "a", title: "豚丼", ingredients: [{ name: "豚こま" }], steps: ["焼く"] }], 2).length)`, ctx)), 1, "under the cap, nothing is dropped");
+  // レビュー（2026-11-09）：1品の形がおかしくても、選び直しは止まらない
+  vm.runInContext("Lifestyle.fit = (r) => { if (r.title === 'x') throw new Error('bad'); return { ok: !/えび/.test(r.title) }; }", ctx);
+  assert.equal(vm.runInContext(`keepTrends([{ videoId: "a", title: "えびチリ" }, { videoId: "b", title: "x" }, { videoId: "c", title: "鮭" }], 2).map((x) => x.videoId).join()`, ctx), "b,c");
+  // 保存できる量を超えた時は、新着を減らして保存し直す
+  const saved = [];
+  vm.runInContext("globalThis.__ls = localStorage", ctx);
+  ctx.localStorage.setItem = (k, v) => { if (v.length > 50000) throw new Error("QuotaExceededError"); saved.push(JSON.parse(v)); };
+  vm.runInContext("saveDiscover()", ctx);
+  assert.equal(saved.length, 1);
+  assert.ok(saved[0].trends.length <= 300 && saved[0].trends.length > 0, `saved ${saved[0].trends.length}`);
+  assert.equal(vm.runInContext("discover.trends.length", ctx), 420, "the app still uses all of them");
 });
 
 test("dishes with the same score are ordered per plan date, not always by id (stable for the same date)", () => {
