@@ -9,6 +9,8 @@
 
 ## 作業中（担当を1行ずつ。同じファイルを触らない）
 
+Claude：claude/relaxed-allen-5utqli で届いた新着を全部候補に（120品の上限をなくし、600品の保険の上限を超えた時だけ条件に合う料理を先に残す。discover.js・test・版・docs。APP_MAP §66）
+
 Codex：codex/timecode-evidence で段階3の候補生成を実装済み・レビュー待ち（api/src/analyzer.js・importRecipe.js・recipeCatalog.js・候補根拠検査・api/test・admin/catalog.html・版・docs）。#232公開済み。実動画の評価と費用差額を記録し、本番候補生成は累計500円の残額確認後。根拠の出どころ6種類＋警告タグ・赤枠・要確認件数・根拠文の折りたたみをPR #233へ追加済み。API442件・アプリ475件PASS。375×667・844×390・1440×900の候補表示フィクスチャで確認。実動画の新候補評価は未実施。
 
 Codex：codex/timecode-quality でサバ味噌煮の補完品質調査、矛盾する時刻の成功判定防止、管理画面からレシピを開く導線（api/src/timecode*.js・admin/catalog.html・app.js・daily-ui.js・版・test・docs）。
