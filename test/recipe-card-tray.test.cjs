@@ -901,6 +901,34 @@ test("19. Regression (PR #238 review): parseAmountQuantity('1/2袋（100g）') -
   assert.equal(pqPieceParen.unit, "piece");
   assert.equal(pqPieceParen.val, 0.5);
 
+  // Codex Round 4 verification: kg, spaces in range, and invalid quantities in parens
+  const pqKg = run(`parseAmountQuantity("1袋（0.5kg）")`);
+  assert.equal(pqKg.unit, "g");
+  assert.equal(pqKg.val, 500);
+  assert.equal(pqKg.invalid, false);
+
+  const pqRangeSpace = run(`parseAmountQuantity("1袋（100 〜 150g）")`);
+  assert.equal(pqRangeSpace.unit, "g");
+  assert.equal(pqRangeSpace.val, 125);
+  assert.equal(pqRangeSpace.ambiguous, true);
+  assert.equal(pqRangeSpace.invalid, false);
+
+  const pqZeroParen = run(`parseAmountQuantity("1袋（0g）")`);
+  assert.equal(pqZeroParen.invalid, true);
+  assert.equal(pqZeroParen.qty, null);
+
+  const pqNegParen = run(`parseAmountQuantity("1袋（-100g）")`);
+  assert.equal(pqNegParen.invalid, true);
+  assert.equal(pqNegParen.qty, null);
+
+  const pqDivZeroParen = run(`parseAmountQuantity("1袋（1/0g）")`);
+  assert.equal(pqDivZeroParen.invalid, true);
+  assert.equal(pqDivZeroParen.qty, null);
+
+  const pqNegRangeParen = run(`parseAmountQuantity("1袋（-100〜200g）")`);
+  assert.equal(pqNegRangeParen.invalid, true);
+  assert.equal(pqNegRangeParen.qty, null);
+
   // 2. syncTrayAfterConflictResolution keeps trayBasePlan in sync with planSnapshot (samePlan === true)
   const days = run(`trayTargetDays()`);
   const d0 = days[0].date;

@@ -4741,35 +4741,56 @@ function parseAmountQuantity(rawAmount) {
     .trim();
   if (!s) return { unit: "unknown", val: 0, qty: null, ambiguous: true, invalid: false };
 
-  // かっこ内の重さ・容量表記（例：「1/2袋（100g）」「1パック(約150g)」）は具体的な実数として優先採用する
-  const parenMatch = s.match(/[（(]\s*(?:約\s*)?([^\s)）]+)\s*(g|kg|ml|cc|グラム|ミリリットル)\s*[)）]/i);
-  if (parenMatch) {
-    const innerTok = parenMatch[1];
-    const rangeM = innerTok.match(/(\d+(?:\.\d+)?)\s*[〜~\-]\s*(\d+(?:\.\d+)?)/);
-    let pVal = null;
-    if (rangeM) {
-      const l = Number(rangeM[1]), r = Number(rangeM[2]);
-      if (Number.isFinite(l) && Number.isFinite(r) && r >= l && l > 0) pVal = (l + r) / 2;
-    } else {
-      const tok = parseSimpleNumberToken(innerTok);
-      if (tok && !tok.invalid && tok.val > 0) pVal = tok.val;
-    }
-    if (pVal !== null) {
-      let pUnit = parenMatch[2].toLowerCase();
-      if (/kg/i.test(pUnit)) { pUnit = "g"; pVal *= 1000; }
-      else if (/g|グラム/i.test(pUnit)) { pUnit = "g"; }
-      else if (/ml|cc|ミリリットル/i.test(pUnit)) { pUnit = "ml"; }
+  // かっこ内の表記（例：「1/2袋（100g）」「1袋（0.5kg）」「1袋（100 〜 150g）」「1/2袋（市販品）」）をチェック
+  const parenBlock = s.match(/[（(]\s*([^）)]+?)\s*[)）]/);
+  if (parenBlock) {
+    const pContent = parenBlock[1].trim();
+    // 単位（kg, g, ml, cc 等）を末尾に持つ数量表記かを判定
+    const pUnitMatch = pContent.match(/^(?:約\s*)?(.*?)\s*(kg|グラム|g|ミリリットル|ml|cc)$/i);
+    if (pUnitMatch) {
+      const numStr = pUnitMatch[1].trim();
+      const rawUnit = pUnitMatch[2].toLowerCase();
+
+      let pVal = null;
+      let isRange = false;
+      let rangeBounds = null;
+      const rangeM = numStr.match(/^(.*?)\s*[〜~\-]\s*(.*)$/);
+      if (rangeM) {
+        const leftTok = parseSimpleNumberToken(rangeM[1]);
+        const rightTok = parseSimpleNumberToken(rangeM[2]);
+        if (!leftTok || !rightTok || leftTok.invalid || rightTok.invalid || rightTok.val < leftTok.val || leftTok.val <= 0) {
+          return { unit: "invalid", val: 0, qty: null, ambiguous: true, invalid: true };
+        }
+        pVal = (leftTok.val + rightTok.val) / 2;
+        isRange = true;
+        rangeBounds = [leftTok.val, rightTok.val];
+      } else {
+        const tok = parseSimpleNumberToken(numStr);
+        if (!tok || tok.invalid || tok.val <= 0) {
+          return { unit: "invalid", val: 0, qty: null, ambiguous: true, invalid: true };
+        }
+        pVal = tok.val;
+      }
+
+      let pUnit = "g";
+      let factor = 1;
+      if (/kg/i.test(rawUnit)) { factor = 1000; pUnit = "g"; }
+      else if (/g|グラム/i.test(rawUnit)) { pUnit = "g"; }
+      else if (/ml|cc|ミリリットル/i.test(rawUnit)) { pUnit = "ml"; }
+
+      const finalVal = pVal * factor;
       return {
         unit: pUnit,
-        val: pVal,
-        qty: pVal,
-        ambiguous: Boolean(rangeM),
+        val: finalVal,
+        qty: finalVal,
+        ambiguous: isRange,
         invalid: false,
+        ...(rangeBounds ? { range: [rangeBounds[0] * factor, rangeBounds[1] * factor], assumption: `範囲表記（${rangeBounds[0] * factor}〜${rangeBounds[1] * factor}）の中央値で換算` } : {}),
       };
     }
   }
 
-  // かっこ内に重さがない場合（例：「1/2袋（市販品）」）はかっこを除去して外側の単位・分量を判定する
+  // かっこ内に数量表記がない場合（例：「1/2袋（市販品）」）はかっこを除去して外側の単位・分量を判定する
   const cleanS = s.replace(/[（(][^）)]*[)）]/g, " ").trim();
   const targetS = cleanS || s;
 
