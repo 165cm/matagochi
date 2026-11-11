@@ -5634,3 +5634,26 @@ body.has-sheet { overflow: hidden; }
   background: #f3e8d6;
   font-size: 13px;
 }
+
+/* 献立タブの中の献立トレイ（2026-11-11 のユーザーの判断：上の献立カードがトレイ。下に決定・候補・よはく） */
+.plan-list .plan-card.is-tray-active { outline: 2.5px solid var(--tomato); outline-offset: 1px; }
+.plan-list .plan-card .plan-swap.is-active { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+.plan-list .plan-card.is-thinking .plan-think-photo { display: grid; place-items: center; aspect-ratio: 16 / 9; background: linear-gradient(100deg, #eadcc6 30%, #f7eedf 50%, #eadcc6 70%); background-size: 300% 100%; animation: rcShimmer 1.2s linear infinite; cursor: default; }
+.plan-list .plan-card.is-thinking .tray-think-dots i { background: #8a6537; }
+.plan-think-title { color: var(--muted); }
+.plan-list .plan-card.is-reveal { animation: traySlotPop 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.35) both; animation-delay: calc(var(--i, 0) * 0.18s); }
+.plan-list .plan-card.is-tray-empty .plan-empty-photo { display: grid; place-items: center; aspect-ratio: 16 / 9; min-height: 44px; background: repeating-linear-gradient(135deg, #f7efe2 0 8px, #f1e5d2 8px 16px); border: 0; border-right: 1.5px dashed #c9ad86; color: #7a5a35; font: inherit; font-size: 12px; font-weight: 800; padding: 4px; }
+.tray-action-bar { display: grid; gap: 4px; margin-top: 2px; }
+.tray-action-row { display: flex; gap: 6px; align-items: stretch; }
+.tray-action-row .tray-confirm-btn { flex: 1; min-height: 48px; }
+.tray-action-row .tray-clear-all-btn { flex: none; min-height: 48px; padding: 0 12px; white-space: nowrap; }
+.tray-need { flex: 1; margin: 0; display: flex; align-items: center; min-height: 48px; padding: 0 12px; border-radius: 12px; background: #fff4e6; color: #8a3a12; font-size: 13px; font-weight: 800; }
+.tray-need.is-done { background: var(--surface-soft); color: var(--muted); }
+.tray-action-sub { display: flex; justify-content: flex-end; gap: 12px; }
+.tray-action-sub .text-button { min-height: 44px; }
+.tray-inline { margin-top: 14px; }
+.tray-inline-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-size: 15px; }
+.tray-inline .tray-shelves { margin: 0 -16px 8px; }
+/* よはくは画面の下（タブの上）に貼りつける：考えている時も、カードを置いた時も目に入る */
+.tray-yohaku-bar.is-dock { position: sticky; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 6; margin: 10px -4px 0; padding: 6px 8px; border-radius: 16px; background: rgba(255, 252, 246, 0.97); border: 1.5px solid #e9d6b8; box-shadow: 0 6px 20px rgba(70, 45, 18, 0.16); }
+.plan-list .plan-card.is-dish .plan-swap { min-height: 44px; }

@@ -343,7 +343,7 @@ test("7. Opening 3-day tray from '今夜の4皿' (swapDate) commits pass learnin
   );
 });
 
-test("8. Card Book opens from Today tab and cooking does not block 1-tap post-meal rating", () => {
+test("8. Card Book opens in the reflection tab (図鑑) and cooking does not block 1-tap post-meal rating", () => {
   const run = app();
   const todayDate = run(`today()`);
   const recipe = run(`dailyPlan().find(d => d.date === ${JSON.stringify(todayDate)})?.candidate?.recipe || allDinnerRecipes()[0]`);
@@ -359,45 +359,45 @@ test("8. Card Book opens from Today tab and cooking does not block 1-tap post-me
   assert.ok(todayHtml.includes("tonight-quick-rate") && todayHtml.includes('data-action="life-rate"'), "Today tab must show 1-tap rating immediately after cooking");
   assert.ok(todayHtml.includes("rc-get-inline-banner"), "Today tab shows non-blocking inline Card GET banner");
 
-  // Open Card Book on Today tab
+  // 図鑑は振り返りタブの「🃏 図鑑」で見る（2026-11-11 のユーザーの判断）
+  run(`setView = (v) => { state.view = v; }`);
   run(`handleCardTrayAction("life-card-book-open", {})`);
-  assert.equal(run(`cardBookOpen`), true);
-  const todayWithBookHtml = run(`renderToday()`);
-  assert.ok(todayWithBookHtml.includes("わが家のカード図鑑"), "Card Book sheet must render inside Today tab");
+  assert.equal(run(`state.view`), "repeat");
+  assert.equal(run(`reflView`), "book");
+  const reflHtml = run(`renderReflection()`);
+  assert.ok(reflHtml.includes('data-view="book" aria-pressed="true"'), "図鑑 is a view of the reflection tab");
+  assert.ok(reflHtml.includes("rc-book"), "Card book renders inline in the reflection tab");
+  assert.ok(!run(`renderToday()`).includes("わが家のカード図鑑"), "Card book no longer opens over Today");
 });
 
-test("9. Escape key and modal close always remove body.has-sheet and close only the topmost modal", () => {
+test("9. The tray is part of the plan tab (no sheet); Escape closes only the card back; tab switch keeps an edited draft", () => {
   const run = app();
   const rId = run(`allDinnerRecipes()[0].id`);
 
   run(`handleCardTrayAction("life-tray-open", {})`);
   run(`bindSwapSheet()`);
-  assert.equal(run(`document.body.classList.contains("has-sheet")`), true);
+  assert.equal(run(`document.body.classList.contains("has-sheet")`), false, "Inline tray is not a modal");
+  assert.ok(run(`renderDailyPlan()`).includes('id="tray-cards"'), "Candidate cards are inside the plan tab");
 
-  // Open card flip modal on top of tray
   run(`handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(rId)} })`);
   run(`bindSwapSheet()`);
-  assert.equal(run(`trayOpen`), true);
   assert.equal(run(`trayFlipId`), rId);
+  assert.equal(run(`document.body.classList.contains("has-sheet")`), true);
 
-  // First Escape closes only the topmost modal (trayFlipId), keeping trayOpen
   run(`document.dispatchKeydown("Escape")`);
   assert.equal(run(`trayFlipId`), "");
-  assert.equal(run(`trayOpen`), true);
-  assert.equal(run(`document.body.classList.contains("has-sheet")`), true);
-
-  // Second Escape closes trayOpen and removes body.has-sheet
-  run(`document.dispatchKeydown("Escape")`);
-  assert.equal(run(`trayOpen`), false);
   assert.equal(run(`document.body.classList.contains("has-sheet")`), false);
 
-  // Switching tab also resets all card/tray modals and removes body.has-sheet
-  run(`handleCardTrayAction("life-card-book-open", {})`);
-  run(`bindSwapSheet()`);
-  assert.equal(run(`document.body.classList.contains("has-sheet")`), true);
+  // 選び直しの途中でタブを切り替えても、下書きは残る
+  const d0 = run(`trayTargetDays()[0].date`);
+  run(`handleCardTrayAction("life-tray-clear-one", { date: ${JSON.stringify(d0)} })`);
+  assert.equal(run(`isTrayDraftActive()`), true);
   run(`resetCardTrayModals()`);
-  assert.equal(run(`cardBookOpen`), false);
+  assert.equal(run(`isTrayDraftActive()`), true, "Edited draft survives a tab switch");
   assert.equal(run(`document.body.classList.contains("has-sheet")`), false);
+  // 「元の献立に戻す」で捨てられる
+  run(`handleCardTrayAction("life-tray-close", {})`);
+  assert.equal(run(`isTrayDraftActive()`), false);
 });
 
 test("10. Stage 2 Nutrition Engine: prevents false ingredient matches, parses fractions/ranges/invalid quantities, and never fabricates servings or clamped salt", () => {
@@ -530,7 +530,7 @@ test("12. Performance benchmark with 400 recipes and cache invalidation on recip
 
   assert.ok(openMs < 500, `Expected tray open + render < 500ms for 400 recipes, took ${openMs.toFixed(1)}ms`);
   assert.ok(placeMs < 250, `Expected card place + render < 250ms for 400 recipes, took ${placeMs.toFixed(1)}ms`);
-  assert.ok(html2.includes("献立トレイ"));
+  assert.ok(html2.includes("に入れる候補"));
 
   // Verify cache invalidates when a recipe's ingredients change
   const beforeSalt = run(`estimateRecipeNutrition(state.recipes.find(r => r.id === "perf-r-0")).saltG`);
@@ -587,11 +587,11 @@ test("14. Regression (Claude #2 & Codex #2, #3): Empty slot hides confirm button
   const d1 = days[1].date;
 
   // All 3 slots filled initially -> confirm button is shown
-  assert.ok(run(`renderCardTraySheet()`).includes("life-tray-confirm-all"));
+  assert.ok(run(`renderTrayActionBar(trayTargetDays())`).includes("life-tray-confirm-all"));
 
   // Clear one slot -> confirm button must NOT be rendered, and direct confirm-all must abort without confirming remaining days
   run(`handleCardTrayAction("life-tray-clear-one", { date: ${JSON.stringify(d0)} })`);
-  assert.ok(!run(`renderCardTraySheet()`).includes("life-tray-confirm-all"), "Confirm button must be hidden when any slot is empty");
+  assert.ok(!run(`renderTrayActionBar(trayTargetDays())`).includes("life-tray-confirm-all"), "Confirm button must be hidden when any slot is empty");
   run(`handleCardTrayAction("life-tray-confirm-all", {})`);
   assert.notEqual(run(`state.mealSlots?.[${JSON.stringify(d1)}]?.status`), "confirmed", "Must not partially confirm when a slot is empty");
 
@@ -993,7 +993,7 @@ test("21. Similar mode: a reason shared by 2+ cards is said once by よはく, n
   const chips = [...html.matchAll(/<span class="rc-reason-chip">([^<]+)<\/span>/g)].map((m) => m[1]);
   const counts = chips.reduce((m, c) => m.set(c, (m.get(c) || 0) + 1), new Map());
   for (const [chip, n] of counts) assert.ok(n < 2, `chip "${chip}" must not repeat (${n} cards)`);
-  const say = html.match(/class="tray-yohaku-bar" data-say="([^"]+)"/)[1];
+  const say = html.match(/class="tray-yohaku-bar[^"]*" data-say="([^"]+)"/)[1];
   assert.match(say, /に近い/);
 });
 
@@ -1011,4 +1011,39 @@ test("22. Thinking state blocks tray edits until the reveal, and closing cancels
   assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), before, "Edits are ignored while thinking");
   run(`handleCardTrayAction("life-tray-close", {})`);
   assert.equal(run(`trayThinking`), false);
+});
+
+test("23. Plan tab: the tray days show as the big plan cards, with confirm/空にする right under them and no switch to a separate tray", () => {
+  const run = app();
+  const html = run(`renderDailyPlan()`);
+  assert.ok(!html.includes("wt-open-btn"), "No separate 3日トレイ entry");
+  assert.ok(!html.includes("tray-slot-card"), "No small slots");
+  const listEnd = html.indexOf("</section>", html.indexOf('class="plan-list"'));
+  const bar = html.indexOf("tray-action-bar");
+  assert.ok(bar > 0 && bar < listEnd, "Confirm bar sits inside the plan list, under the cards");
+  assert.ok(html.indexOf('id="tray-cards"') > listEnd, "Candidates come after the plan cards");
+  assert.ok(html.includes('data-action="life-tray-select-day"'), "Each plan card has 🔄 選び直す");
+  // 選び直した日は、大きな献立カードにその料理が出る
+  const d0 = run(`trayTargetDays()[0].date`);
+  const pick = run(`renderCardTraySheet()`).match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
+  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pick)}, date: ${JSON.stringify(d0)} })`);
+  const html2 = run(`renderDailyPlan()`);
+  const title = run(`findDinnerRecipeById(${JSON.stringify(pick)}).title`);
+  assert.ok(html2.includes("選び直した"), "Draft day is marked");
+  assert.ok(html2.includes(title.slice(0, 6)), "Picked dish is shown big in the plan card");
+  // 見るだけの家族にはトレイを出さない
+  run(`isViewer = () => true`);
+  assert.ok(!run(`renderDailyPlan()`).includes("tray-cards"));
+});
+
+test("24. 7-day plan: the tray covers every shown day, so 決定 confirms all 7 (Codex review #240)", () => {
+  const run = app();
+  run(`state.planLength = 7`);
+  const days = run(`trayTargetDays()`);
+  const shown = run(`dailyPlan().filter((d) => !d.off && !d.prestart && d.candidate).length`);
+  assert.equal(days.length, shown, "All shown cooking days are tray days");
+  run(`setView = (v) => { state.view = v; }`);
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
+  for (const d of days) assert.equal(run(`state.mealSlots[${JSON.stringify(d.date)}]?.status`), "confirmed", `${d.date} is confirmed`);
 });
