@@ -971,3 +971,44 @@ test("19. Regression (PR #238 review): parseAmountQuantity('1/2袋（100g）') -
   `);
   assert.equal(run(`focusedElement`), "flip-btn", "bindSwapSheet must focus inside the topmost .rc-flip-overlay, not background .swap-sheet");
 });
+
+test("20. Card front: no reason ribbon over the photo, richer collector info, and no duplicate 裏面 button", () => {
+  const run = app();
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  const html = run(`renderCardTraySheet()`);
+  assert.ok(!html.includes("rc-unique-ribbon"), "Reason must not be overlaid on the photo");
+  assert.ok(html.includes('class="rc-stats"'), "Card shows 作った・技・材料");
+  assert.ok(html.includes('class="rc-tag-line"'), "Card shows taste/type tags");
+  assert.ok(!/<small>裏面<\/small>/.test(html), "Back side opens from the corner peel only (no 裏面 dock button)");
+  assert.ok(html.includes("rc-corner-peel"));
+  assert.equal(run(`trayThinking`), false, "No thinking delay without animation support (tests, reduced motion)");
+});
+
+test("21. Similar mode: a reason shared by 2+ cards is said once by よはく, not repeated on every card", () => {
+  const run = app();
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  const first = run(`renderCardTraySheet()`).match(/data-action="life-tray-similar" data-recipe="([^"]+)"/)[1];
+  run(`handleCardTrayAction("life-tray-similar", { recipe: ${JSON.stringify(first)} })`);
+  const html = run(`renderCardTraySheet()`);
+  const chips = [...html.matchAll(/<span class="rc-reason-chip">([^<]+)<\/span>/g)].map((m) => m[1]);
+  const counts = chips.reduce((m, c) => m.set(c, (m.get(c) || 0) + 1), new Map());
+  for (const [chip, n] of counts) assert.ok(n < 2, `chip "${chip}" must not repeat (${n} cards)`);
+  const say = html.match(/class="tray-yohaku-bar" data-say="([^"]+)"/)[1];
+  assert.match(say, /に近い/);
+});
+
+test("22. Thinking state blocks tray edits until the reveal, and closing cancels it", () => {
+  const run = app();
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  const d0 = run(`trayTargetDays()[0].date`);
+  const before = run(`trayDraft[${JSON.stringify(d0)}]`);
+  run(`trayThinking = true`);
+  const html = run(`renderCardTraySheet()`);
+  assert.ok(html.includes("考えてる"), "よはく says she is thinking");
+  assert.ok(!html.includes('data-action="life-tray-place"'), "No cards to place while thinking");
+  assert.ok(!html.includes("life-tray-confirm-all"), "No confirm while thinking");
+  run(`handleCardTrayAction("life-tray-clear-one", { date: ${JSON.stringify(d0)} })`);
+  assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), before, "Edits are ignored while thinking");
+  run(`handleCardTrayAction("life-tray-close", {})`);
+  assert.equal(run(`trayThinking`), false);
+});

@@ -3896,8 +3896,34 @@ function syncHasSheetBodyClass() {
   document.body?.classList?.toggle("has-sheet", hasModal);
   return hasModal;
 }
+// よはくの吹き出しを1文字ずつ出す（言葉が変わった時だけ。途中で描き直されても続きから。動きを減らす設定では一度に出す）
+let trayTypedSay = "";
+let trayTypedAt = 0;
+let trayTypeTimer = 0;
+function typeTrayBubble() {
+  const bar = document.querySelector?.(".tray-yohaku-bar");
+  if (!bar) { trayTypedSay = ""; if (trayTypeTimer && typeof clearInterval === "function") clearInterval(trayTypeTimer); return; }
+  const say = bar.dataset?.say || bar.getAttribute?.("data-say") || "";
+  const el = bar.querySelector?.(".tray-bubble-text");
+  if (!el) return;
+  const chars = [...say];
+  if (say !== trayTypedSay) { trayTypedSay = say; trayTypedAt = 0; }
+  if (trayTypedAt >= chars.length) return;
+  const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if (reduce || typeof setInterval !== "function") { trayTypedAt = chars.length; return; }
+  clearInterval(trayTypeTimer);
+  el.textContent = chars.slice(0, trayTypedAt).join("");
+  bar.classList?.add("is-typing");
+  trayTypeTimer = setInterval(() => {
+    if (!el.isConnected || trayTypedSay !== say) { clearInterval(trayTypeTimer); return; }
+    trayTypedAt += 1;
+    el.textContent = chars.slice(0, trayTypedAt).join("");
+    if (trayTypedAt >= chars.length) { clearInterval(trayTypeTimer); bar.classList?.remove("is-typing"); }
+  }, 40);
+}
 function bindSwapSheet() {
   syncHasSheetBodyClass();
+  if (typeof document !== "undefined") typeTrayBubble();
   // 画面の向き・大きさが変わって並べる数（4皿／6皿）が変わったら、描き直す。
   if (!swapSizeSeen && globalThis.addEventListener) globalThis.addEventListener("resize", () => { if (swapDate && state.view === "plan" && swapSize() !== swapSizeSeen) render(); });
   swapSizeSeen = swapSize();
@@ -4454,6 +4480,10 @@ let trayInitialDraft = {};
 let trayBasePlan = {};
 let trayTargetDates = [];
 let trayUndoStack = [];
+// 開いた直後の「よはくが考えている」演出（1.5秒）と、そのあとの「考えてみたよ！」
+let trayThinking = false;
+let trayThinkToken = 0;
+let trayRevealFresh = false;
 let cardGetRecipeId = "";
 let cardGetBannerRecipeId = "";
 let cardBookOpen = false;
@@ -5375,6 +5405,10 @@ function recipeCardSpec(recipe) {
     isCollected: cooks > 0,
     rankBadge,
     sealText,
+    // 表面の「図鑑の情報」：技の星（3段）・材料の数・作り手
+    skillStars3: "★".repeat(Math.max(1, Math.min(3, sk.level))) + "☆".repeat(Math.max(0, 3 - Math.max(1, Math.min(3, sk.level)))),
+    ingredientCount: (recipe?.ingredients || []).filter((i) => i && String(i.name || "").trim()).length,
+    creator: (typeof creatorName === "function" ? creatorName(recipe) : "") || "",
   };
   return setBoundedMemo(CARD_SPEC_MEMO, specKey, out);
 }
@@ -5631,21 +5665,20 @@ function renderRecipeTradingCard(recipe, opts = {}) {
     mode = "tray",
   } = opts;
   const rankClass = spec.isCollected ? `is-collected is-rank-${spec.rank}` : "is-draft";
-
-  // 理由タグは1つに絞る（似た皿の理由 ＞ 野菜使い回し ＞ 好物）
-  const uniqueCallout = isAnchor
-    ? "🔍 似た皿の起点"
-    : simReason
-      ? `🔍 ${simReason}`
-      : sharedVegHit
-        ? `🥬 ${sharedVegHit}使い回し`
-        : spec.love >= 4
-          ? "😋 好物"
-          : "";
+  // 理由の札は写真に重ねない。全員に同じ理由が並ぶ時は、呼び出し側でよはくの一言にまとめて、ここには違いだけを渡す。
+  const reasonChip = opts.reasonChip != null
+    ? opts.reasonChip
+    : isAnchor ? "🔍 起点" : simReason ? `🔍 ${simReason}` : sharedVegHit ? `🥬 ${sharedVegHit}使い回し` : spec.love >= 4 ? "😋 好物" : "";
+  const tagWords = [spec.moodWord, `${spec.sIcon}${spec.sName}`, spec.easyTool].filter(Boolean);
+  const stats = [
+    ["作った", spec.cooks > 0 ? `${spec.cooks}回` : "まだ", spec.cooks > 0 ? "is-done" : ""],
+    ["技", spec.skillStars3, ""],
+    ["材料", spec.ingredientCount ? `${spec.ingredientCount}品` : "—", ""],
+  ];
 
   return `<div class="rc-unit ${isAnchor ? "is-anchor-unit" : ""}">
     <article class="rc-card ${rankClass} ${isAnchor ? "is-anchor" : ""}" data-recipe-id="${escapeAttr(recipe.id)}">
-      <button type="button" class="rc-corner-peel" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}の裏面をめくる" title="裏面（材料・作り方・動画）を見る">
+      <button type="button" class="rc-corner-peel" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}の裏面をめくる（材料・作り方・動画）" title="裏面（材料・作り方・動画）を見る">
         <span class="rc-peel-flap" aria-hidden="true"><i>↺</i></span>
       </button>
 
@@ -5659,13 +5692,16 @@ function renderRecipeTradingCard(recipe, opts = {}) {
         <button type="button" class="rc-art-btn" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}の詳細（裏面）を見る">
           <div class="rc-plate-wrap ${spec.imageKind === "photo" ? "is-photo" : ""}">
             <img class="rc-plate-img" src="${escapeAttr(spec.artUrl)}" alt="${escapeAttr(recipe.title)}" loading="lazy">
-            ${uniqueCallout ? `<span class="rc-unique-ribbon">${escapeHtml(uniqueCallout)}</span>` : ""}
             ${spec.imageKind === "placeholder" && spec.imageLabel ? `<span class="rc-img-kind">${escapeHtml(spec.imageLabel)}</span>` : ""}
             ${spec.sealText ? `<span class="rc-foil-seal"><b>${escapeHtml(spec.sealText)}</b></span>` : ""}
           </div>
           <div class="rc-title-block">
             <h4 class="rc-dish-title">${recipeTitleHtml(recipe)}</h4>
+            ${reasonChip ? `<span class="rc-reason-chip">${escapeHtml(reasonChip)}</span>` : ""}
           </div>
+          <p class="rc-tag-line">${tagWords.map((w) => `<span>${escapeHtml(w)}</span>`).join("")}</p>
+          <dl class="rc-stats">${stats.map(([k, v, cls]) => `<div class="${cls}"><dt>${k}</dt><dd>${escapeHtml(v)}</dd></div>`).join("")}</dl>
+          ${spec.creator ? `<p class="rc-creator">by ${escapeHtml(spec.creator)}</p>` : ""}
         </button>
       </div>
     </article>
@@ -5676,13 +5712,6 @@ function renderRecipeTradingCard(recipe, opts = {}) {
       </button>
       <button type="button" class="rc-dock-icon ${isAnchor ? "is-active" : ""}" data-action="life-tray-similar" data-recipe="${escapeAttr(recipe.id)}" aria-pressed="${isAnchor}" title="この料理と似たカードを集める" aria-label="${escapeAttr(recipe.title)}と似た料理を集める">
         <span aria-hidden="true">🔍</span><small>似た皿</small>
-      </button>
-      <button type="button" class="rc-dock-icon" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}" title="カード裏面（材料・作り方・動画）" aria-label="${escapeAttr(recipe.title)}の裏面を見る">
-        <span aria-hidden="true">↺</span><small>裏面</small>
-      </button>
-    </div>` : mode === "book" ? `<div class="rc-dock is-book">
-      <button type="button" class="rc-dock-place" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}">
-        <span aria-hidden="true">↺</span> <b>裏面（材料・作り方・動画）</b>
       </button>
     </div>` : ""}
   </div>`;
@@ -5705,12 +5734,19 @@ function renderCardTraySheet() {
   const combo = computeTrayCombo(days);
 
   // 1. 上部の木製トレイ（コンパクト3枠・タップ領域44×44px）
-  const traySlotsHtml = days.map((d) => {
+  const thinking = trayThinking;
+  const traySlotsHtml = days.map((d, idx) => {
     const r = trayDayRecipe(d);
+    if (thinking) {
+      return `<div class="tray-slot-card is-thinking" style="--i:${idx}"><div class="tray-slot-main" aria-hidden="true">
+        <span class="tray-slot-head"><b>${weekdayLabel(d.date)}</b><small>${d.date === today() ? "今夜" : formatDate(d.date)}</small></span>
+        <span class="tray-think-dots"><i></i><i></i><i></i></span>
+      </div></div>`;
+    }
     const wd = weekdayLabel(d.date);
     const isNow = d.date === activeDay.date;
     const spec = r ? recipeCardSpec(r) : null;
-    return `<div class="tray-slot-card ${isNow ? "is-active" : ""} ${r ? (spec.isCollected ? "is-collected" : "is-draft") : "is-empty"}">
+    return `<div class="tray-slot-card ${isNow ? "is-active" : ""} ${r ? (spec.isCollected ? "is-collected" : "is-draft") : "is-empty"} ${trayRevealFresh && r ? "is-reveal" : ""}" style="--i:${idx}">
       <button type="button" class="tray-slot-main" data-action="life-tray-select-day" data-date="${d.date}" aria-pressed="${isNow}" aria-label="${formatDate(d.date)}（${wd}曜）の枠を選ぶ">
         <span class="tray-slot-head"><b>${wd}</b><small>${d.date === today() ? "今夜" : formatDate(d.date)}</small></span>
         ${r ? `<span class="tray-slot-row">
@@ -5728,15 +5764,48 @@ function renderCardTraySheet() {
   const anchorRecipe = trayAnchorId ? findDinnerRecipeById(trayAnchorId) : null;
   let yohakuPose = "normal";
   let yohakuWords = `${activeWd}に入れる一皿を選ぼう（あと${Math.max(0, days.length - filledCount)}日分）`;
-  if (anchorRecipe) {
+  // 候補カード（理由の札をまとめるため、先に決める）
+  const size = 6;
+  const candidates = thinking ? [] : trayCandidateList(activeDay.date, days);
+  const startIdx = candidates.length ? (trayPage * size) % Math.max(1, candidates.length) : 0;
+  const pageItems = [];
+  if (candidates.length) {
+    for (let i = 0; i < Math.min(size, candidates.length); i += 1) {
+      pageItems.push(candidates[(startIdx + i) % candidates.length]);
+    }
+  }
+  // 「似た皿」の時、2枚以上に同じ理由が並ぶなら、その理由はよはくが1回だけ言い、カードには違う理由だけを出す
+  const reasonCount = new Map();
+  for (const item of pageItems) if (item.simReason && item.r.id !== trayAnchorId) reasonCount.set(item.simReason, (reasonCount.get(item.simReason) || 0) + 1);
+  const [commonReason = "", commonCount = 0] = [...reasonCount.entries()].sort((a, b) => b[1] - a[1])[0] || [];
+  const sharedReason = commonCount >= 2 ? commonReason : "";
+  // 使い回せる野菜も、2枚以上で同じならカードからは外し、よはくが1回だけ言う
+  const vegCount = new Map();
+  for (const item of pageItems) if (!item.simReason && item.sharedVegHit) vegCount.set(item.sharedVegHit, (vegCount.get(item.sharedVegHit) || 0) + 1);
+  const sharedVeg = [...vegCount.entries()].filter(([, c]) => c >= 2).map(([v]) => v);
+
+  if (thinking) {
+    yohakuPose = "wait";
+    yohakuWords = `${days.length}日分の献立を考えてるよ…`;
+  } else if (anchorRecipe) {
     yohakuPose = "happy";
-    yohakuWords = `🔍「${anchorRecipe.title}」に近い料理を並べたよ`;
+    yohakuWords = sharedReason
+      ? `🔍「${anchorRecipe.title}」に近い、${sharedReason}の料理を集めたよ`
+      : `🔍「${anchorRecipe.title}」に近い料理を集めたよ`;
+  } else if (trayRevealFresh && filledCount > 0) {
+    yohakuPose = "happy";
+    yohakuWords = allFilled
+      ? `考えてみたよ！ このままでよければ「決定」。気になる日は下のカードで入れ替えてね`
+      : `考えてみたよ！ 空いている${activeWd}の1皿を下から選んでね`;
   } else if (allFilled) {
     yohakuPose = "happy";
     yohakuWords = `🎉 ${days.length}日分そろったよ！「これで決定」で買い物へ進めます`;
   } else if (filledCount === 0) {
     yohakuPose = "wave";
     yohakuWords = `まずは${activeWd}の1皿を選ぼう`;
+  } else if (sharedVeg.length > 0) {
+    yohakuPose = "happy";
+    yohakuWords = `🥬 ${sharedVeg.slice(0, 2).join("・")}を使い回せる料理を先に並べたよ。${activeWd}の1皿を選んでね`;
   } else if (combo.sharedVegList.length > 0) {
     yohakuPose = "happy";
     yohakuWords = `🥬 ${combo.sharedVegList[0]}を使い回せる組み合わせ！次は${activeWd}へ`;
@@ -5746,18 +5815,15 @@ function renderCardTraySheet() {
   }
 
   // 3. 候補カード6枚
-  const size = 6;
-  const candidates = trayCandidateList(activeDay.date, days);
-  const startIdx = candidates.length ? (trayPage * size) % Math.max(1, candidates.length) : 0;
-  const pageItems = [];
-  if (candidates.length) {
-    for (let i = 0; i < Math.min(size, candidates.length); i += 1) {
-      pageItems.push(candidates[(startIdx + i) % candidates.length]);
-    }
-  }
-
-  const cardsHtml = pageItems.length
+  const cardsHtml = thinking
+    ? `<div class="rc-grid is-thinking" aria-hidden="true">${Array.from({ length: 4 }, () => `<div class="rc-skeleton"></div>`).join("")}</div>`
+    : pageItems.length
     ? `<div class="rc-grid">${pageItems.map((item) => renderRecipeTradingCard(item.r, {
+        reasonChip: item.r.id === trayAnchorId
+          ? "🔍 起点"
+          : item.simReason
+            ? (item.simReason === sharedReason ? "" : `🔍 ${item.simReason}`)
+            : item.sharedVegHit ? (sharedVeg.includes(item.sharedVegHit) ? "" : `🥬 ${item.sharedVegHit}使い回し`) : undefined,
         activeDate: activeDay.date,
         dayWord: activeWd,
         sharedVegHit: item.sharedVegHit,
@@ -5782,14 +5848,14 @@ function renderCardTraySheet() {
 
     <div class="wood-tray-stage">
       <div class="tray-slot-grid" style="--tray-cols:${Math.min(days.length, 3)}">${traySlotsHtml}</div>
-      ${allFilled ? `<div class="tray-complete-bar">
+      ${allFilled && !thinking ? `<div class="tray-complete-bar">
         <button type="button" class="primary-button tray-confirm-btn" data-action="life-tray-confirm-all">✓ この${days.length}日分で決定・買い物へ</button>
       </div>` : ""}
     </div>
 
-    <div class="tray-yohaku-bar">
+    <div class="tray-yohaku-bar" data-say="${escapeAttr(yohakuWords)}">
       ${yohaku(yohakuPose, "swap-yohaku")}
-      <p class="swap-bubble">${escapeHtml(yohakuWords)}</p>
+      <p class="swap-bubble tray-bubble" role="status"><span class="sr-only">${escapeHtml(yohakuWords)}</span><span class="tray-bubble-text" aria-hidden="true">${escapeHtml(yohakuWords)}</span></p>
       ${trayAnchorId ? `<button type="button" class="tray-sim-reset-btn" data-action="life-tray-similar-clear">元の候補に戻る</button>` : ""}
     </div>
 
@@ -5800,7 +5866,7 @@ function renderCardTraySheet() {
     ${cardsHtml}
 
     <div class="tray-bottom-bar">
-      ${candidates.length > size ? `<button type="button" class="secondary-button swap-more" data-action="life-tray-next-page">🔄 別の${size}皿を見る（全${candidates.length}品）</button>` : ""}
+      ${!thinking && candidates.length > size ? `<button type="button" class="secondary-button swap-more" data-action="life-tray-next-page">🔄 別の${size}皿を見る（全${candidates.length}品）</button>` : ""}
     </div>
     ${trayFlipId ? renderCardFlipModal() : ""}
   </section>`;
@@ -5990,6 +6056,10 @@ function previewCardGetModal(recipeId) {
 
 // トレイ＆カード関連のアクション処理
 function handleCardTrayAction(action, data, before) {
+  // 「考えてみたよ！」は、開いた直後だけ。何か操作したら、ふつうの案内に戻す（裏面を見るだけなら残す）
+  if (trayRevealFresh && /^life-tray-(?!open)/.test(action)) trayRevealFresh = false;
+  // 考えている間は、トレイの操作を受け付けない（閉じるのはOK）
+  if (trayThinking && /^life-tray-/.test(action) && !["life-tray-open", "life-tray-close"].includes(action)) return true;
   const mutationActions = new Set([
     "life-tray-open",
     "life-tray-place",
@@ -6019,6 +6089,20 @@ function handleCardTrayAction(action, data, before) {
     const days = trayTargetDays();
     const keepExistingDraft = Object.keys(trayDraft).length > 0 && trayTargetDates.length === days.length && trayTargetDates.every((dt, idx) => dt === days[idx]?.date);
     if (!keepExistingDraft) initTrayDraft(days);
+    trayRevealFresh = false;
+    trayThinking = false;
+    // 最初から料理が入っているのは唐突なので、よはくが1.5秒「考える」演出を入れる（動きを減らす設定・テストでは出さない）
+    const canAnimate = typeof globalThis.matchMedia === "function" && !globalThis.matchMedia("(prefers-reduced-motion: reduce)")?.matches && typeof setTimeout === "function";
+    if (!keepExistingDraft && canAnimate && days.some((d) => trayDraft[d.date])) {
+      trayThinking = true;
+      const token = ++trayThinkToken;
+      setTimeout(() => {
+        if (token !== trayThinkToken || !trayOpen) return;
+        trayThinking = false;
+        trayRevealFresh = true;
+        if (typeof render === "function") render();
+      }, 1500);
+    }
     if (data.date && days.some((d) => d.date === String(data.date))) {
       trayActiveDate = String(data.date);
     } else {
@@ -6032,6 +6116,9 @@ function handleCardTrayAction(action, data, before) {
     // 編集中の仮置き（trayDraft）を破棄し、開く前の献立・買い物・同期状態を一切変更しない
     lastModalTriggerSelector = trayTriggerSelector || '[data-action="life-tray-open"]';
     trayOpen = false;
+    trayThinking = false;
+    trayRevealFresh = false;
+    trayThinkToken += 1;
     trayFlipId = "";
     trayAnchorId = "";
     trayDraft = {};
