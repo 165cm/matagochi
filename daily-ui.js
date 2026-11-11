@@ -4537,7 +4537,6 @@ function resetCardTrayModals() {
 }
 
 function isTrayDraftActive() {
-  if (!trayOpen && !Object.keys(state?.sync?.conflicts || {}).length) return false;
   return Object.keys(trayDraft).some((date) => (trayDraft[date] || null) !== (trayInitialDraft[date] || null));
 }
 
@@ -4886,7 +4885,7 @@ function estimateRecipeNutrition(recipe) {
       }
       continue;
     }
-    if (/(?:^|炒め|植物|サラダ|ごま|胡麻|オリーブ|米|こめ|ラー|揚げ|キャノーラ|なたね|菜種)油|オイル/.test(name)) {
+    if (!/油揚げ|あぶらあげ|厚揚げ|あつあげ|油かす/.test(name) && /^(?:(?:炒め|植物|サラダ|ごま|胡麻|オリーブ|米|こめ|ラー|揚げ|キャノーラ|なたね|菜種)?油|.*オイル)(?:[(（].*)?$/.test(name)) {
       if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
         hasUnquantifiedMacro = true;
         unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が特定できないためエネルギー加算を保留" });
@@ -4926,7 +4925,10 @@ function estimateRecipeNutrition(recipe) {
       }
       if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
         hasUnquantifiedSalt = true;
-        unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が特定できないため塩分加算を保留" });
+        if (matchedRule.kcalPerGram) {
+          hasUnquantifiedMacro = true;
+        }
+        unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が特定できないため塩分・エネルギー加算を保留" });
         continue;
       }
       let salt = 0;
@@ -4952,6 +4954,9 @@ function estimateRecipeNutrition(recipe) {
         grams = 5 * pq.val;
       } else {
         hasUnquantifiedSalt = true;
+        if (matchedRule.kcalPerGram) {
+          hasUnquantifiedMacro = true;
+        }
         unmatchedItems.push({ name, amount: amt, reason: "単位不明のため塩分加算を保留" });
         continue;
       }
@@ -4974,24 +4979,29 @@ function estimateRecipeNutrition(recipe) {
 
     // 1-b. 塩分を含まない調味料・粉類・香辛料（ポン酢等は上で処理済み）
     if (/料理酒|^酒$|日本酒|みりん|本みりん|砂糖|きび砂糖|上白糖|はちみつ|^(?:酢|米酢|穀物酢|黒酢|りんご酢|ワインビネガー)$|レモン汁|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉|すりごま|いりごま|白ごま|黒ごま|こしょう|コショウ|黒こしょう|ブラックペッパー|一味|七味|鷹の爪|カレー粉|山椒|わさび|からし/.test(name) && !/塩こしょう|塩コショウ/.test(name)) {
-      if (!pq.invalid && pq.unit !== "some" && pq.val > 0) {
-        const g = pq.unit === "g" || pq.unit === "ml" ? pq.val : pq.unit === "tbsp" ? 12 * pq.val : pq.unit === "tsp" ? 4 * pq.val : 6;
-        if (/砂糖|きび砂糖|上白糖|はちみつ|みりん|本みりん|料理酒|^酒$|日本酒|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉/.test(name)) {
-          totalKcal += g * (/料理酒|^酒$|日本酒/.test(name) ? 1.0 : /みりん/.test(name) ? 2.4 : 3.5);
-          matchedMacroItems += 1;
-        } else if (/ごま/.test(name)) {
-          totalKcal += g * 5.8;
-          totalProteinG += g * 0.2;
-          matchedMacroItems += 1;
+      if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
+        if (/砂糖|きび砂糖|上白糖|はちみつ|みりん|本みりん|料理酒|^酒$|日本酒|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉|ごま/.test(name)) {
+          hasUnquantifiedMacro = true;
+          unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が特定できないためエネルギー加算を保留" });
         }
-        const foodId = /パン粉/.test(name) ? "panko" : /米粉/.test(name) ? "rice_flour" : /みりん/.test(name) ? "mirin" : /酢/.test(name) ? "vinegar" : "seasoning_unsalted";
-        matchedItems.push({ name, amount: amt, category: "seasoning_unsalted", foodId, grams: Math.round(g) });
+        continue;
       }
+      const g = pq.unit === "g" || pq.unit === "ml" ? pq.val : pq.unit === "tbsp" ? 12 * pq.val : pq.unit === "tsp" ? 4 * pq.val : 6;
+      if (/砂糖|きび砂糖|上白糖|はちみつ|みりん|本みりん|料理酒|^酒$|日本酒|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉/.test(name)) {
+        totalKcal += g * (/料理酒|^酒$|日本酒/.test(name) ? 1.0 : /みりん/.test(name) ? 2.4 : 3.5);
+        matchedMacroItems += 1;
+      } else if (/ごま/.test(name)) {
+        totalKcal += g * 5.8;
+        totalProteinG += g * 0.2;
+        matchedMacroItems += 1;
+      }
+      const foodId = /パン粉/.test(name) ? "panko" : /米粉/.test(name) ? "rice_flour" : /みりん/.test(name) ? "mirin" : /酢/.test(name) ? "vinegar" : "seasoning_unsalted";
+      matchedItems.push({ name, amount: amt, category: "seasoning_unsalted", foodId, grams: Math.round(g) });
       continue;
     }
 
     if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
-      if (/ベーコン|ウインナー|ソーセージ|ハム|ちくわ|カニカマ|かまぼこ|塩鮭|塩サバ|塩さば|干物|しらす|明太子|たらこ|キムチ|漬物|梅干し|ザーサイ|ツナ|サバ缶|さば缶|チーズ|うどん|中華麺|焼きそば|そうめん|食パン|バゲット|^パン$/.test(name)) {
+      if (/ベーコン|ウインナー|ソーセージ|ハム|ちくわ|カニカマ|かまぼこ|塩鮭|塩サバ|塩さば|干物|しらす|明太子|たらこ|キムチ|漬物|梅干し|ザーサイ|ツナ|サバ缶|さば缶|チーズ|うどん|中華麺|焼きそば|そうめん|食パン|バゲット|^パン$|牛乳|豆乳|卵|たまご|玉子|鶏|豚|牛|肉|ひき肉|合いびき|合挽き|鮭|サーモン|さば|サバ|ぶり|ブリ|たら|タラ|えび|エビ|いか|たこ/.test(name)) {
         hasUnquantifiedSalt = true;
       }
       hasUnquantifiedMacro = true;

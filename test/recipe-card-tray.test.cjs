@@ -765,3 +765,112 @@ test("17. Regression (Claude #6 & #7 & Codex #6): Viewer hides all '作った' b
   const specAfter = run(`recipeCardSpec(state.recipes.find(r => r.id === "cache-mid-test"))`);
   assert.equal(specAfter.rank, "gold", "Changing 2nd evaluation's rating to 'tomorrow' must invalidate CARD_SPEC_MEMO and upgrade rank to gold");
 });
+
+test("18. Regression (Codex Round 3): Aburaage is not oil, unquantified ingredients consistently invalidate macro/salt, and remaining draft protects hasUnsavedWork after resolving last conflict", () => {
+  const run = app();
+
+  // 1. Codex #1: 油, 米油, 油揚げ, 厚揚げ distinction
+  const rOil = {
+    id: "test-oil-diff",
+    title: "油の識別テスト",
+    sourceServings: 1,
+    ingredients: [
+      { name: "油", amount: "10g" },
+      { name: "米油", amount: "大さじ1" },
+      { name: "油揚げ", amount: "100g" },
+      { name: "厚揚げ", amount: "100g" },
+    ],
+  };
+  const nOil = run(`estimateRecipeNutrition(${JSON.stringify(rOil)})`);
+  const matchedOil = nOil.matchedItems.filter((i) => i.foodId === "oil");
+  const matchedSoy = nOil.matchedItems.filter((i) => i.foodId === "soy");
+  assert.equal(matchedOil.length, 2, "Only '油' and '米油' must match foodId 'oil'");
+  assert.equal(matchedSoy.length, 2, "'油揚げ' and '厚揚げ' must match foodId 'soy' (not oil)");
+  // 油揚げ(100g*0.8=80kcal) + 厚揚げ(100g*0.8=80kcal) + 油(10g*9=90kcal) + 米油(12g*9=108kcal) = 358 kcal
+  assert.ok(nOil.kcal < 500, `Calories (${nOil.kcal}kcal) must not treat 200g of aburaage/atsuage as pure fat (which would be ~1800kcal)`);
+
+  // 2. Codex #2: Unquantified ingredients consistently invalidate macro/salt totals
+  const basePorkSoy = [
+    { name: "豚肉", amount: "200g" },
+    { name: "しょうゆ", amount: "大さじ1" },
+  ];
+
+  // 2-a: 砂糖・適量 -> macro total null, partial macro exists
+  const rSugarSome = {
+    id: "test-sugar-some",
+    title: "豚の生姜焼き（砂糖適量）",
+    sourceServings: 2,
+    ingredients: [...basePorkSoy, { name: "砂糖", amount: "適量" }],
+  };
+  const nSugarSome = run(`estimateRecipeNutrition(${JSON.stringify(rSugarSome)})`);
+  assert.equal(nSugarSome.kcal, null, "Sugar '適量' must make total kcal null");
+  assert.ok(nSugarSome.partialKcal != null && nSugarSome.partialKcal > 0, "Known pork kcal must be in partialKcal");
+  assert.equal(nSugarSome.saltG, 1.4, "Salt from soy sauce (2.6g/2) is unchanged by sugar");
+
+  // 2-b: 砂糖・-1g -> invalid quantity makes total kcal null
+  const rSugarInvalid = {
+    id: "test-sugar-invalid",
+    title: "豚の生姜焼き（砂糖-1g）",
+    sourceServings: 2,
+    ingredients: [...basePorkSoy, { name: "砂糖", amount: "-1g" }],
+  };
+  const nSugarInvalid = run(`estimateRecipeNutrition(${JSON.stringify(rSugarInvalid)})`);
+  assert.equal(nSugarInvalid.kcal, null, "Sugar '-1g' must make total kcal null");
+  assert.ok(nSugarInvalid.partialKcal != null && nSugarInvalid.partialKcal > 0);
+
+  // 2-c: マヨネーズ・適量 -> both kcal and saltG must be null (mayonnaise contains both fat/kcal and salt)
+  const rMayoSome = {
+    id: "test-mayo-some",
+    title: "豚の生姜焼き（マヨ適量）",
+    sourceServings: 2,
+    ingredients: [...basePorkSoy, { name: "マヨネーズ", amount: "適量" }],
+  };
+  const nMayoSome = run(`estimateRecipeNutrition(${JSON.stringify(rMayoSome)})`);
+  assert.equal(nMayoSome.saltG, null, "Mayonnaise '適量' must make total saltG null");
+  assert.equal(nMayoSome.kcal, null, "Mayonnaise '適量' must make total kcal null");
+  assert.ok(nMayoSome.partialSaltG != null && nMayoSome.partialSaltG > 0, "Partial salt is retained");
+  assert.ok(nMayoSome.partialKcal != null && nMayoSome.partialKcal > 0, "Partial kcal is retained");
+
+  // 2-d: 牛乳・適量 -> both kcal and saltG must be null (milk contains both protein/kcal and mineral salt)
+  const rMilkSome = {
+    id: "test-milk-some",
+    title: "豚の生姜焼き（牛乳適量）",
+    sourceServings: 2,
+    ingredients: [...basePorkSoy, { name: "牛乳", amount: "適量" }],
+  };
+  const nMilkSome = run(`estimateRecipeNutrition(${JSON.stringify(rMilkSome)})`);
+  assert.equal(nMilkSome.saltG, null, "Milk '適量' must make total saltG null");
+  assert.equal(nMilkSome.kcal, null, "Milk '適量' must make total kcal null");
+  assert.ok(nMilkSome.partialSaltG != null && nMilkSome.partialSaltG > 0);
+  assert.ok(nMilkSome.partialKcal != null && nMilkSome.partialKcal > 0);
+
+  // 3. Codex #3: Resolving last conflict while other days have drafts keeps hasUnsavedWork() true
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  const days = run(`trayTargetDays()`);
+  const d0 = days[0].date;
+  const d1 = days[1].date;
+  const rA = run(`allDinnerRecipes()[0]`);
+  const rB = run(`allDinnerRecipes()[1]`);
+  const rC = run(`allDinnerRecipes()[2]`);
+
+  // Open tray, edit d0 and d1
+  run(`handleCardTrayAction("life-tray-place", { date: ${JSON.stringify(d0)}, recipe: ${JSON.stringify(rA.id)} })`);
+  run(`handleCardTrayAction("life-tray-place", { date: ${JSON.stringify(d1)}, recipe: ${JSON.stringify(rB.id)} })`);
+
+  // Simulate tray closed (e.g., conflict dialog on top) with a conflict on d0
+  run(`trayOpen = false`);
+  run(`state.sync.conflicts = { [${JSON.stringify(d0)}]: { local: ${JSON.stringify(rA)}, remote: ${JSON.stringify(rC)} } }`);
+  assert.ok(run(`isTrayDraftActive()`), "Draft should be active during conflict");
+  assert.ok(run(`hasUnsavedWork()`), "hasUnsavedWork should be true during conflict");
+
+  // Resolve d0 conflict by picking local selection
+  run(`syncTrayAfterConflictResolution(${JSON.stringify(d0)}, { slot: { recipe: ${JSON.stringify(rA)} } })`);
+  run(`delete state.sync.conflicts[${JSON.stringify(d0)}]`);
+
+  // Now conflicts is empty ({}), trayOpen is false, but d1 draft is still unsaved!
+  assert.equal(run(`Object.keys(state.sync.conflicts).length`), 0, "Conflicts are completely cleared");
+  assert.equal(run(`trayOpen`), false, "Tray is closed");
+  assert.notEqual(run(`trayDraft[${JSON.stringify(d1)}]`), run(`trayInitialDraft[${JSON.stringify(d1)}]`), "d1 draft is still different from initial");
+  assert.ok(run(`isTrayDraftActive()`), "isTrayDraftActive must be true because d1 has an unsaved draft");
+  assert.ok(run(`hasUnsavedWork()`), "hasUnsavedWork must remain true to protect unsaved d1 draft from automatic reload/sync");
+});
