@@ -1342,8 +1342,10 @@ function renderTonightQuickRate(date, recipe) {
 // Only things that need doing today; each row is one tap to the place where it gets done.
 function renderTodayTodos() {
   const rows = [];
-  Object.values(state.mealSlots || {}).filter((s) => s.status === "confirmed" && s.date < today() && canRecordDate(s.date)).sort((a, b) => b.date.localeCompare(a.date))
-    .forEach((s) => rows.push(`<div class="todo-row"><span>🍳</span><p><b>${formatDate(s.date)}の${escapeHtml(s.recipe.title)}</b>、作った？</p>${dailyButton("life-record-past", "作った", `data-date="${s.date}"`)}</div>`));
+  if (!isViewer()) {
+    Object.values(state.mealSlots || {}).filter((s) => s.status === "confirmed" && s.date < today() && canRecordDate(s.date)).sort((a, b) => b.date.localeCompare(a.date))
+      .forEach((s) => rows.push(`<div class="todo-row"><span>🍳</span><p><b>${formatDate(s.date)}の${escapeHtml(s.recipe.title)}</b>、作った？</p>${dailyButton("life-record-past", "作った", `data-date="${s.date}"`)}</div>`));
+  }
   const yestEval = state.evaluations.find((e) => (e.cookedAt || "").slice(0, 10) === addDays(today(), -1) && e.preferencePending && raterNames().some((n) => !e.familyRepeatCycles?.[n]));
   if (yestEval && !isViewer() && !reviewDue()) {
     const who = raterNames().find((n) => !yestEval.familyRepeatCycles?.[n]) || raterNames()[0];
@@ -1387,6 +1389,7 @@ function plan0Undecided() {
 }
 function canRecordDate(date) { return date >= addDays(today(), -3) && date <= today(); }
 function renderRecentMeals() {
+  if (isViewer()) return "";
   const slots = Object.values(state.mealSlots || {}).filter(s => s.status === "confirmed" && s.date < today() && canRecordDate(s.date)).sort((a,b)=>b.date.localeCompare(a.date));
   return slots.length ? `<section class="panel"><h3>🍳 作った？</h3>${slots.map(s=>`<div class="daily-plan-row"><p>${formatDate(s.date)} · ${escapeHtml(s.recipe.title)}</p>${dailyButton("life-record-past","作った",`data-date="${s.date}"`)}</div>`).join("")}</section>` : "";
 }
@@ -2025,7 +2028,7 @@ function renderCooking() {
   const servings = slot?.servings || dailyProfile().servings;
   const cook = cookSections(recipe, servings);
   const meta = [`${servings}人分`, recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分（炊飯は別）` : "時間は未確認", recipe.planning?.equipment?.length ? `器具：${recipe.planning.equipment.join("・")}` : ""].filter(Boolean).join(" · ");
-  const primary = slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った！", "", true) : !slot || slot.status === "removed" ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : "";
+  const primary = !isViewer() && slot?.status === "confirmed" && canRecordDate(cookingDate) ? dailyButton("life-cooked", "作った！", "", true) : !isViewer() && (!slot || slot.status === "removed") ? dailyButton("life-confirm-one", "この日の献立に確定", `data-date="${cookingDate}"`, true) : "";
   return `<section class="hero-card cooking-card"><div class="detail-top"><button type="button" class="text-button cooking-back" data-action="go-view" data-view="plan">‹ 献立へ戻る</button>${objectionButton(recipe, cookingDate)}</div><div class="cooking-head">${planThumb(recipe)}<div><p class="eyebrow">${formatDate(cookingDate)}（${weekdayLabel(cookingDate)}） · ${slot?.recipe ? "確定" : "提案中"}</p><h2>${escapeHtml(recipe.title)}</h2><p class="muted small">${escapeHtml(meta)}</p>${CookMode.supported() ? `<p class="wake-chip">🔆 画面つけっぱなし ${tip("作る画面の間は、スマホの画面が消えません")}</p>` : ""}</div></div>
   <details class="cooking-safety"><summary>⚠️ 原材料・火の通りを確認</summary><p class="small">食材制限がある場合は市販品の原材料表示も確認してください。ごはんは炊いたものを用意し、加熱時間は様子を見て調整してください。中心温度の確認には食品用温度計を使い、2人分のレンジ加熱は途中で混ぜて追加加熱してください。</p></details>
   ${renderCreatorCredit(recipe)}
@@ -3125,6 +3128,7 @@ function handleDailyAction(action, data) {
       if (!state.family.includes(data.member)) state.family.push(data.member);
       e.familyRepeatCycles = {...e.familyRepeatCycles, [data.member]:data.cycle};
       e.updatedAt = nowIso();
+      clearCardTrayCaches();
       trackDaily("meal_rated");
       const left = raterNames().filter((n) => !e.familyRepeatCycles[n]);
       const nowStaple = cookHistory(e.recipeId).length >= 2 && Object.values(recipeRatings({ id: e.recipeId })).some((c) => c === "weekly" || c === "tomorrow");
@@ -3143,6 +3147,7 @@ function handleDailyAction(action, data) {
     if (e?.preferencePending && e.id === preferencePromptId && repeatOptions.some(o=>o.id===data.cycle)) {
       e.familyRepeatCycles = {...e.familyRepeatCycles, [state.family[0]]:data.cycle};
       e.personalPreference = true; e.preferencePending = false; e.updatedAt = nowIso();
+      clearCardTrayCaches();
       preferencePromptId = "";
     }
   }
@@ -3313,6 +3318,7 @@ function handleDailyAction(action, data) {
         [state.family[0]]: "weekly",
       };
       e.updatedAt = nowIso();
+      clearCardTrayCaches();
       showToast("また食べたい一品にしました。");
     }
   }
@@ -3392,6 +3398,7 @@ function handleDailyAction(action, data) {
     if (Object.keys(record.familyRepeatCycles).length) { record.preferencePending = false; record.personalPreference = true; }
     if (isNew && !recipeById(record.recipeId)) record.recipeId = saveOwnRecipe(Lifestyle.curated.find((c) => c.id === record.recipeId) || recordRecipe(record)).id;
     state.evaluations = [record, ...state.evaluations.filter((e) => e.id !== record.id)];
+    clearCardTrayCaches();
     if (isNew) completeRequests(recordRecipe(record));
     recordDraft = null;
     state.view = "repeat";
@@ -3404,6 +3411,7 @@ function handleDailyAction(action, data) {
     const date = id.startsWith("meal-") ? id.slice(5) : "";
     if (state.mealSlots[date]?.status === "cooked") state.mealSlots[date] = { ...state.mealSlots[date], status: "confirmed", updatedAt: nowIso() };
     state.evaluations = state.evaluations.filter((e) => e.id !== id);
+    clearCardTrayCaches();
     recordDraft = null;
     state.view = "repeat";
     showToast("記録を削除しました。");
@@ -3902,6 +3910,13 @@ function bindSwapSheet() {
       restoreEl?.focus?.({ preventScroll: true });
     }
     return;
+  }
+  if (!topModal.classList?.contains("rc-flip-overlay") && flipTriggerSelector) {
+    const restoreFlipEl = document.querySelector(flipTriggerSelector);
+    flipTriggerSelector = "";
+    if (restoreFlipEl && topModal.contains?.(restoreFlipEl)) {
+      restoreFlipEl.focus?.({ preventScroll: true });
+    }
   }
   const closeTopModal = () => {
     if (trayFlipId) return handleDailyAction("life-card-flip-close", {});
@@ -4438,17 +4453,21 @@ let trayClearedDates = new Set();
 let trayDraft = {};
 let trayInitialDraft = {};
 let trayBasePlan = {};
+let trayTargetDates = [];
 let trayUndoStack = [];
 let cardGetRecipeId = "";
 let cardGetBannerRecipeId = "";
 let cardBookOpen = false;
 let lastModalTriggerSelector = "";
+let trayTriggerSelector = "";
+let flipTriggerSelector = "";
 
 const MAX_CARD_CACHE = 600;
 const CARD_COOK_MEMO = new Map();
 const CARD_ART_MEMO = new Map();
 const NUTRITION_MEMO = new Map();
 const CARD_SPEC_MEMO = new Map();
+const TRAY_CANDIDATE_BASE_MEMO = new Map();
 
 function setBoundedMemo(map, key, val) {
   if (map.size >= MAX_CARD_CACHE && !map.has(key)) {
@@ -4464,19 +4483,28 @@ function clearCardTrayCaches() {
   CARD_ART_MEMO.clear();
   NUTRITION_MEMO.clear();
   CARD_SPEC_MEMO.clear();
+  TRAY_CANDIDATE_BASE_MEMO.clear();
 }
 
 function evalsSignature() {
   const evals = state?.evaluations || [];
-  const top = evals[0];
-  return `${evals.length}:${top?.id || ""}:${top?.updatedAt || top?.cookedAt || ""}`;
+  if (!evals.length) return "0";
+  return evals
+    .map((e) => {
+      if (!e) return "";
+      const cycles = e.familyRepeatCycles && typeof e.familyRepeatCycles === "object"
+        ? Object.entries(e.familyRepeatCycles).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join(",")
+        : "";
+      return `${e.id || ""}:${e.recipeId || ""}:${e.cookedAt || ""}:${e.updatedAt || ""}:${cycles}`;
+    })
+    .join(";");
 }
 
 function recipeRevisionKey(recipe) {
   if (!recipe) return "";
-  const ingLen = Array.isArray(recipe.ingredients) ? recipe.ingredients.length : 0;
-  const firstIng = ingLen ? `${recipe.ingredients[0]?.name || ""}=${recipe.ingredients[0]?.amount || ""}` : "";
-  const lastIng = ingLen > 1 ? `${recipe.ingredients[ingLen - 1]?.name || ""}=${recipe.ingredients[ingLen - 1]?.amount || ""}` : "";
+  const ings = Array.isArray(recipe.ingredients)
+    ? recipe.ingredients.map((i) => `${i?.name || ""}=${i?.amount || ""}`).join(";")
+    : "";
   return [
     recipe.id || "",
     recipe.starterId || "",
@@ -4487,9 +4515,7 @@ function recipeRevisionKey(recipe) {
     recipe.planning?.minutes || "",
     recipe.photo || "",
     recipe.thumbnailUrl || "",
-    ingLen,
-    firstIng,
-    lastIng,
+    ings,
   ].join("|");
 }
 
@@ -4498,18 +4524,36 @@ function resetCardTrayModals() {
   trayDraft = {};
   trayInitialDraft = {};
   trayBasePlan = {};
+  trayTargetDates = [];
   trayUndoStack = [];
   trayClearedDates = new Set();
   trayAnchorId = "";
   trayFlipId = "";
   cardBookOpen = false;
   cardGetRecipeId = "";
+  cardGetBannerRecipeId = "";
+  TRAY_CANDIDATE_BASE_MEMO.clear();
   document.body?.classList?.remove("has-sheet");
 }
 
 function isTrayDraftActive() {
-  if (!trayOpen) return false;
+  if (!trayOpen && !Object.keys(state?.sync?.conflicts || {}).length) return false;
   return Object.keys(trayDraft).some((date) => (trayDraft[date] || null) !== (trayInitialDraft[date] || null));
+}
+
+function syncTrayAfterConflictResolution(date, chosen) {
+  if (!date) return;
+  if (Object.prototype.hasOwnProperty.call(trayBasePlan, date)) {
+    trayBasePlan[date] = chosen ? clone(chosen) : null;
+  }
+  const chosenId = chosen?.slot?.recipe?.id || chosen?.override || chosen?.draft?.id || null;
+  if (Object.prototype.hasOwnProperty.call(trayInitialDraft, date)) {
+    trayInitialDraft[date] = chosenId;
+  }
+  if (Object.prototype.hasOwnProperty.call(trayDraft, date)) {
+    trayDraft[date] = chosenId;
+    syncTrayClearedSet();
+  }
 }
 
 // 試作版の「✨ 作ってカードGET！を試す」で入った demo-get-* 記録だけを安全に整理する（本物の調理記録や保存レシピは消さない）
@@ -4636,28 +4680,28 @@ function cardArtOf(recipe) {
 }
 
 // ----- 第2段階：検証可能な栄養・塩分推定エンジン（スマホ内計算・誤マッチ防止・根拠と不確実性の明示） -----
-const NUTRITION_FOOD_DB_SOURCE = "日本食品標準成分表（八訂）増補2023年 換算係数";
-const NUTRITION_CALC_VERSION = "2026.11-v2";
+const NUTRITION_FOOD_DB_SOURCE = "日本食品標準成分表（八訂）増補2023年を参考にしたアプリ内換算表";
+const NUTRITION_CALC_VERSION = "2026.11-v3";
 
 const SEASONING_SALT_RULES = [
-  { re: /減塩しょうゆ|減塩醤油/, label: "減塩しょうゆ", tbspSalt: 1.3, tspSalt: 0.43, gramSalt: 0.072 },
-  { re: /薄口しょうゆ|うすくち醤油|薄口醤油/, label: "薄口しょうゆ", tbspSalt: 2.9, tspSalt: 0.97, gramSalt: 0.16 },
-  { re: /しょうゆ|醤油/, label: "しょうゆ", tbspSalt: 2.6, tspSalt: 0.87, gramSalt: 0.145 },
-  { re: /みそ|味噌/, label: "みそ", tbspSalt: 2.2, tspSalt: 0.73, gramSalt: 0.124 },
-  { re: /白だし/, label: "白だし", tbspSalt: 2.2, tspSalt: 0.73, gramSalt: 0.12 },
-  { re: /めんつゆ/, label: "めんつゆ", tbspSalt: 1.6, tspSalt: 0.53, gramSalt: 0.09 },
-  { re: /ぽん酢|ポン酢/, label: "ポン酢", tbspSalt: 1.5, tspSalt: 0.5, gramSalt: 0.083 },
-  { re: /オイスターソース/, label: "オイスターソース", tbspSalt: 2.1, tspSalt: 0.7, gramSalt: 0.115 },
-  { re: /焼肉のたれ|焼き肉のたれ|焼肉のタレ/, label: "焼肉のたれ", tbspSalt: 1.3, tspSalt: 0.43, gramSalt: 0.072 },
-  { re: /ウスターソース|中濃ソース|とんかつソース|^ソース$/, label: "ソース", tbspSalt: 1.4, tspSalt: 0.47, gramSalt: 0.08 },
-  { re: /ケチャップ/, label: "ケチャップ", tbspSalt: 0.5, tspSalt: 0.17, gramSalt: 0.033 },
-  { re: /豆板醤|コチュジャン|甜麺醤/, label: "中華醤", tbspSalt: 2.4, tspSalt: 0.8, gramSalt: 0.13 },
-  { re: /鶏ガラスープ|鶏がらスープ|中華だし|中華スープ|コンソメ|和風だし|だしの素|ほんだし|顆粒だし/, label: "だし・スープの素", tbspSalt: 3.8, tspSalt: 1.25, gramSalt: 0.42 },
-  { re: /カレールウ|カレールー|シチュールウ|シチュールー/, label: "ルウ", tbspSalt: 2.1, tspSalt: 0.7, gramSalt: 0.105 },
-  { re: /マヨネーズ/, label: "マヨネーズ", tbspSalt: 0.27, tspSalt: 0.09, gramSalt: 0.019 },
-  { re: /有塩バター|^(?!.*無塩).*バター$/, label: "有塩バター", tbspSalt: 0.2, tspSalt: 0.07, gramSalt: 0.015 },
-  { re: /塩麹|塩こうじ/, label: "塩麹", tbspSalt: 2.0, tspSalt: 0.67, gramSalt: 0.11 },
-  { re: /^塩$|塩こしょう|塩コショウ|食塩|粗塩|ハーブソルト/, label: "塩", tbspSalt: 18.0, tspSalt: 6.0, gramSalt: 0.99 },
+  { re: /減塩しょうゆ|減塩醤油/, label: "減塩しょうゆ", foodId: "low_salt_soy_sauce", tbspSalt: 1.3, tspSalt: 0.43, gramSalt: 0.072, kcalPerGram: 0.7 },
+  { re: /薄口しょうゆ|うすくち醤油|薄口醤油/, label: "薄口しょうゆ", foodId: "light_soy_sauce", tbspSalt: 2.9, tspSalt: 0.97, gramSalt: 0.16, kcalPerGram: 0.6 },
+  { re: /しょうゆ|醤油/, label: "しょうゆ", foodId: "soy_sauce", tbspSalt: 2.6, tspSalt: 0.87, gramSalt: 0.145, kcalPerGram: 0.75 },
+  { re: /みそ|味噌/, label: "みそ", foodId: "miso", tbspSalt: 2.2, tspSalt: 0.73, gramSalt: 0.124, kcalPerGram: 1.9 },
+  { re: /白だし/, label: "白だし", foodId: "shirodashi", tbspSalt: 2.2, tspSalt: 0.73, gramSalt: 0.12, kcalPerGram: 0.4 },
+  { re: /めんつゆ/, label: "めんつゆ", foodId: "mentsuyu", tbspSalt: 1.6, tspSalt: 0.53, gramSalt: 0.09, kcalPerGram: 0.6 },
+  { re: /ぽん酢|ポン酢|味ぽん|味ポン/, label: "ポン酢", foodId: "ponzu", tbspSalt: 1.5, tspSalt: 0.5, gramSalt: 0.083, kcalPerGram: 0.6 },
+  { re: /オイスターソース/, label: "オイスターソース", foodId: "oyster_sauce", tbspSalt: 2.1, tspSalt: 0.7, gramSalt: 0.115, kcalPerGram: 1.1 },
+  { re: /焼肉のたれ|焼き肉のたれ|焼肉のタレ/, label: "焼肉のたれ", foodId: "yakiniku_sauce", tbspSalt: 1.3, tspSalt: 0.43, gramSalt: 0.072, kcalPerGram: 1.6 },
+  { re: /ウスターソース|中濃ソース|とんかつソース|^ソース$/, label: "ソース", foodId: "worcester_sauce", tbspSalt: 1.4, tspSalt: 0.47, gramSalt: 0.08, kcalPerGram: 1.3 },
+  { re: /ケチャップ/, label: "ケチャップ", foodId: "ketchup", tbspSalt: 0.5, tspSalt: 0.17, gramSalt: 0.033, kcalPerGram: 1.2 },
+  { re: /豆板醤|コチュジャン|甜麺醤/, label: "中華醤", foodId: "chili_bean_paste", tbspSalt: 2.4, tspSalt: 0.8, gramSalt: 0.13, kcalPerGram: 1.8 },
+  { re: /鶏ガラスープ|鶏がらスープ|中華だし|中華スープ|コンソメ|和風だし|だしの素|ほんだし|顆粒だし|ウェイパー|創味シャンタン|ブイヨン/, label: "だし・スープの素", foodId: "bouillon_granule", isStockRule: true, tbspSalt: 3.8, tspSalt: 1.25, gramSalt: 0.42, kcalPerGram: 2.2 },
+  { re: /カレールウ|カレールー|シチュールウ|シチュールー/, label: "ルウ", foodId: "curry_roux", tbspSalt: 2.1, tspSalt: 0.7, gramSalt: 0.105, kcalPerGram: 5.1 },
+  { re: /マヨネーズ/, label: "マヨネーズ", foodId: "mayonnaise", tbspSalt: 0.27, tspSalt: 0.09, gramSalt: 0.019, kcalPerGram: 6.7 },
+  { re: /有塩バター|^(?!.*無塩).*バター$/, label: "有塩バター", foodId: "butter", tbspSalt: 0.2, tspSalt: 0.07, gramSalt: 0.015, kcalPerGram: 7.5 },
+  { re: /塩麹|塩こうじ/, label: "塩麹", foodId: "shio_koji", tbspSalt: 2.0, tspSalt: 0.67, gramSalt: 0.11, kcalPerGram: 1.5 },
+  { re: /^塩$|塩こしょう|塩コショウ|食塩|粗塩|ハーブソルト/, label: "塩", foodId: "salt", tbspSalt: 18.0, tspSalt: 6.0, gramSalt: 0.99, kcalPerGram: 0 },
 ];
 
 function parseSimpleNumberToken(tok) {
@@ -4760,6 +4804,7 @@ function parseAmountQuantity(rawAmount) {
   let val = num;
   if (/大さじ/.test(s)) unit = "tbsp";
   else if (/小さじ/.test(s)) unit = "tsp";
+  else if (/カップ/.test(s)) { unit = "ml"; val = num * 200; }
   else if (/ml|cc|ミリリットル/i.test(s)) unit = "ml";
   else if (/kg/i.test(s)) { unit = "g"; val = num * 1000; }
   else if (/g|グラム/i.test(s)) unit = "g";
@@ -4791,6 +4836,8 @@ function estimateRecipeNutrition(recipe) {
   let matchedSeasonings = 0;
   let matchedSaltyFoods = 0;
   let matchedMacroItems = 0;
+  let hasUnquantifiedSalt = false;
+  let hasUnquantifiedMacro = false;
 
   const saltSources = [];
   const matchedItems = [];
@@ -4815,13 +4862,23 @@ function estimateRecipeNutrition(recipe) {
       ambiguousItems.push({ name, amount: amt || "未記載", reason: pq.invalid ? "分量不明・不正" : "あいまい分量" });
     }
 
-    // 0. 無塩バター・水・酒・みりん・酢・砂糖・油・粉類（塩分・主菜誤マッチを防ぐ）
+    // 0-a. 水・お湯・氷・無塩のだし汁（塩分・エネルギー0）
     if (/^水$|^お湯$|^湯$|^氷$/.test(name)) {
       matchedItems.push({ name, amount: amt, category: "water", foodId: "water" });
       continue;
     }
+    if (/^(?:だし汁|出し汁|出汁|かつおだし|昆布だし|煮干しだし)$/.test(name)) {
+      const g = !pq.invalid && pq.val > 0 ? (pq.unit === "g" || pq.unit === "ml" ? pq.val : pq.unit === "tbsp" ? 15 * pq.val : pq.unit === "tsp" ? 5 * pq.val : 200) : 0;
+      matchedItems.push({ name, amount: amt, category: "dashi_liquid", foodId: "dashi_liquid", grams: Math.round(g), saltG: 0 });
+      continue;
+    }
+
+    // 0-b. 無塩バター・油類
     if (/無塩バター/.test(name)) {
-      if (!pq.invalid && pq.val > 0) {
+      if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
+        hasUnquantifiedMacro = true;
+        unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が特定できないためエネルギー加算を保留" });
+      } else {
         const g = pq.unit === "g" ? pq.val : pq.unit === "tbsp" ? 12 * pq.val : pq.unit === "tsp" ? 4 * pq.val : 10;
         totalKcal += g * 7.5;
         matchedMacroItems += 1;
@@ -4829,29 +4886,20 @@ function estimateRecipeNutrition(recipe) {
       }
       continue;
     }
-    if (/ごま油|サラダ油|オリーブオイル|オリーブ油|米油|こめ油|ラー油|揚げ油|キャノーラ油|なたね油/.test(name)) {
-      if (!pq.invalid && pq.val > 0) {
-        const g = pq.unit === "g" ? pq.val : pq.unit === "tbsp" ? 12 * pq.val : pq.unit === "tsp" ? 4 * pq.val : 8;
+    if (/(?:^|炒め|植物|サラダ|ごま|胡麻|オリーブ|米|こめ|ラー|揚げ|キャノーラ|なたね|菜種)油|オイル/.test(name)) {
+      if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
+        hasUnquantifiedMacro = true;
+        unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が特定できないためエネルギー加算を保留" });
+      } else {
+        const g = pq.unit === "g" || pq.unit === "ml" ? pq.val : pq.unit === "tbsp" ? 12 * pq.val : pq.unit === "tsp" ? 4 * pq.val : 8;
         totalKcal += g * 9.0;
         matchedMacroItems += 1;
         matchedItems.push({ name, amount: amt, category: "oil", foodId: "oil", grams: Math.round(g) });
       }
       continue;
     }
-    if (/料理酒|^酒$|日本酒|みりん|本みりん|砂糖|きび砂糖|上白糖|はちみつ|酢|米酢|穀物酢|黒酢|レモン汁|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉|すりごま|いりごま|白ごま|黒ごま|こしょう|コショウ|黒こしょう|ブラックペッパー|一味|七味|鷹の爪|カレー粉|山椒|わさび|からし/.test(name) && !/塩こしょう|塩コショウ/.test(name)) {
-      if (!pq.invalid && pq.val > 0) {
-        const g = pq.unit === "g" ? pq.val : pq.unit === "tbsp" ? 12 * pq.val : pq.unit === "tsp" ? 4 * pq.val : 6;
-        if (/砂糖|はちみつ|みりん|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉/.test(name)) {
-          totalKcal += g * 3.2;
-          matchedMacroItems += 1;
-        }
-        const foodId = /パン粉/.test(name) ? "panko" : /米粉/.test(name) ? "rice_flour" : /みりん/.test(name) ? "mirin" : "seasoning_unsalted";
-        matchedItems.push({ name, amount: amt, category: "seasoning_unsalted", foodId, grams: Math.round(g) });
-      }
-      continue;
-    }
 
-    // 1. 調味料の塩分計算（日本食品標準成分表ベース）
+    // 1. 調味料の塩分計算（無塩調味料より先に判定し、「ポン酢」等が「酢」に吸われるのを防ぐ）
     let matchedRule = null;
     for (const rule of SEASONING_SALT_RULES) {
       if (rule.re.test(name)) {
@@ -4860,22 +4908,58 @@ function estimateRecipeNutrition(recipe) {
       }
     }
     if (matchedRule) {
+      const isGranuleExplicit = /の素|顆粒|粉末|ほんだし|ウェイパー|創味シャンタン|キューブ|固形/.test(name);
+      const isLiquidBroth = Boolean(
+        matchedRule.isStockRule &&
+        !isGranuleExplicit &&
+        (pq.unit === "ml" || (pq.unit === "g" && pq.val >= 50) || /スープ|だし汁|出し汁/.test(name))
+      );
+      if (isLiquidBroth) {
+        hasUnquantifiedSalt = true;
+        unmatchedItems.push({
+          name,
+          amount: amt || "未記載",
+          reason: "水で溶いたスープ・だし汁は希釈倍率が特定できないため塩分加算を保留",
+        });
+        assumptions.push(`${name}（${amt}）は希釈済みの液体スープと判定し、顆粒の素としては数えていません`);
+        continue;
+      }
       if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
+        hasUnquantifiedSalt = true;
         unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が特定できないため塩分加算を保留" });
         continue;
       }
       let salt = 0;
-      if (pq.unit === "tbsp") salt = matchedRule.tbspSalt * pq.val;
-      else if (pq.unit === "tsp") salt = matchedRule.tspSalt * pq.val;
-      else if (pq.unit === "ml") salt = (matchedRule.tbspSalt / 15) * pq.val;
-      else if (pq.unit === "g") salt = matchedRule.gramSalt * pq.val;
-      else if (pq.unit === "pinch") salt = /塩/.test(matchedRule.label) ? pq.val : matchedRule.tspSalt * 0.25;
-      else {
+      let grams = 0;
+      if (pq.unit === "tbsp") {
+        salt = matchedRule.tbspSalt * pq.val;
+        grams = 15 * pq.val;
+      } else if (pq.unit === "tsp") {
+        salt = matchedRule.tspSalt * pq.val;
+        grams = 5 * pq.val;
+      } else if (pq.unit === "ml") {
+        salt = (matchedRule.tbspSalt / 15) * pq.val;
+        grams = pq.val;
+      } else if (pq.unit === "g") {
+        salt = matchedRule.gramSalt * pq.val;
+        grams = pq.val;
+      } else if (pq.unit === "pinch") {
+        salt = /塩/.test(matchedRule.label) ? pq.val : matchedRule.tspSalt * 0.25;
+        grams = pq.val;
+      } else if (matchedRule.isStockRule && pq.unit === "piece" && pq.val <= 4) {
+        // コンソメキューブ 1個（約5g、食塩相当量約2.4g）
+        salt = 2.4 * pq.val;
+        grams = 5 * pq.val;
+      } else {
+        hasUnquantifiedSalt = true;
         unmatchedItems.push({ name, amount: amt, reason: "単位不明のため塩分加算を保留" });
         continue;
       }
       matchedSeasonings += 1;
       totalSaltG += salt;
+      if (matchedRule.kcalPerGram && grams > 0) {
+        totalKcal += grams * matchedRule.kcalPerGram;
+      }
       const perServingSalt = servings ? Math.round((salt / servings) * 10) / 10 : null;
       saltSources.push({
         name: name || matchedRule.label,
@@ -4883,12 +4967,34 @@ function estimateRecipeNutrition(recipe) {
         totalSalt: Math.round(salt * 10) / 10,
         perServingSalt,
       });
-      const foodId = /有塩バター|バター/.test(matchedRule.label) ? "butter" : "seasoning";
-      matchedItems.push({ name, amount: amt, category: "seasoning", foodId, saltG: Math.round(salt * 10) / 10 });
+      const foodId = matchedRule.foodId || "seasoning";
+      matchedItems.push({ name, amount: amt, category: "seasoning", foodId, grams: Math.round(grams), saltG: Math.round(salt * 10) / 10 });
+      continue;
+    }
+
+    // 1-b. 塩分を含まない調味料・粉類・香辛料（ポン酢等は上で処理済み）
+    if (/料理酒|^酒$|日本酒|みりん|本みりん|砂糖|きび砂糖|上白糖|はちみつ|^(?:酢|米酢|穀物酢|黒酢|りんご酢|ワインビネガー)$|レモン汁|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉|すりごま|いりごま|白ごま|黒ごま|こしょう|コショウ|黒こしょう|ブラックペッパー|一味|七味|鷹の爪|カレー粉|山椒|わさび|からし/.test(name) && !/塩こしょう|塩コショウ/.test(name)) {
+      if (!pq.invalid && pq.unit !== "some" && pq.val > 0) {
+        const g = pq.unit === "g" || pq.unit === "ml" ? pq.val : pq.unit === "tbsp" ? 12 * pq.val : pq.unit === "tsp" ? 4 * pq.val : 6;
+        if (/砂糖|きび砂糖|上白糖|はちみつ|みりん|本みりん|料理酒|^酒$|日本酒|片栗粉|小麦粉|薄力粉|強力粉|米粉|パン粉/.test(name)) {
+          totalKcal += g * (/料理酒|^酒$|日本酒/.test(name) ? 1.0 : /みりん/.test(name) ? 2.4 : 3.5);
+          matchedMacroItems += 1;
+        } else if (/ごま/.test(name)) {
+          totalKcal += g * 5.8;
+          totalProteinG += g * 0.2;
+          matchedMacroItems += 1;
+        }
+        const foodId = /パン粉/.test(name) ? "panko" : /米粉/.test(name) ? "rice_flour" : /みりん/.test(name) ? "mirin" : /酢/.test(name) ? "vinegar" : "seasoning_unsalted";
+        matchedItems.push({ name, amount: amt, category: "seasoning_unsalted", foodId, grams: Math.round(g) });
+      }
       continue;
     }
 
     if (pq.invalid || pq.unit === "some" || pq.val <= 0) {
+      if (/ベーコン|ウインナー|ソーセージ|ハム|ちくわ|カニカマ|かまぼこ|塩鮭|塩サバ|塩さば|干物|しらす|明太子|たらこ|キムチ|漬物|梅干し|ザーサイ|ツナ|サバ缶|さば缶|チーズ|うどん|中華麺|焼きそば|そうめん|食パン|バゲット|^パン$/.test(name)) {
+        hasUnquantifiedSalt = true;
+      }
+      hasUnquantifiedMacro = true;
       unmatchedItems.push({ name, amount: amt || "適量", reason: "分量が数値化できないため除外" });
       continue;
     }
@@ -5035,6 +5141,8 @@ function estimateRecipeNutrition(recipe) {
     }
 
     if (!itemMatched) {
+      hasUnquantifiedSalt = true;
+      hasUnquantifiedMacro = true;
       unmatchedItems.push({ name, amount: amt, reason: "成分換算辞書に未登録の材料" });
     }
   }
@@ -5042,18 +5150,47 @@ function estimateRecipeNutrition(recipe) {
   const hasSaltBasis = servings !== null && (matchedSeasonings > 0 || matchedSaltyFoods > 0);
   const hasMacroBasis = servings !== null && matchedMacroItems > 0;
 
-  const saltG = hasSaltBasis ? Math.round((totalSaltG / servings) * 10) / 10 : null;
-  const proteinG = hasMacroBasis ? Math.round(totalProteinG / servings) : null;
-  const vegG = hasMacroBasis ? Math.round(totalVegG / servings) : null;
-  const kcal = hasMacroBasis ? Math.round(totalKcal / servings) : null;
+  const rawSaltPerServing = hasSaltBasis ? Math.round((totalSaltG / servings) * 10) / 10 : null;
+  const rawProteinPerServing = hasMacroBasis ? Math.round(totalProteinG / servings) : null;
+  const rawVegPerServing = hasMacroBasis ? Math.round(totalVegG / servings) : null;
+  const rawKcalPerServing = hasMacroBasis ? Math.round(totalKcal / servings) : null;
 
-  const status = hasSaltBasis && hasMacroBasis ? "estimated" : "unknown";
-  const statusLabel = status === "estimated" ? "材料から推定（主菜1品）" : "不明（材料・人数の記載不足）";
+  // 1人前としてありえない異常値（塩分10g超、エネルギー2500kcal超など）は誤解釈を防ぐため「不明（null）」にする
+  const saneSalt = rawSaltPerServing != null && rawSaltPerServing <= 10 ? rawSaltPerServing : null;
+  const saneProtein = rawProteinPerServing != null && rawProteinPerServing <= 150 ? rawProteinPerServing : null;
+  const saneVeg = rawVegPerServing != null && rawVegPerServing <= 1200 ? rawVegPerServing : null;
+  const saneKcal = rawKcalPerServing != null && rawKcalPerServing <= 2500 ? rawKcalPerServing : null;
+
+  if (rawSaltPerServing != null && rawSaltPerServing > 10) {
+    assumptions.push(`1人前の食塩相当量が異常値（${rawSaltPerServing}g）となったため「不明」としました`);
+  }
+
+  // 未確定の塩分・主材料が1つでもある時は、料理全体の合計値（saltG 等）を null（不明）とし、判明分小計（partial*）に分ける
+  const saltG = !hasUnquantifiedSalt ? saneSalt : null;
+  const proteinG = !hasUnquantifiedMacro ? saneProtein : null;
+  const vegG = !hasUnquantifiedMacro ? saneVeg : null;
+  const kcal = !hasUnquantifiedMacro ? saneKcal : null;
+
+  const partialSaltG = hasUnquantifiedSalt ? saneSalt : null;
+  const partialProteinG = hasUnquantifiedMacro ? saneProtein : null;
+  const partialVegG = hasUnquantifiedMacro ? saneVeg : null;
+  const partialKcal = hasUnquantifiedMacro ? saneKcal : null;
+
+  const status = saltG !== null && kcal !== null
+    ? "estimated"
+    : (saneSalt !== null || saneKcal !== null)
+      ? "partial"
+      : "unknown";
+  const statusLabel = status === "estimated"
+    ? "材料から推定（主菜1品）"
+    : status === "partial"
+      ? "一部材料が分量未確定のため全体は不明（判明分小計あり）"
+      : "不明（材料・人数の記載不足）";
 
   // 断定的な数値（約0.5g等）や医療・健康評価は出さず、主な塩分源の事実のみを穏やかに伝える
   const topSaltSource = [...saltSources].sort((a, b) => (b.totalSalt || 0) - (a.totalSalt || 0))[0];
   const lowSaltTip = topSaltSource && topSaltSource.perServingSalt != null
-    ? `主な塩分源は「${topSaltSource.name}」（1人前あたり推定 ${topSaltSource.perServingSalt}g）です。味見しながら加減できます。`
+    ? `判明している主な塩分源は「${topSaltSource.name}」（1人前あたり推定 ${topSaltSource.perServingSalt}g）です。味見しながら加減できます。`
     : "材料の分量記載がある項目のみから推定しています（汁の残し方や製品差で変わります）。";
 
   const out = {
@@ -5063,6 +5200,10 @@ function estimateRecipeNutrition(recipe) {
     proteinG,
     vegG,
     kcal,
+    partialSaltG,
+    partialProteinG,
+    partialVegG,
+    partialKcal,
     status,
     statusLabel,
     foodDbSource: NUTRITION_FOOD_DB_SOURCE,
@@ -5228,7 +5369,13 @@ function trayTargetDays() {
 
 function findDinnerRecipeById(recipeId) {
   if (!recipeId) return null;
-  return allDinnerRecipes().find((r) => r.id === recipeId) || (typeof recipeById === "function" ? recipeById(recipeId) : null) || null;
+  return (
+    allDinnerRecipes().find((r) => r.id === recipeId) ||
+    (typeof recipeById === "function" ? recipeById(recipeId) : null) ||
+    (typeof findDiscover === "function" ? findDiscover(recipeId) : null) ||
+    (Lifestyle.curated || []).find((r) => r.id === recipeId) ||
+    null
+  );
 }
 
 // トレイの下書き（trayDraft）を開く時点で初期化する。
@@ -5238,8 +5385,10 @@ function initTrayDraft(days) {
   trayDraft = {};
   trayInitialDraft = {};
   trayBasePlan = {};
+  trayTargetDates = targetDays.map((d) => d.date);
   trayUndoStack = [];
   trayClearedDates = new Set();
+  TRAY_CANDIDATE_BASE_MEMO.clear();
   const snap = typeof planSnapshot === "function" ? planSnapshot(state) : {};
   for (const d of targetDays) {
     const r = d.slot?.recipe || d.candidate?.recipe || null;
@@ -5345,27 +5494,46 @@ function trayCandidateList(activeDate, days) {
   const anchorTraits = anchor ? Lifestyle.traits(anchor) : null;
   const anchorTags = anchor ? new Set(Lifestyle.tags(anchor)) : null;
 
-  const seenParents = new Set();
-  const raw = allDinnerRecipes()
-    .filter((r) => !Object.values(recipeRatings(r)).includes("never"))
-    .filter((r) => !otherIds.has(r.id) && (r.id === trayAnchorId || r.id !== currentOnDay?.id))
-    .map((r) => ({ r, fit: Lifestyle.fit(r, p, activeDate) }))
-    .filter((x) => x.fit.ok && (x.r.id === trayAnchorId || shelf[2](x.r)));
+  const all = allDinnerRecipes();
+  const baseKey = `${activeDate}|${all.length}|${state?.recipes?.length || 0}|${evalsSignature()}|${state?.foodProfile?.updatedAt || ""}|${state?.householdProfile?.updatedAt || ""}`;
+  let fitBase = TRAY_CANDIDATE_BASE_MEMO.get(baseKey);
+  if (!fitBase) {
+    fitBase = all
+      .filter((r) => !Object.values(recipeRatings(r)).includes("never"))
+      .map((r) => {
+        const fit = Lifestyle.fit(r, p, activeDate);
+        if (!fit.ok) return null;
+        return {
+          r,
+          fit,
+          pk: parentKeyOf(r),
+          traits: Lifestyle.traits(r),
+          tags: Lifestyle.tags(r),
+          useUpKeys: Lifestyle.useUpKeys(r),
+        };
+      })
+      .filter(Boolean);
+    setBoundedMemo(TRAY_CANDIDATE_BASE_MEMO, baseKey, fitBase);
+  }
 
+  const seenParents = new Set();
   const scored = [];
-  for (const x of raw) {
-    const pk = parentKeyOf(x.r);
+  for (const x of fitBase) {
+    if (otherIds.has(x.r.id)) continue;
+    if (x.r.id !== trayAnchorId && x.r.id === currentOnDay?.id) continue;
+    if (x.r.id !== trayAnchorId && !shelf[2](x.r)) continue;
+    const pk = x.pk;
     if (pk && x.r.id !== trayAnchorId) {
       if (otherParents.has(pk) || seenParents.has(pk)) continue;
       seenParents.add(pk);
     }
-    const t = Lifestyle.traits(x.r);
-    const tags = Lifestyle.tags(x.r);
+    const t = x.traits;
+    const tags = x.tags;
     let score = (x.fit.score || 0) + (x.r.curated ? 0 : 3);
     if (!otherProteins.has(t.protein)) score += 8;
     if (!otherStaples.has(t.staple)) score += 5;
     let sharedVegHit = "";
-    for (const v of Lifestyle.useUpKeys(x.r)) {
+    for (const v of x.useUpKeys) {
       if (sharedVeg.has(v)) { score += 6; sharedVegHit = v; break; }
     }
     let simReason = "";
@@ -5550,8 +5718,8 @@ function renderCardTraySheet() {
 
     <div class="wood-tray-stage">
       <div class="tray-slot-grid" style="--tray-cols:${Math.min(days.length, 3)}">${traySlotsHtml}</div>
-      ${filledCount > 0 ? `<div class="tray-complete-bar">
-        <button type="button" class="primary-button tray-confirm-btn" data-action="life-tray-confirm-all">✓ この${filledCount}日分で決定・買い物へ</button>
+      ${allFilled ? `<div class="tray-complete-bar">
+        <button type="button" class="primary-button tray-confirm-btn" data-action="life-tray-confirm-all">✓ この${days.length}日分で決定・買い物へ</button>
       </div>` : ""}
     </div>
 
@@ -5589,7 +5757,11 @@ function renderCardFlipModal() {
   const ingList = (r.ingredients || []).map((i) => `<li><span>${escapeHtml(i.name)}</span><b>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</b></li>`).join("");
   const stepList = (r.steps || []).slice(0, 8).map((s, idx) => `<li><b>${idx + 1}</b><span>${escapeHtml(s)}</span></li>`).join("");
 
-  const fmtVal = (v, unit) => (v != null && Number.isFinite(v) ? `約${v}${unit}` : "不明");
+  const fmtVal = (v, partial, unit) => {
+    if (v != null && Number.isFinite(v)) return `約${v}${unit}`;
+    if (partial != null && Number.isFinite(partial)) return `不明 <small class="rc-partial-sub">（判明分 小計 約${partial}${unit}）</small>`;
+    return "不明";
+  };
   const saltBreakdownHtml = n.saltSources.length
     ? n.saltSources.map((s) => `<span class="rc-salt-chip">${escapeHtml(s.name)}（${escapeHtml(s.amount)}）${s.perServingSalt != null ? `：約${s.perServingSalt}g/人` : ""}</span>`).join("")
     : `<span class="rc-salt-chip">調味料の分量が特定できないため内訳は不明</span>`;
@@ -5639,15 +5811,15 @@ function renderCardFlipModal() {
           <strong>📊 1人前の栄養・塩分目安（${escapeHtml(n.statusLabel)}）</strong>
         </summary>
         <div class="rc-param-grid">
-          <div class="rc-param-cell"><small>💪 たんぱく質</small><strong>${fmtVal(n.proteinG, "g")}</strong></div>
-          <div class="rc-param-cell"><small>🥬 野菜量</small><strong>${fmtVal(n.vegG, "g")}</strong></div>
-          <div class="rc-param-cell is-salt"><small>🧂 食塩相当量</small><strong>${fmtVal(n.saltG, "g")}</strong></div>
-          <div class="rc-param-cell"><small>🔥 エネルギー</small><strong>${fmtVal(n.kcal, "kcal")}</strong></div>
+          <div class="rc-param-cell"><small>💪 たんぱく質</small><strong>${fmtVal(n.proteinG, n.partialProteinG, "g")}</strong></div>
+          <div class="rc-param-cell"><small>🥬 野菜量</small><strong>${fmtVal(n.vegG, n.partialVegG, "g")}</strong></div>
+          <div class="rc-param-cell is-salt"><small>🧂 食塩相当量</small><strong>${fmtVal(n.saltG, n.partialSaltG, "g")}</strong></div>
+          <div class="rc-param-cell"><small>🔥 エネルギー</small><strong>${fmtVal(n.kcal, n.partialKcal, "kcal")}</strong></div>
         </div>
         <div class="rc-salt-sources">${saltBreakdownHtml}</div>
         <p class="rc-lowsalt-tip">💡 ${escapeHtml(n.lowSaltTip)}</p>
         ${uncalcNote}
-        <p class="small muted rc-nutri-source">出典：${escapeHtml(n.foodDbSource)}（版 ${escapeHtml(n.calcVersion)}）</p>
+        <p class="small muted rc-nutri-source">参考：${escapeHtml(n.foodDbSource)}（版 ${escapeHtml(n.calcVersion)}）</p>
       </details>
 
       <div class="rc-flip-foot">
@@ -5660,11 +5832,13 @@ function renderCardFlipModal() {
 
 // 食後の1タップ評価（§54）を邪魔しない、コンパクトなカード獲得・進化バナー（今日タブ内）
 function renderCardGetBanner(recipe) {
+  if (!cardGetBannerRecipeId) return "";
   const target = recipe || findDinnerRecipeById(cardGetBannerRecipeId);
-  if (!target) return "";
+  const bannerRec = findDinnerRecipeById(cardGetBannerRecipeId);
+  if (!target || (target.id !== cardGetBannerRecipeId && target.starterId !== cardGetBannerRecipeId && bannerRec?.starterId !== target.id)) return "";
   const spec = recipeCardSpec(target);
-  if (!spec || !spec.isCollected) return "";
-  const label = spec.cooks >= 3
+  if (!spec || !spec.isCollected || spec.cooks > 3) return "";
+  const label = spec.cooks === 3
     ? `👑 3回目の調理で「わが家の定番カード」に進化しました！`
     : spec.cooks === 2
       ? `★★ 2回目の調理で「常連カード」に進化しました！`
@@ -5771,14 +5945,16 @@ function handleCardTrayAction(action, data, before) {
       swapCommit();
       swapDate = "";
     }
-    lastModalTriggerSelector = '[data-action="life-tray-open"]';
+    trayTriggerSelector = '[data-action="life-tray-open"]';
+    lastModalTriggerSelector = trayTriggerSelector;
     cardBookOpen = false;
     trayOpen = true;
     trayAnchorId = "";
     trayFlipId = "";
     trayPage = 0;
     const days = trayTargetDays();
-    initTrayDraft(days);
+    const keepExistingDraft = Object.keys(trayDraft).length > 0 && trayTargetDates.length === days.length && trayTargetDates.every((dt, idx) => dt === days[idx]?.date);
+    if (!keepExistingDraft) initTrayDraft(days);
     if (data.date && days.some((d) => d.date === String(data.date))) {
       trayActiveDate = String(data.date);
     } else {
@@ -5790,12 +5966,14 @@ function handleCardTrayAction(action, data, before) {
   }
   if (action === "life-tray-close") {
     // 編集中の仮置き（trayDraft）を破棄し、開く前の献立・買い物・同期状態を一切変更しない
+    lastModalTriggerSelector = trayTriggerSelector || '[data-action="life-tray-open"]';
     trayOpen = false;
     trayFlipId = "";
     trayAnchorId = "";
     trayDraft = {};
     trayInitialDraft = {};
     trayBasePlan = {};
+    trayTargetDates = [];
     trayUndoStack = [];
     trayClearedDates = new Set();
     syncHasSheetBodyClass();
@@ -5895,34 +6073,39 @@ function handleCardTrayAction(action, data, before) {
   if (action === "life-tray-confirm-all") {
     const plan = dailyPlan();
     const locks = lockedDates(plan);
-    const days = trayTargetDays();
-    if (!days.length) return true;
-    if (!Object.keys(trayDraft).length) initTrayDraft(days);
+    const currentDays = trayTargetDays();
+    if (!Object.keys(trayDraft).length && currentDays.length) initTrayDraft(currentDays);
+    const targetDates = trayTargetDates.length
+      ? [...trayTargetDates]
+      : Object.keys(trayInitialDraft).length
+        ? Object.keys(trayInitialDraft)
+        : currentDays.map((d) => d.date);
+    if (!targetDates.length) return true;
 
-    // 1. 事前検証（1日でも制約違反・ロック・調理済み・お休みがあれば、部分確定せず中断）
+    // 1. 事前検証（トレイを開いた時点の全対象日について、1日でもお休み・調理済み・ロック・空席・制約違反があれば部分確定せず中断）
     const p = dailyProfile();
     const validated = [];
-    for (const d of days) {
-      const latestDay = plan.find((x) => x.date === d.date);
-      if (!latestDay || locks.has(d.date) || latestDay.off || latestDay.prestart || latestDay.slot?.status === "cooked" || latestDay.slot?.status === "off") {
-        showToast(`${formatDate(d.date)}は変更できない状態のため、決定を中断しました。`);
+    for (const date of targetDates) {
+      const latestDay = plan.find((x) => x.date === date);
+      if (!latestDay || locks.has(date) || latestDay.off || latestDay.prestart || latestDay.slot?.status === "cooked" || latestDay.slot?.status === "off") {
+        showToast(`${formatDate(date)}は変更できない状態のため、決定を中断しました。`);
         return true;
       }
-      const rid = trayDraft[d.date];
-      if (!rid) continue;
+      const rid = trayDraft[date];
+      if (!rid) {
+        showToast("すべての日の料理を並べてから決定してください。");
+        return true;
+      }
       const r = findDinnerRecipeById(rid);
-      if (!r || !Lifestyle.fit(r, p, d.date).ok) {
+      if (!r || !Lifestyle.fit(r, p, date).ok) {
         showToast(`「${r?.title || "選択中の料理"}」が条件に合わないため、決定を中断しました。`);
         return true;
       }
-      validated.push({ date: d.date, day: latestDay, recipe: r });
-    }
-    if (!validated.length) {
-      showToast("トレイに料理を1品以上並べてから決定してください。");
-      return true;
+      validated.push({ date, day: latestDay, recipe: r });
     }
 
     // 2. 家族共有でトレイ編集中の間に他端末から同じ日が書き換えられていないか検査（無言上書きの防止）
+    // 競合を検出した時点では saveOwnRecipe を呼ばず、トレイの下書き（他日の変更を含む）も破棄せず保持する
     if (typeof planSnapshot === "function" && typeof samePlan === "function") {
       const currentSnap = planSnapshot(state);
       const conflictDates = [];
@@ -5930,8 +6113,8 @@ function handleCardTrayAction(action, data, before) {
         const baseSnap = trayBasePlan[item.date] || null;
         const nowSnap = currentSnap[item.date] || null;
         if (Object.prototype.hasOwnProperty.call(trayBasePlan, item.date) && !samePlan(baseSnap, nowSnap)) {
-          const localSlot = confirmedSlot(item.date, saveOwnRecipe(item.recipe));
-          const localSnap = { slot: localSlot };
+          const previewSlot = confirmedSlot(item.date, clone(item.recipe));
+          const localSnap = { slot: previewSlot };
           if (!samePlan(localSnap, nowSnap)) {
             state.sync = state.sync || {};
             state.sync.conflicts = state.sync.conflicts || {};
@@ -5942,17 +6125,15 @@ function handleCardTrayAction(action, data, before) {
       }
       if (conflictDates.length) {
         trayOpen = false;
-        trayDraft = {};
-        trayInitialDraft = {};
-        trayBasePlan = {};
-        trayUndoStack = [];
-        trayClearedDates = new Set();
+        trayFlipId = "";
+        syncHasSheetBodyClass();
         showToast("家族の端末で同じ日の献立が更新されたため、残す献立を選んでください。");
         return true;
       }
     }
 
     // 3. 既存の life-confirm と同じ確定パイプラインを通す
+    // 開いた時と同じ料理のまま・すでに確定済みの日は confirmDaily を呼ばない（買い物済み食材がリストに復活するのを防ぐ）
     if (rhythmOn()) {
       const blocks = planPageBlocks();
       const currentBlock = blocks.find((b) => b.key === planPage) || blocks.find((b) => b.end >= today()) || blocks[0];
@@ -5967,21 +6148,22 @@ function handleCardTrayAction(action, data, before) {
       via: "tray",
     });
 
-    const hadConfirmed = days.some((d) => state.mealSlots?.[d.date]?.status === "confirmed");
+    const hadConfirmed = targetDates.some((date) => state.mealSlots?.[date]?.status === "confirmed");
     state.planOverrides = state.planOverrides || {};
+    let changedAnyConfirmed = false;
     for (const item of validated) {
+      const existingSlot = state.mealSlots?.[item.date];
+      const unchangedConfirmed =
+        existingSlot?.status === "confirmed" &&
+        trayDraft[item.date] === trayInitialDraft[item.date] &&
+        (existingSlot.recipe?.id === item.recipe.id || existingSlot.recipe?.starterId === item.recipe.id);
+      if (unchangedConfirmed) continue;
       state.planOverrides[item.date] = item.recipe.id;
       confirmDaily({ date: item.date }, item.recipe);
+      changedAnyConfirmed = true;
     }
-    state.planConfirmedAt = nowIso();
-    // トレイで空席にした日があれば、未確定のオーバーライドを消す
-    for (const d of days) {
-      if (!trayDraft[d.date] && state.planOverrides?.[d.date]) {
-        delete state.planOverrides[d.date];
-      }
-    }
-    if (hadConfirmed) changedShopping(before || []);
-    else shoppingNotice = "";
+    if (hadConfirmed && changedAnyConfirmed) changedShopping(before || []);
+    else if (!hadConfirmed) shoppingNotice = "";
 
     trayOpen = false;
     trayFlipId = "";
@@ -5989,6 +6171,7 @@ function handleCardTrayAction(action, data, before) {
     trayDraft = {};
     trayInitialDraft = {};
     trayBasePlan = {};
+    trayTargetDates = [];
     trayUndoStack = [];
     trayClearedDates = new Set();
     if (typeof setView === "function") setView("shopping");
@@ -5998,13 +6181,15 @@ function handleCardTrayAction(action, data, before) {
     return true;
   }
   if (action === "life-card-flip" && data.recipe) {
-    lastModalTriggerSelector = `[data-action="life-card-flip"][data-recipe="${typeof CSS !== "undefined" && CSS?.escape ? CSS.escape(String(data.recipe)) : String(data.recipe)}"]`;
+    flipTriggerSelector = `[data-action="life-card-flip"][data-recipe="${typeof CSS !== "undefined" && CSS?.escape ? CSS.escape(String(data.recipe)) : String(data.recipe)}"]`;
+    lastModalTriggerSelector = flipTriggerSelector;
     trayFlipId = String(data.recipe);
     syncHasSheetBodyClass();
     return true;
   }
   if (action === "life-card-flip-close") {
     trayFlipId = "";
+    lastModalTriggerSelector = flipTriggerSelector || lastModalTriggerSelector;
     syncHasSheetBodyClass();
     return true;
   }
@@ -6020,12 +6205,14 @@ function handleCardTrayAction(action, data, before) {
     return true;
   }
   if (action === "life-card-book-open") {
-    lastModalTriggerSelector = '[data-action="life-card-book-open"]';
+    trayTriggerSelector = '[data-action="life-card-book-open"]';
+    lastModalTriggerSelector = trayTriggerSelector;
     cardGetRecipeId = "";
     trayOpen = false;
     trayDraft = {};
     trayInitialDraft = {};
     trayBasePlan = {};
+    trayTargetDates = [];
     trayUndoStack = [];
     trayClearedDates = new Set();
     cardBookOpen = true;
@@ -6033,6 +6220,7 @@ function handleCardTrayAction(action, data, before) {
     return true;
   }
   if (action === "life-card-book-close") {
+    lastModalTriggerSelector = trayTriggerSelector || '[data-action="life-card-book-open"]';
     cardBookOpen = false;
     trayFlipId = "";
     syncHasSheetBodyClass();

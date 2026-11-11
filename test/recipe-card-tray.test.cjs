@@ -218,7 +218,6 @@ test("4. Confirming the tray updates mealSlots, dailyShopping, planPage/shopPage
   assert.equal(run(`state.planOverrides[${JSON.stringify(d0)}]`), pickedId);
   assert.equal(run(`state.mealSlots[${JSON.stringify(d0)}]?.status`), "confirmed");
   assert.equal(run(`state.mealSlots[${JSON.stringify(d0)}]?.recipe?.id`), pickedId);
-  assert.ok(run(`Boolean(state.planConfirmedAt)`));
 
   const shop = run(`dailyShopping()`);
   assert.ok(Array.isArray(shop) && shop.length > 0);
@@ -315,10 +314,9 @@ test("6. Restricted ingredients, unsupported equipment, overtime, cooked, off, a
 
   // If a draft has an invalid recipe injected, confirm-all aborts without partial update
   run(`trayDraft[${JSON.stringify(d0)}] = "bad-allergen"`);
-  const beforeConfirmedAt = run(`state.planConfirmedAt`);
   run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-  assert.equal(run(`state.planConfirmedAt`), beforeConfirmedAt);
   assert.notEqual(run(`state.planOverrides?.[${JSON.stringify(d0)}]`), "bad-allergen");
+  assert.notEqual(run(`state.mealSlots?.[${JSON.stringify(d0)}]?.status`), "confirmed");
 
   // Cooked / off day is excluded from trayTargetDays and cannot be modified
   run(`handleCardTrayAction("life-tray-close", {})`);
@@ -543,4 +541,227 @@ test("12. Performance benchmark with 400 recipes and cache invalidation on recip
   `);
   const afterSalt = run(`estimateRecipeNutrition(state.recipes.find(r => r.id === "perf-r-0")).saltG`);
   assert.ok(afterSalt > beforeSalt, "Nutrition memo must invalidate when recipe ingredients/updatedAt change");
+});
+
+test("13. Regression (Claude #1): Unchanged already-confirmed day is NOT re-confirmed by life-tray-confirm-all, keeping shopped items off the shopping list", () => {
+  const run = app();
+  run(`setView = (v) => { state.view = v; }`);
+  const days = run(`trayTargetDays()`);
+  const d0 = days[0].date;
+  const d1 = days[1].date;
+  const r0 = run(`allDinnerRecipes()[0]`);
+  const r1 = run(`allDinnerRecipes()[1]`);
+  const r2 = run(`allDinnerRecipes()[2]`);
+
+  // Day 0 is already confirmed and shopped at an earlier timestamp
+  run(`
+    confirmDaily({ date: ${JSON.stringify(d0)} }, ${JSON.stringify(r0)});
+    state.mealSlots[${JSON.stringify(d0)}].updatedAt = "2026-11-08T08:00:00.000Z";
+    state.shopDone = { legacy: "2026-11-08T09:00:00.000Z" };
+  `);
+  assert.equal(run(`dailyShopping().length`), 0, "Before tray open, already-shopped Day 0 has 0 items to buy");
+
+  // Open tray, leave Day 0 unchanged, and change only Day 1
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d1)} })`);
+  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(r1.id)}, date: ${JSON.stringify(d1)} })`);
+  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(r2.id)}, date: ${JSON.stringify(days[2].date)} })`);
+  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
+
+  assert.equal(
+    run(`state.mealSlots[${JSON.stringify(d0)}].updatedAt`),
+    "2026-11-08T08:00:00.000Z",
+    "Unchanged confirmed day must keep its original updatedAt so shopDone stays newer"
+  );
+  // Shopping list must contain only newly confirmed days' ingredients, not Day 0's already-shopped items
+  const shopUses = run(`dailyShopping().flatMap(i => i.uses || [])`);
+  assert.ok(!shopUses.includes(r0.title), "Already-shopped unchanged day d0 must not return to shopping list");
+  assert.ok(shopUses.includes(r1.title), "Newly confirmed day d1 must appear on shopping list");
+});
+
+test("14. Regression (Claude #2 & Codex #2, #3): Empty slot hides confirm button & blocks confirm-all; target day becoming off/cooked/locked during edit aborts all days", () => {
+  const run = app();
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  const days = run(`trayTargetDays()`);
+  const d0 = days[0].date;
+  const d1 = days[1].date;
+
+  // All 3 slots filled initially -> confirm button is shown
+  assert.ok(run(`renderCardTraySheet()`).includes("life-tray-confirm-all"));
+
+  // Clear one slot -> confirm button must NOT be rendered, and direct confirm-all must abort without confirming remaining days
+  run(`handleCardTrayAction("life-tray-clear-one", { date: ${JSON.stringify(d0)} })`);
+  assert.ok(!run(`renderCardTraySheet()`).includes("life-tray-confirm-all"), "Confirm button must be hidden when any slot is empty");
+  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
+  assert.notEqual(run(`state.mealSlots?.[${JSON.stringify(d1)}]?.status`), "confirmed", "Must not partially confirm when a slot is empty");
+
+  // Re-open with all slots filled, then d0 becomes 'off' while tray is open -> confirm-all must abort all days
+  run(`handleCardTrayAction("life-tray-close", {})`);
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  run(`state.mealSlots[${JSON.stringify(d0)}] = { date: ${JSON.stringify(d0)}, status: "off", updatedAt: nowIso() }`);
+  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
+  assert.notEqual(run(`state.mealSlots?.[${JSON.stringify(d1)}]?.status`), "confirmed", "Must abort all days if any pinned target date became off while tray was open");
+});
+
+test("15. Regression (Codex #1): Conflict resolution uses c.local, does not prematurely save discover recipe, and preserves other days' tray draft", async () => {
+  const run = app();
+  const days = run(`trayTargetDays()`);
+  const d0 = days[0].date;
+  const d1 = days[1].date;
+
+  // Add a discover recipe to candidate pool
+  run(`
+    discover.savedAt = "2026-11-09T09:00:00Z";
+    discover.trends = [{
+      videoId: "vidtest1",
+      title: "新着テスト鶏の照り焼き",
+      videoUrl: "https://www.youtube.com/watch?v=vidtest1",
+      thumbnailUrl: "https://i.ytimg.com/vi/vidtest1/hqdefault.jpg",
+      planning: { minutes: 15, easy: true, equipment: ["フライパン"], contains: ["鶏肉"], tasks: [] },
+      sourceServings: 2,
+      ingredients: [{ name: "鶏もも肉", amount: "250g" }, { name: "しょうゆ", amount: "大さじ1" }],
+      steps: ["フライパンで焼く"]
+    }];
+    discover.popular = [];
+    discoverRecipes();
+  `);
+  const rRemote = run(`allDinnerRecipes().find(r => r.id !== "trend-vidtest1")`);
+  const rDay1Pick = run(`allDinnerRecipes().find(r => r.id !== "trend-vidtest1" && r.id !== ${JSON.stringify(rRemote.id)})`);
+  const recipesBefore = run(`state.recipes.length`);
+
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  run(`handleCardTrayAction("life-tray-place", { recipe: "trend-vidtest1", date: ${JSON.stringify(d0)} })`);
+  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(rDay1Pick.id)}, date: ${JSON.stringify(d1)} })`);
+
+  // Simulate remote family device confirming rRemote on d0 while tray was open
+  run(`state.mealSlots[${JSON.stringify(d0)}] = confirmedSlot(${JSON.stringify(d0)}, ${JSON.stringify(rRemote)})`);
+  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
+
+  // 1. Conflict detected, discover recipe NOT saved to state.recipes yet
+  assert.ok(run(`Boolean(state.sync?.conflicts?.[${JSON.stringify(d0)}])`));
+  assert.equal(run(`state.recipes.length`), recipesBefore, "Discover recipe must not be saved before user chooses local in conflict");
+
+  // 2. Conflict choice UI shows the local tray choice ("新着テスト鶏の照り焼き"), NOT the remote recipe
+  const conflictHtml = run(`renderPlanConflictChoices(state.sync.conflicts)`);
+  assert.ok(conflictHtml.includes("この端末：新着テスト鶏の照り焼き"), `Expected local tray recipe title in conflict button, got: ${conflictHtml}`);
+
+  // 3. Other day's draft (d1) is preserved
+  assert.equal(run(`trayDraft[${JSON.stringify(d1)}]`), rDay1Pick.id, "Non-conflicting day's draft must be preserved");
+
+  // 4. Choosing 'sync-plan-local' applies c.local (and saves the discover recipe now)
+  await run(`handleSyncPlanAction("sync-plan-local", { date: ${JSON.stringify(d0)} })`);
+  assert.equal(run(`state.mealSlots[${JSON.stringify(d0)}]?.recipe?.title`), "新着テスト鶏の照り焼き");
+  assert.equal(run(`state.recipes.length`), recipesBefore + 1, "Discover recipe is saved once local conflict choice is selected");
+
+  // 5. Re-opening tray keeps d1's draft intact so user can finish confirming
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  assert.equal(run(`trayDraft[${JSON.stringify(d1)}]`), rDay1Pick.id);
+});
+
+test("16. Regression (Claude #3 & Codex #4, #5): Ponzu salt, diluted liquid broth vs dry granules, plain oil kcal, impossible salt cap, and partial vs total separation", () => {
+  const run = app();
+
+  // (a) Ponzu must match SEASONING_SALT_RULES ("ponzu"), NOT unsalted vinegar
+  const ponzuRecipe = {
+    id: "nutri-ponzu",
+    title: "豚しゃぶポン酢",
+    sourceServings: 2,
+    ingredients: [
+      { name: "豚肉", amount: "200g" },
+      { name: "ポン酢", amount: "大さじ2" },
+    ],
+  };
+  const nPonzu = run(`estimateRecipeNutrition(${JSON.stringify(ponzuRecipe)})`);
+  assert.equal(nPonzu.status, "estimated");
+  assert.equal(nPonzu.saltG, 1.6, "Ponzu 2 tbsp (3.0g) + pork (0.2g) / 2 servings = 1.6g");
+  assert.ok(nPonzu.matchedItems.some((m) => m.foodId === "ponzu"));
+
+  // (b) Diluted soup ("鶏ガラスープ 800ml") must NOT be counted as 53 tbsp of dry granules (52.2g/serving)!
+  // And plain "油 大さじ1" must count ~108 kcal.
+  const brothRecipe = {
+    id: "nutri-liquid-broth",
+    title: "鶏ガラスープ鍋",
+    sourceServings: 4,
+    ingredients: [
+      { name: "鶏もも肉", amount: "300g" },
+      { name: "白菜", amount: "400g" },
+      { name: "鶏ガラスープ", amount: "800ml" },
+      { name: "油", amount: "大さじ1" },
+      { name: "塩", amount: "小さじ1" },
+    ],
+  };
+  const nBroth = run(`estimateRecipeNutrition(${JSON.stringify(brothRecipe)})`);
+  assert.equal(nBroth.saltG, null, "Dish total saltG must be null (unknown) when diluted soup stock has unknown dilution");
+  assert.equal(nBroth.status, "partial");
+  assert.equal(nBroth.partialSaltG, 1.6, "Known salt subtotal (1 tsp salt + chicken / 4) is exposed as partialSaltG");
+  assert.ok(nBroth.kcal >= 200, "Plain '油 大さじ1' and chicken/cabbage kcal are counted");
+
+  // (c) Partial salt ("塩 適量") sets saltG to null and shows partialSaltG on card back
+  const partialRecipe = {
+    id: "nutri-partial-salt",
+    title: "豚の生姜焼き（塩適量）",
+    sourceServings: 2,
+    ingredients: [
+      { name: "豚ロース", amount: "200g" },
+      { name: "しょうゆ", amount: "大さじ1" },
+      { name: "塩", amount: "適量" },
+    ],
+  };
+  run(`state.recipes.push(${JSON.stringify(partialRecipe)})`);
+  const nPartial = run(`estimateRecipeNutrition(${JSON.stringify(partialRecipe)})`);
+  assert.equal(nPartial.saltG, null, "Dish total saltG must be null when '塩 適量' is present");
+  assert.equal(nPartial.partialSaltG, 1.4, "Known soy sauce + pork salt is in partialSaltG");
+  assert.equal(nPartial.status, "partial");
+
+  run(`trayFlipId = "nutri-partial-salt"`);
+  const flipHtml = run(`renderCardFlipModal()`);
+  assert.ok(flipHtml.includes("不明") && flipHtml.includes("判明分 小計 約1.4g"), "Card back must show '不明（判明分 小計 約1.4g）'");
+});
+
+test("17. Regression (Claude #6 & #7 & Codex #6): Viewer hides all '作った' buttons; middle ingredient & 2nd evaluation rating invalidate cache; 4th cook banner", () => {
+  const run = app();
+  const dPast = run(`addDays(today(), -1)`);
+  const r0 = run(`allDinnerRecipes()[0]`);
+  run(`confirmDaily({ date: ${JSON.stringify(dPast)} }, ${JSON.stringify(r0)})`);
+  run(`cookingDate = ${JSON.stringify(dPast)}`);
+
+  // Viewer mode hides '作った' in renderTodayTodos, renderRecentMeals, and renderCooking
+  run(`isViewer = () => true`);
+  assert.ok(!run(`renderTodayTodos()`).includes("life-record-past"), "Viewer must not see life-record-past in Today todos");
+  assert.equal(run(`renderRecentMeals()`), "", "Viewer must not see renderRecentMeals");
+  assert.ok(!run(`renderCooking()`).includes("life-cooked"), "Viewer must not see life-cooked in renderCooking");
+  run(`isViewer = () => false`);
+
+  // Middle ingredient modification without changing first/last ingredient or updatedAt invalidates nutrition cache
+  run(`
+    state.recipes.push({
+      id: "cache-mid-test",
+      title: "キャッシュ検証炒め",
+      mealType: "dinner",
+      sourceServings: 2,
+      ingredients: [
+        { name: "豚肉", amount: "200g" },
+        { name: "しょうゆ", amount: "小さじ1" },
+        { name: "キャベツ", amount: "150g" }
+      ],
+      steps: ["炒める"]
+    });
+  `);
+  const salt1 = run(`estimateRecipeNutrition(state.recipes.find(r => r.id === "cache-mid-test")).saltG`);
+  run(`state.recipes.find(r => r.id === "cache-mid-test").ingredients[1].amount = "大さじ2"`);
+  const salt2 = run(`estimateRecipeNutrition(state.recipes.find(r => r.id === "cache-mid-test")).saltG`);
+  assert.ok(salt2 > salt1, "Modifying middle ingredient amount must invalidate NUTRITION_MEMO even without updatedAt change");
+
+  // Modifying 2nd evaluation's rating invalidates CARD_SPEC_MEMO
+  run(`
+    state.evaluations = [
+      { id: "ev-top", recipeId: "other-r", cookedAt: "2026-11-09", updatedAt: "2026-11-09T10:00:00Z", familyRepeatCycles: { 自分: "monthly" } },
+      { id: "ev-second", recipeId: "cache-mid-test", cookedAt: "2026-11-08", updatedAt: "2026-11-08T10:00:00Z", familyRepeatCycles: { 自分: "monthly" } }
+    ];
+  `);
+  const specBefore = run(`recipeCardSpec(state.recipes.find(r => r.id === "cache-mid-test"))`);
+  assert.equal(specBefore.rank, "bronze");
+  run(`state.evaluations[1].familyRepeatCycles = { 自分: "tomorrow" }`);
+  const specAfter = run(`recipeCardSpec(state.recipes.find(r => r.id === "cache-mid-test"))`);
+  assert.equal(specAfter.rank, "gold", "Changing 2nd evaluation's rating to 'tomorrow' must invalidate CARD_SPEC_MEMO and upgrade rank to gold");
 });

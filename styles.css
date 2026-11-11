@@ -4596,13 +4596,13 @@ body.has-sheet { overflow: hidden; }
   display: flex;
   align-items: baseline;
   gap: 3px;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.1;
   color: inherit;
   padding-right: 22px;
 }
 .tray-slot-head small {
-  font-size: 9.5px;
+  font-size: 11px;
   opacity: 0.85;
 }
 .tray-slot-row {
@@ -4638,7 +4638,7 @@ body.has-sheet { overflow: hidden; }
   overflow-wrap: anywhere;
 }
 .tray-slot-sub {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   opacity: 0.85;
   line-height: 1.1;
@@ -4903,12 +4903,12 @@ body.has-sheet { overflow: hidden; }
   align-items: center;
   gap: 3px;
   padding-right: 22px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 .rc-card-no {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.03em;
   color: #7c5a33;
@@ -4984,7 +4984,7 @@ body.has-sheet { overflow: hidden; }
   position: absolute;
   left: 5px;
   bottom: 4px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   padding: 1px 6px;
   border-radius: 999px;
@@ -5001,7 +5001,7 @@ body.has-sheet { overflow: hidden; }
   position: absolute;
   top: 5px;
   left: 5px;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 900;
   padding: 2px 6px;
   border-radius: 999px;
@@ -5014,7 +5014,7 @@ body.has-sheet { overflow: hidden; }
   position: absolute;
   right: 5px;
   bottom: 4px;
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.04em;
   padding: 1px 5px;
@@ -5033,11 +5033,11 @@ body.has-sheet { overflow: hidden; }
   border-radius: 999px;
   background: linear-gradient(135deg, #fae08a, #c78516);
   color: #2b1700;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 900;
   box-shadow: 0 2px 6px rgba(80, 48, 4, 0.32);
 }
-.rc-foil-seal i { font-style: normal; font-size: 9.5px; }
+.rc-foil-seal i { font-style: normal; font-size: 11px; }
 
 .rc-title-block {
   display: flex;
@@ -5208,7 +5208,7 @@ body.has-sheet { overflow: hidden; }
   gap: 1px;
 }
 .rc-dock-icon span { font-size: 13px; }
-.rc-dock-icon small { font-size: 9px; font-weight: 800; white-space: nowrap; }
+.rc-dock-icon small { font-size: 11px; font-weight: 800; white-space: nowrap; }
 .rc-dock-icon.is-active {
   background: var(--tomato);
   border-color: var(--tomato);
@@ -5338,7 +5338,7 @@ body.has-sheet { overflow: hidden; }
   gap: 2px;
 }
 .rc-flip-nutri-box .rc-param-cell small {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   color: #6b4b27;
 }
@@ -5346,6 +5346,12 @@ body.has-sheet { overflow: hidden; }
   font-size: 13.5px;
   font-weight: 900;
   color: #2f1c08;
+}
+.rc-partial-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b4b27;
 }
 .rc-salt-sources {
   display: flex;
