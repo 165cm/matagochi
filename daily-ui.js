@@ -769,7 +769,7 @@ function renderDailyPlan() {
   // 外したもの：週のカレンダー（ページと同じ情報）・バランスの内訳・まとめて評価（ページの「評価する」と今日の画面で）・
   // 動画の読み取りの案内・ふたりで使う誘い（最初の献立の画面で1回）・「お試しの提案」・食材制限の ⓘ（作る画面と設定にある）。
   const list = `<section class="plan-list">${cards}${ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}</section>`;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${renderFreeUsedCard(plan)}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderPlanTrayBanner(plan, locks)}${list}${renderFreeUsedCard(plan)}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayOpen ? renderCardTraySheet() : ""}${cardBookOpen ? renderCardBookSheet() : ""}${renderCardGetModal()}`;
 }
 // ---- 献立のページ（買い物のひとかたまりごと・横スライド） ----
 let planPage = ""; // 見ているページ（ひとかたまりの key）。描き直しても同じページのまま
@@ -1261,7 +1261,8 @@ function renderSwapChoices() {
   // 時間・材料を確かめれば選べる自分のレシピは、閉じた1行に（確認すれば選べるので隠さない）。
   const reviewRows = review.length ? `<details class="swap-review"><summary>確認すると選べる ${review.length}品</summary>${review.slice(0, 6).map(({ r }) => `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`).join("")}</details>` : "";
   const day = `${formatDate(swapDate)}（${weekdayLabel(swapDate)}）`;
-  return `<div class="swap-backdrop" data-action="life-close-swap" aria-hidden="true"></div><section class="swap-panel swap-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="${day}の料理を選ぶ"><div class="swap-head"><b>${day}</b><button type="button" class="round-icon swap-close" data-action="life-close-swap" aria-label="閉じる">✕</button></div>${chips ? `<div class="swap-chips" role="group" aria-label="食べたい気分">${chips}</div>` : ""}${status}${grid}<div class="swap-bottom">${nav}</div><div class="swap-foot">${reviewRows}${renderUrlInsert()}</div></section>`;
+  const traySwitch = isViewer() ? "" : `<button type="button" class="tray-switch-pill" data-action="life-tray-open" data-date="${swapDate}">🃏 3日トレイ＆カードで並べる ›</button>`;
+  return `<div class="swap-backdrop" data-action="life-close-swap" aria-hidden="true"></div><section class="swap-panel swap-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="${day}の料理を選ぶ"><div class="swap-head"><b>${day}</b>${traySwitch}<button type="button" class="round-icon swap-close" data-action="life-close-swap" aria-label="閉じる">✕</button></div>${chips ? `<div class="swap-chips" role="group" aria-label="食べたい気分">${chips}</div>` : ""}${status}${grid}<div class="swap-bottom">${nav}</div><div class="swap-foot">${reviewRows}${renderUrlInsert()}</div></section>`;
 }
 // Photo when we have one, otherwise a warm tile with a staple emoji (clearly labelled as an image).
 // よはく：画面の余白にこっそり住んでいるキャラクター。1画面に1匹まで、文字やボタンには重ねない。
@@ -1313,6 +1314,7 @@ function renderToday() {
   ${tomorrow ? `<button type="button" class="tomorrow-line" data-action="go-view" data-view="plan"><span>明日は</span><b>${tomorrow.prestart ? "いつもどおり（献立の前）" : tomorrowOff ? "お休み 🌙" : tr ? escapeHtml(tr.title) : "未定"}</b><i aria-hidden="true">›</i></button>` : ""}
   ${renderWeeklyStamps()}
   ${renderInstallCard()}
+  ${renderCardGetModal()}
 `;
 }
 // 食後すぐの1タップ評価（「ごちそうさま！」のカード内で、次に食べたい頃をスタンプ感覚で選べる）。
@@ -2380,6 +2382,7 @@ function dailyRecord(slot) {
     status: "cooked",
     updatedAt: nowIso(),
   };
+  cardGetRecipeId = own.id;
 }
 function bindDailyEvents() {
   if (typeof CookMode !== "undefined") CookMode.sync();
@@ -2738,7 +2741,7 @@ function handleDailyAction(action, data) {
       const before = dailyShopping();
       slot.side = data.side;
       slot.updatedAt = nowIso();
-      changedShopping(before);
+      changedShopping(before || []);
       saveState();
       render();
     }
@@ -2751,7 +2754,7 @@ function handleDailyAction(action, data) {
       const before = dailyShopping();
       delete slot.side;
       slot.updatedAt = nowIso();
-      changedShopping(before);
+      changedShopping(before || []);
       saveState();
       render();
     }
@@ -2901,7 +2904,7 @@ function handleDailyAction(action, data) {
     const r = slot && latestSlotRecipe(slot);
     if (r) {
       confirmDaily({ date: data.date }, r);
-      changedShopping(before);
+      changedShopping(before || []);
     }
   }
   if (action === "life-off") {
@@ -2938,6 +2941,11 @@ function handleDailyAction(action, data) {
     trackDaily("swap_opened");
   }
   if (action === "life-close-swap") { if (swapDate && !swapPick) trackDaily("swap_closed"); swapCommit(); swapDate = ""; }
+  if (handleCardTrayAction(action, data, before)) {
+    saveState();
+    render();
+    return true;
+  }
   if (action === "life-pass-ask" && SWAP_FEATURE_LABEL[data.key] && ["less", "keep"].includes(data.answer) && !isViewer()) {
     const memo = state.passMemo = normalizePassMemo(state.passMemo);
     memo.asked[data.key] = { answer: data.answer, at: nowIso() };
@@ -3030,7 +3038,7 @@ function handleDailyAction(action, data) {
       if (state.mealSlots[data.date]?.status === "confirmed")
         confirmDaily({ date: data.date }, r);
       else state.planOverrides[data.date] = r.id;
-      changedShopping(before);
+      changedShopping(before || []);
     }
     swapDate = "";
   }
@@ -3863,7 +3871,7 @@ let swapFocusWhat = null;
 const swapFocusables = (sheet) => [...(sheet?.querySelectorAll?.("button, input, summary, [tabindex]:not([tabindex='-1'])") || [])].filter((el) => !el.disabled && el.offsetParent !== null && (el.tagName === "SUMMARY" || !el.closest?.("details:not([open])")));
 let swapSizeSeen = 0;
 function bindSwapSheet() {
-  document.body?.classList?.toggle("has-sheet", !!swapDate && state.view === "plan");
+  document.body?.classList?.toggle("has-sheet", !!(swapDate || trayOpen || cardBookOpen || cardGetRecipeId) && (state.view === "plan" || state.view === "today"));
   // 画面の向き・大きさが変わって並べる数（4皿／6皿）が変わったら、描き直す。
   if (!swapSizeSeen && globalThis.addEventListener) globalThis.addEventListener("resize", () => { if (swapDate && state.view === "plan" && swapSize() !== swapSizeSeen) render(); });
   swapSizeSeen = swapSize();
@@ -4378,4 +4386,1250 @@ function renderFirstPlanReveal() {
   return `<section class="first-reveal"><p class="first-reveal-emoji" aria-hidden="true">🎉</p><h2>最初の献立が<br><span class="marker nobr">できました！</span></h2>
     <p>${b ? `${blockRange(b)}の分を、` : ""}${escapeHtml(why)}で選びました。気になる日は「入れ替え」でどうぞ。</p>
     ${invite ? `<div class="first-invite"><p><b>ふたりで使う？</b><br><small>相手が「これ食べたい」を送れるようになります。</small></p><div class="actions">${dailyButton("life-share-open", "相手を招待する")}<button type="button" class="text-button" data-action="life-reveal-close">あとで</button></div></div>` : `<button type="button" class="text-button" data-action="life-reveal-close">閉じる</button>`}</section>`;
+}
+
+// ----- 🃏 カフェ風レシピカード＆3日分の献立トレイ（試作） -----
+let trayOpen = false;
+let trayActiveDate = "";
+let trayMood = "";
+let trayPage = 0;
+let trayAnchorId = "";
+let trayFlipId = "";
+let trayClearedDates = new Set();
+let cardGetRecipeId = "";
+let cardBookOpen = false;
+
+// 作った回数（保存コピー・元の初期レシピ・同じ親料理の合算も見る）
+function cardCookCount(recipe) {
+  if (!recipe) return 0;
+  const evals = state.evaluations || [];
+  const pk = typeof parentKeyOf === "function" ? parentKeyOf(recipe) : "";
+  return evals.filter((e) => {
+    if (!e) return false;
+    if (e.recipeId === recipe.id || (recipe.starterId && e.recipeId === recipe.starterId)) return true;
+    const target = recipeById(e.recipeId);
+    if (target && (target.starterId === recipe.id || (pk && typeof parentKeyOf === "function" && parentKeyOf(target) === pk))) return true;
+    if (pk && e.recipeTitle && e.recipeTitle === recipe.title) return true;
+    return false;
+  }).length;
+}
+
+// すべての料理（YouTube新着・初期・保存）に、統一された手描き風カフェメニューイラストを割り当てる（0円）
+const CARD_ART_MEMO = new Map();
+function cardArtOf(recipe) {
+  if (!recipe) return "assets/dishes/fallback-okazu.webp";
+  const key = `${recipe.id || ""}|${recipe.title || ""}|${recipe.photo || ""}`;
+  if (CARD_ART_MEMO.has(key)) return CARD_ART_MEMO.get(key);
+  const pick = (url) => { CARD_ART_MEMO.set(key, url); return url; };
+
+  // 1. すでにアプリ内の手描きイラスト（assets/dishes または assets/dish-picks）を持っている場合
+  const ownPhoto = String(recipe.photo || "");
+  if (/^assets\/(dishes|dish-picks)\//.test(ownPhoto) && !/photo-unavailable/.test(ownPhoto)) return pick(ownPhoto);
+  if (recipe.starterId) {
+    const st = (Lifestyle.curated || []).find((x) => x.id === recipe.starterId);
+    if (st?.photo && /^assets\/dishes\//.test(st.photo)) return pick(st.photo);
+  }
+  if (/^starter-\d+$/.test(String(recipe.id || ""))) {
+    const st = (Lifestyle.curated || []).find((x) => x.id === recipe.id);
+    if (st?.photo && /^assets\/dishes\//.test(st.photo)) return pick(st.photo);
+  }
+
+  // 2. 理想の12品（生姜焼き・唐揚げ・ハンバーグ・肉じゃが・冷しゃぶ・回鍋肉・麻婆豆腐・オムライス・鮭ホイル・さば味噌・ムニエル・八宝菜）
+  const ideal = typeof FoodTaste?.dishOf === "function" ? FoodTaste.dishOf(recipe) : null;
+  if (ideal?.id) return pick(`assets/dish-picks/${ideal.id}.webp`);
+
+  // 3. 料理名からの直接イラスト一致
+  const title = String(recipe.title || "") + " " + String(recipe.dish || "");
+  if (/うどん/.test(title)) return pick("assets/dishes/kinoko-udon.webp");
+  if (/パスタ|スパゲッティ|ペペロンチーノ|カルボナーラ|ボロネーゼ/.test(title)) return pick("assets/dishes/tomato-pasta.webp");
+  if (/キムチ/.test(title)) return pick("assets/dishes/porkkimchi.webp");
+  if (/照り焼き|てりやき/.test(title)) return pick("assets/dishes/teriyaki.webp");
+  if ((/豆腐/.test(title) && /卵|たまご/.test(title)) || /天津飯|親子丼/.test(title)) return pick("assets/dishes/tofu-egg.webp");
+  if (/トマト/.test(title) && /チーズ/.test(title)) return pick("assets/dishes/tomato-cheese.webp");
+
+  // 4. 初期48品の手描きイラストから、主役・食べ方・味・タグが最も近いイラストを自動選択（IDで分散）
+  const t = Lifestyle.traits(recipe);
+  const tags = new Set(Lifestyle.tags(recipe));
+  const pool = (Lifestyle.curated || []).filter((c) => c.photo && /^assets\/dishes\/starter-/.test(c.photo));
+  if (pool.length) {
+    let bestScore = -1;
+    let bestList = [];
+    for (const c of pool) {
+      const ct = Lifestyle.traits(c);
+      const ctags = Lifestyle.tags(c);
+      let s = 0;
+      if (ct.protein === t.protein) s += 6;
+      if (ct.staple === t.staple) s += 5;
+      if (ct.cuisine === t.cuisine) s += 2;
+      for (const tg of ctags) if (tags.has(tg)) s += 1.5;
+      if (s > bestScore) { bestScore = s; bestList = [c.photo]; }
+      else if (s === bestScore) bestList.push(c.photo);
+    }
+    if (bestList.length) {
+      let h = 2166136261;
+      const str = String(recipe.id || recipe.title || "");
+      for (let i = 0; i < str.length; i += 1) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+      return pick(bestList[Math.abs(h) % bestList.length]);
+    }
+  }
+  const fb = { rice: "rice", noodle: "noodle", bread: "bread", other: "okazu" }[t.staple] || "okazu";
+  return pick(`assets/dishes/fallback-${fb}.webp`);
+}
+
+// ----- 文部科学省「日本食品標準成分表」ベースの栄養・塩分概算エンジン（0円・スマホ内計算） -----
+// ※あくまで「食べたい」が最優先。栄養・塩分はトレーディングカードのサブパラメータ＆3日間の組み合わせ遊びとして表示する。
+const SEASONING_SALT_RULES = [
+  { re: /減塩しょうゆ|減塩醤油/, label: "減塩しょうゆ", tbspSalt: 1.3, tspSalt: 0.43, gramSalt: 0.072 },
+  { re: /薄口しょうゆ|うすくち醤油|薄口醤油/, label: "薄口しょうゆ", tbspSalt: 2.9, tspSalt: 0.97, gramSalt: 0.16 },
+  { re: /しょうゆ|醤油/, label: "しょうゆ", tbspSalt: 2.6, tspSalt: 0.87, gramSalt: 0.145 },
+  { re: /みそ|味噌/, label: "みそ", tbspSalt: 2.2, tspSalt: 0.73, gramSalt: 0.124 },
+  { re: /白だし/, label: "白だし", tbspSalt: 2.2, tspSalt: 0.73, gramSalt: 0.12 },
+  { re: /めんつゆ/, label: "めんつゆ", tbspSalt: 1.6, tspSalt: 0.53, gramSalt: 0.09 },
+  { re: /ぽん酢|ポン酢/, label: "ポン酢", tbspSalt: 1.5, tspSalt: 0.5, gramSalt: 0.083 },
+  { re: /オイスターソース/, label: "オイスターソース", tbspSalt: 2.1, tspSalt: 0.7, gramSalt: 0.115 },
+  { re: /焼肉のたれ|焼き肉のたれ|焼肉のタレ/, label: "焼肉のたれ", tbspSalt: 1.3, tspSalt: 0.43, gramSalt: 0.072 },
+  { re: /ウスターソース|中濃ソース|とんかつソース|ソース/, label: "ソース", tbspSalt: 1.4, tspSalt: 0.47, gramSalt: 0.08 },
+  { re: /ケチャップ/, label: "ケチャップ", tbspSalt: 0.5, tspSalt: 0.17, gramSalt: 0.033 },
+  { re: /豆板醤|コチュジャン|甜麺醤/, label: "中華醤", tbspSalt: 2.4, tspSalt: 0.8, gramSalt: 0.13 },
+  { re: /鶏ガラスープ|中華だし|中華スープ|コンソメ|和風だし|だしの素|ほんだし|顆粒だし/, label: "だし・スープの素", tbspSalt: 3.8, tspSalt: 1.25, gramSalt: 0.42 },
+  { re: /カレールウ|カレールー|シチュールウ|シチュールー/, label: "ルウ", tbspSalt: 2.1, tspSalt: 0.7, gramSalt: 0.105 },
+  { re: /マヨネーズ/, label: "マヨネーズ", tbspSalt: 0.27, tspSalt: 0.09, gramSalt: 0.019 },
+  { re: /有塩バター|^バター$/, label: "バター", tbspSalt: 0.2, tspSalt: 0.07, gramSalt: 0.015 },
+  { re: /^塩$|塩こしょう|塩コショウ|食塩|粗塩|ハーブソルト/, label: "塩", tbspSalt: 15.0, tspSalt: 5.0, gramSalt: 0.99 },
+];
+
+function parseAmountQuantity(rawAmount) {
+  const s = String(rawAmount || "")
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/／/g, "/")
+    .replace(/．/g, ".");
+  if (!s.trim()) return { unit: "unknown", val: 1, ambiguous: true };
+  if (/少々|ひとつまみ/.test(s)) return { unit: "pinch", val: /ひとつまみ/.test(s) ? 0.8 : 0.45, ambiguous: true };
+  if (/適量|お好み|適宜/.test(s)) return { unit: "some", val: 1, ambiguous: true };
+
+  // 「1と1/2」「1/2」「1.5」などの数値を抽出
+  let num = 1;
+  const mixed = s.match(/(\d+)\s*と\s*(\d+)\s*\/\s*(\d+)/);
+  const frac = s.match(/(\d+)\s*\/\s*(\d+)/);
+  const dec = s.match(/(\d+(?:\.\d+)?)/);
+  if (mixed) num = Number(mixed[1]) + Number(mixed[2]) / Math.max(1, Number(mixed[3]));
+  else if (frac) num = Number(frac[1]) / Math.max(1, Number(frac[2]));
+  else if (dec) num = Number(dec[1]);
+
+  if (/大さじ/.test(s)) return { unit: "tbsp", val: num, ambiguous: false };
+  if (/小さじ/.test(s)) return { unit: "tsp", val: num, ambiguous: false };
+  if (/ml|cc|ミリリットル/i.test(s)) return { unit: "ml", val: num, ambiguous: false };
+  if (/kg/i.test(s)) return { unit: "g", val: num * 1000, ambiguous: false };
+  if (/g|グラム/i.test(s)) return { unit: "g", val: num, ambiguous: false };
+  if (/パック|袋|束|丁|缶/.test(s)) return { unit: "pack", val: num, ambiguous: false };
+  if (/個|玉|本|枚|尾|切れ|片/.test(s)) return { unit: "piece", val: num, ambiguous: false };
+  return { unit: "raw", val: num, ambiguous: !dec && !frac };
+}
+
+function estimateRecipeNutrition(recipe) {
+  const servings = Math.max(1, Number(recipe?.sourceServings) || 2);
+  const ings = Array.isArray(recipe?.ingredients) ? recipe.ingredients : [];
+  const t = Lifestyle.traits(recipe || {});
+  const tags = Lifestyle.tags(recipe || {});
+
+  let totalSaltG = 0;
+  let totalProteinG = 0;
+  let totalVegG = 0;
+  let totalKcal = 0;
+  let ambiguousSeasoning = false;
+  let matchedSeasonings = 0;
+  const saltSources = [];
+
+  for (const ing of ings) {
+    const name = String(ing?.name || "");
+    const amt = String(ing?.amount || "");
+    const pq = parseAmountQuantity(amt);
+
+    // 1. 調味料の塩分計算（日本食品標準成分表ベース）
+    let matchedRule = null;
+    for (const rule of SEASONING_SALT_RULES) {
+      if (rule.re.test(name)) {
+        matchedRule = rule;
+        break;
+      }
+    }
+    if (matchedRule) {
+      matchedSeasonings += 1;
+      let salt = 0;
+      if (pq.unit === "tbsp") salt = matchedRule.tbspSalt * pq.val;
+      else if (pq.unit === "tsp") salt = matchedRule.tspSalt * pq.val;
+      else if (pq.unit === "ml") salt = (matchedRule.tbspSalt / 15) * pq.val;
+      else if (pq.unit === "g") salt = matchedRule.gramSalt * pq.val;
+      else if (pq.unit === "pinch") salt = /塩/.test(matchedRule.label) ? pq.val : matchedRule.tspSalt * 0.25;
+      else {
+        ambiguousSeasoning = true;
+        salt = /塩/.test(matchedRule.label) ? 0.6 : matchedRule.tspSalt * 1.0;
+      }
+      if (pq.ambiguous) ambiguousSeasoning = true;
+      totalSaltG += salt;
+      saltSources.push({
+        name: name || matchedRule.label,
+        amount: amt || "適量",
+        perServingSalt: Math.round((salt / servings) * 10) / 10,
+      });
+      continue;
+    }
+
+    // 2. 塩分を含む加工食品・麺類
+    if (/ベーコン|ウインナー|ソーセージ|ハム|ちくわ|カニカマ|かまぼこ/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 60 * pq.val;
+      const s = g * 0.02;
+      totalSaltG += s;
+      totalProteinG += g * 0.13;
+      totalKcal += g * 2.2;
+      saltSources.push({ name, amount: amt || `${g}g`, perServingSalt: Math.round((s / servings) * 10) / 10 });
+    } else if (/塩鮭|塩サバ|塩さば|干物|しらす|明太子|たらこ/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 80 * Math.min(2, pq.val);
+      const s = g * 0.022;
+      totalSaltG += s;
+      totalProteinG += g * 0.22;
+      totalKcal += g * 1.6;
+      saltSources.push({ name, amount: amt || `${g}g`, perServingSalt: Math.round((s / servings) * 10) / 10 });
+    } else if (/キムチ|漬物|梅干し|ザーサイ/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 50;
+      const s = g * 0.028;
+      totalSaltG += s;
+      totalVegG += g;
+      saltSources.push({ name, amount: amt || `${g}g`, perServingSalt: Math.round((s / servings) * 10) / 10 });
+    } else if (/ツナ|サバ缶|さば缶/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 70 * pq.val;
+      totalSaltG += g * 0.008;
+      totalProteinG += g * 0.18;
+      totalKcal += g * 1.8;
+    } else if (/チーズ/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 30 * pq.val;
+      totalSaltG += g * 0.025;
+      totalProteinG += g * 0.22;
+      totalKcal += g * 3.3;
+    }
+
+    // 3. 主菜たんぱく質（肉・魚・卵・大豆製品）
+    if (/鶏|豚|牛|ひき肉|合いびき|ラム/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 200;
+      totalProteinG += g * 0.19;
+      totalKcal += g * 2.1;
+      totalSaltG += g * 0.001;
+    } else if (/鮭|サーモン|さば|サバ|ぶり|ブリ|たら|タラ|さわら|かじき|まぐろ|かつお|あじ|いわし|えび|エビ|いか|たこ|ホタテ/.test(name) && !/塩鮭|塩サバ|塩さば|サバ缶|さば缶/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 160;
+      totalProteinG += g * 0.2;
+      totalKcal += g * 1.5;
+      totalSaltG += g * 0.002;
+    } else if (/卵|たまご|玉子/.test(name)) {
+      const count = pq.unit === "g" ? pq.val / 50 : Math.min(4, Math.max(1, pq.val));
+      totalProteinG += count * 6.2;
+      totalKcal += count * 76;
+      totalSaltG += count * 0.2;
+    } else if (/豆腐|厚揚げ|油揚げ|納豆|おから|豆乳|高野豆腐/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : /納豆/.test(name) ? 45 * pq.val : 300 * Math.min(2, pq.val);
+      totalProteinG += g * 0.07;
+      totalKcal += g * 0.8;
+    }
+
+    // 4. 野菜・きのこ・海藻・いも類
+    if (/キャベツ|白菜|レタス|小松菜|ほうれん草|チンゲン菜|水菜|ニラ|にら|ねぎ|ネギ|玉ねぎ|たまねぎ|にんじん|人参|大根|かぶ|なす|ナス|ピーマン|パプリカ|トマト|ミニトマト|ブロッコリー|アスパラ|オクラ|きゅうり|ゴーヤ|もやし|豆苗|かいわれ|きのこ|しめじ|えのき|エリンギ|しいたけ|椎茸|まいたけ|舞茸|れんこん|ごぼう|かぼちゃ|じゃがいも|さつまいも|里芋|長芋|わかめ|ひじき|のり|しょうが|にんにく/.test(name)) {
+      let g = 80;
+      if (pq.unit === "g") g = pq.val;
+      else if (/もやし|きのこ|しめじ|えのき|エリンギ|まいたけ|小松菜|ほうれん草|豆苗/.test(name)) g = 150 * Math.min(2, pq.val);
+      else if (/キャベツ|白菜|大根/.test(name)) g = pq.val < 1 ? 400 * pq.val : 160;
+      else if (/玉ねぎ|たまねぎ|トマト|なす|じゃがいも|にんじん/.test(name)) g = 130 * Math.min(2, pq.val);
+      else if (/しょうが|にんにく/.test(name)) g = 10;
+      totalVegG += g;
+      totalKcal += g * 0.25;
+    }
+
+    // 5. ごはん・麺・パン
+    if (/ごはん|ご飯|米|うどん|中華麺|焼きそば|パスタ|スパゲッティ|そうめん|そば|餅|パン/.test(name)) {
+      const g = pq.unit === "g" ? pq.val : 180 * Math.min(2, pq.val);
+      totalProteinG += g * 0.03;
+      totalKcal += g * 1.5;
+      if (/うどん|中華麺|焼きそば|そうめん|パン/.test(name)) {
+        const s = g * 0.003;
+        totalSaltG += s;
+      }
+    }
+  }
+
+  // 材料リストが省略されている新着レシピ等の場合のフォールバック（仮計算）
+  if (matchedSeasonings === 0 && totalSaltG < 0.8) {
+    ambiguousSeasoning = true;
+    totalSaltG += (tags.includes("light") ? 1.7 : tags.includes("rich") || tags.includes("spicy") ? 2.6 : 2.1) * servings;
+  }
+  if (totalProteinG < 8 * servings) {
+    const baseP = t.protein === "meat" ? 22 : t.protein === "fish" ? 21 : t.protein === "eggtofu" ? 16 : 11;
+    totalProteinG = baseP * servings;
+  }
+  if (totalVegG < 20 * servings) {
+    const vegKeys = typeof Lifestyle.useUpKeys === "function" ? Lifestyle.useUpKeys(recipe).size : 1;
+    totalVegG = (t.protein === "veg" ? 180 : Math.max(1, vegKeys) * 65) * servings;
+  }
+  if (totalKcal < 180 * servings) {
+    const baseK = t.staple === "rice" || t.staple === "noodle" ? 540 : tags.includes("light") ? 310 : 410;
+    totalKcal = baseK * servings;
+  }
+
+  // 1人前あたりに換算（主菜1品として自然な範囲に丸める）
+  const saltG = Math.min(4.2, Math.max(1.1, Math.round((totalSaltG / servings) * 10) / 10));
+  const proteinG = Math.min(38, Math.max(8, Math.round(totalProteinG / servings)));
+  const vegG = Math.min(320, Math.max(30, Math.round(totalVegG / (servings * 10)) * 10));
+  const kcal = Math.min(780, Math.max(210, Math.round(totalKcal / (servings * 10)) * 10));
+
+  // レポート第4章：推定の確かさを隠さず3段階（成分表計算 / 仮計算・目安）で表示
+  const status = matchedSeasonings >= 1 && !ambiguousSeasoning ? "calculated" : "estimated";
+  const statusLabel = status === "calculated" ? "成分表計算" : "仮計算・目安";
+
+  // 減塩アレンジのやさしい1行提案（食べたい気持ちを邪魔しないサブ情報）
+  const topSaltSource = saltSources.sort((a, b) => b.perServingSalt - a.perServingSalt)[0];
+  let lowSaltTip = "調味料の計量をすり切りにするだけで、おいしさそのまま塩分を整えられます。";
+  if (topSaltSource) {
+    if (/しょうゆ|醤油/.test(topSaltSource.name)) {
+      lowSaltTip = `「${topSaltSource.name}」を少し控えめにして、仕上げにごま油やしょうが・酢を効かせると約0.5gやさしくなります。`;
+    } else if (/みそ|味噌/.test(topSaltSource.name)) {
+      lowSaltTip = `「${topSaltSource.name}」を2割減らして、きのこや玉ねぎの旨味・すりごまを足すとコクがそのまま楽しめます。`;
+    } else if (/だし|スープ|コンソメ|めんつゆ|白だし/.test(topSaltSource.name)) {
+      lowSaltTip = `「${topSaltSource.name}」は煮詰めすぎず、最後の汁気を少し残すだけで約0.6g塩分をカットできます。`;
+    } else {
+      lowSaltTip = `塩分の主役は「${topSaltSource.name}」（1人前 約${topSaltSource.perServingSalt}g）。野菜をたっぷり添えるとバランス◎です。`;
+    }
+  }
+
+  return {
+    saltG,
+    proteinG,
+    vegG,
+    kcal,
+    status,
+    statusLabel,
+    saltSources: saltSources.slice(0, 3),
+    lowSaltTip,
+  };
+}
+
+// 5つのカードステータス＋栄養・塩分比較ランクを自動算出（0円）
+function recipeCardSpec(recipe) {
+  const t = Lifestyle.traits(recipe || {});
+  const tags = Lifestyle.tags(recipe || {});
+  const sk = Skills.rate(recipe || {});
+  const minutes = recipe?.planning?.minutes || 20;
+  const cooks = cardCookCount(recipe);
+  const love = loveScore(recipe);
+  const nutrition = estimateRecipeNutrition(recipe);
+
+  // カード図鑑ナンバー（例：No.012）
+  const rawId = String(recipe?.starterId || recipe?.id || "1");
+  const numMatch = rawId.match(/(\d+)/);
+  let numVal = numMatch ? Number(numMatch[1]) : 0;
+  if (!numVal || numVal > 999) {
+    let h = 0;
+    for (let i = 0; i < rawId.length; i += 1) h = (h * 31 + rawId.charCodeAt(i)) % 480;
+    numVal = h + 1;
+  }
+  const cardNo = `No.${String(numVal).padStart(3, "0")}`;
+
+  // ① 属性・タイプ（主役 × 食べ方：簡潔・省略なし）
+  const proteinMap = { meat: ["🥩", "お肉"], fish: ["🐟", "お魚"], eggtofu: ["🥚", "卵豆腐"], veg: ["🥬", "野菜"] };
+  const stapleMap = { rice: ["🍚", "丼・飯"], noodle: ["🍜", "麺"], bread: ["🍞", "パン"], other: ["🍳", "おかず"] };
+  const [pIcon, pName] = proteinMap[t.protein] || ["🍽", "主菜"];
+  const [sIcon, sName] = stapleMap[t.staple] || ["🍳", "おかず"];
+  const typeText = `${pIcon}${pName}・${sIcon}${sName}`;
+
+  // ② スピード・手軽さ
+  const eq = recipe?.planning?.equipment || [];
+  const easyTool = tags.includes("microwave") || (eq.includes("電子レンジ") && !eq.includes("コンロ"))
+    ? "♨️レンジ"
+    : sk.skills.includes("hand") && !sk.skills.includes("knife")
+      ? "✂️包丁なし"
+      : eq.includes("フライパン") && !eq.includes("鍋")
+        ? "🍳ワンパン"
+        : eq.includes("鍋") && !eq.includes("フライパン")
+          ? "🍲鍋1つ"
+          : "";
+  const timeIcon = minutes <= 10 ? "⚡" : "⏱";
+  const speedText = `${timeIcon}${minutes}分${easyTool ? `・${easyTool}` : ""}`;
+
+  // ③ 栄養・塩分の比較ティア（6枚並べた時に色で優劣がパッと見でわかる3段階）
+  // high = 緑（優秀：高たんぱく / 野菜たっぷり / 減塩◎）、mid = クリーム（標準）、low = 薄グレー（少なめ）、watch = アンバー（塩分しっかり）
+  const proteinTier = nutrition.proteinG >= 22 ? "high" : nutrition.proteinG >= 16 ? "mid" : "low";
+  const vegTier = nutrition.vegG >= 130 ? "high" : nutrition.vegG >= 75 ? "mid" : "low";
+  const saltTier = nutrition.saltG <= 1.9 ? "high" : nutrition.saltG <= 2.5 ? "mid" : "watch";
+  const speedTier = minutes <= 10 ? "high" : minutes <= 15 ? "mid" : "normal";
+
+  const moodWord = tags.includes("light") ? "🍋さっぱり" : tags.includes("spicy") ? "🌶ピリ辛" : tags.includes("rich") ? "🔥こってり" : "🍵定番";
+  const nutriPills = [
+    `💪 ${nutrition.proteinG}g`,
+    `🥬 ${nutrition.vegG}g`,
+    `🧂 ${nutrition.saltG}g`,
+    moodWord,
+  ];
+
+  // ④ 技・スキルレベル
+  const shortSkillNames = {
+    mix: "和える", hand: "ちぎる", microwave: "レンジ", boil: "ゆでる", knife: "切る",
+    stirfry: "炒める", simmer: "煮る", steam: "蒸す", egg: "卵とじ", mince: "みじん切り",
+    sear: "焼き目", glaze: "照り煮", butterfly: "切り開く", shallowfry: "揚げ焼き",
+    shape: "成形", emulsify: "乳化", deepfry: "揚げる", fillet: "おろす", dough: "生地"
+  };
+  const topSkillId = sk.skills[0] || "mix";
+  const topSkillWord = shortSkillNames[topSkillId] || sk.label;
+  const stars = "★".repeat(sk.level) + "☆".repeat(Math.max(0, 5 - sk.level));
+  const skillText = `技 ${stars.slice(0, 3)} ${topSkillWord}`;
+
+  // ⑤ わが家の育成度（未調理＝仮カード、1回〜＝GETカード進化）
+  let rank = "draft", rankBadge = "未GET・仮カード", sealText = "";
+  if (cooks >= 3 || (cooks >= 1 && love >= 4)) {
+    rank = "gold";
+    rankBadge = `👑 わが家の定番 ★×${Math.max(3, cooks)}`;
+    sealText = "定番 ★★★";
+  } else if (cooks === 2) {
+    rank = "silver";
+    rankBadge = "✨ 常連カード ★★";
+    sealText = "常連 ★★";
+  } else if (cooks >= 1) {
+    rank = "bronze";
+    rankBadge = "✨ GET済カード ★";
+    sealText = "GET ★";
+  }
+
+  return {
+    cardNo,
+    artUrl: cardArtOf(recipe),
+    typeText,
+    pIcon,
+    pName,
+    sIcon,
+    sName,
+    speedText,
+    easyTool,
+    minutes,
+    speedTier,
+    moodWord,
+    nutrition,
+    proteinTier,
+    vegTier,
+    saltTier,
+    nutriPills,
+    skillLevel: sk.level,
+    skillStars: stars,
+    skillWord: topSkillWord,
+    skillText,
+    cooks,
+    love,
+    rank,
+    isCollected: cooks > 0,
+    rankBadge,
+    sealText,
+  };
+}
+
+// 3つのトレイに並べたカードの「組み合わせパラメータ＆コンボ」を計算
+function computeTrayCombo(days) {
+  const targetDays = days || trayTargetDays();
+  const placed = targetDays
+    .map((d) => ({ day: d, recipe: trayDayRecipe(d) }))
+    .filter((x) => !!x.recipe);
+  const count = placed.length;
+  if (!count) {
+    return {
+      count: 0,
+      totalSlots: targetDays.length,
+      avgProteinG: 0,
+      totalVegG: 0,
+      avgVegG: 0,
+      avgSaltG: 0,
+      avgMinutes: 0,
+      varietyScore: 0,
+      combos: [],
+      summaryNote: "カードをトレイに並べると、3日間の組み合わせバランスとコンボがここに表示されます！",
+    };
+  }
+
+  const specs = placed.map((x) => ({ ...x, spec: recipeCardSpec(x.recipe), traits: Lifestyle.traits(x.recipe) }));
+  const totalProtein = specs.reduce((s, x) => s + x.spec.nutrition.proteinG, 0);
+  const totalVeg = specs.reduce((s, x) => s + x.spec.nutrition.vegG, 0);
+  const totalSalt = specs.reduce((s, x) => s + x.spec.nutrition.saltG, 0);
+  const totalMin = specs.reduce((s, x) => s + x.spec.minutes, 0);
+
+  const avgProteinG = Math.round(totalProtein / count);
+  const avgVegG = Math.round(totalVeg / count);
+  const avgSaltG = Math.round((totalSalt / count) * 10) / 10;
+  const avgMinutes = Math.round(totalMin / count);
+
+  const uniqueProteins = new Set(specs.map((x) => x.traits.protein)).size;
+  const uniqueStaples = new Set(specs.map((x) => x.traits.staple)).size;
+  const uniqueCuisines = new Set(specs.map((x) => x.traits.cuisine)).size;
+  const varietyScore = Math.min(
+    100,
+    Math.round(((uniqueProteins / count) * 50) + ((uniqueStaples / count) * 30) + ((uniqueCuisines / count) * 20))
+  );
+
+  // 使い回しできる野菜を検出
+  const vegFreq = new Map();
+  for (const x of specs) {
+    for (const v of Lifestyle.useUpKeys(x.recipe)) {
+      vegFreq.set(v, (vegFreq.get(v) || 0) + 1);
+    }
+  }
+  const sharedVegList = [...vegFreq.entries()].filter(([, c]) => c >= 2).map(([v]) => v);
+
+  // 発動コンボ（トレーディングカードのデッキボーナス風）
+  const combos = [];
+  if (count >= 2 && uniqueProteins === count) {
+    combos.push({ icon: "🌈", name: "主役かぶりなしコンボ", desc: `${specs.map((x) => x.spec.pName).join("・")}で毎日新鮮！` });
+  }
+  if (sharedVegList.length > 0) {
+    combos.push({ icon: "🥬", name: `${sharedVegList[0]}使い回しコンボ`, desc: "買い物が減って冷蔵庫もスッキリ！" });
+  }
+  if (avgSaltG <= 2.3) {
+    combos.push({ icon: "🧂", name: "やさしい塩梅コンボ", desc: `1食平均 ${avgSaltG}g（成分表目安）でからだに軽やか` });
+  }
+  if (avgProteinG >= 20) {
+    combos.push({ icon: "💪", name: "たんぱく質しっかりコンボ", desc: `1食平均 ${avgProteinG}gで元気チャージ` });
+  }
+  if (totalVeg >= count * 120) {
+    combos.push({ icon: "🥗", name: "野菜たっぷりコンボ", desc: `${count}日間で合計 約${totalVeg}gの野菜がとれます` });
+  }
+  if (avgMinutes <= 15) {
+    combos.push({ icon: "⚡", name: "平日スピードコンボ", desc: `平均 ${avgMinutes}分で無理なく作れる編成` });
+  }
+
+  const saltTone = avgSaltG <= 2.3
+    ? "✨ 塩分も穏やかでちょうどいいバランスです"
+    : avgSaltG <= 2.8
+      ? "👌 一般的な夜ごはん1品の目安内です"
+      : "💡 少ししっかり味の日が多め（食べたい順でOK！気になる日はカードの減塩ヒントを見てね）";
+
+  return {
+    count,
+    totalSlots: targetDays.length,
+    avgProteinG,
+    totalVegG: totalVeg,
+    avgVegG,
+    avgSaltG,
+    avgMinutes,
+    varietyScore,
+    sharedVegList,
+    combos,
+    saltTone,
+  };
+}
+
+// トレイ内の「3日間の組み合わせパラメータ＆コンボ」パネルHTML
+function renderTrayComboPanel(days) {
+  const combo = computeTrayCombo(days);
+  if (combo.count === 0) {
+    return `<div class="tray-combo-panel is-empty">
+      <p class="tray-combo-empty-msg">🃏 下のカードをトレイに並べると、<b>3日間の栄養バランス・塩分目安・デッキコンボ</b>がリアルタイムに出ます（食べたい気持ち最優先でOK！）</p>
+    </div>`;
+  }
+
+  const proteinPct = Math.min(100, Math.round((combo.avgProteinG / 25) * 100));
+  const vegPct = Math.min(100, Math.round((combo.avgVegG / 150) * 100));
+  // 塩分ゲージは1.5g〜3.0gを見やすく表示（低め〜適量が心地よく見える）
+  const saltPct = Math.min(100, Math.max(20, Math.round((combo.avgSaltG / 3.5) * 100)));
+  const saltStateClass = combo.avgSaltG <= 2.4 ? "is-good" : combo.avgSaltG <= 2.9 ? "is-ok" : "is-rich";
+
+  return `<section class="tray-combo-panel" aria-label="トレイの組み合わせパラメータ">
+    <div class="tray-combo-head">
+      <span class="tray-combo-title">📊 ${combo.count}日間の組み合わせパラメータ <small>（食べたい順が最優先・栄養はサブ目安）</small></span>
+    </div>
+    <div class="tray-combo-meters">
+      <div class="tc-meter">
+        <div class="tc-meter-top"><span>🎵 飽きなさ（主役・味の幅）</span><b>${combo.varietyScore}点</b></div>
+        <div class="tc-bar"><i style="width:${combo.varietyScore}%"></i></div>
+      </div>
+      <div class="tc-meter">
+        <div class="tc-meter-top"><span>💪 たんぱく質（1食平均）</span><b>約${combo.avgProteinG}g</b></div>
+        <div class="tc-bar"><i style="width:${proteinPct}%"></i></div>
+      </div>
+      <div class="tc-meter">
+        <div class="tc-meter-top"><span>🥬 野菜量（${combo.count}日合計 / 1食平均）</span><b>計${combo.totalVegG}g（平均${combo.avgVegG}g）</b></div>
+        <div class="tc-bar"><i style="width:${vegPct}%"></i></div>
+      </div>
+      <div class="tc-meter ${saltStateClass}">
+        <div class="tc-meter-top"><span>🧂 食塩相当量（1食平均・仮計算）</span><b>約${combo.avgSaltG}g / 食</b></div>
+        <div class="tc-bar"><i style="width:${saltPct}%"></i></div>
+      </div>
+    </div>
+    <p class="tray-combo-salt-note">${escapeHtml(combo.saltTone)}</p>
+    ${combo.combos.length ? `<div class="tray-combo-badges" aria-label="発動中のコンボ">
+      ${combo.combos.map((c) => `<span class="tc-combo-pill"><b>${c.icon} ${escapeHtml(c.name)}</b> <small>${escapeHtml(c.desc)}</small></span>`).join("")}
+    </div>` : ""}
+  </section>`;
+}
+
+// トレイの対象となる日（今のブロックの料理する日、または直近3日分）
+function trayTargetDays() {
+  const plan = dailyPlan();
+  const locks = lockedDates(plan);
+  let days = plan.filter((d) => !d.off && !d.prestart && !locks.has(d.date) && d.slot?.status !== "cooked" && d.slot?.status !== "off");
+  if (rhythmOn()) {
+    const blocks = planPageBlocks();
+    const current = blocks.find((b) => b.key === planPage) || blocks.find((b) => b.end >= today()) || blocks[0];
+    if (current) {
+      const bDays = days.filter((d) => current.dates.includes(d.date));
+      if (bDays.length) days = bDays;
+    }
+  }
+  return days.slice(0, 5);
+}
+
+// トレイ上でその日にいま入っているレシピ（空席にした日は null）
+function trayDayRecipe(day) {
+  if (!day || trayClearedDates.has(day.date)) return null;
+  return day.slot?.recipe || day.candidate?.recipe || null;
+}
+
+// 献立画面の上部に常時出す「🪵 3日分の献立トレイ」バナー
+function renderPlanTrayBanner(plan, locks) {
+  if (isViewer()) return "";
+  const days = trayTargetDays();
+  if (!days.length) return "";
+  const collectedTotal = allDinnerRecipes().filter((r) => cardCookCount(r) > 0).length;
+  const combo = computeTrayCombo(days);
+  const slotsHtml = days.map((d) => {
+    const r = trayDayRecipe(d);
+    const wd = weekdayLabel(d.date);
+    const spec = r ? recipeCardSpec(r) : null;
+    const isConfirmed = d.slot?.status === "confirmed" && !trayClearedDates.has(d.date);
+    return `<button type="button" class="wood-tray-slot ${r ? (spec.isCollected ? "is-collected" : "is-draft") : "is-empty"} ${isConfirmed ? "is-decided" : ""}" data-action="life-tray-open" data-date="${d.date}" aria-label="${formatDate(d.date)}（${wd}）のカードを並べる">
+      <span class="wt-day">[${wd}] ${d.date === today() ? "今夜" : formatDate(d.date)}</span>
+      ${r ? `<span class="wt-art"><img src="${escapeAttr(spec.artUrl)}" alt="" loading="lazy"></span>
+        <strong class="wt-title">${escapeHtml(r.title)}</strong>
+        <small class="wt-meta">⏱${spec.minutes}分 · 🧂${spec.nutrition.saltG}g · ${spec.isCollected ? "✨GET済" : "仮カード"}</small>`
+      : `<span class="wt-empty-box">＋ カードを選ぶ</span>`}
+    </button>`;
+  }).join("");
+
+  const comboSummary = combo.count > 0
+    ? `<div class="wt-combo-strip">
+        <span>📊 ${combo.count}日平均：💪たんぱく質 <b>${combo.avgProteinG}g</b> · 🥬野菜計 <b>${combo.totalVegG}g</b> · 🧂塩分 <b>${combo.avgSaltG}g</b>/食</span>
+        ${combo.combos[0] ? `<span class="wt-combo-tag">${combo.combos[0].icon} ${escapeHtml(combo.combos[0].name)}</span>` : ""}
+      </div>`
+    : "";
+
+  return `<section class="wood-tray-banner" aria-label="献立トレイ">
+    <div class="wt-header">
+      <div class="wt-heading">
+        <strong>🪵 献立トレイ（${days.length}日分）</strong>
+        <small>枠をタップして、カフェ風カードをポンポン並べる</small>
+      </div>
+      <div class="wt-actions">
+        <button type="button" class="wt-book-btn" data-action="life-card-book-open">📖 図鑑 <b>${collectedTotal}</b>枚</button>
+        <button type="button" class="wt-open-btn" data-action="life-tray-open" data-date="${days[0].date}">🃏 トレイを開く</button>
+      </div>
+    </div>
+    <div class="wood-tray-board">
+      <div class="wood-tray-slots" style="--tray-cols:${Math.min(days.length, 3)}">${slotsHtml}</div>
+      ${comboSummary}
+    </div>
+  </section>`;
+}
+
+// トレイの棚スイッチ定義
+const TRAY_SHELVES = [
+  ["", "✨ おすすめ", () => true],
+  ["fav", "😋 好物・GET済", (r) => cardCookCount(r) > 0 || loveScore(r) >= 4],
+  ["quick", "⚡ 15分以内", (r) => (r.planning?.minutes || 99) <= 15],
+  ["meat", "🥩 お肉", (r) => Lifestyle.traits(r).protein === "meat"],
+  ["fish", "🐟 お魚", (r) => Lifestyle.traits(r).protein === "fish"],
+  ["bowl", "🍜 麺・丼", (r) => ["rice", "noodle"].includes(Lifestyle.traits(r).staple)],
+  ["light", "🍋 さっぱり", (r) => Lifestyle.tags(r).includes("light")],
+];
+
+// トレイでいま選んでいる日に出す候補カード一覧（他枠とのバランス・使い回し・似た料理を考慮）
+function trayCandidateList(activeDate, days) {
+  const p = dailyProfile();
+  const otherRecipes = days
+    .filter((d) => d.date !== activeDate)
+    .map((d) => trayDayRecipe(d))
+    .filter(Boolean);
+  const otherIds = new Set(otherRecipes.map((r) => r.id));
+  const otherParents = new Set(otherRecipes.map((r) => parentKeyOf(r)).filter(Boolean));
+  const otherProteins = new Set(otherRecipes.map((r) => Lifestyle.traits(r).protein));
+  const otherStaples = new Set(otherRecipes.map((r) => Lifestyle.traits(r).staple));
+  const sharedVeg = new Set();
+  for (const r of otherRecipes) {
+    for (const v of Lifestyle.useUpKeys(r)) sharedVeg.add(v);
+  }
+  const currentOnDay = trayDayRecipe(days.find((d) => d.date === activeDate));
+  const shelf = TRAY_SHELVES.find(([k]) => k === trayMood) || TRAY_SHELVES[0];
+  const anchor = trayAnchorId ? allDinnerRecipes().find((r) => r.id === trayAnchorId) : null;
+  const anchorTraits = anchor ? Lifestyle.traits(anchor) : null;
+  const anchorTags = anchor ? new Set(Lifestyle.tags(anchor)) : null;
+
+  const seenParents = new Set();
+  const raw = allDinnerRecipes()
+    .filter((r) => !Object.values(recipeRatings(r)).includes("never"))
+    .filter((r) => !otherIds.has(r.id) && r.id !== currentOnDay?.id)
+    .map((r) => ({ r, fit: Lifestyle.fit(r, p, activeDate) }))
+    .filter((x) => x.fit.ok && shelf[2](x.r));
+
+  const scored = [];
+  for (const x of raw) {
+    const pk = parentKeyOf(x.r);
+    if (pk && x.r.id !== trayAnchorId) {
+      if (otherParents.has(pk) || seenParents.has(pk)) continue;
+      seenParents.add(pk);
+    }
+    const t = Lifestyle.traits(x.r);
+    const tags = Lifestyle.tags(x.r);
+    let score = (x.fit.score || 0) + (x.r.curated ? 0 : 3);
+    // ほかの枠と主役・食べ方が重ならないカードを優遇
+    if (!otherProteins.has(t.protein)) score += 8;
+    if (!otherStaples.has(t.staple)) score += 5;
+    // ほかの枠の野菜を使い回せるカードを優遇
+    let sharedVegHit = "";
+    for (const v of Lifestyle.useUpKeys(x.r)) {
+      if (sharedVeg.has(v)) { score += 6; sharedVegHit = v; break; }
+    }
+    // 「🔍 似たカード」が押されている時は、そのカードと主役・食べ方・味が近いものを最優先
+    if (anchor && x.r.id === anchor.id) {
+      score += 1000;
+    } else if (anchorTraits) {
+      if (t.protein === anchorTraits.protein) score += 25;
+      if (t.staple === anchorTraits.staple) score += 20;
+      if (t.cuisine === anchorTraits.cuisine) score += 10;
+      for (const tg of tags) if (anchorTags.has(tg)) score += 6;
+    }
+    scored.push({ r: x.r, score, sharedVegHit });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+// トレーディングカード1枚のHTML（カード内は固有ビジュアル＋色分け比較ステータスに絞り、操作ドックはカード外に配置）
+function renderRecipeTradingCard(recipe, opts = {}) {
+  if (!recipe) return "";
+  const spec = recipeCardSpec(recipe);
+  const {
+    activeDate = "",
+    dayWord = "",
+    sharedVegHit = "",
+    isAnchor = false,
+    mode = "tray",
+    bestStats = {},
+  } = opts;
+  const rankClass = spec.isCollected ? `is-collected is-rank-${spec.rank}` : "is-draft";
+
+  // 固有の理由があるカードだけバッジを出す（未調理の定型文は繰り返さない）
+  const uniqueCallout = sharedVegHit
+    ? `🥬 ${sharedVegHit}使い回し`
+    : spec.love >= 4
+      ? "😋 わが家の好物"
+      : spec.cooks > 0
+        ? `🏆 ${spec.cooks}回調理`
+        : "";
+
+  const n = spec.nutrition;
+  const pPct = Math.min(100, Math.round((n.proteinG / 30) * 100));
+  const vPct = Math.min(100, Math.round((n.vegG / 200) * 100));
+  const sPct = Math.min(100, Math.round((n.saltG / 3.5) * 100));
+
+  const isBestP = bestStats.maxProtein && n.proteinG >= bestStats.maxProtein;
+  const isBestV = bestStats.maxVeg && n.vegG >= bestStats.maxVeg;
+  const isBestS = bestStats.minSalt && n.saltG <= bestStats.minSalt;
+
+  return `<div class="rc-unit ${isAnchor ? "is-anchor-unit" : ""}">
+    <article class="rc-card ${rankClass} ${isAnchor ? "is-anchor" : ""}" data-recipe-id="${escapeAttr(recipe.id)}">
+      <button type="button" class="rc-corner-peel" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}の裏面をめくる" title="角をめくって裏面（材料・塩分内訳・動画）を見る">
+        <span class="rc-peel-flap" aria-hidden="true"><i>↺</i></span>
+      </button>
+
+      <div class="rc-card-inner">
+        <div class="rc-top-row">
+          <span class="rc-card-no">${escapeHtml(spec.cardNo)}</span>
+          <span class="rc-type-badge">${escapeHtml(spec.typeText)}</span>
+          <span class="rc-speed-badge is-${spec.speedTier}">${escapeHtml(spec.speedText)}</span>
+        </div>
+
+        <button type="button" class="rc-art-btn" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}のレシピ裏面を見る">
+          <div class="rc-plate-wrap">
+            <img class="rc-plate-img" src="${escapeAttr(spec.artUrl)}" alt="${escapeAttr(recipe.title)}" loading="lazy">
+            ${uniqueCallout ? `<span class="rc-unique-ribbon">${escapeHtml(uniqueCallout)}</span>` : ""}
+            ${spec.sealText
+              ? `<span class="rc-foil-seal"><i>👑</i><b>${escapeHtml(spec.sealText)}</b></span>`
+              : `<span class="rc-draft-stamp">DRAFT</span>`}
+          </div>
+          <div class="rc-title-block">
+            <h4 class="rc-dish-title">${recipeTitleHtml(recipe)}</h4>
+            <span class="rc-skill-line">${escapeHtml(spec.moodWord)} · ${escapeHtml(spec.skillText)}</span>
+          </div>
+        </button>
+
+        <div class="rc-stat-gems" aria-label="栄養・塩分比較ステータス">
+          <div class="rc-gem is-tier-${spec.proteinTier} ${isBestP ? "is-best" : ""}" title="たんぱく質 約${n.proteinG}g">
+            <div class="rc-gem-top">
+              <small>💪たんぱく</small>
+              ${isBestP ? `<i class="rc-crown" aria-label="6枚中トップ">👑</i>` : ""}
+            </div>
+            <strong>${n.proteinG}<i>g</i></strong>
+            <span class="rc-gem-bar"><b style="width:${pPct}%"></b></span>
+          </div>
+          <div class="rc-gem is-tier-${spec.vegTier} ${isBestV ? "is-best" : ""}" title="野菜・きのこ 約${n.vegG}g">
+            <div class="rc-gem-top">
+              <small>🥬野菜量</small>
+              ${isBestV ? `<i class="rc-crown" aria-label="6枚中トップ">👑</i>` : ""}
+            </div>
+            <strong>${n.vegG}<i>g</i></strong>
+            <span class="rc-gem-bar"><b style="width:${vPct}%"></b></span>
+          </div>
+          <div class="rc-gem is-salt is-tier-${spec.saltTier} ${isBestS ? "is-best" : ""}" title="食塩相当量 約${n.saltG}g（${n.statusLabel}）">
+            <div class="rc-gem-top">
+              <small>🧂塩分</small>
+              ${isBestS ? `<i class="rc-crown" aria-label="6枚中いちばん控えめ">👑</i>` : ""}
+            </div>
+            <strong>${n.saltG}<i>g</i></strong>
+            <span class="rc-gem-bar"><b style="width:${sPct}%"></b></span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    ${mode === "tray" ? `<div class="rc-dock" role="group" aria-label="${escapeAttr(recipe.title)}の操作">
+      <button type="button" class="rc-dock-place" data-action="life-tray-place" data-recipe="${escapeAttr(recipe.id)}" data-date="${escapeAttr(activeDate)}" aria-label="${escapeAttr(recipe.title)}を${escapeAttr(dayWord)}に並べる">
+        <span aria-hidden="true">📥</span> <b>${escapeHtml(dayWord)}へ</b>
+      </button>
+      <button type="button" class="rc-dock-icon ${isAnchor ? "is-active" : ""}" data-action="life-tray-similar" data-recipe="${escapeAttr(recipe.id)}" aria-pressed="${isAnchor}" title="この料理と似たカードを集める" aria-label="似た料理を集める">
+        <span aria-hidden="true">🔍</span><small>似た皿</small>
+      </button>
+      <button type="button" class="rc-dock-icon" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}" title="カード裏面（材料・塩分内訳・動画）" aria-label="カード裏面を見る">
+        <span aria-hidden="true">↺</span><small>裏面</small>
+      </button>
+    </div>` : mode === "book" ? `<div class="rc-dock is-book">
+      <button type="button" class="rc-dock-place" data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}">
+        <span aria-hidden="true">↺</span> <b>裏面（材料・塩分内訳・動画）</b>
+      </button>
+    </div>` : ""}
+  </div>`;
+}
+
+// フルスクリーンの「🪵 3日分の献立トレイ＆カフェ風レシピカード」シート
+function renderCardTraySheet() {
+  const days = trayTargetDays();
+  if (!days.length) return "";
+  if (!trayActiveDate || !days.some((d) => d.date === trayActiveDate)) {
+    const firstEmpty = days.find((d) => !trayDayRecipe(d));
+    trayActiveDate = (firstEmpty || days[0]).date;
+  }
+  const activeDay = days.find((d) => d.date === trayActiveDate) || days[0];
+  const activeWd = `${weekdayLabel(activeDay.date)}曜`;
+  const filledCount = days.filter((d) => !!trayDayRecipe(d)).length;
+  const allFilled = filledCount === days.length;
+
+  // 1. 上部の木製トレイ（3枠・料理名を省略せず表示）
+  const traySlotsHtml = days.map((d) => {
+    const r = trayDayRecipe(d);
+    const wd = weekdayLabel(d.date);
+    const isNow = d.date === activeDay.date;
+    const spec = r ? recipeCardSpec(r) : null;
+    return `<div class="tray-slot-card ${isNow ? "is-active" : ""} ${r ? (spec.isCollected ? "is-collected" : "is-draft") : "is-empty"}">
+      <button type="button" class="tray-slot-main" data-action="life-tray-select-day" data-date="${d.date}" aria-pressed="${isNow}">
+        <span class="tray-slot-head"><b>[${wd}]</b> <small>${d.date === today() ? "今夜" : formatDate(d.date)}</small></span>
+        ${r ? `<span class="tray-slot-art"><img src="${escapeAttr(spec.artUrl)}" alt=""></span>
+          <strong class="tray-slot-name">${escapeHtml(r.title)}</strong>
+          <small class="tray-slot-sub">${escapeHtml(spec.pIcon + spec.pName)} · ⏱${spec.minutes}分 · 🧂${spec.nutrition.saltG}g</small>`
+        : `<span class="tray-slot-placeholder">${isNow ? `👇 ${wd}曜を選ぶ` : "＋ 空席"}</span>`}
+      </button>
+      ${r ? `<button type="button" class="tray-slot-clear" data-action="life-tray-clear-one" data-date="${d.date}" aria-label="${wd}曜のカードを外す">✕</button>` : ""}
+    </div>`;
+  }).join("");
+
+  // 2. よはくの案内メッセージ
+  const anchorRecipe = trayAnchorId ? allDinnerRecipes().find((r) => r.id === trayAnchorId) : null;
+  let yohakuPose = "normal";
+  let yohakuWords = `${activeWd}はどのカードを並べる？（右上の角めくりで裏面・色分けで栄養比較ができるよ）`;
+  if (anchorRecipe) {
+    yohakuPose = "happy";
+    yohakuWords = `「${anchorRecipe.title}」に近いカードを集めたよ！`;
+  } else if (allFilled) {
+    yohakuPose = "happy";
+    yohakuWords = `🎉 ${days.length}日分のカードがそろったよ！組み合わせコンボもチェックしてみてね`;
+  } else if (trayClearedDates.size > 0 && filledCount === 0) {
+    yohakuPose = "wave";
+    yohakuWords = `トレイを空にしたよ！まずは${activeWd}の1枚を選ぼう`;
+  } else if (filledCount > 0) {
+    yohakuPose = "happy";
+    yohakuWords = `いい組み合わせ！次は${activeWd}のカードを並べよう（かぶらない候補にしたよ）`;
+  }
+
+  // 3. 候補カード6枚（常に6枚並べて、栄養の色分けと👑トップ項目を一目で比較できるようにする）
+  const size = 6;
+  const candidates = trayCandidateList(activeDay.date, days);
+  const startIdx = candidates.length ? (trayPage * size) % Math.max(1, candidates.length) : 0;
+  const pageItems = [];
+  if (candidates.length) {
+    for (let i = 0; i < Math.min(size, candidates.length); i += 1) {
+      pageItems.push(candidates[(startIdx + i) % candidates.length]);
+    }
+  }
+  const pageSpecs = pageItems.map((item) => recipeCardSpec(item.r));
+  const bestStats = pageSpecs.length >= 2
+    ? {
+        maxProtein: Math.max(...pageSpecs.map((s) => s.nutrition.proteinG)),
+        maxVeg: Math.max(...pageSpecs.map((s) => s.nutrition.vegG)),
+        minSalt: Math.min(...pageSpecs.map((s) => s.nutrition.saltG)),
+      }
+    : {};
+
+  const cardsHtml = pageItems.length
+    ? `<div class="rc-compare-legend" aria-label="ステータス色分けの目安">
+        <span>🎨 1人前比較：<b class="lg-high">🟢 優秀（高たんぱく・野菜多・減塩◎）</b> <b class="lg-mid">🟡 標準</b> <b class="lg-watch">🟠 しっかり味</b> <b class="lg-crown">👑 6枚中No.1</b></span>
+      </div>
+      <div class="rc-grid">${pageItems.map((item) => renderRecipeTradingCard(item.r, {
+        activeDate: activeDay.date,
+        dayWord: activeWd,
+        sharedVegHit: item.sharedVegHit,
+        isAnchor: item.r.id === trayAnchorId,
+        mode: "tray",
+        bestStats,
+      })).join("")}</div>`
+    : `<p class="swap-empty">この棚に合うカードがありません。上の別の棚を選んでみてね。</p>`;
+
+  // デモ用：現在トレイに入っている最初の料理で「作ってカードGET！」を試せるボタン
+  const demoTarget = trayDayRecipe(activeDay) || pageItems[0]?.r || allDinnerRecipes()[0];
+
+  return `<div class="swap-backdrop" data-action="life-tray-close" aria-hidden="true"></div>
+  <section class="swap-panel swap-sheet tray-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="献立トレイで料理カードを選ぶ">
+    <div class="tray-sheet-head">
+      <div>
+        <span class="tray-eyebrow">CAFE RECIPE CARD TRAY</span>
+        <h3>🪵 献立トレイ（${filledCount} / ${days.length}枚）</h3>
+      </div>
+      <div class="tray-head-btns">
+        <button type="button" class="tray-clear-all-btn" data-action="life-tray-clear-all">🧹 全部空にして選び直す</button>
+        <button type="button" class="round-icon swap-close" data-action="life-tray-close" aria-label="閉じる">✕</button>
+      </div>
+    </div>
+
+    <div class="wood-tray-stage">
+      <div class="tray-slot-grid" style="--tray-cols:${Math.min(days.length, 3)}">${traySlotsHtml}</div>
+      ${renderTrayComboPanel(days)}
+      ${allFilled ? `<div class="tray-complete-bar">
+        <button type="button" class="primary-button tray-confirm-btn" data-action="life-tray-confirm-all">✓ この${days.length}枚のカードで決定・買い物へ！</button>
+      </div>` : ""}
+    </div>
+
+    <div class="tray-yohaku-bar">
+      ${yohaku(yohakuPose, "swap-yohaku")}
+      <p class="swap-bubble">${escapeHtml(yohakuWords)}</p>
+      ${trayAnchorId ? `<button type="button" class="link-inline" data-action="life-tray-similar-clear">解除</button>` : ""}
+    </div>
+
+    <div class="tray-shelves" role="group" aria-label="カードの棚">
+      ${TRAY_SHELVES.map(([k, label]) => `<button type="button" class="chip-button tray-shelf-chip" data-action="life-tray-mood" data-mood="${k}" aria-pressed="${trayMood === k}">${label}</button>`).join("")}
+    </div>
+
+    ${cardsHtml}
+
+    <div class="tray-bottom-bar">
+      ${candidates.length > size ? `<button type="button" class="secondary-button swap-more" data-action="life-tray-next-page">🔄 別の${size}枚を見る（全${candidates.length}枚）</button>` : ""}
+      ${demoTarget ? `<button type="button" class="tray-demo-get-btn" data-action="life-card-get-demo" data-recipe="${escapeAttr(demoTarget.id)}">✨ 「作った！→ カードGET」演出を試す</button>` : ""}
+    </div>
+    ${trayFlipId ? renderCardFlipModal() : ""}
+  </section>`;
+}
+
+// カード裏面モーダル（材料・手順・塩分内訳＆減塩ヒント・元のYouTube動画プレビュー）
+function renderCardFlipModal() {
+  const r = allDinnerRecipes().find((x) => x.id === trayFlipId) || recipeById(trayFlipId);
+  if (!r) return "";
+  const spec = recipeCardSpec(r);
+  const n = spec.nutrition;
+  const days = trayTargetDays();
+  const activeDay = days.find((d) => d.date === trayActiveDate) || days[0];
+  const activeWd = activeDay ? `${weekdayLabel(activeDay.date)}曜` : "献立";
+  const servings = dailyProfile().servings || 2;
+  const thumb = recipeThumbnail(r);
+  const ingList = (r.ingredients || []).map((i) => `<li><span>${escapeHtml(i.name)}</span><b>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</b></li>`).join("");
+  const stepList = (r.steps || []).slice(0, 8).map((s, idx) => `<li><b>${idx + 1}</b><span>${escapeHtml(s)}</span></li>`).join("");
+  const saltBreakdownHtml = n.saltSources.length
+    ? n.saltSources.map((s) => `<span class="rc-salt-chip">${escapeHtml(s.name)}（${escapeHtml(s.amount)}）：約${s.perServingSalt}g/人</span>`).join("")
+    : `<span class="rc-salt-chip">料理カテゴリの標準的な調味料量から仮計算</span>`;
+
+  return `<div class="rc-flip-overlay" role="dialog" aria-modal="true" aria-label="${escapeAttr(r.title)}のカード裏面">
+    <div class="rc-flip-backdrop" data-action="life-card-flip-close"></div>
+    <div class="rc-flip-card">
+      <div class="rc-flip-head">
+        <span class="rc-flip-tag">📖 RECIPE CARD BACK（カード裏面・詳細データ）</span>
+        <button type="button" class="round-icon" data-action="life-card-flip-close" aria-label="裏面を閉じる">✕</button>
+      </div>
+      <div class="rc-flip-hero">
+        <img class="rc-flip-art" src="${escapeAttr(spec.artUrl)}" alt="">
+        <div>
+          <span class="rc-rank-pill">${escapeHtml(spec.rankBadge)}</span>
+          <h3>${recipeTitleHtml(r)}</h3>
+          <p class="small muted">${escapeHtml(spec.typeText)} · ${escapeHtml(spec.speedText)} · ${escapeHtml(spec.skillText)}</p>
+        </div>
+      </div>
+
+      <div class="rc-flip-nutri-box">
+        <div class="rc-flip-nutri-head">
+          <strong>🧂 1人前の栄養・塩分ガイド（日本食品標準成分表ベース・${escapeHtml(n.statusLabel)}）</strong>
+        </div>
+        <div class="rc-param-grid">
+          <div class="rc-param-cell"><small>💪 たんぱく質</small><strong>約${n.proteinG}g</strong></div>
+          <div class="rc-param-cell"><small>🥬 野菜量</small><strong>約${n.vegG}g</strong></div>
+          <div class="rc-param-cell is-salt"><small>🧂 食塩相当量</small><strong>約${n.saltG}g</strong></div>
+          <div class="rc-param-cell"><small>🔥 エネルギー</small><strong>約${n.kcal}kcal</strong></div>
+        </div>
+        <div class="rc-salt-sources">${saltBreakdownHtml}</div>
+        <p class="rc-lowsalt-tip">💡 <b>おいしさそのまま減塩ヒント：</b>${escapeHtml(n.lowSaltTip)}</p>
+      </div>
+
+      ${thumb && r.videoUrl ? `<div class="rc-flip-video">
+        <img src="${escapeAttr(thumb)}" alt="YouTube動画サムネイル" loading="lazy">
+        <a href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noopener noreferrer" class="secondary-button">▶ YouTubeで元の動画を見る</a>
+      </div>` : ""}
+      <div class="rc-flip-columns">
+        <div class="rc-flip-sec">
+          <h4>🥕 材料（${servings}人分）</h4>
+          <ul class="rc-flip-ings">${ingList || "<li>材料データなし</li>"}</ul>
+        </div>
+        <div class="rc-flip-sec">
+          <h4>🍳 作り方（全${(r.steps || []).length}工程）</h4>
+          <ol class="rc-flip-steps">${stepList || "<li>動画を見ながら作れます</li>"}</ol>
+        </div>
+      </div>
+      <div class="rc-flip-foot">
+        ${activeDay && trayOpen ? `<button type="button" class="primary-button" data-action="life-tray-place" data-recipe="${escapeAttr(r.id)}" data-date="${escapeAttr(activeDay.date)}">＋ ${escapeHtml(activeWd)}のトレイに並べる</button>` : ""}
+        <button type="button" class="secondary-button" data-action="life-card-get-demo" data-recipe="${escapeAttr(r.id)}">✨ 作ってカードGET！を試す</button>
+        <button type="button" class="text-button" data-action="life-card-flip-close">カード一覧に戻る</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// 「🎉 料理を作ってレシピカードGET！」お祝いモーダル
+function renderCardGetModal() {
+  if (!cardGetRecipeId) return "";
+  const r = allDinnerRecipes().find((x) => x.id === cardGetRecipeId) || recipeById(cardGetRecipeId);
+  if (!r) return "";
+  const baseSpec = recipeCardSpec(r);
+  const cooks = Math.max(1, baseSpec.cooks);
+  const rank = cooks >= 3 ? "gold" : cooks === 2 ? "silver" : "bronze";
+  const seal = cooks >= 3 ? "わが家の定番 ★★★" : cooks === 2 ? "常連カード ★★" : "NEW CARD GET! ★";
+
+  return `<div class="rc-get-overlay" role="dialog" aria-modal="true" aria-label="レシピカードGET！">
+    <div class="rc-get-backdrop" data-action="life-card-get-close"></div>
+    <div class="rc-get-stage">
+      <p class="rc-get-burst">✨ RECIPE CARD COLLECTED! ✨</p>
+      <h3 class="rc-get-heading">「${escapeHtml(r.title)}」の<br>レシピカードをGETしました！</h3>
+      <p class="rc-get-sub">クラフト紙の仮カードから、フルカラー＆金箔押しのコレクションカードに進化しました！</p>
+
+      <div class="rc-get-showcase">
+        <article class="rc-card is-collected is-rank-${rank} is-celebrating">
+          <div class="rc-card-inner">
+            <div class="rc-top-row">
+              <span class="rc-card-no">${escapeHtml(baseSpec.cardNo)}</span>
+              <span class="rc-type-badge">${escapeHtml(baseSpec.typeText)}</span>
+              <span class="rc-speed-badge is-${baseSpec.speedTier}">${escapeHtml(baseSpec.speedText)}</span>
+            </div>
+            <div class="rc-plate-wrap">
+              <img class="rc-plate-img" src="${escapeAttr(baseSpec.artUrl)}" alt="${escapeAttr(r.title)}">
+              <span class="rc-unique-ribbon">🏆 通算 ${cooks}回調理</span>
+              <span class="rc-foil-seal"><i>👑</i><b>${escapeHtml(seal)}</b></span>
+            </div>
+            <div class="rc-title-block">
+              <h4 class="rc-dish-title">${recipeTitleHtml(r)}</h4>
+              <span class="rc-skill-line">${escapeHtml(baseSpec.moodWord)} · ${escapeHtml(baseSpec.skillText)}</span>
+            </div>
+            <div class="rc-stat-gems">
+              <div class="rc-gem is-tier-${baseSpec.proteinTier}">
+                <div class="rc-gem-top"><small>💪たんぱく</small></div>
+                <strong>${baseSpec.nutrition.proteinG}<i>g</i></strong>
+              </div>
+              <div class="rc-gem is-tier-${baseSpec.vegTier}">
+                <div class="rc-gem-top"><small>🥬野菜量</small></div>
+                <strong>${baseSpec.nutrition.vegG}<i>g</i></strong>
+              </div>
+              <div class="rc-gem is-salt is-tier-${baseSpec.saltTier}">
+                <div class="rc-gem-top"><small>🧂塩分</small></div>
+                <strong>${baseSpec.nutrition.saltG}<i>g</i></strong>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="rc-get-actions">
+        <button type="button" class="primary-button" data-action="life-card-book-open">📖 わが家のカード図鑑を見る</button>
+        <button type="button" class="secondary-button" data-action="life-card-get-close">閉じる</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// 「📖 わが家のカード図鑑」シート（GET済のキラキラカードと、未GETのクラフト仮カードを一覧）
+function renderCardBookSheet() {
+  const all = allDinnerRecipes();
+  const collected = all.filter((r) => cardCookCount(r) > 0);
+  const drafts = all.filter((r) => cardCookCount(r) === 0).slice(0, 12);
+
+  return `<div class="swap-backdrop" data-action="life-card-book-close" aria-hidden="true"></div>
+  <section class="swap-panel swap-sheet tray-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="わが家のレシピカード図鑑">
+    <div class="tray-sheet-head">
+      <div>
+        <span class="tray-eyebrow">RECIPE CARD COLLECTION</span>
+        <h3>📖 わが家のカード図鑑（GET済 ${collected.length}枚）</h3>
+      </div>
+      <button type="button" class="round-icon swap-close" data-action="life-card-book-close" aria-label="閉じる">✕</button>
+    </div>
+    <p class="small muted">献立で選んで実際に「作った！」を押すと、クラフト紙の仮カードがフルカラー＆金箔枠のカードになって図鑑にコレクションされます。</p>
+    ${collected.length ? `<h4 class="rc-book-sec-title">✨ 作ってGETしたカード（${collected.length}枚）</h4>
+      <div class="rc-grid">${collected.map((r) => renderRecipeTradingCard(r, { mode: "book" })).join("")}</div>`
+    : `<div class="rc-book-empty"><p>まだGETしたカードがありません。下のカードから「✨ 作ってカードGET！を試す」を押すと、進化したカードが見られます！</p></div>`}
+    <h4 class="rc-book-sec-title">📝 これから作ってGETできる仮カード（一部）</h4>
+    <div class="rc-grid">${drafts.map((r) => renderRecipeTradingCard(r, { mode: "book" })).join("")}</div>
+    ${trayFlipId ? renderCardFlipModal() : ""}
+  </section>`;
+}
+
+// トレイ＆カード関連のアクション処理
+function handleCardTrayAction(action, data, before) {
+  if (action === "life-tray-open") {
+    swapDate = "";
+    cardBookOpen = false;
+    trayOpen = true;
+    trayClearedDates = new Set();
+    trayAnchorId = "";
+    trayFlipId = "";
+    trayPage = 0;
+    if (data.date) trayActiveDate = String(data.date);
+    return true;
+  }
+  if (action === "life-tray-close") {
+    trayOpen = false;
+    trayFlipId = "";
+    trayClearedDates = new Set();
+    return true;
+  }
+  if (action === "life-tray-select-day" && data.date) {
+    trayActiveDate = String(data.date);
+    trayPage = 0;
+    return true;
+  }
+  if (action === "life-tray-clear-all") {
+    const days = trayTargetDays();
+    trayClearedDates = new Set(days.map((d) => d.date));
+    if (days[0]) trayActiveDate = days[0].date;
+    trayAnchorId = "";
+    trayPage = 0;
+    return true;
+  }
+  if (action === "life-tray-clear-one" && data.date) {
+    trayClearedDates.add(String(data.date));
+    trayActiveDate = String(data.date);
+    return true;
+  }
+  if (action === "life-tray-mood") {
+    trayMood = trayMood === data.mood ? "" : String(data.mood || "");
+    trayPage = 0;
+    return true;
+  }
+  if (action === "life-tray-similar" && data.recipe) {
+    trayAnchorId = trayAnchorId === data.recipe ? "" : String(data.recipe);
+    trayPage = 0;
+    return true;
+  }
+  if (action === "life-tray-similar-clear") {
+    trayAnchorId = "";
+    trayPage = 0;
+    return true;
+  }
+  if (action === "life-tray-next-page") {
+    trayPage += 1;
+    return true;
+  }
+  if (action === "life-tray-place" && data.recipe) {
+    const days = trayTargetDays();
+    const targetDate = data.date || trayActiveDate || days[0]?.date;
+    const r = allDinnerRecipes().find((x) => x.id === data.recipe);
+    if (r && targetDate) {
+      if (state.mealSlots?.[targetDate]?.status === "confirmed") {
+        confirmDaily({ date: targetDate }, r);
+      } else {
+        state.planOverrides[targetDate] = r.id;
+      }
+      trayClearedDates.delete(targetDate);
+      trayFlipId = "";
+      trayAnchorId = "";
+      trayPage = 0;
+      changedShopping(before || []);
+      // 次の空席（または次の日）へ自動でフォーカスを移動！
+      const refreshed = trayTargetDays();
+      const curIdx = refreshed.findIndex((d) => d.date === targetDate);
+      const nextEmpty = refreshed.slice(curIdx + 1).find((d) => !trayDayRecipe(d))
+        || refreshed.find((d) => !trayDayRecipe(d))
+        || refreshed[curIdx + 1]
+        || refreshed[curIdx];
+      if (nextEmpty) trayActiveDate = nextEmpty.date;
+      showToast(`🪵 ${weekdayLabel(targetDate)}曜のトレイに「${r.title}」を並べました！`);
+    }
+    return true;
+  }
+  if (action === "life-tray-confirm-all") {
+    const days = trayTargetDays();
+    days.forEach((d) => {
+      const r = trayDayRecipe(d);
+      if (r) confirmDaily({ date: d.date }, r);
+    });
+    trayOpen = false;
+    trayClearedDates = new Set();
+    changedShopping(before);
+    state.view = "shopping";
+    showToast(`🎉 ${days.length}日分の献立カードを決定しました！買い物リストへ進みます`);
+    return true;
+  }
+  if (action === "life-card-flip" && data.recipe) {
+    trayFlipId = String(data.recipe);
+    return true;
+  }
+  if (action === "life-card-flip-close") {
+    trayFlipId = "";
+    return true;
+  }
+  if (action === "life-card-get-demo" && data.recipe) {
+    const r = allDinnerRecipes().find((x) => x.id === data.recipe) || recipeById(data.recipe);
+    if (r) {
+      const own = r.curated || r.discover ? saveOwnRecipe(r) : r;
+      const demoId = `demo-get-${own.id}`;
+      if (!state.evaluations.some((e) => e.id === demoId)) {
+        state.evaluations.unshift({
+          id: demoId,
+          recipeId: own.id,
+          recipeTitle: own.title,
+          cookedAt: today(),
+          mealType: "dinner",
+          preferencePending: false,
+          familyRepeatCycles: { [me() || "わたし"]: "weekly" },
+          memo: "",
+          photo: "",
+          updatedAt: nowIso(),
+        });
+      }
+      trayFlipId = "";
+      cardGetRecipeId = own.id;
+    }
+    return true;
+  }
+  if (action === "life-card-get-close") {
+    cardGetRecipeId = "";
+    return true;
+  }
+  if (action === "life-card-book-open") {
+    cardGetRecipeId = "";
+    trayOpen = false;
+    cardBookOpen = true;
+    return true;
+  }
+  if (action === "life-card-book-close") {
+    cardBookOpen = false;
+    trayFlipId = "";
+    return true;
+  }
+  return false;
 }
