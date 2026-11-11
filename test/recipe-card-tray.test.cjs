@@ -1035,3 +1035,15 @@ test("23. Plan tab: the tray days show as the big plan cards, with confirm/空�
   run(`isViewer = () => true`);
   assert.ok(!run(`renderDailyPlan()`).includes("tray-cards"));
 });
+
+test("24. 7-day plan: the tray covers every shown day, so 決定 confirms all 7 (Codex review #240)", () => {
+  const run = app();
+  run(`state.planLength = 7`);
+  const days = run(`trayTargetDays()`);
+  const shown = run(`dailyPlan().filter((d) => !d.off && !d.prestart && d.candidate).length`);
+  assert.equal(days.length, shown, "All shown cooking days are tray days");
+  run(`setView = (v) => { state.view = v; }`);
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
+  for (const d of days) assert.equal(run(`state.mealSlots[${JSON.stringify(d.date)}]?.status`), "confirmed", `${d.date} is confirmed`);
+});

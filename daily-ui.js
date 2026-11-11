@@ -846,8 +846,16 @@ function placePlanPages({ smooth = false } = {}) {
     t = setTimeout(() => {
       const near = [...box.children].reduce((a, el) => (Math.abs(el.offsetLeft - box.offsetLeft - box.scrollLeft) < Math.abs(a.offsetLeft - box.offsetLeft - box.scrollLeft) ? el : a));
       if (near?.dataset.page && near.dataset.page !== planPage) {
+        // 選び直しの途中は、ほかのかたまりへ動かない（ボタンで動く時と同じ。Codex review #240）
+        if (isTrayDraftActive()) {
+          showToast("選び直しの途中です。先に決定するか「元の献立に戻す」を押してね");
+          placePlanPages({ smooth: true });
+          return;
+        }
         planPage = near.dataset.page;
         document.querySelectorAll(".plan-dot").forEach((d) => d.setAttribute("aria-pressed", String(d.dataset.page === planPage)));
+        // 下の候補カード・決定ボタンを、見ているかたまりの日に合わせて描き直す
+        if (!isViewer() && typeof render === "function") render();
       }
     }, 120);
   }, { passive: true });
@@ -5487,7 +5495,8 @@ function trayTargetDays() {
       if (bDays.length) days = bDays;
     }
   }
-  return days.slice(0, 5);
+  // 献立タブの中のトレイなので、表示している日はすべて対象（7日でも、決定ボタンで全部の日を決められるように。Codex review #240）
+  return days;
 }
 
 function findDinnerRecipeById(recipeId) {
