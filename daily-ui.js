@@ -3901,7 +3901,11 @@ function bindSwapSheet() {
   // 画面の向き・大きさが変わって並べる数（4皿／6皿）が変わったら、描き直す。
   if (!swapSizeSeen && globalThis.addEventListener) globalThis.addEventListener("resize", () => { if (swapDate && state.view === "plan" && swapSize() !== swapSizeSeen) render(); });
   swapSizeSeen = swapSize();
-  const topModal = document.querySelector(".rc-flip-overlay, .rc-get-overlay, .swap-sheet");
+  const topModal =
+    document.querySelector(".rc-flip-overlay") ||
+    document.querySelector(".rc-get-overlay") ||
+    document.querySelector(".swap-sheet") ||
+    null;
   if (!topModal) {
     swapFocusAt = -1;
     if (lastModalTriggerSelector) {
@@ -3925,21 +3929,16 @@ function bindSwapSheet() {
     if (trayOpen) return handleDailyAction("life-tray-close", {});
     if (swapDate) return handleDailyAction("life-close-swap", {});
   };
-  const sheet = document.querySelector(".swap-sheet") || topModal;
+  const sheet = topModal;
   sheet.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") { ev.preventDefault?.(); closeTopModal(); return; }
     if (ev.key !== "Tab") return;
-    const list = swapFocusables(topModal);
+    const list = swapFocusables(sheet);
     if (!list.length) return;
     const first = list[0], last = list[list.length - 1];
-    if (ev.shiftKey && (document.activeElement === first || document.activeElement === topModal)) { ev.preventDefault?.(); last.focus(); }
+    if (ev.shiftKey && (document.activeElement === first || document.activeElement === sheet)) { ev.preventDefault?.(); last.focus(); }
     else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault?.(); first.focus(); }
   });
-  if (topModal !== sheet) {
-    topModal.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") { ev.preventDefault?.(); closeTopModal(); }
-    });
-  }
   sheet.addEventListener("click", (ev) => {
     const el = ev.target?.closest?.("[data-action]");
     const i = swapFocusables(sheet).indexOf(el);
@@ -4543,7 +4542,8 @@ function isTrayDraftActive() {
 function syncTrayAfterConflictResolution(date, chosen) {
   if (!date) return;
   if (Object.prototype.hasOwnProperty.call(trayBasePlan, date)) {
-    trayBasePlan[date] = chosen ? clone(chosen) : null;
+    const snap = typeof planSnapshot === "function" ? planSnapshot(state)?.[date] : null;
+    trayBasePlan[date] = snap ? clone(snap) : chosen ? clone(chosen) : null;
   }
   const chosenId = chosen?.slot?.recipe?.id || chosen?.override || chosen?.draft?.id || null;
   if (Object.prototype.hasOwnProperty.call(trayInitialDraft, date)) {
@@ -4740,8 +4740,41 @@ function parseAmountQuantity(rawAmount) {
     .replace(/¾/g, "3/4")
     .trim();
   if (!s) return { unit: "unknown", val: 0, qty: null, ambiguous: true, invalid: false };
-  if (/少々|ひとつまみ/.test(s)) {
-    const isPinch = /ひとつまみ/.test(s);
+
+  // かっこ内の重さ・容量表記（例：「1/2袋（100g）」「1パック(約150g)」）は具体的な実数として優先採用する
+  const parenMatch = s.match(/[（(]\s*(?:約\s*)?([^\s)）]+)\s*(g|kg|ml|cc|グラム|ミリリットル)\s*[)）]/i);
+  if (parenMatch) {
+    const innerTok = parenMatch[1];
+    const rangeM = innerTok.match(/(\d+(?:\.\d+)?)\s*[〜~\-]\s*(\d+(?:\.\d+)?)/);
+    let pVal = null;
+    if (rangeM) {
+      const l = Number(rangeM[1]), r = Number(rangeM[2]);
+      if (Number.isFinite(l) && Number.isFinite(r) && r >= l && l > 0) pVal = (l + r) / 2;
+    } else {
+      const tok = parseSimpleNumberToken(innerTok);
+      if (tok && !tok.invalid && tok.val > 0) pVal = tok.val;
+    }
+    if (pVal !== null) {
+      let pUnit = parenMatch[2].toLowerCase();
+      if (/kg/i.test(pUnit)) { pUnit = "g"; pVal *= 1000; }
+      else if (/g|グラム/i.test(pUnit)) { pUnit = "g"; }
+      else if (/ml|cc|ミリリットル/i.test(pUnit)) { pUnit = "ml"; }
+      return {
+        unit: pUnit,
+        val: pVal,
+        qty: pVal,
+        ambiguous: Boolean(rangeM),
+        invalid: false,
+      };
+    }
+  }
+
+  // かっこ内に重さがない場合（例：「1/2袋（市販品）」）はかっこを除去して外側の単位・分量を判定する
+  const cleanS = s.replace(/[（(][^）)]*[)）]/g, " ").trim();
+  const targetS = cleanS || s;
+
+  if (/少々|ひとつまみ/.test(targetS)) {
+    const isPinch = /ひとつまみ/.test(targetS);
     const v = isPinch ? 0.8 : 0.45;
     return {
       unit: "pinch",
@@ -4752,20 +4785,20 @@ function parseAmountQuantity(rawAmount) {
       assumption: isPinch ? "ひとつまみ＝約0.8gで換算" : "少々＝約0.45gで換算",
     };
   }
-  if (/適量|お好み|適宜/.test(s)) {
+  if (/適量|お好み|適宜/.test(targetS)) {
     return { unit: "some", val: 0, qty: null, ambiguous: true, invalid: false, assumption: "適量・お好み（数値換算から除外）" };
   }
-  if (/^半分$|^半(個|玉|丁|袋|束|本|枚|切れ)$/.test(s)) {
-    return { unit: /g|グラム/i.test(s) ? "g" : "piece", val: 0.5, qty: 0.5, ambiguous: false, invalid: false };
+  if (/^半分$|^半(個|玉|丁|袋|束|本|枚|切れ)$/.test(targetS)) {
+    return { unit: /g|グラム/i.test(targetS) ? "g" : "piece", val: 0.5, qty: 0.5, ambiguous: false, invalid: false };
   }
 
   // 負数・ゼロ・分母ゼロの明示的検出（1へフォールバックしない）
-  if (/(?:^|[^\d])-\d+/.test(s) || /\d+\s*\/\s*0(?!\d)/.test(s) || /(?:^|[^\d/.])0(?:\.0+)?(?:\s*(?:g|kg|ml|cc|個|玉|本|枚|袋|丁|パック|大さじ|小さじ)|$)/i.test(s)) {
+  if (/(?:^|[^\d])-\d+/.test(targetS) || /\d+\s*\/\s*0(?!\d)/.test(targetS) || /(?:^|[^\d/.])0(?:\.0+)?(?:\s*(?:g|kg|ml|cc|個|玉|本|枚|袋|丁|パック|大さじ|小さじ)|$)/i.test(targetS)) {
     return { unit: "invalid", val: 0, qty: null, ambiguous: true, invalid: true };
   }
 
   // 範囲表記（例：1〜2個、100~150g、1/2〜1個）
-  const rangeMatch = s.match(/(\d+\s*と\s*\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?)\s*[〜~\-]\s*(\d+\s*と\s*\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?)/);
+  const rangeMatch = targetS.match(/(\d+\s*と\s*\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?)\s*[〜~\-]\s*(\d+\s*と\s*\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?)/);
   let num = null;
   let isRange = false;
   let rangeBounds = null;
@@ -4779,9 +4812,9 @@ function parseAmountQuantity(rawAmount) {
     isRange = true;
     rangeBounds = [left.val, right.val];
   } else {
-    const mixed = s.match(/(\d+)\s*と\s*(\d+)\s*\/\s*(\d+)/);
-    const frac = !mixed && s.match(/(\d+)\s*\/\s*(\d+)/);
-    const dec = !mixed && !frac && s.match(/(\d+(?:\.\d+)?)/);
+    const mixed = targetS.match(/(\d+)\s*と\s*(\d+)\s*\/\s*(\d+)/);
+    const frac = !mixed && targetS.match(/(\d+)\s*\/\s*(\d+)/);
+    const dec = !mixed && !frac && targetS.match(/(\d+(?:\.\d+)?)/);
     if (mixed) {
       const den = Number(mixed[3]);
       if (den <= 0) return { unit: "invalid", val: 0, qty: null, ambiguous: true, invalid: true };
@@ -4801,14 +4834,14 @@ function parseAmountQuantity(rawAmount) {
 
   let unit = "raw";
   let val = num;
-  if (/大さじ/.test(s)) unit = "tbsp";
-  else if (/小さじ/.test(s)) unit = "tsp";
-  else if (/カップ/.test(s)) { unit = "ml"; val = num * 200; }
-  else if (/ml|cc|ミリリットル/i.test(s)) unit = "ml";
-  else if (/kg/i.test(s)) { unit = "g"; val = num * 1000; }
-  else if (/g|グラム/i.test(s)) unit = "g";
-  else if (/パック|袋|束|丁|缶/.test(s)) unit = "pack";
-  else if (/個|玉|本|枚|尾|切れ|片|合/.test(s)) unit = "piece";
+  if (/大さじ/.test(targetS)) unit = "tbsp";
+  else if (/小さじ/.test(targetS)) unit = "tsp";
+  else if (/カップ/.test(targetS)) { unit = "ml"; val = num * 200; }
+  else if (/ml|cc|ミリリットル/i.test(targetS)) unit = "ml";
+  else if (/kg/i.test(targetS)) { unit = "g"; val = num * 1000; }
+  else if (/g|グラム/i.test(targetS)) unit = "g";
+  else if (/パック|袋|束|丁|缶/.test(targetS)) unit = "pack";
+  else if (/個|玉|本|枚|尾|切れ|片|合/.test(targetS)) unit = "piece";
 
   return {
     unit,

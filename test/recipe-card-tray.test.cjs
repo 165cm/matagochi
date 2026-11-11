@@ -874,3 +874,72 @@ test("18. Regression (Codex Round 3): Aburaage is not oil, unquantified ingredie
   assert.ok(run(`isTrayDraftActive()`), "isTrayDraftActive must be true because d1 has an unsaved draft");
   assert.ok(run(`hasUnsavedWork()`), "hasUnsavedWork must remain true to protect unsaved d1 draft from automatic reload/sync");
 });
+
+test("19. Regression (PR #238 review): parseAmountQuantity('1/2袋（100g）') -> 100g, syncTrayAfterConflictResolution sets samePlan true, and bindSwapSheet prioritizes .rc-flip-overlay", () => {
+  const run = app();
+
+  // 1. parseAmountQuantity paren weight extraction
+  const pqParen = run(`parseAmountQuantity("1/2袋（100g）")`);
+  assert.equal(pqParen.unit, "g");
+  assert.equal(pqParen.val, 100);
+  assert.equal(pqParen.qty, 100);
+
+  const pqParenApprox = run(`parseAmountQuantity("1/2袋（約150g）")`);
+  assert.equal(pqParenApprox.unit, "g");
+  assert.equal(pqParenApprox.val, 150);
+
+  const pqParenMl = run(`parseAmountQuantity("1パック(200ml)")`);
+  assert.equal(pqParenMl.unit, "ml");
+  assert.equal(pqParenMl.val, 200);
+
+  // Unreadable paren content falls back to outer unit (pack/piece)
+  const pqUnreadable = run(`parseAmountQuantity("1/2袋（市販品）")`);
+  assert.equal(pqUnreadable.unit, "pack");
+  assert.equal(pqUnreadable.val, 0.5);
+
+  const pqPieceParen = run(`parseAmountQuantity("1/2個（一口大に切る）")`);
+  assert.equal(pqPieceParen.unit, "piece");
+  assert.equal(pqPieceParen.val, 0.5);
+
+  // 2. syncTrayAfterConflictResolution keeps trayBasePlan in sync with planSnapshot (samePlan === true)
+  const days = run(`trayTargetDays()`);
+  const d0 = days[0].date;
+  const rA = run(`allDinnerRecipes()[0]`);
+  run(`handleCardTrayAction("life-tray-open", {})`);
+  run(`handleCardTrayAction("life-tray-place", { date: ${JSON.stringify(d0)}, recipe: ${JSON.stringify(rA.id)} })`);
+
+  // Simulate conflict resolution selecting local recipe
+  const chosenSlot = run(`confirmedSlot(${JSON.stringify(d0)}, ${JSON.stringify(rA)})`);
+  run(`
+    const plan = planSnapshot(state);
+    plan[${JSON.stringify(d0)}] = { slot: ${JSON.stringify(chosenSlot)} };
+    putPlan(state, plan);
+    syncTrayAfterConflictResolution(${JSON.stringify(d0)}, { slot: ${JSON.stringify(chosenSlot)} });
+  `);
+  const isSame = run(`samePlan(trayBasePlan[${JSON.stringify(d0)}], planSnapshot(state)[${JSON.stringify(d0)}])`);
+  assert.equal(isSame, true, "trayBasePlan must match planSnapshot after conflict resolution so samePlan is true and conflict is not repeatedly flagged");
+
+  // 3. bindSwapSheet prioritizes .rc-flip-overlay over background .swap-sheet
+  run(`
+    let focusedElement = null;
+    const flipOverlay = {
+      classList: { contains: (c) => c === "rc-flip-overlay" },
+      contains: () => false,
+      querySelectorAll: (sel) => sel.includes("button") ? [{ tagName: "BUTTON", disabled: false, offsetParent: {}, focus: () => { focusedElement = "flip-btn"; } }] : [],
+      addEventListener: () => {}
+    };
+    const swapSheet = {
+      classList: { contains: (c) => c === "swap-sheet" },
+      contains: () => false,
+      querySelectorAll: (sel) => sel.includes("button") ? [{ tagName: "BUTTON", disabled: false, offsetParent: {}, focus: () => { focusedElement = "tray-btn"; } }] : [],
+      addEventListener: () => {}
+    };
+    document.querySelector = (sel) => {
+      if (sel === ".rc-flip-overlay") return flipOverlay;
+      if (sel === ".swap-sheet") return swapSheet;
+      return null;
+    };
+    bindSwapSheet();
+  `);
+  assert.equal(run(`focusedElement`), "flip-btn", "bindSwapSheet must focus inside the topmost .rc-flip-overlay, not background .swap-sheet");
+});
