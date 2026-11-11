@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-11-09（届いた新着を全部候補に #237 を公開）。以前：2026-11-03（管理画面の読み込みを速くする修正は #223 で公開。管理画面の並びの整理は #224 で公開。レシピ・親の統合と手順の時刻の全体像を claude/confident-volta-1giltr で。#221 公開。レビューで見つかった6件を claude/focused-ramanujan-gnx6jq で修正中）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-11-11（`feat/recipe-card-tray` を Claude・Codex のレビュー `docs/review/RECIPE_CARD_TRAY_REVIEW.md` に基づいて全面改修・回帰テスト11件追加・全498件PASS）。以前：2026-11-09（届いた新着を全部候補に #237 を公開）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -23,7 +23,7 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| 献立トレイ（3枠）＋カフェ風レシピトレーディングカード＆3日間コンボの実装 | レビュー待ち | feat/recipe-card-tray | ①3日分の木製トレイとリアルタイム組み合わせパラメータ（飽きなさ・たんぱく質・野菜量・食塩相当量）＋発動コンボバッジ ②文部科学省「日本食品標準成分表」ベースの調味料塩分・栄養0円概算エンジン（成分表計算／仮計算・目安の区別＋裏面での減塩ヒント） ③6枚同時比較・色分けステータスジェム（🟢優秀／🟡標準／🟠しっかり味＋👑6枚中No.1）・メインビジュアル中心のトレーディングカードデザイン ④カード右上の角めくり（ページカール）アニメーションによる裏面表示＆操作ドックのカード外分離 | daily-ui.js, styles.css, index.html, app.js, sw.js, version.json, test/recipe-card-tray.test.cjs, docs/CURRENT_TASK.md |
+| 献立トレイ（3枠）＋レシピカードの段階公開改修（Claude・Codex レビュー対応） | レビュー待ち | feat/recipe-card-tray | `docs/review/RECIPE_CARD_TRAY_REVIEW.md` 対応：①GETデモボタン撤去・`demo-get-*` 評価の安全な自動掃除（実データ不変）②下書きトレイ（`trayDraft`）方式・開いた時点の3日分ピン留め（連鎖再計算防止）・Undo・キャンセル時の無変更保証・事前検証つき一括確定（`life-confirm` 統合・`trayBasePlan` による家族の同日競合検出・`hasUnsavedWork` 保護）③閲覧者（`isViewer`）の画面・処理両面ブロック④選択画面の4ゲージ・コンボ・栄養ジェム・王冠・重複3枠ボード撤去、カード表面を「絵・料理名・時間・理由1つ」に整理し `375×667` でも最初の候補の「置く」まで1画面収容（クリアボタン 44×44px）⑤調理記録時は非ブロッキングの1行GET帯（初回・ランクUP時のみ）＋Esc最前面クローズ＆フォーカス復帰⑥栄養・塩分計算の誤一致防止・0や人数不明のフォールバック廃止・架空クランプ廃止・裏面折りたたみ格納⑦別料理イラスト流用の全廃（承認済みイラスト→動画サムネイル→鍋プレースホルダー）と400品キャッシュ高速化（開く約0.15秒・置く約0.05秒）。アプリ498件PASS、375×667／390×844／844×390／1440×900 確認済み。APP_MAP §67 | daily-ui.js, app.js, household.js, styles.css, index.html, sw.js, version.json, test/recipe-card-tray.test.cjs, docs/* |
 | Codex：手順の時刻90%に向けた補完 | レビュー待ち | codex/timecode-coverage | 50本の読み取り調査済み（0円）。欠損のみ補完・固定50本の試験／継続モード・累計500円の予算つき定期処理を実装。API430件・アプリ469件PASS。PR #227の自動レビュー1件（補完の版更新による再試行制限の抜け）を回帰テストつきで修正。有料実測は公開・設定後。docs/review/TIMECODE_COMPLETION_REVIEW.md | api/src/timecode*.js, api/src/server.js, api/src/analyzer.js, api/src/recipeCatalog.js, api/test/*, discover.js, admin/catalog.html, app.js, sw.js, index.html, version.json, scripts/timecode-audit.mjs, .github/workflows/timecode-backfill.yml, docs/* |
 | 毎朝の健康診断に手順の時刻のカバー率（2026-11-04 のユーザーの依頼） | レビュー待ち | claude/nice-shannon-6g1g5m | `GET /api/trends/timecodes`（数だけ・0円）と健康診断の「⏱ 手順の時刻（新着）」の表。毎日17時ごろ（16:49）に健康診断を読んで報告する予定の作業 | api/src/server.js, scripts/trends-health.cjs, .github/workflows/trends.yml, api/test/adminSpeed.test.js, test/trends-health.test.cjs, docs/* |
 | Claude：「📚 レシピ・親」（レシピ一覧と親の料理名をまとめる）と手順の時刻の全体像（2026-11-03 のユーザーの依頼） | レビュー待ち | claude/confident-volta-1giltr | 親1つが1行の縦をそろえた表（見出しで並べ替え・押すと子のレシピ）・各レシピの⏱ 時刻（n/手順・出どころ）・進み具合に手順の時刻の全体像（APP_MAP §48-5） | admin/catalog.html, admin/help.html, api/src/server.js, api/src/trends.js, api/test/adminSpeed.test.js, test/admin-home.test.cjs, docs/APP_MAP.md, docs/CURRENT_TASK.md |

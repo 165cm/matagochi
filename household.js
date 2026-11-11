@@ -193,7 +193,7 @@ function isViewer() {
 function isOwner() {
   return roleOf(me()) === "owner";
 }
-const VIEWER_BLOCKED = ["life-profile", "life-widen", "life-pantry-set", "life-pantry-add", "life-pantry-open", "life-confirm", "life-confirm-one", "life-choose", "life-off", "life-reopen", "life-refresh", "life-add-item", "life-remove-item", "life-shopping-status", "life-quick", "life-review-saved", "edit-recipe", "delete-recipe", "life-select", "life-select-delete"];
+const VIEWER_BLOCKED = ["life-profile", "life-widen", "life-pantry-set", "life-pantry-add", "life-pantry-open", "life-confirm", "life-confirm-one", "life-choose", "life-off", "life-reopen", "life-refresh", "life-add-item", "life-remove-item", "life-shopping-status", "life-quick", "life-review-saved", "edit-recipe", "delete-recipe", "life-select", "life-select-delete", "life-tray-open", "life-tray-place", "life-tray-clear-all", "life-tray-clear-one", "life-tray-undo", "life-tray-confirm-all", "life-cooked", "life-record-past"];
 function viewerBlocked(action) {
   if (!isViewer() || !VIEWER_BLOCKED.includes(action)) return false;
   showToast("見るだけモードです。食べたいものは🙋で送ってね。");

@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261111-recipe-card-tray-v3";
+const APP_VERSION = "20261111-recipe-card-tray-v4";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -307,6 +307,7 @@ function hasUnsavedWork() {
   if (typeof recordDraft !== "undefined" && recordDraft) return true; // 記録の編集
   if (typeof talkTypeDraft !== "undefined" && talkTypeDraft) return true; // 晩ごはんタイプの質問の途中
   if (typeof timeFix !== "undefined" && timeFix) return true; // ▶ の時刻を直している途中
+  if (typeof isTrayDraftActive === "function" && isTrayDraftActive()) return true; // 献立トレイの下書き編集中
   if (state?.editingRecipeId || ["register", "playlist", "recordDetails"].includes(state?.view)) return true; // レシピの登録・編集
   return false;
 }
@@ -541,18 +542,20 @@ function normalizeRepeatDraft(draft, family) {
 }
 
 function normalizeEvaluations(evaluations, family) {
-  return evaluations.map((evaluation) => ({
-    ...evaluation,
-    mealType: normalizeRepeatMealType(evaluation.mealType) || "",
-    familyRepeatCycles: evaluation.preferencePending || evaluation.personalPreference ? Object.fromEntries(Object.entries(evaluation.familyRepeatCycles || {}).filter(([name,cycle])=>family.includes(name) && normalizeRepeatCycle(cycle))) : normalizeFamilyRepeatCycles(
-      evaluation.familyRepeatCycles,
-      evaluation.familyRatings,
-      family,
-      evaluation.nextTiming
-    ),
-    memo: evaluation.memo || "",
-    photo: evaluation.photo || ""
-  }));
+  return evaluations
+    .filter((evaluation) => evaluation && !String(evaluation.id || "").startsWith("demo-get-"))
+    .map((evaluation) => ({
+      ...evaluation,
+      mealType: normalizeRepeatMealType(evaluation.mealType) || "",
+      familyRepeatCycles: evaluation.preferencePending || evaluation.personalPreference ? Object.fromEntries(Object.entries(evaluation.familyRepeatCycles || {}).filter(([name,cycle])=>family.includes(name) && normalizeRepeatCycle(cycle))) : normalizeFamilyRepeatCycles(
+        evaluation.familyRepeatCycles,
+        evaluation.familyRatings,
+        family,
+        evaluation.nextTiming
+      ),
+      memo: evaluation.memo || "",
+      photo: evaluation.photo || ""
+    }));
 }
 
 function normalizeDateInput(value) {
@@ -1418,6 +1421,7 @@ function setView(view) {
   imageSession?.cancel();
   if (imageFeedback?.tone === "pending") imageFeedback = null;
   if (state.view === "register") captureDraft();
+  if (typeof resetCardTrayModals === "function" && view !== state.view) resetCardTrayModals();
   profileEditing = false;
   selecting = false; selectedRecipes = new Set();
   state.view = view;

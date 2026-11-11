@@ -4424,11 +4424,11 @@ body.has-sheet { overflow: hidden; }
   .swap-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-/* ---- 🃏 カフェ風レシピカード＆3日分の献立トレイ（試作） ---- */
+/* ---- 🃏 カフェ風レシピカード＆3日分の献立トレイ ---- */
 .tray-switch-pill {
   margin-left: auto;
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 13px;
   border-radius: 999px;
   border: 1.5px solid #c9964c;
   background: linear-gradient(135deg, #fff9ec, #f7e8c8);
@@ -4442,37 +4442,27 @@ body.has-sheet { overflow: hidden; }
 }
 .tray-switch-pill:active { transform: scale(0.96); }
 
-/* 献立画面の上部に出す木製トレイバナー */
-.wood-tray-banner {
-  margin: 0 0 14px;
-  padding: 12px;
-  border-radius: 20px;
-  background: linear-gradient(180deg, #faf3e8 0%, #f2e5d2 100%);
-  border: 1.5px solid #dfcbb0;
-  box-shadow: 0 6px 18px rgba(80, 52, 24, 0.08);
-  display: grid;
-  gap: 10px;
-}
-.wt-header {
+/* 献立画面の上部に出すスリムなトレイ＆図鑑バー（献立リストを押し下げない） */
+.plan-tray-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
+  margin: 0 0 8px;
 }
-.wt-heading { display: grid; gap: 1px; }
-.wt-heading strong { font-size: 15px; color: #4a3219; letter-spacing: 0.01em; }
-.wt-heading small { font-size: 11.5px; color: #7a5c3c; font-weight: 700; }
-.wt-actions { display: flex; align-items: center; gap: 6px; }
 .wt-book-btn, .wt-open-btn {
   min-height: 44px;
   padding: 0 13px;
   border-radius: 999px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 .wt-book-btn {
   border: 1.5px solid #d4a84f;
@@ -4481,181 +4471,105 @@ body.has-sheet { overflow: hidden; }
 }
 .wt-book-btn b { color: #c47a15; margin: 0 1px; }
 .wt-open-btn {
+  flex: 1;
   border: 0;
   background: linear-gradient(135deg, #8b5a2b, #6b421b);
   color: #fffaf0;
-  box-shadow: 0 3px 8px rgba(90, 55, 20, 0.25);
+  box-shadow: 0 3px 8px rgba(90, 55, 20, 0.22);
 }
 
-/* カフェの木製トレイボード */
+/* カフェの木製トレイボード（コンパクト設計で初回画面に候補カードを収める） */
 .wood-tray-board, .wood-tray-stage {
-  padding: 10px;
-  border-radius: 18px;
+  padding: 6px 8px;
+  border-radius: 14px;
   background: linear-gradient(145deg, #a47549 0%, #835830 55%, #6e4723 100%);
-  border: 3px solid #b88a5c;
+  border: 2px solid #b88a5c;
   box-shadow:
-    inset 0 3px 10px rgba(35, 18, 5, 0.45),
-    0 5px 14px rgba(60, 35, 12, 0.18);
+    inset 0 2px 6px rgba(35, 18, 5, 0.4),
+    0 3px 10px rgba(60, 35, 12, 0.15);
 }
 .wood-tray-slots, .tray-slot-grid {
   display: grid;
   grid-template-columns: repeat(var(--tray-cols, 3), minmax(0, 1fr));
-  gap: 8px;
-}
-.wood-tray-slot {
-  display: grid;
-  align-content: space-between;
-  justify-items: center;
-  gap: 3px;
-  padding: 7px 6px;
-  min-height: 112px;
-  border-radius: 12px;
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.wood-tray-slot:active { transform: scale(0.97); }
-.wood-tray-slot.is-draft {
-  background: #eadbc6;
-  border: 1.5px dashed #9b7c56;
-  color: #422d16;
-  box-shadow: 0 2px 6px rgba(25, 12, 2, 0.22);
-}
-.wood-tray-slot.is-collected {
-  background: #fffdf8;
-  border: 2px solid #d4a84f;
-  color: #3a2610;
-  box-shadow: 0 3px 8px rgba(25, 12, 2, 0.26);
-}
-.wood-tray-slot.is-empty {
-  background: rgba(255, 245, 230, 0.18);
-  border: 1.5px dashed rgba(255, 240, 215, 0.55);
-  color: #fff6e8;
-}
-.wt-day {
-  font-size: 11px;
-  font-weight: 800;
-  opacity: 0.9;
-}
-.wt-art {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #fdf9f0;
-  border: 1px solid rgba(120, 90, 50, 0.2);
-  display: grid;
-  place-items: center;
-}
-.wt-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.wood-tray-slot.is-draft .wt-art img {
-  filter: sepia(0.18) saturate(0.86);
-}
-.wt-title {
-  font-size: 12px;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-.wt-meta {
-  font-size: 10.5px;
-  font-weight: 700;
-  opacity: 0.88;
-}
-.wt-empty-box {
-  margin: auto 0;
-  font-size: 11.5px;
-  font-weight: 800;
-}
-.wt-combo-strip {
-  margin-top: 8px;
-  padding: 7px 10px;
-  border-radius: 10px;
-  background: rgba(255, 248, 235, 0.16);
-  color: #fff6e8;
-  font-size: 11.5px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
   gap: 6px;
-}
-.wt-combo-tag {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #ffdf8e;
-  color: #3d2508;
-  font-size: 11px;
-  font-weight: 900;
 }
 
 /* トレイシート本体 */
 .tray-sheet {
   background: #faf5ec !important;
-  max-height: 94vh !important;
-  max-height: 94dvh !important;
+  max-height: 95vh !important;
+  max-height: 95dvh !important;
+  padding-top: 10px !important;
 }
 .tray-sheet-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
-.tray-eyebrow {
-  display: block;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  color: #967249;
-}
-.tray-sheet-head h3 {
+.tray-title-wrap h3 {
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
   color: #3f2b16;
-}
-.tray-head-btns {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.tray-clear-all-btn {
+.tray-progress-pill {
+  font-size: 12px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f0dfc4;
+  color: #5b3b16;
+}
+.tray-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tray-undo-btn, .tray-clear-all-btn, .tray-sim-reset-btn {
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 11px;
   border-radius: 999px;
   border: 1px solid #d5c1a5;
   background: #fffaf2;
-  color: #6b4e2e;
+  color: #5b3d1d;
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
+  white-space: nowrap;
+}
+.tray-sheet-head .swap-close, .rc-flip-head .round-icon {
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
 }
 
-/* トレイシート内の3枠スロット（料理名を省略せず表示） */
+/* トレイシート内の3枠スロット（コンパクト・44pxタップ保証） */
 .tray-slot-card {
   position: relative;
-  border-radius: 12px;
-  transition: all 0.18s ease;
+  border-radius: 10px;
+  transition: all 0.16s ease;
 }
 .tray-slot-main {
   width: 100%;
-  min-height: 118px;
-  padding: 8px 7px;
-  border-radius: 12px;
+  min-height: 68px;
+  padding: 5px 6px;
+  border-radius: 10px;
   border: 0;
   background: transparent;
   font: inherit;
   color: inherit;
-  display: grid;
-  align-content: space-between;
-  justify-items: center;
-  gap: 4px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
   cursor: pointer;
 }
 .tray-slot-card.is-draft {
@@ -4670,22 +4584,38 @@ body.has-sheet { overflow: hidden; }
 }
 .tray-slot-card.is-empty {
   background: rgba(255, 246, 232, 0.16);
-  border: 2px dashed rgba(255, 240, 215, 0.65);
+  border: 1.5px dashed rgba(255, 240, 215, 0.65);
   color: #fff6e8;
 }
 .tray-slot-card.is-active {
-  outline: 3px solid #ffcf6b;
+  outline: 2.5px solid #ffcf6b;
   outline-offset: 1px;
-  box-shadow: 0 0 16px rgba(255, 210, 110, 0.65);
-  transform: translateY(-2px);
+  box-shadow: 0 0 12px rgba(255, 210, 110, 0.6);
 }
 .tray-slot-head {
-  font-size: 11px;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 10.5px;
+  line-height: 1.1;
   color: inherit;
+  padding-right: 22px;
+}
+.tray-slot-head small {
+  font-size: 9.5px;
+  opacity: 0.85;
+}
+.tray-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
 }
 .tray-slot-art {
-  width: 48px;
-  height: 48px;
+  width: 24px;
+  height: 24px;
+  flex: none;
   border-radius: 50%;
   overflow: hidden;
   background: #fffdf7;
@@ -4696,198 +4626,99 @@ body.has-sheet { overflow: hidden; }
 .tray-slot-art img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 .tray-slot-name {
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 11px;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 .tray-slot-sub {
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 700;
-  opacity: 0.9;
+  opacity: 0.85;
+  line-height: 1.1;
 }
 .tray-slot-placeholder {
   margin: auto 0;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
-  padding: 6px 2px;
+  padding: 4px 0;
 }
+/* 枠のクリアボタン：見た目は20px丸アイコン、タップ領域は44×44px */
 .tray-slot-clear {
   position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  top: -6px;
+  right: -6px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   border: 0;
-  background: rgba(60, 38, 18, 0.65);
-  color: #fff;
-  font-size: 11px;
-  line-height: 1;
+  background: transparent;
   cursor: pointer;
+  display: grid;
+  place-items: center;
+  z-index: 3;
+}
+.tray-slot-clear span {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(60, 38, 18, 0.72);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
   display: grid;
   place-items: center;
 }
 
-/* 📊 3日間の組み合わせパラメータ＆コンボパネル */
-.tray-combo-panel {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 251, 243, 0.94);
-  border: 1px solid rgba(215, 180, 130, 0.6);
-  color: #3d2812;
-  display: grid;
-  gap: 8px;
-}
-.tray-combo-panel.is-empty {
-  background: rgba(255, 248, 235, 0.16);
-  border: 1px dashed rgba(255, 238, 210, 0.5);
-  color: #fff5e4;
-}
-.tray-combo-empty-msg {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  text-align: center;
-}
-.tray-combo-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.tray-combo-title {
-  font-size: 12.5px;
-  font-weight: 900;
-  color: #4a3116;
-}
-.tray-combo-title small {
-  font-weight: 700;
-  font-size: 11px;
-  color: #7d5b36;
-}
-.tray-combo-meters {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-}
-@media (max-width: 400px) {
-  .tray-combo-meters { grid-template-columns: 1fr; }
-}
-.tc-meter {
-  display: grid;
-  gap: 3px;
-}
-.tc-meter-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 11.5px;
-}
-.tc-meter-top span {
-  color: #5b3e1e;
-  font-weight: 700;
-}
-.tc-meter-top b {
-  color: #36210a;
-  font-weight: 900;
-}
-.tc-bar {
-  height: 7px;
-  border-radius: 999px;
-  background: #e6d7c1;
-  overflow: hidden;
-}
-.tc-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #d88b28, #589e47);
-  transition: width 0.25s ease;
-}
-.tc-meter.is-good .tc-bar i {
-  background: linear-gradient(90deg, #4fa36b, #2f855a);
-}
-.tc-meter.is-ok .tc-bar i {
-  background: linear-gradient(90deg, #d69e2e, #b7791f);
-}
-.tc-meter.is-rich .tc-bar i {
-  background: linear-gradient(90deg, #dd6b20, #c53030);
-}
-.tray-combo-salt-note {
-  margin: 0;
-  font-size: 11.5px;
-  color: #5a3e1f;
-  background: #f5ead8;
-  padding: 5px 9px;
-  border-radius: 8px;
-}
-.tray-combo-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.tc-combo-pill {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 9px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #fff8e2, #f5e0b5);
-  border: 1px solid #d4a84f;
-  font-size: 11.5px;
-  color: #3d2508;
-}
-.tc-combo-pill small {
-  color: #6b4922;
-  font-size: 11px;
-}
-
 .tray-complete-bar {
-  margin-top: 10px;
+  margin-top: 6px;
 }
 .tray-confirm-btn {
   width: 100%;
-  min-height: 46px;
-  font-size: 15px;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
   background: linear-gradient(90deg, #e25c34, #d4431c) !important;
-  box-shadow: 0 4px 12px rgba(226, 92, 52, 0.35);
+  box-shadow: 0 3px 10px rgba(226, 92, 52, 0.32);
 }
 
-/* よはくバー＆棚スイッチ */
+/* よはくバー＆棚スイッチ（高さを抑えて候補カードを最初の画面に表示） */
 .tray-yohaku-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 10px 0 8px;
+  gap: 6px;
+  margin: 6px 0 5px;
 }
 .tray-yohaku-bar .swap-yohaku {
-  width: 44px;
-  height: 44px;
+  width: 30px;
+  height: 30px;
   flex: none;
 }
 .tray-yohaku-bar .swap-bubble {
   flex: 1;
-  font-size: 12.5px;
-  padding: 6px 10px;
+  font-size: 12px;
+  padding: 4px 9px;
+  margin: 0;
 }
 .tray-shelves {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   overflow-x: auto;
-  margin: 0 -16px 12px;
-  padding: 2px 16px 4px;
+  margin: 0 -16px 7px;
+  padding: 1px 16px 3px;
   scrollbar-width: none;
 }
 .tray-shelves::-webkit-scrollbar { display: none; }
 .tray-shelf-chip {
   flex: none;
   min-height: 44px;
-  padding: 0 13px;
+  padding: 0 12px;
   border-radius: 999px;
   border: 1.5px solid #dccab2;
   background: #fffdf9;
@@ -5115,7 +4946,7 @@ body.has-sheet { overflow: hidden; }
 .rc-plate-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 10;
   border-radius: 10px;
   background: radial-gradient(circle at 50% 48%, #ffffff 0%, #f6ecdc 100%);
   border: 1.5px solid rgba(135, 98, 52, 0.24);
@@ -5123,21 +4954,48 @@ body.has-sheet { overflow: hidden; }
   display: grid;
   place-items: center;
   overflow: hidden;
-  padding: 4px;
+  padding: 3px;
+}
+.rc-plate-wrap.is-photo {
+  padding: 0;
+  background: #efe3cf;
+}
+.rc-plate-wrap.is-photo .rc-plate-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: none;
 }
 .rc-card.is-collected .rc-plate-wrap {
   background: radial-gradient(circle at 50% 45%, #fffef9 0%, #f9e6ba 100%);
   border-color: rgba(198, 142, 38, 0.5);
 }
 .rc-plate-img {
-  width: 92%;
-  height: 92%;
+  width: 90%;
+  height: 90%;
   object-fit: contain;
   transition: transform 0.22s ease;
   filter: drop-shadow(0 4px 6px rgba(55, 32, 8, 0.16));
 }
 .rc-art-btn:hover .rc-plate-img {
-  transform: scale(1.06);
+  transform: scale(1.05);
+}
+.rc-img-kind {
+  position: absolute;
+  left: 5px;
+  bottom: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(45, 28, 10, 0.72);
+  color: #fffaf0;
+  letter-spacing: 0.02em;
+}
+.rc-img-kind.is-illustration {
+  background: rgba(255, 250, 238, 0.92);
+  color: #5b3914;
+  border: 1px solid rgba(155, 110, 45, 0.35);
 }
 .rc-unique-ribbon {
   position: absolute;
@@ -5158,7 +5016,7 @@ body.has-sheet { overflow: hidden; }
   bottom: 4px;
   font-size: 8.5px;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   padding: 1px 5px;
   border-radius: 4px;
   background: rgba(95, 65, 35, 0.16);
@@ -5189,17 +5047,21 @@ body.has-sheet { overflow: hidden; }
 }
 .rc-dish-title {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 900;
-  line-height: 1.32;
+  line-height: 1.28;
   color: #2c1a08;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .rc-skill-line {
   font-size: 10.5px;
   font-weight: 800;
   color: #6b4b27;
-  line-height: 1.25;
+  line-height: 1.22;
 }
 
 /* 🎨 カード下部：色分けで6枚比較が一目でわかる3つのステータスジェム */
@@ -5436,21 +5298,30 @@ body.has-sheet { overflow: hidden; }
 }
 .rc-flip-hero h3 { margin: 0 0 4px; font-size: 17px; line-height: 1.35; }
 .rc-flip-nutri-box {
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: 14px;
   background: #f6ecdc;
   border: 1px solid #dcc5a4;
-  display: grid;
-  gap: 8px;
+}
+.rc-flip-nutri-head {
+  cursor: pointer;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .rc-flip-nutri-head strong {
   font-size: 12.5px;
   color: #4a3116;
 }
+.rc-flip-nutri-box[open] .rc-flip-nutri-head {
+  margin-bottom: 8px;
+}
 .rc-flip-nutri-box .rc-param-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  margin-bottom: 8px;
 }
 @media (min-width: 480px) {
   .rc-flip-nutri-box .rc-param-grid {
@@ -5480,6 +5351,7 @@ body.has-sheet { overflow: hidden; }
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  margin-bottom: 6px;
 }
 .rc-salt-chip {
   font-size: 11.5px;
@@ -5491,7 +5363,7 @@ body.has-sheet { overflow: hidden; }
   color: #4d3419;
 }
 .rc-lowsalt-tip {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: 12px;
   line-height: 1.45;
   color: #4a3219;
@@ -5499,6 +5371,20 @@ body.has-sheet { overflow: hidden; }
   padding: 8px 10px;
   border-radius: 8px;
   border-left: 3px solid #d4a84f;
+}
+.rc-nutri-assumptions,
+.rc-nutri-unmatched,
+.rc-nutri-source {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #6b4b27;
+}
+.rc-flip-creator {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b4b27;
 }
 .rc-flip-video {
   display: flex;
@@ -5543,6 +5429,47 @@ body.has-sheet { overflow: hidden; }
 .rc-flip-foot {
   display: grid;
   gap: 6px;
+}
+
+/* ✨ 調理完了後の控えめカードGETバナー（1タップ評価を邪魔しない） */
+.rc-get-inline-banner {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffdf5 0%, #f8e8c4 100%);
+  border: 1.5px solid #d4a84f;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rc-get-inline-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rc-get-inline-copy strong {
+  font-size: 13px;
+  font-weight: 900;
+  color: #4a2f0e;
+}
+.rc-get-inline-copy small {
+  font-size: 11.5px;
+  color: #6b4b27;
+}
+.rc-get-inline-btn {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #c59638;
+  background: #fffdf8;
+  color: #4a2f0e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* 🎉 カードGETお祝いモーダル */

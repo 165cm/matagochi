@@ -28,7 +28,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | `aisles.js` | 買い物の売り場の分類 |
 | `lifestyle.js` | **献立の決め方の中心**（`Lifestyle.propose`・理由・周期・旬・買い物リスト・常備品 `keeps`・わかってきたこと `insights`）。純粋な関数でテストしやすい |
 | `profile-talk.js` `talk-ui.js` | わが家のごはん方針（質問・解釈・確認・版・献立の加点 `ProfileTalk`／その画面。APP_MAP §37） |
-| `daily-ui.js` | **画面の大部分**（今日・献立・買い物・作る・ふりかえり・レシピの詳細・まとめて評価・よはく `yohaku()`） |
+| `daily-ui.js` | **画面の大部分**（今日・献立・買い物・作る・ふりかえり・レシピの詳細・まとめて評価・3日トレイとレシピカード・よはく `yohaku()`） |
 | `image-import.js` `playlist-import.js` | 画像・再生リストからの取り込み |
 | `household.js` | 家族で使う（招待・リクエスト・今週のカレンダー） |
 | `skill-quiz.js` `cook-level.js` | スキル診断・XP・バッジ |
@@ -52,6 +52,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 - 主な項目：`recipes`（保存したレシピ）・`mealSlots`（日付ごとの確定した献立）・`planOverrides`（入れ替え・自分で決めた一皿）・`evaluations`（作った記録と「また食べたい」周期 `familyRepeatCycles`）・`shoppingMarks`（買い物のチェック）・`foodProfile` / `householdProfile`（好み・器具・常備品 `pantry`）・`tasteProfile`（わが家のごはん方針。端末ごと・同期しない）・`family`・`requests`・`plus`・`trialFrom`
 - レシピの材料：`{ name, amount, category, group? }`（`group` はタレ・合わせ調味料の印 "A" "☆" "タレ" など）
 - 献立は日付ごとの3方向比較（前回そろった内容・端末・共有先）で統合し、同日競合は本人が選ぶ。`planDrafts`に候補の本体、端末の`sync.planBase`に比較元、`sync.conflicts`に未解決の両案。その他の共有項目は従来の`mergeMap`（`updatedAt`の新しい方）等で統合。取消は削除フラグ・比較元との差分で伝える（APP_MAP §59）
+- **3日トレイの下書き（メモリ内）**：トレイを開いている間は `trayDraft`（日付→料理ID）と `trayBasePlan`（開いた時点の比較元）をメモリだけで持ち、「✓ 3日分をまとめて決定」を押した時にだけ事前検証・同日競合チェック・買い物リスト計算を通したうえで `mealSlots` / `planOverrides` / `planDrafts` を一括更新する（APP_MAP §67）
 
 ## API（api/src/server.js）
 
