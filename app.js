@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261109-all-trends";
+const APP_VERSION = "20261111-recipe-card-tray-v8";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -307,6 +307,7 @@ function hasUnsavedWork() {
   if (typeof recordDraft !== "undefined" && recordDraft) return true; // 記録の編集
   if (typeof talkTypeDraft !== "undefined" && talkTypeDraft) return true; // 晩ごはんタイプの質問の途中
   if (typeof timeFix !== "undefined" && timeFix) return true; // ▶ の時刻を直している途中
+  if (typeof isTrayDraftActive === "function" && isTrayDraftActive()) return true; // 献立トレイの下書き編集中
   if (state?.editingRecipeId || ["register", "playlist", "recordDetails"].includes(state?.view)) return true; // レシピの登録・編集
   return false;
 }
@@ -541,18 +542,20 @@ function normalizeRepeatDraft(draft, family) {
 }
 
 function normalizeEvaluations(evaluations, family) {
-  return evaluations.map((evaluation) => ({
-    ...evaluation,
-    mealType: normalizeRepeatMealType(evaluation.mealType) || "",
-    familyRepeatCycles: evaluation.preferencePending || evaluation.personalPreference ? Object.fromEntries(Object.entries(evaluation.familyRepeatCycles || {}).filter(([name,cycle])=>family.includes(name) && normalizeRepeatCycle(cycle))) : normalizeFamilyRepeatCycles(
-      evaluation.familyRepeatCycles,
-      evaluation.familyRatings,
-      family,
-      evaluation.nextTiming
-    ),
-    memo: evaluation.memo || "",
-    photo: evaluation.photo || ""
-  }));
+  return evaluations
+    .filter((evaluation) => evaluation && !String(evaluation.id || "").startsWith("demo-get-"))
+    .map((evaluation) => ({
+      ...evaluation,
+      mealType: normalizeRepeatMealType(evaluation.mealType) || "",
+      familyRepeatCycles: evaluation.preferencePending || evaluation.personalPreference ? Object.fromEntries(Object.entries(evaluation.familyRepeatCycles || {}).filter(([name,cycle])=>family.includes(name) && normalizeRepeatCycle(cycle))) : normalizeFamilyRepeatCycles(
+        evaluation.familyRepeatCycles,
+        evaluation.familyRatings,
+        family,
+        evaluation.nextTiming
+      ),
+      memo: evaluation.memo || "",
+      photo: evaluation.photo || ""
+    }));
 }
 
 function normalizeDateInput(value) {
@@ -1134,7 +1137,7 @@ function renderPlanConflictChoices(conflicts) {
   if(!Object.keys(conflicts).length)return "";
   if(isViewer())return '<p>献立の変更が重なっています。閲覧者は共有先の献立にそろえて再開できます。統合前のデータはこの端末に残ります。</p><button type="button" class="secondary-button" data-action="sync-viewer-accept">共有先の献立にそろえる</button>';
   if(!canResolvePlans())return `<h3>メイン端末で献立を確認してください</h3><p>${escapeHtml(mainDeviceName())}でリピごちを開くと、残す献立を選べます。この端末の変更は保存されています。</p>`;
-  return `<h3>同じ日の献立が変更されています</h3><p>残す献立を選んでください。すべて選ぶまで共有先は書き換えません。</p>${Object.entries(conflicts).map(([date,c])=>`<div class="sync-plan-choice"><b>${escapeHtml(date)}</b><button type="button" class="secondary-button" data-action="sync-plan-local" data-date="${escapeAttr(date)}">この端末：${escapeHtml(planChoiceLabel(planSnapshot(state)[date]))}</button><button type="button" class="secondary-button" data-action="sync-plan-remote" data-date="${escapeAttr(date)}">${escapeHtml(c.sourceLabel || '共有先')}：${escapeHtml(planChoiceLabel(c.remote))}</button></div>`).join('')}`;
+  return `<h3>同じ日の献立が変更されています</h3><p>残す献立を選んでください。すべて選ぶまで共有先は書き換えません。</p>${Object.entries(conflicts).map(([date,c])=>`<div class="sync-plan-choice"><b>${escapeHtml(date)}</b><button type="button" class="secondary-button" data-action="sync-plan-local" data-date="${escapeAttr(date)}">この端末：${escapeHtml(planChoiceLabel(c.local ?? planSnapshot(state)[date]))}</button><button type="button" class="secondary-button" data-action="sync-plan-remote" data-date="${escapeAttr(date)}">${escapeHtml(c.sourceLabel || '共有先')}：${escapeHtml(planChoiceLabel(c.remote))}</button></div>`).join('')}`;
 }
 function renderSyncSavePanel() {
   const conflicts = state.sync?.conflicts || {};
@@ -1168,9 +1171,16 @@ async function handleSyncPlanAction(action, data) {
   const c = state.sync.conflicts?.[data.date];
   if (!c || syncInFlight || !canResolvePlans() || isViewer()) return true;
   const plan = planSnapshot(state);
-  const chosen = action === "sync-plan-local" ? plan[data.date] : c.remote;
+  let chosen = action === "sync-plan-local" ? (c.local ?? plan[data.date]) : c.remote;
+  if (action === "sync-plan-local" && chosen?.slot?.recipe?.discover && typeof saveOwnRecipe === "function") {
+    const own = saveOwnRecipe(chosen.slot.recipe);
+    chosen = { ...chosen, slot: { ...chosen.slot, recipe: own } };
+  }
   if (chosen) plan[data.date] = chosen; else delete plan[data.date];
   putPlan(state, plan);
+  if (typeof syncTrayAfterConflictResolution === "function") {
+    syncTrayAfterConflictResolution(data.date, chosen);
+  }
   delete state.sync.conflicts[data.date];
   saveState(); render();
   if (!Object.keys(state.sync.conflicts).length) { if(account) await ensureAccountSync().catch(e=>{syncRuntimeStatus=syncErrorText(e);}); else await syncNow({ silent: true }); }
@@ -1418,6 +1428,7 @@ function setView(view) {
   imageSession?.cancel();
   if (imageFeedback?.tone === "pending") imageFeedback = null;
   if (state.view === "register") captureDraft();
+  if (typeof resetCardTrayModals === "function" && view !== state.view) resetCardTrayModals();
   profileEditing = false;
   selecting = false; selectedRecipes = new Set();
   state.view = view;
