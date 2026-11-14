@@ -5662,3 +5662,8 @@ body.has-sheet { overflow: hidden; }
 .tonight-prestart { margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--line, rgba(0, 0, 0, 0.12)); color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .tonight-prestart .text-button { font-size: 13px; }
 .tonight-prebuy { line-height: 1.6; }
+
+/* 決定済みのまとまり：候補カードを閉じた1行にする（APP_MAP §67-1-4）。 */
+.tray-inline.is-collapsed { padding-top: 0; }
+.tray-more-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 48px; padding: 0 14px; border: 1px dashed var(--line, rgba(0, 0, 0, 0.16)); border-radius: 14px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.tray-more-btn i { font-style: normal; font-size: 18px; }

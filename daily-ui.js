@@ -4553,6 +4553,8 @@ let trayThinking = false;
 let trayThinkToken = 0;
 let trayRevealFresh = false;
 let trayThoughtKeys = new Set();
+// 決定済みのまとまりでは、候補カードを閉じた1行にする（2026-11-14 のユーザーの判断。APP_MAP §67-1-4）。「ほかの候補を見る」で開いた時だけ true。
+let trayMoreOpen = false;
 let trayActiveChosen = false; // 「🔄 選び直す」で日を選んだ時だけ、その日を目立たせる（空の日はいつも目立たせる）
 let trayLastPlaced = null; // 直前に置いた料理（よはくが「◯曜は『◯◯』にしたよ」と言う）
 let cardGetRecipeId = "";
@@ -4622,6 +4624,7 @@ function recipeRevisionKey(recipe) {
 function resetCardTrayModals() {
   // タブを切り替えたら、裏面などの重なった画面は閉じる。選び直しの途中（下書き）は残す（献立タブに戻れば続きから）
   trayOpen = false;
+  trayMoreOpen = false;
   if (!isTrayDraftActive()) {
     trayDraft = {};
     trayInitialDraft = {};
@@ -4629,6 +4632,8 @@ function resetCardTrayModals() {
     trayTargetDates = [];
     trayUndoStack = [];
     trayClearedDates = new Set();
+    // 「🔄 選び直す」で日を選んだだけ（何も変えていない）の時は、その印も戻す＝決定済みなら候補は閉じる（Codex review #243）
+    trayActiveChosen = false;
   }
   trayThinking = false;
   trayThinkToken += 1;
@@ -5847,8 +5852,21 @@ function renderCardTraySheet() {
   const activeWd = `${weekdayLabel(activeDay.date)}曜`;
   const filledCount = days.filter((d) => !!trayDayRecipe(d)).length;
   const allFilled = filledCount === days.length;
-  const combo = computeTrayCombo(days);
   const thinking = trayThinking;
+  // 全部の日が決定済みで、選び直しの途中でもない時は、候補カードを出さない（決めた後の献立タブを短くする）。
+  // 「🔄 選び直す」（trayActiveChosen）・「🔍 似た皿」（trayAnchorId）・「ほかの候補を見る」（trayMoreOpen）で開く。
+  const decided = !thinking && allFilled && !isTrayDraftActive() && days.every((d) => d.slot);
+  if (decided && !trayActiveChosen && !trayAnchorId && !trayMoreOpen) {
+    const words = `${days.length}日分そろってるよ。変えたい日は「🔄 選び直す」を押してね`;
+    return `<section class="tray-inline is-collapsed" id="tray-cards" aria-label="ほかの候補">
+    <button type="button" class="tray-more-btn" data-action="life-tray-more" aria-expanded="false"><span>🃏 ほかの候補を見る</span><i aria-hidden="true">›</i></button>
+  </section>
+  <div class="tray-yohaku-bar is-dock" data-say="${escapeAttr(words)}">
+    ${yohaku("happy", "swap-yohaku")}
+    <p class="swap-bubble tray-bubble" role="status"><span class="sr-only">${escapeHtml(words)}</span><span class="tray-bubble-text" aria-hidden="true">${escapeHtml(words)}</span></p>
+  </div>`;
+  }
+  const combo = computeTrayCombo(days);
 
   // 候補カード（理由の札をまとめるため、先に決める）
   const anchorRecipe = trayAnchorId ? findDinnerRecipeById(trayAnchorId) : null;
@@ -5927,7 +5945,7 @@ function renderCardTraySheet() {
     : `<p class="swap-empty">この棚に合う料理がありません。別の棚を選んでみてね。</p>`;
 
   return `<section class="tray-inline" id="tray-cards" aria-label="${escapeAttr(activeWd)}に入れる候補">
-    <h3 class="tray-inline-head">${thinking ? "候補を集めています…" : allFilled && !trayActiveChosen ? `🃏 ほかの候補（「${escapeHtml(activeWd)}へ」で入れ替え）` : `🃏 ${escapeHtml(activeWd)}に入れる候補`}${trayAnchorId && !thinking ? ` <button type="button" class="tray-sim-reset-btn" data-action="life-tray-similar-clear">元の候補に戻る</button>` : ""}</h3>
+    <h3 class="tray-inline-head">${thinking ? "候補を集めています…" : allFilled && !trayActiveChosen ? `🃏 ほかの候補（「${escapeHtml(activeWd)}へ」で入れ替え）` : `🃏 ${escapeHtml(activeWd)}に入れる候補`}${trayAnchorId && !thinking ? ` <button type="button" class="tray-sim-reset-btn" data-action="life-tray-similar-clear">元の候補に戻る</button>` : decided ? ` <button type="button" class="tray-sim-reset-btn" data-action="life-tray-less" aria-expanded="true">閉じる</button>` : ""}</h3>
     <div class="tray-shelves" role="group" aria-label="料理の棚">
       ${TRAY_SHELVES.map(([k, label]) => `<button type="button" class="chip-button tray-shelf-chip" data-action="life-tray-mood" data-mood="${k}" aria-pressed="${trayMood === k}" ${thinking ? "disabled" : ""}>${label}</button>`).join("")}
     </div>
@@ -6176,6 +6194,9 @@ function handleCardTrayAction(action, data, before) {
     syncHasSheetBodyClass();
     return true;
   }
+  // 決定済みのまとまりの候補カードを開く・閉じる（§67-1-4）
+  if (action === "life-tray-more") { trayMoreOpen = true; trayPage = 0; return true; }
+  if (action === "life-tray-less") { trayMoreOpen = false; trayActiveChosen = false; trayAnchorId = ""; return true; }
   if (action === "life-tray-select-day" && data.date) {
     trayActiveDate = String(data.date);
     trayActiveChosen = true;
@@ -6273,6 +6294,7 @@ function handleCardTrayAction(action, data, before) {
       || days[curIdx];
     if (nextEmpty) trayActiveDate = nextEmpty.date;
     trayActiveChosen = false;
+    trayMoreOpen = false;
     trayLastPlaced = { wd: weekdayLabel(targetDate), title: r.title };
     return true;
   }
