@@ -121,13 +121,13 @@ test("月末まで均等・利用者の分を残すための止まり方は赤�
   assert.match(failed.notes.join(), /途中で失敗/);
 });
 
-test("2026-11-03：補充が1日の AI 25回を使い切った日（ai_today）は、問題にしない（以前は「月の予算」と出て赤だった）", () => {
+test("2026-11-03：補充が1日の AI 40回を使い切った日（ai_today）は、問題にしない（以前は「月の予算」と出て赤だった）", () => {
   const refresh = { today: 2, ai: { ...AI, month: 30, monthCap: 1814, yen: 17 }, done: true };
   const refill = { day: "2026-11-03", ai: 25, added: 8, reason: "ai_today", done: true, ran: { ai: 25, added: 8 } };
   const r = judge({ refresh, refill, refillAi: 25, list: { items: items(410) }, now: NOW });
   assert.equal(r.ok, true);
   assert.deepEqual(r.problems, []);
-  assert.ok(r.notes.some((n) => n.includes("今日の分（AI 25回）を使い切りました")));
+  assert.ok(r.notes.some((n) => n.includes("今日の分（AI 40回）を使い切りました")));
 });
 
 test("2026-11-04：手順の時刻のカバー率を表に出す（判定には使わない）", () => {

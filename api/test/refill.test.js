@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createMemorySyncStore } from '../src/syncStore.js';
 import { createTrendBook, weekOf, SEED_QUERIES, refillParents, nextParentWave, stockOf, parentRoom, LONG_PARENTS, REFILL_PARENTS_MAX, REFILL_TARGET, REFILL_DISH_PER_DAY, REFILL_AI_PER_DAY, PARENT_FLAVORS, PARENT_REUSE_DAYS, isIdealParent, limitsFor, prioritizedParents, shareGaps } from '../src/trends.js';
 
-// 2026-10-03：親料理ごとの補充（親80 × 子5・20分以内4：30分以上1・親1つ6品まで・毎日自動）。
+// 2026-10-03：親料理ごとの補充（親120 × 子5（2026-11-14 に80から）・20分以内4：30分以上1・親1つ6品まで・毎日自動）。
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-10-05T01:00:00Z');
 let seq = 0;
@@ -28,10 +28,11 @@ async function withList(store, catalog, dishes) {
 const start = (store, extra = {}) => store.put('trends/seed', { stages: [], q: SEED_QUERIES.length, candidates: [], tried: [], ...extra }, { ifGeneration: 0 });
 const times = (n, x) => Array.from({ length: n }, () => x);
 
-test('refill: 80 parents from the dictionary, quick-friendly dishes first, removed names left out, promoted names included', () => {
+test('refill: 120 parents from the dictionary, quick-friendly dishes first, removed names left out, promoted names included', () => {
   const ps = refillParents({ removed: ['八宝菜'], promoted: { 'てりやきちくわ': { name: 'てりやきちくわ' } } });
   assert.equal(ps.length, REFILL_PARENTS_MAX);
-  assert.equal(REFILL_TARGET, 400);
+  assert.equal(REFILL_TARGET, 600);
+  assert.equal(REFILL_PARENTS_MAX, 120);
   assert.ok(!ps.some((p) => p.name === '八宝菜'));
   const firstLong = ps.findIndex((p) => LONG_PARENTS.has(p.name));
   assert.ok(firstLong > 0 && ps.slice(firstLong).every((p) => LONG_PARENTS.has(p.name)), 'quick-friendly first, long ones last');
@@ -94,7 +95,7 @@ test('refill: a full parent is skipped before the AI, a second long child is not
   assert.deepEqual(r.ran, { ai: 2, added: 1 });
 });
 
-test('refill: runs automatically up to 15 dishes and 25 AI calls a day, and does nothing once all 80 parents have 5', async () => {
+test('refill: runs automatically up to 24 dishes and 40 AI calls a day, and does nothing once all 120 parents have 5', async () => {
   const store = createMemorySyncStore();
   const catalog = fakeCatalog();
   await withList(store, catalog, times(60, ['ほかの料理', 10]));
@@ -108,7 +109,7 @@ test('refill: runs automatically up to 15 dishes and 25 AI calls a day, and does
   const again = await book.refill();
   assert.equal(again.skipped, 'today_done');
   const st = await book.parentStock();
-  assert.equal(st.target, 400);
+  assert.equal(st.target, 600);
   assert.ok(st.parents.filter((p) => p.total > 0).length >= 5);
   // 管理の画面（🎯 進み具合）用：親ごとの目標（理想の12品は20分以内6・30分以上2・8品まで、ほかは4・1・6品まで）と補充の段（2026-11-03）
   const idealRow = st.parents.find((p) => p.ideal), plainRow = st.parents.find((p) => !p.ideal);
@@ -121,7 +122,7 @@ test('refill: runs automatically up to 15 dishes and 25 AI calls a day, and does
   await createDishBook(store, { now: () => NOW }).edit({ op: 'remove', key: (await import('../src/dishes.js')).dishKey('冷しゃぶ') });
   book.clearCache?.();
   assert.deepEqual((await book.parentStock()).idealMissing, ['冷しゃぶ']);
-  // 80の親がすべて5品 → 何もしない
+  // すべての親が5品 → 何もしない
   const full = createMemorySyncStore();
   const cat2 = fakeCatalog();
   // 理想の12品（ideal.js）は8品（20分以内6・30分以上2）でそろう
@@ -130,7 +131,7 @@ test('refill: runs automatically up to 15 dishes and 25 AI calls a day, and does
   let searched = 0;
   const b2 = createTrendBook(full, { catalog: cat2, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000, search: async () => { searched += 1; return []; } });
   const s2 = await b2.parentStock();
-  assert.equal(s2.filled, 80);
+  assert.equal(s2.filled, REFILL_PARENTS_MAX);
   assert.equal((await b2.refill()).skipped, 'stocked');
   assert.equal(searched, 0);
 });
@@ -306,11 +307,37 @@ test('2026-11-03: when the refill uses up its 25 AI calls for the day, it says s
   const catalog = fakeCatalog();
   await withList(store, catalog, times(60, ['ほかの料理', 10]));
   await start(store);
-  // 読んだ料理がどれも晩ごはんでない＝AI は使うのに料理は増えない → 15品より先に AI 25回に届く
+  // 読んだ料理がどれも晩ごはんでない＝AI は使うのに料理は増えない → 料理の上限より先に AI の上限に届く
   const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
     search: async (q) => { const name = q.split(' ')[0]; return [1, 2, 3].map(() => { const v = vid(); catalog.make.set(v, recipe(v, '簡単プリン', 10)); return { videoId: v, channelId: `c-${v}`, title: `かんたん${name}` }; }); } });
   const r = await book.refill();
   assert.equal(r.ran.ai, REFILL_AI_PER_DAY);
   assert.equal(r.reason, 'ai_today');
   assert.equal(r.done, true);
+});
+
+// 2026-11-14 のユーザーの判断：料理の種類を80 → 120に。足した40は足りない分野（魚・卵豆腐・野菜が主役・さっぱり）で、時間のかかる料理は増やさない。
+test('refill: the 40 added parents are quick dishes of the short groups, every one is refilled, and they come before the other parents when their group is short', async () => {
+  const { EXTRA_DISH_GROUPS, LIGHT_DISH } = await import('../src/ideal.js');
+  const { DISH_SEEDS, dishKey, parentOf } = await import('../src/dishes.js');
+  const extra = Object.values(EXTRA_DISH_GROUPS).flat();
+  assert.equal(extra.length, 40);
+  assert.equal(new Set(DISH_SEEDS.map(dishKey)).size, DISH_SEEDS.length, 'no duplicate names in the dictionary');
+  const ps = refillParents({});
+  for (const name of extra) {
+    assert.ok(ps.some((p) => p.name === name), `${name} is refilled`);
+    assert.ok(!LONG_PARENTS.has(name), `${name} is not a long dish`);
+    assert.equal(parentOf(`簡単${name}`, {})?.name, name, `${name} is found in a title`);
+  }
+  assert.ok(EXTRA_DISH_GROUPS['肉'].every((n) => LIGHT_DISH.test(n)), 'the meat dishes added are light ones');
+  // 時間のかかる料理は、以前と同じ11品だけ（増やした分で角煮・カレー・鍋が入らない）
+  assert.equal(ps.filter((p) => LONG_PARENTS.has(p.name)).length, 11);
+  // 言い方のゆれ
+  assert.equal(parentOf('鶏むね肉のみぞれ煮', {})?.name, '鶏のみぞれ煮');
+  assert.equal(parentOf('トマトと卵の炒め物', {})?.name, 'トマト卵炒め');
+  assert.equal(parentOf('めかじきの照り焼き', {})?.name, 'かじきの照り焼き');
+  // 魚が足りない時、足した魚の料理は「足りない分野」の段（tier 1）に入る
+  const { prioritizedParents } = await import('../src/trends.js');
+  const tiers = Object.fromEntries(prioritizedParents({}, []).map((p) => [p.name, p.tier]));
+  for (const name of extra) assert.equal(tiers[name], 1, `${name} is in the short-group tier`);
 });

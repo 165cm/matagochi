@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./dishes.js";
-import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH } from "./ideal.js";
+import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH, EXTRA_DISH_GROUPS } from "./ideal.js";
 import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 import { mapLimit } from "./mapLimit.js";
@@ -200,17 +200,17 @@ export const WAVE_CLASSIC_DISHES = [
   ["焼きうどん", "肉"], ["鮭のバター醤油焼き", "魚"], ["小松菜と豚肉の炒め物", "野菜が主役"], ["厚揚げの甘辛炒め", "卵・豆腐"],
 ];
 // 親料理ごとの補充（2026-10-03 のユーザーの判断）：
-//   見える量は約400品＝親料理80 × 子5品。子は20分以内4品・30分以上1品（8:2）、親1つで6品まで。
+//   見える量は約600品＝親料理120 × 子5品（2026-11-14 のユーザーの判断。以前は400品＝80 × 5）。子は20分以内4品・30分以上1品（8:2）、親1つで6品まで。
 //   毎日の新着集め（POST /api/trends/refresh）の後に自動で補充する（手動のボタンなし）。1日に料理 REFILL_DISH_PER_DAY 品・AI REFILL_AI_PER_DAY 回まで（月の上限の中）。
-//   親料理は辞書（DISH_SEEDS と格上げした料理名）から、時短にしやすい料理を先に80品。
+//   親料理は辞書（DISH_SEEDS と格上げした料理名）から、時短にしやすい料理を先に120品。
 //   子が足りない親から、「◯◯ 時短 レシピ 材料」など言葉を変えて検索する（同じ言葉は28日あける・1つの親は1日1回まで）。
-export const REFILL_PARENTS_MAX = 80;
+export const REFILL_PARENTS_MAX = 120;
 export const REFILL_CHILDREN = 5;
 export const REFILL_CHILDREN_MAX = 6;
 export const REFILL_LONG_PER_PARENT = 1;
 export const REFILL_TARGET = REFILL_PARENTS_MAX * REFILL_CHILDREN;
-export const REFILL_AI_PER_DAY = 25;
-export const REFILL_DISH_PER_DAY = 15;
+export const REFILL_AI_PER_DAY = 40; // 2026-11-14：25 → 40（月の予算 1,000円は変えない。料理の上限も同じ割合で 15 → 24）
+export const REFILL_DISH_PER_DAY = 24;
 export const PARENT_REUSE_DAYS = 28;
 // 一度読んだ料理を、0円でもう一度並べる（2026-10-28 のユーザーの判断。docs/APP_MAP.md §46-8）。
 // 28日を過ぎた新着（と、以前に集める側が試した動画）を「休んでいる料理」（trends/index の retired）に残し、
@@ -262,6 +262,7 @@ export const parentFilled = (st = {}, key = "") => { const n = need(st, key); re
 const GROUP_OF = (() => {
   const m = {};
   for (const [name, group] of WAVE_CLASSIC_DISHES) m[parentKeyOf(name)] = group;
+  for (const [group, names] of Object.entries(EXTRA_DISH_GROUPS)) for (const name of names) m[parentKeyOf(name)] = group;
   for (const d of IDEAL_DISHES) m[parentKeyOf(d.name)] = d.group;
   return m;
 })();
@@ -1219,7 +1220,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       const list = Object.entries(p.by).map(([id, n]) => ({ id, name: p.names[id] || "", n, share: p.total ? Math.round((n / p.total) * 1000) / 10 : 0 })).sort((a, b) => b.n - a.n);
       return { total: p.total, channels: list.length, sharePct: PORTFOLIO_CHANNEL_SHARE * 100, maxPer: portfolioMax(p.total), over: list.filter((c) => c.n / Math.max(1, p.total) > PORTFOLIO_CHANNEL_SHARE).length, top: list.slice(0, 15) };
     },
-    // 親料理ごとの在庫（管理の画面）：見えている新着の品数・親80品それぞれの子の数（20分以内・30分以上）・5品そろった親の数・今日の自動補充。
+    // 親料理ごとの在庫（管理の画面）：見えている新着の品数・親120品それぞれの子の数（20分以内・30分以上）・5品そろった親の数・今日の自動補充。
     // 並びは補充の順（tier：0＝理想の12品・1＝足りない分野・2＝ほか）。lim＝その親の目標（20分以内・30分以上・最大）。
     // share：管理の画面の読み出しだけ（同時に作っている一覧を分けてもらう）。毎日の補充（refill）は自分で読み直す。
     async parentStock({ share = false } = {}) {
@@ -1234,7 +1235,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         today: today?.day === dayOf(now()) ? today : { day: dayOf(now()), ai: 0, added: 0 }, perDay: { ai: REFILL_AI_PER_DAY, added: REFILL_DISH_PER_DAY } };
     },
     // 自動の補充（毎日の新着集めの後に呼ぶ）：子が足りない親料理を、1日に料理15品・AI 25回まで埋める。
-    // 5品そろった親が80品になったら何もしない。費用は月の上限（trends/cost）と一括収集の段階の中。
+    // 5品そろった親が120品になったら何もしない。費用は月の上限（trends/cost）と一括収集の段階の中。
     // 1日の枠（AI 25回・料理15品）は、seed を呼ぶ前に世代つきで予約する（予約できなければ呼ばない）。
     // 使わなかった分は後で返す。返せなかった時は多めに数えたまま＝上限は越えない（review fix #135）。
     // done：今日はもう補充しなくてよい（枠を使い切った・そろった・時間切れや待ち以外の理由で止まった）。

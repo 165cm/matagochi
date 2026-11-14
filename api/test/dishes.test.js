@@ -198,7 +198,9 @@ test('small fix (2026-10-02): a dish followed by 丼 is a donburi, not that dish
   assert.equal(p('ハンバーグの作り方'), 'ハンバーグ', 'ordinary words after the dish are fine');
   // review fix (#126 r4)：「飽きない」は比べる言い方ではない／「飽きたら」は比べる言い方
   assert.equal(p('ハンバーグに飽きない定番アレンジ'), 'ハンバーグ');
-  assert.equal(p('ハンバーグに飽きたら｜豆腐ステーキ'), null);
+  assert.equal(p('ハンバーグに飽きたら｜豆腐の香味だれ'), null);
+  // 2026-11-14：豆腐ステーキは辞書に入ったので、本題の豆腐ステーキが親になる（ハンバーグにはならない）
+  assert.equal(p('ハンバーグに飽きたら｜豆腐ステーキ'), '豆腐ステーキ');
   assert.equal(p('ハンバーグに飽きた人へ！本格ロールキャベツ'), 'ロールキャベツ');
   // review fix (#126 r5)：「飽きたくない」も比べる言い方ではない
   assert.equal(p('ハンバーグに飽きたくない人の定番アレンジ'), 'ハンバーグ');
