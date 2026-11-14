@@ -1,6 +1,6 @@
 # いまの状態（CURRENT_TASK）
 
-最終更新：2026-11-14（決めた後の献立タブは候補カードを閉じた1行に。Claude・claude/laughing-pascal-f8mfkx）。以前：2026-11-14（献立が始まる前の日にも今夜のおすすめ。Claude・claude/laughing-pascal-f8mfkx）。以前：2026-11-14（候補の料理の種類を80 → 120に・見える量600品・1日の補充 AI 40回。Claude・claude/laughing-pascal-f8mfkx）。以前：2026-11-11（献立トレイを献立タブにまとめる：上の大きな献立カードがトレイ・その下に決定と空にする・候補カード・よはくは画面の下に貼りつけ・図鑑は振り返りタブへ。Claude・claude/relaxed-allen-5utqli）。以前：2026-11-11（献立トレイの使い心地の見直し #239 を公開）。**作業を始める時・終えた時に更新する。**
+最終更新：2026-11-14（無料と有料の境界を `docs/FREE_PAID_BOUNDARY.md` に統一。Claude・claude/laughing-pascal-f8mfkx）。以前：2026-11-14（決めた後の献立タブは候補カードを閉じた1行に。Claude・claude/laughing-pascal-f8mfkx）。以前：2026-11-14（献立が始まる前の日にも今夜のおすすめ。Claude・claude/laughing-pascal-f8mfkx）。以前：2026-11-14（候補の料理の種類を80 → 120に・見える量600品・1日の補充 AI 40回。Claude・claude/laughing-pascal-f8mfkx）。以前：2026-11-11（献立トレイを献立タブにまとめる：上の大きな献立カードがトレイ・その下に決定と空にする・候補カード・よはくは画面の下に貼りつけ・図鑑は振り返りタブへ。Claude・claude/relaxed-allen-5utqli）。以前：2026-11-11（献立トレイの使い心地の見直し #239 を公開）。**作業を始める時・終えた時に更新する。**
 
 ## いまの目標
 
@@ -23,7 +23,8 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：決めた後の献立タブを短く（2026-11-14 のユーザーの依頼：使い心地の見直しの⑦） | レビュー待ち | claude/laughing-pascal-f8mfkx | 全部の日が決定済みなら、候補カードを「🃏 ほかの候補を見る」の1行に（選び直す・似た皿・押した時に開く／閉じる・決定・タブ切り替えで閉じる）。アプリ514件PASS、390×844／844×390／1440×900 確認済み（APP_MAP §67-1-4） | daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, docs/* |
+| Claude：無料と有料の境界の資料を統一（2026-11-14 のユーザーの判断） | レビュー待ち | claude/laughing-pascal-f8mfkx | 正本を `docs/FREE_PAID_BOUNDARY.md` に。無料＝毎日の今夜1品／プラス＝まとめ献立・まとめ買い物・使い回し／通知・定番フォルダ・家族で共有は無料／4週600円・年6,000円／お試しは半端な日＋2週間・延長1回／お休み週あり。LP の「正式版のプラン内容」も合わせた。プログラム（`plus.js`）は変えていない | docs/FREE_PAID_BOUNDARY.md, docs/PRODUCT.md, docs/PERSONALIZE_PLAN.md, docs/APP_MAP.md, docs/DAILY_UX.md, docs/CURRENT_TASK.md, lp/index.html |
+| Claude：決めた後の献立タブを短く（2026-11-14 のユーザーの依頼：使い心地の見直しの⑦） | 公開済み（#243） | claude/laughing-pascal-f8mfkx | 全部の日が決定済みなら、候補カードを「🃏 ほかの候補を見る」の1行に（選び直す・似た皿・押した時に開く／閉じる・決定・タブ切り替えで閉じる）。アプリ514件PASS、390×844／844×390／1440×900 確認済み（APP_MAP §67-1-4） | daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, docs/* |
 | Claude：献立が始まる前の日の「今夜のおすすめ」（2026-11-14 のユーザーの依頼：使い心地の見直しの③） | 公開済み（#242） | claude/laughing-pascal-f8mfkx | 作る日でない日・夜遅くに始めた人にも、今日タブに今夜の一品（買い足しの少ない料理から・［これにする］［⇄ ほかの一皿］・リズムは動かさない・決めた後は買い足す物を表示）。アプリ513件PASS、390×844／844×390／1440×900 確認済み（APP_MAP §68） | daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/first-run.test.cjs, docs/* |
 | Claude：候補の料理の種類を増やす（2026-11-14 のユーザーの判断） | 公開済み（#241） | claude/laughing-pascal-f8mfkx | 料理名を40足して親料理80 → 120（魚・卵豆腐・野菜が主役・さっぱり）・見える量400 → 600品・1日の補充 AI 25 → 40回（料理15 → 24品）。月の予算1,000円は変えない。API443件・アプリ510件PASS（APP_MAP §46-10） | api/src/dishes.js, api/src/ideal.js, api/src/trends.js, api/test/refill.test.js, api/test/dishes.test.js, scripts/trends-health.cjs, test/trends-health.test.cjs, admin/catalog.html, admin/help.html, .github/workflows/trends.yml, docs/* |
 | Claude：献立トレイを献立タブにまとめる（2026-11-11 のユーザーの判断） | レビュー待ち | claude/relaxed-allen-5utqli | 上の大きな献立カードがトレイ（🔄 選び直す）・その下に決定と空にする・候補カード・よはくは画面の下に貼りつけて考える演出・図鑑は振り返りタブの「🃏 図鑑」（APP_MAP §67-1-3） | daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, docs/* |
@@ -74,7 +75,7 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 
 - 合意：③ 入れた当日に「今夜の1品」が決まるようにする（作る日でない日・夜遅くに始めると、最初の献立まで今夜と週末が空く）→ **実装した（APP_MAP §68・上の「作業中」の行）**／⑦ 献立タブの情報を減らす → **決定後は候補を閉じる、を実装した（APP_MAP §67-1-4）**。候補カードの札を絞る案は、2026-11-11 のユーザーの判断（§67-1-2：カードの表に図鑑らしい情報）と食い違うので見送り。「今回／次回が両方見えている」は Claude の読み違い（ページの切り替えで、見えているのは片方）／⑧ 価格は「1食あたり約30円」と実際の請求額を並べる・案内は献立がひと回り終わった直後
 - 方向だけ（ユーザーの希望＋Claude の案。決めていない）：① 無料は「今夜の1品」・プラスは「まとめて決める」。お試し期間で買い物2回分を体感してもらう（§26 の「半端な日＋2週間」を活かす）／② 最初の献立の精度を上げる（質問を増やしてもよい。案：「夜ごはんの形」などを2〜3個足し、残りは献立を見せて「主食ものが多い」などで直す）／④ 常備品は会話風に（案：最初の買い物リストの直前に、よはくが聞いて「家にない物」だけ押す）／⑤ 「今週のレシート」（端末の記録を数えるだけ・0円）／⑥ お休み週（年額はクーポンをためる案と、期限を1週間のばす案）
-- 資料の食い違い：無料の範囲が `PRODUCT.md`（今夜の1日分）・`APP_MAP §26`（週3日）・`FREE_PAID_BOUNDARY.md`（未決定）で違う。①を決める時に1つにそろえる
+- 資料の食い違い → **2026-11-14 に統一した**（正本は `docs/FREE_PAID_BOUNDARY.md`）。①は決定（無料＝毎日の今夜1品・プラス＝まとめて決める・通知／定番フォルダ／家族で共有は無料）、⑥のお休み週も「設ける」と決定（方式は未定）。残り：`plus.js` の作り直し（以前の週3日ロックのまま。決済を動かす前に）
 - 候補の数：本番は足りていた（新着415品＋最初の48品）。足りないのは料理の種類と分野 → 上の「作業中」の行で対応
 
 ## 最近終わったこと（新しい順）
