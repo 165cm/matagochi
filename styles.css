@@ -5657,3 +5657,8 @@ body.has-sheet { overflow: hidden; }
 /* よはくは画面の下（タブの上）に貼りつける：考えている時も、カードを置いた時も目に入る */
 .tray-yohaku-bar.is-dock { position: sticky; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 6; margin: 10px -4px 0; padding: 6px 8px; border-radius: 16px; background: rgba(255, 252, 246, 0.97); border: 1.5px solid #e9d6b8; box-shadow: 0 6px 20px rgba(70, 45, 18, 0.16); }
 .plan-list .plan-card.is-dish .plan-swap { min-height: 44px; }
+
+/* 献立が始まる前の日の「今夜のおすすめ」（APP_MAP §68）：いつもの献立がいつからかを、カードの下に小さく。 */
+.tonight-prestart { margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--line, rgba(0, 0, 0, 0.12)); color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.tonight-prestart .text-button { font-size: 13px; }
+.tonight-prebuy { line-height: 1.6; }
