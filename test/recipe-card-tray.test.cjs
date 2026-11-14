@@ -1047,3 +1047,39 @@ test("24. 7-day plan: the tray covers every shown day, so 決定 confirms all 7 
   run(`handleCardTrayAction("life-tray-confirm-all", {})`);
   for (const d of days) assert.equal(run(`state.mealSlots[${JSON.stringify(d.date)}]?.status`), "confirmed", `${d.date} is confirmed`);
 });
+
+// 2026-11-14 のユーザーの判断（APP_MAP §67-1-4）：決めた後の献立タブを短くする。全部の日が決定済みなら、候補カードは閉じた1行。
+test("25. Decided round: candidates collapse to one line; ほかの候補を見る / 🔄 選び直す open them, 閉じる and a new 決定 close them", () => {
+  const run = app();
+  // 決める前は、今までどおり候補カードが出る
+  const before = run(`renderCardTraySheet()`);
+  assert.ok(before.includes("rc-grid") && before.includes("tray-shelves"), "Candidates are shown before deciding");
+  assert.ok(!before.includes("life-tray-more"));
+  run(`handleCardTrayAction("life-tray-confirm-all", {}, [])`);
+  assert.ok(run(`trayTargetDays().every((d) => d.slot)`), "Every day is decided");
+  const closed = run(`renderCardTraySheet()`);
+  assert.ok(closed.includes('data-action="life-tray-more"') && closed.includes("ほかの候補を見る"), "One closed line");
+  assert.ok(!closed.includes("rc-grid") && !closed.includes("tray-shelves"), "No candidate cards or shelves");
+  assert.ok(closed.includes('id="tray-cards"'), "The scroll target stays");
+  assert.ok(closed.includes("tray-yohaku-bar") && closed.includes("選び直す"), "Yohaku still says how to change a day");
+  // ほかの候補を見る → 開く。閉じる → 戻る
+  run(`handleCardTrayAction("life-tray-more", {}, [])`);
+  const open = run(`renderCardTraySheet()`);
+  assert.ok(open.includes("rc-grid") && open.includes('data-action="life-tray-less"'), "Opened, with 閉じる");
+  run(`handleCardTrayAction("life-tray-less", {}, [])`);
+  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'));
+  // 🔄 選び直す → その日の候補が開く
+  const d0 = run(`trayTargetDays()[0].date`);
+  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d0)} }, [])`);
+  const picking = run(`renderCardTraySheet()`);
+  assert.ok(picking.includes("rc-grid"), "選び直す opens the candidates");
+  // 入れ替えた（下書き）間は開いたまま。もう一度決定すると、また閉じた1行に戻る
+  const pick = picking.match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
+  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pick)}, date: ${JSON.stringify(d0)} }, [])`);
+  assert.ok(run(`renderCardTraySheet()`).includes("rc-grid"), "Open while a change is pending");
+  run(`handleCardTrayAction("life-tray-confirm-all", {}, [])`);
+  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'), "Closed again after deciding");
+  // タブを切り替えたら、開いていた候補は閉じる
+  run(`handleCardTrayAction("life-tray-more", {}, []); resetCardTrayModals()`);
+  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'));
+});
