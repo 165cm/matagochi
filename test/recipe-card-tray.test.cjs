@@ -1082,4 +1082,15 @@ test("25. Decided round: candidates collapse to one line; ほかの候補を見�
   // タブを切り替えたら、開いていた候補は閉じる
   run(`handleCardTrayAction("life-tray-more", {}, []); resetCardTrayModals()`);
   assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'));
+  // Codex review #243：「🔄 選び直す」を押しただけ（何も変えていない）でタブを切り替えた時も、戻ったら閉じている
+  const d1 = run(`trayTargetDays()[0].date`);
+  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d1)} }, [])`);
+  assert.ok(run(`renderCardTraySheet()`).includes("rc-grid"));
+  run(`resetCardTrayModals()`);
+  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'), "Closed after a tab switch with no change");
+  // 入れ替えの途中（下書きあり）でタブを切り替えた時は、今までどおり続きから（開いたまま）
+  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d1)} }, [])`);
+  const pick2 = run(`renderCardTraySheet()`).match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
+  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pick2)}, date: ${JSON.stringify(d1)} }, []); resetCardTrayModals()`);
+  assert.ok(run(`renderCardTraySheet()`).includes("rc-grid"), "A pending change keeps the candidates open");
 });

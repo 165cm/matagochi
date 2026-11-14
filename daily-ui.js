@@ -4632,6 +4632,8 @@ function resetCardTrayModals() {
     trayTargetDates = [];
     trayUndoStack = [];
     trayClearedDates = new Set();
+    // 「🔄 選び直す」で日を選んだだけ（何も変えていない）の時は、その印も戻す＝決定済みなら候補は閉じる（Codex review #243）
+    trayActiveChosen = false;
   }
   trayThinking = false;
   trayThinkToken += 1;
