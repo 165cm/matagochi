@@ -1306,6 +1306,31 @@ function dishTile(recipe, cls = "") {
   return `<span class="dish-tile dish-fallback ${cls}" role="img" aria-label="料理のイメージ写真" style="background-image:url('assets/dishes/fallback-${fallback}.webp')"><small aria-hidden="true">イメージ</small></span>`;
 }
 const dayWordFor = (date) => { const g = daysBetween(date, today()); return g === 0 ? "今日" : g === 1 ? "昨日" : g === 2 ? "一昨日" : `${g}日前`; };
+// 献立が始まる前の日（「献立は◯日から」）にも、今夜の一品を出す（2026-11-14 のユーザーの判断。APP_MAP §68）。
+// 作る日でない日・夜遅くに始めた人は、最初の献立まで今夜と週末が空く。買い足しが少なそうな料理から1品（日ごとに変わる）。
+// 買い足し＝常備品・調味料とみなす材料（Lifestyle.keeps）を除いた数。家にあるかは分からないので「目安」。
+const prestartBuy = (r) => (r.ingredients || []).filter((i) => !Lifestyle.keeps(i));
+const PRESTART_POOL = 8; // 買い足しの少ない順に、この数の中から日ごとに1品
+function prestartPick() {
+  const date = today();
+  if (isViewer() || !prestartUntil() || state.mealSlots?.[date]) return null;
+  const p = dailyProfile(), hp = hiddenParents();
+  const all = allDinnerRecipes();
+  // 「⇄ ほかの一皿」で選んだ料理があれば、それ（ふつうの日と同じ：選ぶ → これにする）。
+  const chosen = all.find((r) => r.id === state.planOverrides?.[date]);
+  if (chosen && Lifestyle.fit(chosen, p, date).ok) return { recipe: chosen, buy: prestartBuy(chosen).length, chosen: true };
+  // これからの献立に入っている料理は外す（同じ料理が続かないように）。
+  const used = new Set(dailyPlan().map((d) => d.slot?.recipe?.id || d.candidate?.recipe?.id).filter(Boolean));
+  const rows = all
+    .filter((r) => !used.has(r.id) && (r.ingredients || []).length && !Object.values(recipeRatings(r)).includes("never") && !(hp.size && hp.has(parentKeyOf(r))) && !passRested(r) && Lifestyle.fit(r, p, date).ok)
+    .map((r) => ({ recipe: r, buy: prestartBuy(r).length }))
+    .sort((a, b) => a.buy - b.buy || (a.recipe.planning?.minutes || 99) - (b.recipe.planning?.minutes || 99) || a.recipe.id.localeCompare(b.recipe.id))
+    .slice(0, PRESTART_POOL);
+  if (!rows.length) return null;
+  let h = 2166136261;
+  for (const c of date) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return rows[h % rows.length];
+}
 // 今日タブ：今夜の一品 → 今日やること（あるときだけ）→ 明日の一行。それ以外は献立タブへ。
 function renderToday() {
   const plan = dailyPlan();
@@ -1326,16 +1351,25 @@ function renderToday() {
   else actions = `${dailyButton("life-cook", "作り方を見る", `data-date="${today()}"`, true)}${tonightNeeds ? dailyButton("go-view", `🛒 この料理の買うもの あと${tonightNeeds}品`, 'data-view="shopping"') : ""}${isViewer() ? "" : `<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}" aria-label="今夜の料理を変更">⇄ 変更</button>`}`;
   const pre = !slot && day?.prestart ? prestartUntil() : "";
   const firstBlock = pre ? currentBlocks()[0] : null;
-  if (pre) actions = dailyButton("go-view", "最初の献立を見る", 'data-view="plan"', true);
-  const label = pre ? `献立は<span class="nobr">${formatDate(pre)}（${weekdayLabel(pre)}）から</span>` : off ? (SKIP_OF[slot?.kind] ? `今日は${SKIP_OF[slot.kind].label}` : "今日はお休み") : slot?.status === "cooked" ? "ごちそうさま！" : slot ? "今夜の一品" : "今夜のおすすめ";
+  // 献立が始まる前の日も、今夜の一品を出す（§68）。合う料理がない時・見るだけの人は、今までどおり「献立は◯日から」。
+  const pick = pre ? prestartPick() : null;
+  if (pre) actions = pick
+    ? `${dailyButton("life-tonight-pick", "これにする", `data-recipe="${escapeAttr(pick.recipe.id)}"`, true)}<button type="button" class="text-button swap-link" data-action="life-swap" data-date="${today()}">⇄ ほかの一皿</button>`
+    : dailyButton("go-view", "最初の献立を見る", 'data-view="plan"', true);
+  const preLine = pre ? `🛒 いつもの献立は <b class="nobr">${formatDate(pre)}（${weekdayLabel(pre)}）から</b>` : "";
+  // 始まる前の日に決めた一品は、買い物リスト（献立のまとまりごと）に入らないので、買い足す物をここに出す。
+  const preBuy = !pre && slot?.status === "confirmed" && slot.recipe && prestartUntil() ? prestartBuy(slot.recipe).map((i) => i.name) : [];
+  const label = pick ? "今夜のおすすめ" : pre ? `献立は<span class="nobr">${formatDate(pre)}（${weekdayLabel(pre)}）から</span>` : off ? (SKIP_OF[slot?.kind] ? `今日は${SKIP_OF[slot.kind].label}` : "今日はお休み") : slot?.status === "cooked" ? "ごちそうさま！" : slot ? "今夜の一品" : "今夜のおすすめ";
   const tomorrow = plan[1];
   const tr = tomorrow?.slot?.recipe || tomorrow?.candidate?.recipe;
   const tomorrowOff = tomorrow?.off || tomorrow?.slot?.status === "off";
   return `${renderRequestNews()}${renderPreferencePrompt() || renderRankPrompt() || renderRoundReview()}
   <section class="hero-card today-dish tonight-card"><div class="tonight-head"><p class="tonight-label"><span class="marker">${label}</span></p><p class="today-date">${formatDate(today())}（${weekdayLabel(today())}）· ${servings}人分</p></div>
-    ${ pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", /好物|日ぶり/.test(reason) ? "" : bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>${slot?.status === "cooked" ? renderTonightQuickRate(today(), recipe) + renderCardGetBanner(recipe) : ""}` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
+    ${ pick ? `${dishTile(pick.recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(pick.recipe)}</h3><p class="tonight-reason hand"><span class="marker">${pick.chosen ? "✋ 自分で選んだ一皿" : pick.buy ? `🧺 買い足しは${pick.buy}品ほど` : "🧺 家にある物で作れそう"}</span></p><p class="tonight-meta">${[pick.recipe.planning?.minutes ? `⏱ ${pick.recipe.planning.minutes}分` : "", pick.chosen && pick.buy ? `買い足し ${pick.buy}品ほど` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : pre ? `<p class="tonight-off">🛒 最初の買い物は <b>${firstBlock ? deadlineLabel(firstBlock.shopAt) : ""}</b></p>` : locked ? `<p class="tonight-off">${LOCK_TITLE} ${tip("無料は週3日まで")}</p>` : off ? `<p class="tonight-off">${SKIP_OF[slot?.kind]?.icon || "🌙"} また次の晩ごはんで</p>` : recipe ? `${dishTile(recipe, "tonight-photo")}<h3 class="tonight-title">${recipeTitleHtml(recipe)}</h3>${reason && slot?.status !== "cooked" ? `<p class="tonight-reason hand"><span class="marker">${escapeHtml(reason)}</span></p>` : ""}<p class="tonight-meta">${[recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "", /好物|日ぶり/.test(reason) ? "" : bothLike(recipe) ? "😋 ふたりとも好き" : lastEatenLabel(recipe) === "はじめて" ? "はじめての一皿" : lastEatenLabel(recipe)].filter(Boolean).map(escapeHtml).join(" · ")}</p>${slot?.status === "cooked" ? renderTonightQuickRate(today(), recipe) + renderCardGetBanner(recipe) : ""}` : '<p class="tonight-off">条件に合う料理が見つかりません。</p>'}
     ${slot?.status === "confirmed" ? conditionWarning(recipe, today()) : ""}
-    ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-skip" data-date="${today()}">🍽 今日は外食・中食にする</button>` : ""}</div>` : ""}</section>
+    ${preBuy.length ? `<p class="tonight-meta tonight-prebuy">🧺 買い足す物（目安）：${preBuy.map(escapeHtml).join("・")}</p>` : ""}
+    ${actions || (!off && !slot) ? `<div class="tonight-actions">${actions}${!off && !pre && slot?.status !== "cooked" && recipe ? `<button class="text-button" data-action="life-skip" data-date="${today()}">🍽 今日は外食・中食にする</button>` : ""}</div>` : ""}
+    ${pick ? `<p class="tonight-prestart small">${preLine} <button type="button" class="text-button" data-action="go-view" data-view="plan">最初の献立を見る ›</button></p>` : ""}</section>
   ${renderSkipPanel(today())}
   ${renderTodayTodos()}
   ${tomorrow ? `<button type="button" class="tomorrow-line" data-action="go-view" data-view="plan"><span>明日は</span><b>${tomorrow.prestart ? "いつもどおり（献立の前）" : tomorrowOff ? "お休み 🌙" : tr ? escapeHtml(tr.title) : "未定"}</b><i aria-hidden="true">›</i></button>` : ""}
@@ -2930,6 +2964,11 @@ function handleDailyAction(action, data) {
     if (hadConfirmed) changedShopping(before);
     else shoppingNotice = "";
     state.view = "shopping";
+  }
+  // 献立が始まる前の日の「今夜のおすすめ」を決める（§68）。その日だけの一品で、リズムの始まりは動かさない。
+  if (action === "life-tonight-pick" && !isViewer() && prestartUntil() && !state.mealSlots?.[today()]) {
+    const r = allDinnerRecipes().find((x) => x.id === data.recipe);
+    if (r && Lifestyle.fit(r, dailyProfile(), today()).ok) { confirmDaily({ date: today() }, r); delete state.planOverrides[today()]; }
   }
   if (action === "life-confirm-one") {
     const plan = dailyPlan(), d = plan.find((d) => d.date === data.date);
