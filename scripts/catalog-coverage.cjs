@@ -91,7 +91,7 @@ module.exports = { coverage, markdown, CONDITIONS, MIN_CELL, MIN_WEEK, MIN_TWO_W
 
 if (require.main === module) {
   const file = path.join(__dirname, "..", "docs", "CATALOG_COVERAGE.md");
-  const text = markdown(coverage(L.curated), "アプリに最初から入っているおすすめ料理（`Lifestyle.curated`）");
+  const text = markdown(coverage(L.starters), "アプリに最初から入っているおすすめ料理（`Lifestyle.starters`。引退した以前の48品は数えない）");
   if (process.argv.includes("--check")) {
     const same = fs.existsSync(file) && fs.readFileSync(file, "utf8") === text;
     console.log(same ? "docs/CATALOG_COVERAGE.md is up to date" : "docs/CATALOG_COVERAGE.md is out of date — run node scripts/catalog-coverage.cjs");

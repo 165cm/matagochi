@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261114-plan-collapse";
+const APP_VERSION = "20261114-new-starters";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1831,12 +1831,13 @@ function renderCollection() {
   const pool = [...(showSaved ? allSaved : []), ...(showStartersHere ? allStarters : [])];
   const saved = showSaved ? allSaved.filter((r) => facetMatch(r) && quickMatch(r)) : [];
   let starters = showStartersHere ? allStarters.filter((r) => facetMatch(r) && quickMatch(r)) : [];
-  // 同じ親（料理名）の集めた料理は、絞り込んだあとで、いちばん上の1品にまとめる（「ほか◯つの作り方」で全部見られる）。探している時はまとめない。
+  // 同じ親（料理名）の料理は、絞り込んだあとで、いちばん上の1品にまとめる（「ほか◯つの作り方」で全部見られる）。探している時はまとめない。
+  // 2026-11-14：最初から入っている料理も同じ料理名でまとめる。並びは集めた動画が先なので、動画の作り方が表に出る（APP_MAP §69）。
   starterVariants = new Map();
   if (!query) {
     const first = new Map();
     starters = starters.filter((r) => {
-      const k = r.discover && r.dish ? parentKeyOf(r) : "";
+      const k = r.dish ? parentKeyOf(r) : "";
       if (!k) return true;
       const top = first.get(k);
       if (top) { starterVariants.get(top).count += 1; return false; }

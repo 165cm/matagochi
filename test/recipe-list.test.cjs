@@ -46,11 +46,12 @@ test("💛 好きな料理から: the dishes picked from the 12 photos, with how
   const run = app();
   seed(run);
   assert.ok(!run("renderCollection()").includes("好きな料理から"), "nothing before picking");
-  run("state.foodProfile = Lifestyle.profile({ servings: 2, completed: true, dishPicks: ['mabo', 'omurice'], dishPicksAt: '2026-10-28T00:00:00Z' })");
+  run("state.foodProfile = Lifestyle.profile({ servings: 2, completed: true, dishPicks: ['mabo', 'reishabu'], dishPicksAt: '2026-10-28T00:00:00Z' })");
   const html = run("renderCollection()");
   assert.ok(html.includes("💛 好きな料理から") && html.includes("あなたに合いそうな順"));
-  assert.match(html, /data-dish="麻婆豆腐"><img[^>]*><b>麻婆豆腐<\/b><small>作り方 8つ<\/small>/);
-  assert.ok(!html.includes("<b>オムライス</b>"), "a picked dish with no recipes yet is not shown");
+  // 集めた8品と、最初から入っている「ひき肉の麻婆豆腐」（2026-11-14 から同じ料理名）
+  assert.match(html, /data-dish="麻婆豆腐"><img[^>]*><b>麻婆豆腐<\/b><small>作り方 9つ<\/small>/);
+  assert.ok(!html.includes("<b>冷しゃぶ</b>"), "a picked dish with no recipes yet is not shown");
   run("handleDailyAction('life-dish-variants',{dish:'麻婆豆腐'})");
   assert.equal(run("state.searchText"), "麻婆豆腐");
   // 合いそうな順：選んだ料理名の作り方が先

@@ -35,11 +35,14 @@ function app({ now } = {}) {
   run("state=freshState();saveState=()=>{};render=()=>{};showToast=()=>{}");
   return run;
 }
+// 献立の決め方のテストは、中身の変わらない以前の48品（引退した starter-01〜48）で確かめる
+// （2026-11-14 に最初の48品を作り直した。いま出す48品は L.starters）。
+const OLD = L.curated.filter((r) => r.retired);
 const profile = L.profile({
   equipment: Object.fromEntries(L.equipment.map((x) => [x, "have"])),
 });
 const propose = (p = profile, extra = {}) =>
-  L.propose({ recipes: L.curated, profile: p, start, addDays, ...extra });
+  L.propose({ recipes: OLD, profile: p, start, addDays, ...extra });
 test("unknown pantry and equipment are never assumed owned; partial profile survives round-trip", () => {
   const p = L.profile({
     step: 7,
@@ -56,7 +59,7 @@ test("restriction and unavailable equipment apply without silently relaxing to f
     restrictions: ["卵", "乳", "魚"],
     equipment: { ...profile.equipment, コンロ: "none" },
   });
-  const days = propose(p, { recipes: L.curated.slice(0, 12) });
+  const days = propose(p, { recipes: OLD.slice(0, 12) });
   assert.equal(days.filter((x) => x.candidate).length, 0);
   const egg = propose(L.profile({ ...profile, restrictions: ["卵"] }));
   assert.ok(
@@ -91,7 +94,10 @@ test("weekday/weekend time, tasks, and simplicity constraints apply", () => {
   assert.equal(L.fit(L.curated[10], p, "2026-09-26").ok, true);
 });
 test("curated recipes are unique, single-dish, portioned and complete; serving two does not mutate source", () => {
-  assert.equal(new Set(L.curated.map((r) => r.id)).size, 48);
+  assert.equal(new Set(L.curated.map((r) => r.id)).size, 96);
+  assert.equal(L.starters.length, 48, "the 48 dishes shown now");
+  assert.equal(OLD.length, 48, "the 48 retired dishes are kept");
+  assert.ok(L.starters.every((r) => !r.retired && Number(r.id.replace("starter-", "")) > 48));
   assert.ok(
     L.curated.every(
       (r) =>
@@ -367,7 +373,7 @@ test("reviewed recipe metadata excludes conditional allergens and composite disl
   for (const [id, dislike] of [[34,"トマト"],[19,"きのこ"]])
     assert.equal(L.fit(byId(id), L.profile({...profile, dislikes:[dislike]}), start).ok, false);
   const p = L.profile({...profile, restrictions:["大豆"], weekdayMinutes:20, weekendMinutes:20});
-  assert.equal(L.curated.filter(r => L.fit(r,p,start).ok).length, 5);
+  assert.equal(OLD.filter(r => L.fit(r,p,start).ok).length, 5);
   const days = propose(p,{length:7});
   assert.equal(days.filter(d => d.candidate).length,7);
   assert.equal(new Set(days.slice(0,5).map(d => d.candidate.recipe.id)).size,5);
@@ -593,14 +599,14 @@ test("shopping keeps concentration and product variants separate", () => {
 test("rotation: pasta the day before yesterday leads to a rice dish with a friendly reason", () => {
   const pasta = { id: "p1", title: "納豆パスタ", mealType: "dinner", ingredients: [{ name: "パスタ" }, { name: "納豆" }], steps: [] };
   const history = [{ date: addDays(start, -2), recipe: pasta }];
-  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, history });
+  const plan = L.propose({ recipes: OLD, profile: L.profile({}), start, length: 3, addDays, history });
   const first = plan[0].candidate;
   assert.notEqual(L.traits(first.recipe).staple, "noodle");
   assert.ok(first.reasons[0].startsWith("一昨日はパスタ → "), first.reasons[0]);
 });
 
 test("rotation: consecutive plan days avoid the same staple when alternatives exist", () => {
-  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays });
+  const plan = L.propose({ recipes: OLD, profile: L.profile({}), start, length: 3, addDays });
   const staples = plan.map((d) => L.traits(d.candidate.recipe).staple);
   assert.notEqual(staples[0], staples[1]);
   assert.notEqual(staples[1], staples[2]);
@@ -609,7 +615,7 @@ test("rotation: consecutive plan days avoid the same staple when alternatives ex
 test("rotation: a dish eaten within the last week is not suggested again, even if never rated", () => {
   const eaten = L.curated[0];
   const history = [{ date: addDays(start, -3), recipe: eaten }];
-  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, history });
+  const plan = L.propose({ recipes: OLD, profile: L.profile({}), start, length: 3, addDays, history });
   assert.ok(plan.every((d) => d.candidate.recipe.id !== eaten.id));
   const r = L.rotation(eaten, start, history, (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000));
   assert.equal(r.lastEatenDays, 3);
@@ -664,7 +670,7 @@ test("repeat cycle: a due favourite comes back; a dish nobody wants again never 
   const fav = L.curated[4], stop = L.curated[5];
   const history = [{ date: addDays(start, -10), recipe: fav }, { date: addDays(start, -40), recipe: stop }];
   const cyclesOf = (r) => (r.id === fav.id ? { パパ: "weekly", むすめ: "weekly" } : r.id === stop.id ? { パパ: "never" } : {});
-  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 7, addDays, history, cyclesOf });
+  const plan = L.propose({ recipes: OLD, profile: L.profile({}), start, length: 7, addDays, history, cyclesOf });
   const ids = plan.map((d) => d.candidate?.recipe.id);
   assert.ok(ids.includes(fav.id), "favourite is back");
   assert.ok(!ids.includes(stop.id), "never is excluded");
@@ -674,7 +680,7 @@ test("repeat cycle: a due favourite comes back; a dish nobody wants again never 
 
 test("requests go into the plan first with the requester's name", () => {
   const wanted = L.curated[20];
-  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 3, addDays, requestOf: (r) => (r.id === wanted.id ? { from: "むすめ" } : null) });
+  const plan = L.propose({ recipes: OLD, profile: L.profile({}), start, length: 3, addDays, requestOf: (r) => (r.id === wanted.id ? { from: "むすめ" } : null) });
   const day = plan.find((d) => d.candidate?.recipe.id === wanted.id);
   assert.ok(day, "requested dish is planned");
   assert.equal(day.candidate.reasons[0], "むすめのリクエスト");
@@ -721,21 +727,21 @@ test("app: viewers see the plan but only send requests; the owner applies a date
   assert.ok(!run("renderDailyPlan()").includes('data-action="life-confirm"'));
   run('handleDailyAction("life-confirm",{})');
   assert.equal(run("Object.keys(state.mealSlots).length"), 0);
-  run('handleDailyAction("life-request-swap",{date:addDays(today(),1),recipe:"starter-20"})');
+  run('handleDailyAction("life-request-swap",{date:addDays(today(),1),recipe:"starter-60"})');
   assert.equal(run("openRequests()[0].date===addDays(today(),1)"), true);
-  assert.equal(run("openRequestFor(Lifestyle.curated.find(r=>r.id==='starter-20'))"), null);
+  assert.equal(run("openRequestFor(Lifestyle.curated.find(r=>r.id==='starter-60'))"), null);
   run('state.me="パパ";handleDailyAction("life-apply-swap",{id:openRequests()[0].id})');
-  assert.equal(run("state.planOverrides[addDays(today(),1)]"), "starter-20");
+  assert.equal(run("state.planOverrides[addDays(today(),1)]"), "starter-60");
   assert.equal(run("openRequests().length"), 0);
   assert.equal(run('roleOf("新しい人")'), "viewer");
 });
 
 test("app: a viewer's 食べられないもの apply to the household plan and 好き counts as 毎週", () => {
   const run = app();
-  run('state.family=["パパ","むすめ"];state.me="むすめ";state.memberPrefs={"むすめ":{restrictions:["卵"],likes:["starter-20"],done:true,updatedAt:nowIso()}}');
+  run('state.family=["パパ","むすめ"];state.me="むすめ";state.memberPrefs={"むすめ":{restrictions:["卵"],likes:["starter-60"],done:true,updatedAt:nowIso()}}');
   assert.ok(run('dailyProfile().restrictions.includes("卵")'));
   assert.ok(run('dailyPlan().every(d=>!d.candidate||Lifestyle.fit(d.candidate.recipe,Lifestyle.profile({restrictions:["卵"]}),d.date).ok)'));
-  assert.equal(run('likedCycles(Lifestyle.curated.find(r=>r.id==="starter-20"))["むすめ"]'), "weekly");
+  assert.equal(run('likedCycles(Lifestyle.curated.find(r=>r.id==="starter-60"))["むすめ"]'), "weekly");
   assert.equal(run('Object.keys(normalizeMemberPrefs(buildSyncPayload().memberPrefs)).length'), 1);
 });
 
@@ -746,14 +752,14 @@ test("app: shopping round — requests until the deadline, only 'feelings' after
   run('const f=new Date(Date.now()+3*3600000);state.round=normalizeRound({deadline:localStamp(f),status:"open",updatedAt:nowIso()})');
   assert.equal(run("roundPhase()"), "open");
   assert.match(run("roundMessage()"), /に買い物に行く予定。献立変更のリクエストがあればそれまでによろしく！$/);
-  run('handleDailyAction("life-request-swap",{date:addDays(today(),1),recipe:"starter-20"})');
+  run('handleDailyAction("life-request-swap",{date:addDays(today(),1),recipe:"starter-60"})');
   assert.equal(run("openRequests().length"), 1);
   run('state.round=normalizeRound({deadline:localStamp(new Date(Date.now()-60000)),status:"open",updatedAt:nowIso()})');
   assert.equal(run("roundPhase()"), "closed");
-  run('handleDailyAction("life-request-swap",{date:addDays(today(),2),recipe:"starter-21"})');
+  run('handleDailyAction("life-request-swap",{date:addDays(today(),2),recipe:"starter-79"})');
   assert.equal(run("openRequests().length"), 1, "swap is locked after the deadline");
-  run('handleDailyAction("life-request",{recipe:"starter-22"})');
-  assert.equal(run('openRequests().find(q=>q.recipeId==="starter-22").late'), true);
+  run('handleDailyAction("life-request",{recipe:"starter-71"})');
+  assert.equal(run('openRequests().find(q=>q.recipeId==="starter-71").late'), true);
   run('state.me="パパ";handleDailyAction("life-round-done",{})');
   assert.equal(run("roundPhase()"), "done");
   assert.equal(run("normalizeRound(JSON.parse(JSON.stringify(state.round))).status"), "done");
@@ -915,7 +921,7 @@ test("trivia quiz (2026-10-28): fun facts first, a ★ hint only — the plan us
   const hard = L.curated.find((r) => S.rate(r).level >= 3);
   const easy = L.fit(hard, L.profile({}), start), ranked = L.fit(hard, L.profile({ skillLevel: 1 }), start);
   assert.ok(ranked.ok && ranked.challenge && ranked.score < easy.score, "a harder dish is kept but ranked lower");
-  const plan = L.propose({ recipes: L.curated, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
+  const plan = L.propose({ recipes: OLD, profile: L.profile({ skillLevel: 2 }), start, length: 7, addDays });
   assert.ok(plan.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2).length <= 1, "with plenty of easier dishes, harder ones rarely come first");
   for (const d of plan.filter((d) => d.candidate && S.rate(d.candidate.recipe).level > 2)) assert.match(d.candidate.reasons[0], /^ちょっと挑戦/);
 });
@@ -924,7 +930,7 @@ test("freshness: perishable, hard-to-freeze food goes first after shopping", () 
   const f = (names) => L.freshness({ ingredients: names.map((name) => ({ name })) });
   assert.deepEqual([f(["もやし", "豚こま切れ肉"]).urgency, f(["ほうれん草"]).label, f(["冷凍えび", "ツナ缶"]).urgency, f(["じゃがいも", "玉ねぎ"]).urgency], [5, "葉もの野菜", 0, 0]);
   const dates = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const plan = L.propose({ recipes: L.curated, profile: L.profile({}), start, length: 7, addDays, rounds: [dates] });
+  const plan = L.propose({ recipes: OLD, profile: L.profile({}), start, length: 7, addDays, rounds: [dates] });
   const u = plan.map((d) => L.freshness(d.candidate.recipe).urgency);
   assert.ok(u[0] + u[1] > u[5] + u[6], `perishables early: ${u}`);
   assert.ok(u.slice(3).every((x) => x < 5), "nothing that spoils fast on day 4 and later");
@@ -1078,13 +1084,13 @@ test("定番フォルダ: make one by name, then add recipes from a picker", () 
   const run = app();
   run(`state.onboarded=true;recipeTab="folders"`);
   assert.match(run("renderFolders()"), /data-folder-create[\s\S]*料理名/, "a create form even with no folders");
-  const key = run(`createFolder("照り焼き丼")`);
-  assert.equal(run(`createFolder("照り焼き丼 ")`), key, "the same name is not made twice");
+  const key = run(`createFolder("照り焼き")`);
+  assert.equal(run(`createFolder("照り焼き ")`), key, "the same name is not made twice");
   run(`folderOpen="${key}";folderPicking=true`);
   const html = run("renderFolders()");
   assert.match(html, /まだ作り方がありません[\s\S]*＋ レシピを入れる/);
   const first = run(`(()=>{const m=/data-action="life-folder-add" data-recipe="([^"]+)"/.exec(renderFolderPicker(state.folders["${key}"]));return m[1]})()`);
-  assert.match(run(`allDinnerRecipes().find(r=>r.id==="${first}").title`), /照り焼き丼/, "recipes with a similar name come first");
+  assert.match(run(`allDinnerRecipes().find(r=>r.id==="${first}").title`), /照り焼き/, "recipes with a similar name come first");
   run(`handleDailyAction("life-folder-add",{recipe:"${first}",folder:"${key}"})`);
   assert.equal(run(`folderMembers("${key}").length`), 1, "a starter is saved as your own recipe and put in the folder");
   assert.doesNotMatch(run(`renderFolderPicker(state.folders["${key}"])`), new RegExp(`data-recipe="${first}"`), "already in: not offered again");
@@ -1135,7 +1141,8 @@ test("今夜の4皿 (§64): four photos of different kinds (main, rice/noodle, t
   assert.ok(new Set(ids.map((id) => trait(id, "staple"))).size >= 2, "not four rice bowls");
   assert.ok(!html.includes('data-action="life-choose"'), "nothing is chosen by a single tap");
   // 2026-11-08（2回目）：写真の上には重ねない。写真のすぐ下の1行に「⏱時間 · 札」と「✕ パス」、その下に料理名
-  assert.match(html, /<span class="swap-photo"><img[^>]*><\/span><\/button><div class="swap-meta"><small class="swap-min">[^<]*<\/small><button type="button" class="swap-x"[\s\S]*?<\/div><button[^>]*><strong class="swap-name">/);
+  // 絵がまだの料理は、主食ごとのイメージ写真（dish-fallback）
+  assert.match(html, /<span class="swap-photo">(?:<img[^>]*>|<span class="dish-tile dish-fallback[^"]*"[^>]*><small[^>]*>イメージ<\/small><\/span>)<\/span><\/button><div class="swap-meta"><small class="swap-min">[^<]*<\/small><button type="button" class="swap-x"[\s\S]*?<\/div><button[^>]*><strong class="swap-name">/);
   // 広い画面（タブレット・パソコン）や縦に長いスマホでは6皿
   run("globalThis.innerWidth = 1024; globalThis.innerHeight = 768");
   assert.equal([...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="/g)].length, 6);
@@ -1185,7 +1192,13 @@ test("今夜の4皿 §64-2 消去法: ✕ swaps one card in place, what was remo
   assert.ok(!before.includes(after[2]), "a new dish in the same place");
   assert.deepEqual(ids(), after, "the same when drawn again");
   // 魚を2品消すと「🙅 少なめに：🐟 魚」。並ぶ料理から魚が外れる
-  const fish = JSON.parse(run(`JSON.stringify(swapCandidates().ok.filter((x) => Lifestyle.traits(x.r).protein === "fish").slice(0, 2).map((x) => x.r.id))`));
+  // 魚だけが共通の2品。「こってり」「ピリ辛」も共通だとそちらが少なめになり、主食（おかず・丼）まで同じだと
+  // 「魚か、おかずか分からない」で少なめにしないので、主食の違う2品を選ぶ（2026-11-14 に最初の48品を作り直した）
+  const fish = JSON.parse(run(`(() => {
+    const list = swapCandidates().ok.filter((x) => Lifestyle.traits(x.r).protein === "fish" && !["rich", "spicy"].some((t) => Lifestyle.tags(x.r).includes(t)));
+    const a = list[0], b = list.find((x) => Lifestyle.traits(x.r).staple !== Lifestyle.traits(a.r).staple);
+    return JSON.stringify([a.r.id, b.r.id]);
+  })()`));
   fish.forEach((id) => run(`handleDailyAction("life-swap-remove",{recipe:${JSON.stringify(id)}})`));
   const html = run("renderSwapChoices()");
   assert.match(html, /少なめ：<\/span><button[^>]*data-action="life-swap-unlearn" data-key="g:fish"[^>]*>魚 ✕/, "少なめ：[魚 ✕]");

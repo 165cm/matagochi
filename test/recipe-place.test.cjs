@@ -15,7 +15,7 @@ function app() {
   return run;
 }
 // 献立に入っていない、条件に合うおすすめを1つ。
-const pickRecipe = (run) => run(`(() => { const used = new Set(dailyPlan().map((d) => (d.slot?.recipe || d.candidate?.recipe)?.id)); return Lifestyle.curated.find((r) => !used.has(r.id) && placeDays().every((d) => Lifestyle.fit(r, dailyProfile(), d.date).ok)).id; })()`);
+const pickRecipe = (run) => run(`(() => { const used = new Set(dailyPlan().map((d) => (d.slot?.recipe || d.candidate?.recipe)?.id)); return Lifestyle.starters.find((r) => !used.has(r.id) && placeDays().every((d) => Lifestyle.fit(r, dailyProfile(), d.date).ok)).id; })()`);
 const shown = (run, date) => run(`(() => { const d = dailyPlan().find((x) => x.date === "${date}"); return (d.slot?.recipe || d.candidate?.recipe)?.id || ""; })()`);
 
 test("the recipe screen leads with 🗓 献立に入れる; video, folders, record, edit and delete move into ⋯", () => {

@@ -146,7 +146,8 @@ function shareShown(plan) {
 // オンボーディング：気になる料理を選ぶ（今週の人気が中心。足りなければ写真のある定番で埋める）。
 function funnelPickCandidates() {
   const profile = Lifestyle.profile(profileDraft());
-  const curated = Lifestyle.curated.filter((r) => STARTER_PHOTOS[r.id]);
+  // 絵のある料理を先に（絵がまだの料理は、主食ごとのイメージ写真で出る）。
+  const curated = [...Lifestyle.starters].sort((a, b) => !!STARTER_PHOTOS[b.id] - !!STARTER_PHOTOS[a.id]);
   return [...discoverRecipes().filter((r) => discoverSafe(r, profile)), ...curated.filter((r) => Lifestyle.fit(r, profile, today()).ok)].slice(0, 12);
 }
 // 雑誌のように選べる一覧：写真の上に小さく「新着」、投稿者のアイコンと名前をはっきり、ひとことの解説つき。

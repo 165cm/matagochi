@@ -296,13 +296,31 @@ function dailyProfile() {
     servings: state.servingCount,
   });
 }
+// 最初から入っている料理のうち、いま出すもの：新しい48品と、以前の48品のうちこの家庭に関わりのある料理
+// （評価した・献立や記録にある・好きな料理に選んだ・リクエストした）。関わりのない以前の料理は出さない（APP_MAP §69）。
+function keptStarterIds() {
+  const ids = new Set();
+  const add = (id) => { if (typeof id === "string" && id.startsWith("starter-")) ids.add(id); };
+  for (const e of state.evaluations || []) add(e.recipeId);
+  for (const s of Object.values(state.mealSlots || {})) { add(s?.recipe?.id); add(s?.recipe?.starterId); }
+  for (const p of Object.values(state.memberPrefs || {})) for (const id of p?.likes || []) add(id);
+  for (const q of Object.values(state.requests || {})) add(q?.recipeId);
+  for (const id of Object.values(state.planOverrides || {})) add(id);
+  for (const id of state.onboardingDraft?.likedDishes || []) add(id);
+  for (const id of state.foodProfile?.likedDishes || []) add(id);
+  return ids;
+}
+function shownStarters() {
+  const kept = keptStarterIds();
+  return Lifestyle.curated.filter((r) => !r.retired || kept.has(r.id));
+}
 function allDinnerRecipes() {
   const personal = state.recipes.filter((r) => r.mealType === "dinner");
   const originals = new Set(personal.map((r) => r.starterId));
   return [...new Map([
     ...personal,
     ...Object.values(normalizePlanDrafts(state.planDrafts, state.tombstones?.recipes)).filter(r => !personal.some(p => p.id === r.id)),
-    ...(showStarters() ? [...discoverRecipes(), ...Lifestyle.curated.filter((r) => !originals.has(r.id) && !starterHidden().has(r.id))] : []),
+    ...(showStarters() ? [...discoverRecipes(), ...shownStarters().filter((r) => !originals.has(r.id) && !starterHidden().has(r.id))] : []),
   ].map(r => [r.id, r])).values()];
 }
 // Meals actually eaten (or confirmed and past) in the last two weeks, newest first.
@@ -4309,7 +4327,7 @@ function starterRecipeList() {
   const query = (state.searchText || "").trim().toLowerCase();
   const hidden = starterHidden();
   const hp = hiddenParents();
-  return [...rankByTaste(discoverRecipes()), ...Lifestyle.curated]
+  return [...rankByTaste(discoverRecipes()), ...shownStarters()]
     .filter((r) => !saved.has(r.id) && !hidden.has(r.id) && !(hp.size && r.dish && hp.has(parentKeyOf(r))))
     // Browsing only needs the safety filter; tools are checked again before a dish is planned.
     .filter((r) => (r.discover ? discoverSafe(r) : Lifestyle.fit(r, dailyProfile(), today()).ok))
@@ -4398,6 +4416,9 @@ function renderRecipeDetail() {
     ? `<button type="button" class="primary-button full-button detail-place" data-action="life-place-open" data-recipe="${escapeAttr(r.id)}">🗓 献立に入れる</button><div class="detail-actions">${cookable ? `<button type="button" class="secondary-button" data-cook-mode="open">🍳 料理モード</button>` : ""}${saved ? "" : dailyButton("life-save-starter", "🤍 保存", `data-recipe="${escapeAttr(r.id)}"`)}</div>`
     : `<div class="detail-actions">${requestButton(r)}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>`;
   const pLine = renderParentLine(r);
+  // 最初から入っている料理（動画なし）は、同じ料理名の動画レシピがあれば、そちらへ誘う（2026-11-14 のユーザーの判断「動画ありを推し気味で」。APP_MAP §69）。
+  const videoWays = !r.videoUrl && r.dish && /^starter-/.test(r.starterId || r.id) ? parentChildren(parentKeyOf(r)).filter((x) => x.videoUrl).length : 0;
+  const videoBox = videoWays ? `<div class="video-ways"><p>🎬 「${escapeHtml(r.dish)}」は<b>動画を見ながら</b>も作れます <small>作り方 ${videoWays}本</small></p><button type="button" class="secondary-button" data-action="life-dish-variants" data-dish="${escapeAttr(r.dish)}">動画の作り方を見る ›</button></div>` : "";
   // 今夜の4皿から開いた時：上は「‹ 4皿に戻る」、下に「✓ この料理にする／‹ 4皿に戻る」（新しく買う物も先に見せる）。
   const fromSwap = !!swapDate && swapDetailId === r.id;
   return `<section class="recipe-detail${fromSwap ? " is-from-swap" : ""}">
@@ -4409,6 +4430,7 @@ function renderRecipeDetail() {
     ${renderSkillLine(r)}
     <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
     ${fromSwap ? swapPickBar(r, swapCandidates().reuse) : actions}
+    ${fromSwap ? "" : videoBox}
     ${pLine && !fromSwap ? `<div class="dish-group-box">${pLine}</div>` : ""}
     ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? "🎬 作り方がおかしい？動画から読み直す" : "🎬 動画から読み取る"}</button></div>` : ""}
     ${renderSourceNote(r, saved && edit)}

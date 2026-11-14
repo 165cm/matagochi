@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v234";
-const APP_VERSION = "20261114-plan-collapse";
+const CACHE_NAME = "ripigochi-v235";
+const APP_VERSION = "20261114-new-starters";
 const CORE_ASSETS = [
   "./assets/dish-picks/shogayaki.webp",
   "./assets/dish-picks/karaage.webp",
