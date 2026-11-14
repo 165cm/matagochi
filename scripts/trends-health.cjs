@@ -8,7 +8,7 @@
            （どれも無い・読めない時は「返事なし」として扱う。要約の書き先は環境変数 GITHUB_STEP_SUMMARY） */
 const fs = require("node:fs");
 
-const MIN_VISIBLE = 200; // 見えている新着がこれより少なければ赤（目標は400品＝親料理80×子5品。docs/APP_MAP.md §46-7）
+const MIN_VISIBLE = 200; // 見えている新着がこれより少なければ赤（目標は600品＝親料理120×子5品。docs/APP_MAP.md §46-7）
 const SOON_DAYS = 7; // この日数のうちに見えなくなる（28日を過ぎる）品数も出す
 const DAY = 86_400_000;
 const YEN_PER_AI = 1; // api/src/trends.js の TREND_YEN_PER_AI（月の費用の目安の単価）と同じ。返事に yenPerAi（実測から合わせた単価）があればそちらを使う
@@ -62,8 +62,8 @@ function judge({ refresh, refill, refillAi = 0, list, now = Date.now(), minVisib
   if (refresh?.done === true && !failed(refresh) && (empty(refill) || failed(refill))) problems.push(`親料理の補充：${failed(refill) || "サーバーから返事がありませんでした（通信の失敗・時間切れ）"}`);
   else if (refillStop && !problems.includes(refillStop)) problems.push(`親料理の補充：${refillStop}`);
   else if (PACED[refill?.reason]) notes.push(`親料理の補充：${PACED[refill.reason]}`);
-  // ai_today：1日の AI の回数（25回）を使い切った＝今日の分は終わり。止まったのではない（2026-11-03。以前は「月の予算」と書かれて赤になっていた）。
-  else if (refill?.reason === "ai_today") notes.push("親料理の補充：今日の分（AI 25回）を使い切りました。続きは明日");
+  // ai_today：1日の AI の回数（40回）を使い切った＝今日の分は終わり。止まったのではない（2026-11-03。以前は「月の予算」と書かれて赤になっていた）。
+  else if (refill?.reason === "ai_today") notes.push("親料理の補充：今日の分（AI 40回）を使い切りました。続きは明日");
   else if (refill && !refillStop && refill.done !== true && refill.reason !== "stocked") notes.push(`親料理の補充は途中です${refill.reason ? `（${refill.reason}）` : ""}`);
   const items = Array.isArray(list?.items) ? list.items : null;
   if (!items) problems.push("いま見えている新着の一覧を読めませんでした");
@@ -121,7 +121,7 @@ function markdown(result, { minVisible = MIN_VISIBLE, timecodes = null } = {}) {
     `| 今日もう一度並べた料理（0円・28日を過ぎて休んでいた料理） | ${show(n.revived, "品")} |`,
     `| 休んでいる料理（もう一度並べられるのを待っている） | ${show(n.resting, "品")} |`,
     `| 　うち、確かめ済みで使える料理（残りは毎日0円で確かめる） | ${show(n.usable, "品")} |`,
-    `| いま見えている新着（目安 ${minVisible}品・目標 400品） | ${show(n.visible, "品")} |`,
+    `| いま見えている新着（目安 ${minVisible}品・目標 600品） | ${show(n.visible, "品")} |`,
     `| ${SOON_DAYS}日以内に見えなくなる料理 | ${show(n.soon, "品")} |`,
     `| 今月の新着集めの費用（目安） | ${n.monthYen === null ? "不明" : `${n.monthYen}円 / ${show(n.monthYenCap, "円")}`} |`,
   ];
