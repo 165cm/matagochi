@@ -134,6 +134,16 @@ test("before the first round: a dish chosen in ⇄ ほかの一皿 becomes tonig
   run(`handleDailyAction("life-swap",{date: today()}); handleDailyAction("life-choose",{date: today(), recipe: ${JSON.stringify(other)}})`);
   assert.equal(run("prestartPick().recipe.id"), other);
   assert.ok(run("prestartPick().chosen"));
+  // Codex review #242：始まる前の日は献立タブに出ないので、選んだ後・閉じた後は今日タブへ戻す（選んだ一皿と「これにする」が続けて見える）
+  assert.equal(run("state.view"), "today", "back on the today screen after choosing");
+  run(`handleDailyAction("life-swap",{date: today()})`);
+  assert.equal(run("state.view"), "plan");
+  run(`handleDailyAction("life-close-swap",{})`);
+  assert.equal(run("state.view"), "today", "and after closing without choosing");
+  // ふつうの日（献立が始まった後の日）の入れ替えは、今までどおり献立タブのまま
+  const later = run("prestartUntil()");
+  run(`handleDailyAction("life-swap",{date: ${JSON.stringify(later)}}); handleDailyAction("life-close-swap",{})`);
+  assert.equal(run("state.view"), "plan");
   assert.ok(run("renderToday()").includes("自分で選んだ一皿"));
   // 知らない料理・見るだけの人は決められない
   run(`handleDailyAction("life-tonight-pick",{recipe:"no-such-dish"})`);

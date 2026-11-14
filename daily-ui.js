@@ -3019,7 +3019,9 @@ function handleDailyAction(action, data) {
     state.view = "plan";
     trackDaily("swap_opened");
   }
-  if (action === "life-close-swap") { if (swapDate && !swapPick) trackDaily("swap_closed"); swapCommit(); swapDate = ""; }
+  // 献立が始まる前の日の「⇄ ほかの一皿」は今日タブから開く。その日は献立タブに出ないので、閉じた時・選んだ時は今日タブへ戻す（§68。Codex review #242）。
+  const backToToday = (date) => { if (date && prestartUntil() && date < prestartUntil()) state.view = "today"; };
+  if (action === "life-close-swap") { if (swapDate && !swapPick) trackDaily("swap_closed"); swapCommit(); backToToday(swapDate); swapDate = ""; }
   if (handleCardTrayAction(action, data, before)) {
     saveState();
     render();
@@ -3119,6 +3121,7 @@ function handleDailyAction(action, data) {
       else state.planOverrides[data.date] = r.id;
       changedShopping(before || []);
     }
+    backToToday(data.date);
     swapDate = "";
   }
   // 残っている食材（本人が選ぶ）と、それを使った組み直し。確定・作った・お休みの日は置き換えない。
