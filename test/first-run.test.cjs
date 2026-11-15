@@ -271,3 +271,36 @@ test("pantry ask: あとで hides it until the app is opened again", () => {
   run(`handleDailyAction("life-pantry-ask-later",{})`);
   assert.equal(run("renderPantryAsk(shopPageItems())"), "");
 });
+
+// 🧾 今週のレシート（2026-11-15。APP_MAP §73）
+test("the weekly receipt counts this device's records: decided, cooked, reused food, loved dishes, new cards, and what changes next week", () => {
+  const run = app("2026-11-21T10:00:00"); // 土曜：今週（11/16〜11/21）
+  assert.equal(run("weekReceipt()"), null, "nothing decided or cooked: no receipt");
+  assert.deepEqual(JSON.parse(run("JSON.stringify(receiptWeek())")), { start: "2026-11-16", end: "2026-11-21", label: "今週" });
+  assert.deepEqual(JSON.parse(run(`JSON.stringify(receiptWeek("2026-11-18"))`)), { start: "2026-11-09", end: "2026-11-15", label: "先週" }, "Mon–Thu shows last week");
+  run(`
+    const withCabbage = Lifestyle.starters.filter((r) => r.ingredients.some((i) => /キャベツ/.test(i.name))).slice(0, 2);
+    const other = Lifestyle.starters.filter((r) => !withCabbage.includes(r)).slice(0, 2);
+    const plan = [...withCabbage, ...other];
+    ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19"].forEach((d, k) => { state.mealSlots[d] = { date: d, status: k < 3 ? "cooked" : "confirmed", recipe: plan[k], servings: 2 }; });
+    state.mealSlots["2026-11-09"] = { date: "2026-11-09", status: "cooked", recipe: plan[3], servings: 2 };
+    const ev = (r, d, c) => state.evaluations.push({ id: "e-" + d, recipeId: r.id, recipeTitle: r.title, cookedAt: d, mealType: "dinner", familyRepeatCycles: { 自分: c } });
+    ev(plan[0], "2026-11-16", "weekly"); ev(plan[1], "2026-11-17", "never"); ev(plan[2], "2026-11-18", "monthly"); ev(plan[2], "2026-11-10", "monthly");
+    globalThis.__plan = plan;
+  `);
+  const r = JSON.parse(run("JSON.stringify(weekReceipt())"));
+  assert.equal(r.decided, 4);
+  assert.equal(r.cooked, 3);
+  assert.ok(r.reused.includes("キャベツ"), r.reused.join(","));
+  assert.deepEqual(r.loved, [run("__plan[0].title")]);
+  assert.deepEqual(r.never, [run("__plan[1].title")]);
+  assert.equal(r.newCards.length, 2, "a card already made last week is not new");
+  const html = run("renderWeekReceipt()");
+  for (const t of ["今週のリピごち", "11月16日〜11月21日", "決めた夜ごはん", "4食", "使い回した食材", "また食べたい", "図鑑に入った", "来週は", "もう出しません"]) assert.ok(html.includes(t), t);
+  assert.ok(run("renderReflection()").includes("week-receipt"), "on top of the reflection tab");
+  // 週の途中で「もう作らない」→「毎週」に変えたら、最新の答えだけ（Codex review #248）
+  run(`state.evaluations.push({ id: "e-2026-11-20", recipeId: __plan[1].id, recipeTitle: __plan[1].title, cookedAt: "2026-11-20", mealType: "dinner", familyRepeatCycles: { 自分: "weekly" } })`);
+  const r2 = JSON.parse(run("JSON.stringify(weekReceipt())"));
+  assert.deepEqual(r2.never, []);
+  assert.ok(r2.loved.includes(run("__plan[1].title")));
+});
