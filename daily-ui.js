@@ -2318,6 +2318,63 @@ function renderRecordCalendar(list, monthKey, recipeOf, photoOf) {
   })].join("");
   return `<div class="record-cal"><div class="cal-head" aria-hidden="true">${["日", "月", "火", "水", "木", "金", "土"].map((w) => `<span>${w}</span>`).join("")}</div><div class="cal-grid">${cells}</div></div>`;
 }
+// 🧾 今週のレシート（2026-11-15。APP_MAP §73）：端末の記録（決めた献立・作った・評価・図鑑）を週ごとに数えて1枚に。AI・通信なし。
+// 金〜日は「今週」（月曜から今日まで）、月〜木は「先週」（月〜日）。決めた・作ったが1つもない週は出さない。
+function receiptWeek(now = today()) {
+  const d = dow(now);
+  const monday = addDays(now, -((d + 6) % 7));
+  return d >= 5 || d === 0 ? { start: monday, end: now, label: "今週" } : { start: addDays(monday, -7), end: addDays(monday, -1), label: "先週" };
+}
+function weekReceipt(now = today()) {
+  const w = receiptWeek(now);
+  const inWeek = (date) => !!date && date >= w.start && date <= w.end;
+  const slots = Object.values(state.mealSlots || {}).filter((x) => x && inWeek(x.date) && ["confirmed", "cooked"].includes(x.status) && x.recipe);
+  const evals = (state.evaluations || []).filter((e) => e && inWeek((e.cookedAt || "").slice(0, 10)) && !String(e.id || "").startsWith("demo-"));
+  const cookedDates = new Set(evals.map((e) => e.cookedAt.slice(0, 10)));
+  slots.filter((x) => x.status === "cooked").forEach((x) => cookedDates.add(x.date));
+  const decided = new Set(slots.map((x) => x.date));
+  if (!decided.size && !cookedDates.size) return null;
+  // 使い回した食材：2つ以上の料理で使った、すぐなくなる食材（調味料・乾物は数えない）
+  const uses = new Map(); // 食材のキー → { 数, 見せる名前（かっこの中は外す） }
+  for (const x of slots) {
+    const seen = new Set();
+    for (const i of (x.recipe.ingredients || []).filter((i) => i?.name && !Lifestyle.keeps(i))) {
+      const k = Lifestyle.key(i.name.replace(/[（(].*$/, "") || i.name); // 「キャベツ（せん切り）」も同じキャベツ
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const u = uses.get(k) || { n: 0, name: i.name.replace(/[（(].*$/, "") || i.name };
+      u.n += 1;
+      uses.set(k, u);
+    }
+  }
+  const reused = [...uses.values()].filter((u) => u.n >= 2).sort((a, b) => b.n - a.n).map((u) => u.name);
+  const titleOf = (e) => recipeById(e.recipeId)?.title || Lifestyle.curated.find((c) => c.id === e.recipeId)?.title || e.recipeTitle || "";
+  const cyc = (e) => Object.values(e.familyRepeatCycles || {});
+  const loved = [...new Set(evals.filter((e) => cyc(e).some((c) => c === "tomorrow" || c === "weekly")).map(titleOf).filter(Boolean))];
+  const never = [...new Set(evals.filter((e) => cyc(e).includes("never")).map(titleOf).filter(Boolean))];
+  // 図鑑：この週に初めてそろったカード（それより前に、そのカードを作った記録がない）
+  const before = (state.evaluations || []).filter((e) => (e.cookedAt || "").slice(0, 10) < w.start);
+  const cardOf = (e) => { const r = recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || (e.recipeTitle ? { id: e.recipeId, title: e.recipeTitle } : null); return r ? bookCardRecipe(r) : null; };
+  const had = new Set(before.map(cardOf).filter(Boolean).map((c) => c.id));
+  const newCards = [...new Map(evals.map(cardOf).filter((c) => c && !had.has(c.id)).map((c) => [c.id, c])).values()];
+  return { ...w, decided: decided.size, cooked: cookedDates.size, reused, loved, never, newCards };
+}
+function renderWeekReceipt() {
+  if (isViewer()) return "";
+  const r = weekReceipt();
+  if (!r) return "";
+  const range = `${formatDate(r.start)}〜${formatDate(r.end)}`;
+  const row = (icon, label, value) => `<li><span>${icon} ${label}</span><i aria-hidden="true"></i><b>${value}</b></li>`;
+  const names = (list, n = 3) => escapeHtml(list.slice(0, n).join("・")) + (list.length > n ? ` ほか${list.length - n}` : "");
+  const next = [
+    r.loved.length ? `「また食べたい」${r.loved.length}品は、ちょうどいい頃に献立へ戻します` : "",
+    r.never.length ? `「もう作らない」${r.never.length}品は、もう出しません` : "",
+  ].filter(Boolean);
+  return `<section class="week-receipt" aria-label="${r.label}のレシート"><header><p class="wr-title">🧾 ${r.label}のリピごち</p><p class="wr-range">${range}</p></header>
+    <ul class="wr-rows">${row("🗓", "決めた夜ごはん", `${r.decided}食`)}${row("🍳", "作った", `${r.cooked}食`)}${r.reused.length ? row("🧺", "使い回した食材", names(r.reused)) : ""}${r.loved.length ? row("😋", "また食べたい", names(r.loved, 2)) : ""}${r.newCards.length ? row("🃏", "図鑑に入った", `${r.newCards.length}枚`) : ""}</ul>
+    ${next.length ? `<p class="wr-next"><b>来週は</b>${next.map(escapeHtml).join("。")}。</p>` : ""}
+    <p class="wr-foot">この端末の記録を数えています</p></section>`;
+}
 function renderReflection() {
   const month = reflectionMonth();
   const recipeOf = (e) => recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || { id: e.recipeId, title: e.recipeTitle || "保存済みの料理", ingredients: [] };
@@ -2342,6 +2399,7 @@ function renderReflection() {
     return `<button type="button" class="table-tile" data-action="life-edit-record" data-id="${escapeAttr(e.id)}" aria-label="${escapeAttr(`${formatDate(e.cookedAt)} ${r.title}の記録を開く`)}">${photo}<span class="day-num">${Number(e.cookedAt.slice(8, 10))}</span>${loved(e) ? '<span class="tile-love" aria-hidden="true">😍</span>' : ""}<small>${escapeHtml(r.title)}</small></button>`;
   }).join("");
   return `<div class="page-actions">${nav}</div>
+  ${reflMonth === 0 ? renderWeekReceipt() : ""}
   ${list.length ? `<div class="refl-stats"><p><strong>${list.length}</strong><small>回つくった</small></p><p><strong>${tally.size}</strong><small>種類の料理</small></p><p><strong>${lovedCount}</strong><small>また食べたい</small></p></div>` : ""}
   ${reflMonth === 0 ? renderInsights(recipeOf, favRecipe?.id) : ""}
   ${reflMonth === 0 ? renderStaples(recipeOf) : ""}
