@@ -4595,7 +4595,8 @@ function planTune(id) {
   const old = Object.fromEntries(dailyPlan().map((d) => [d.date, d.candidate?.recipe?.id || ""]));
   state.foodProfile = { ...state.foodProfile, mealShape: p.mealShape, planLean: p.planLean };
   // 決めていない日の自動の下書きだけ作り直す（自分で選んだ料理 planOverrides・決めた日・作った日はそのまま）。
-  for (const d of dates) delete state.planDrafts?.[d];
+  // 自分で選んだ日の下書きは消さない（新着から外れた料理は、本体が下書きにしか残っていないことがある。Codex review #246）
+  for (const d of dates) if (!state.planOverrides?.[d]) delete state.planDrafts?.[d];
   // 数えるのは、いま見えている回（リズムがあれば最初のまとまり）だけ。次回分も組み直すが、知らせの数は画面と合わせる。
   const first = rhythmOn() ? currentBlocks()[0] : null;
   const changed = dailyPlan().filter((d) => dates.includes(d.date) && (!first || first.dates.includes(d.date)) && d.candidate?.recipe?.id && d.candidate.recipe.id !== old[d.date]).length;

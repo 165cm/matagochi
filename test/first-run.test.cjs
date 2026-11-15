@@ -212,6 +212,11 @@ test("first-plan tune buttons: a tap remembers the lean and re-plans only undeci
   assert.equal(run("firstPlanReveal"), true, "the welcome stays open to press another");
   assert.ok(run(`renderFirstPlanReveal()`).includes('data-tune="fish" aria-pressed="true"'));
   assert.ok(planStats(run).some((d) => d.badge === "🐟 魚を増やした日" || /魚/.test(d.reason)));
+  // 自分で選んだ料理の本体が下書きにしかない日も、そのまま（Codex review #246）
+  run(`const d1 = dailyPlan().find((d) => d.candidate && d.date !== __d0); const own = { ...clone(d1.candidate.recipe), id: "trend-gone", title: "消えた新着の料理", curated: false }; state.planDrafts[d1.date] = own; state.planOverrides[d1.date] = own.id; globalThis.__d1 = d1.date;`);
+  assert.equal(run("dailyPlan().find((d) => d.date === __d1).candidate?.recipe.id"), "trend-gone");
+  run(`handleDailyAction("life-plan-tune",{tune:"light"}); handleDailyAction("life-plan-tune",{tune:"light"})`);
+  assert.equal(run("dailyPlan().find((d) => d.date === __d1).candidate?.recipe.id"), "trend-gone", "a hand-picked day keeps its dish");
   // 肉を押すと魚は外れる（どちらか一方）
   run(`handleDailyAction("life-plan-tune",{tune:"meat"})`);
   assert.deepEqual(JSON.parse(run("JSON.stringify(state.foodProfile.planLean)")), ["meat"]);
