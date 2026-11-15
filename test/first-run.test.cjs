@@ -314,3 +314,22 @@ test("the weekly receipt counts this device's records: decided, cooked, reused f
   assert.deepEqual(r2.never, []);
   assert.ok(r2.loved.includes(run("__plan[1].title")));
 });
+
+test("the invite shows in the after-deciding summary on the first decision, even after ⇄ 変更 closed the welcome (Codex review #253)", () => {
+  const run = app("2026-11-16T10:00:00");
+  finishWith(run, "mix");
+  run(`shareAvailable = () => true; syncEnabled = () => false; state.foodProfile = { ...state.foodProfile, servings: 2 };`);
+  // 「⇄ 変更」を開いて閉じると、お祝いの帯は消える
+  const d0 = run(`dailyPlan().find((d) => d.candidate).date`);
+  run(`handleDailyAction("life-swap", { date: ${JSON.stringify(d0)} }); handleDailyAction("life-close-swap", {})`);
+  assert.equal(run("firstPlanReveal"), false);
+  run(`handleDailyAction("life-confirm", {})`);
+  assert.ok(run("renderPlanDone()").includes("life-share-open"), "invite is offered on the first decision");
+  // 「あとで」は招待だけ閉じる（まとめは残る）
+  run(`handleDailyAction("life-reveal-close", {})`);
+  assert.ok(run("renderPlanDone()").includes("もう考えなくて大丈夫") && !run("renderPlanDone()").includes("life-share-open"));
+  // 2回目からの決定には出さない
+  run(`handleDailyAction("life-plan-done-close", {})`);
+  run(`const b = currentBlocks()[1]; if (b) handleDailyAction("life-confirm", { block: b.key })`);
+  assert.ok(!run("renderPlanDone()").includes("life-share-open"), "not on later decisions");
+});

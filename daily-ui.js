@@ -3143,6 +3143,8 @@ function handleDailyAction(action, data) {
     const plan = dailyPlan(), locks = lockedDates(plan);
     const targets = plan.filter((d) => d.candidate && !locks.has(d.date) && (!only || only.includes(d.date)));
     const hadConfirmed = targets.some((d) => state.mealSlots?.[d.date]?.status === "confirmed");
+    // はじめての決定か：お祝いの帯が出ているかではなく、決めた献立・記録がまだないことで見る（「⇄ 変更」を使うと帯は消える。Codex review #253）
+    const firstDecide = firstPlanReveal || (!Object.values(state.mealSlots || {}).some((x) => ["confirmed", "cooked"].includes(x?.status)) && !(state.evaluations || []).length);
     targets.forEach((d) => confirmDaily(d));
     planTuneOpen = false;
     if (hadConfirmed) changedShopping(before);
@@ -3150,7 +3152,7 @@ function handleDailyAction(action, data) {
     // 決定した直後は、買い物タブへ飛ばずに「もう考えなくて大丈夫」のまとめを献立タブに出す（2026-11-15。docs/UX_REDESIGN.md の2番・APP_MAP §77）
     if (targets.length) {
       const chunk = only || plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart).map((d) => d.date);
-      planDone = { dates: chunk.filter((d) => state.mealSlots?.[d]?.status === "confirmed" && d >= today()), invite: firstPlanReveal && dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled() };
+      planDone = { dates: chunk.filter((d) => state.mealSlots?.[d]?.status === "confirmed" && d >= today()), invite: firstDecide && dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled() };
       state.view = "plan";
       // まとめは献立タブのいちばん上に出るので、決定ボタンを押した位置から上へ戻す
       try { globalThis.scrollTo?.({ top: 0 }); } catch {}
