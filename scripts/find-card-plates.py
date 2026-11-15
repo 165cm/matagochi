@@ -72,6 +72,32 @@ def plates(im):
     return bg, out
 
 
+def dish_box(im, comp, bg):
+    """かたまりのうち、皿と料理の範囲（影を除く）。
+    影は色では見分けにくい（茶色みがある）ので形で決める：影はおもに皿の右下へ伸びるので、
+    かたまりの上側6割の横幅を皿の幅とし、高さは幅の9割までに抑える（皿も丼も、斜め上から見ると横長）。"""
+    ys = [y for _, y in comp]
+    top, bottom = min(ys), max(ys)
+    lim = top + (bottom - top) * 0.6
+    xs = [x for x, y in comp if y <= lim]
+    left, right = min(xs), max(xs) + 1
+    width = right - left
+    height = min(bottom + 1 - top, width * 0.9)
+    return left * STEP, top * STEP, right * STEP, int((top + height) * STEP)
+
+
+def fade_edges(sq, frac=0.045):
+    """枠のふちを背景色へなじませる（枠で切れた影が、ぷつっと終わらないように）。"""
+    w, h = sq.size
+    m = Image.new("L", (w, h), 255)
+    d = ImageDraw.Draw(m)
+    n = max(1, int(w * frac))
+    for i in range(n):
+        v = int(255 * i / n)
+        d.rectangle((i, i, w - 1 - i, h - 1 - i), outline=v)
+    return Image.composite(sq, Image.new("RGB", (w, h), CARD_BG), m)
+
+
 def cmd_list(files):
     for f in files:
         im = Image.open(f).convert("RGB")
@@ -100,11 +126,12 @@ def cmd_cut(picks_file, src, out_dir, size):
         if isinstance(idx, list):
             # 隣の皿とくっついている時：範囲を手で指定し、その中のいちばん大きなかたまりを使う
             im = im.crop(tuple(idx))
-            _, found = plates(im)
+            bg, found = plates(im)
             found = sorted(found, key=lambda it: -len(it[1]))[:1]
             idx = 1
         w, h = im.size
-        _, found = plates(im) if not found else (None, found)
+        if not found:
+            bg, found = plates(im)
         (x0, y0, x1, y1), comp = found[idx - 1]
         gw, gh = w // STEP, h // STEP
         keep = Image.new("L", (gw, gh), 0)
@@ -113,12 +140,15 @@ def cmd_cut(picks_file, src, out_dir, size):
             kp[x, y] = 255
         keep = keep.filter(ImageFilter.MaxFilter(5)).resize((gw * STEP, gh * STEP), Image.NEAREST).crop((0, 0, w, h)) if False else keep.filter(ImageFilter.MaxFilter(5)).resize((w, h), Image.NEAREST).filter(ImageFilter.GaussianBlur(2))
         clean = Image.composite(im, Image.new("RGB", (w, h), CARD_BG), keep)
+        # 枠の大きさは、影を除いた皿で決める（影の長さで皿が小さく見えないように。はみ出た影は端でなじませる）
+        x0, y0, x1, y1 = dish_box(im, comp, bg)
         side = int(max(x1 - x0, y1 - y0) * (1 + 2 * MARGIN))
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         sq = Image.new("RGB", (side, side), CARD_BG)
         sq.paste(clean, (int(side / 2 - cx), int(side / 2 - cy)))  # はみ出した所は背景色のまま（黒くしない）
         if trim:
             sq.paste(CARD_BG, (0, 0, int(side * trim), side))
+        sq = fade_edges(sq)
         sq.resize((size, size), Image.LANCZOS).save(Path(out_dir) / f"{rid}.webp", "WEBP", quality=82, method=6)
         print(rid, name[-12:], idx, (x1 - x0, y1 - y0))
 
