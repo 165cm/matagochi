@@ -5431,7 +5431,9 @@ function recipeCardSpec(recipe) {
   const imageInfo = cardImageInfo(recipe);
 
   // 第1段階：自動採番（No.001〜）は衝突するため非表示。明示的に catalog.cardNo がある場合のみ表示
-  const cardNo = recipe?.catalog?.cardNo ? String(recipe.catalog.cardNo) : "";
+  // 図鑑の48品（recipe.card）は、決まった番号（No.001〜048）と章・ひとことを持つ（2026-11-15。APP_MAP §70）。
+  const bookCard = recipe?.card || null;
+  const cardNo = bookCard ? bookNo(bookCard.no) : recipe?.catalog?.cardNo ? String(recipe.catalog.cardNo) : "";
 
   const proteinMap = { meat: ["🥩", "お肉"], fish: ["🐟", "お魚"], eggtofu: ["🥚", "卵・豆腐"], veg: ["🥬", "野菜"] };
   const stapleMap = { rice: ["🍚", "丼・飯"], noodle: ["🍜", "麺"], bread: ["🍞", "パン"], other: ["🍳", "おかず"] };
@@ -5483,6 +5485,8 @@ function recipeCardSpec(recipe) {
 
   const out = {
     cardNo,
+    chapter: bookCard?.chapter || "",
+    catchLine: bookCard?.catch || "",
     artUrl: imageInfo.url,
     imageKind: imageInfo.kind,
     imageLabel: imageInfo.label,
@@ -5751,7 +5755,7 @@ function renderRecipeTradingCard(recipe, opts = {}) {
     isAnchor = false,
     mode = "tray",
   } = opts;
-  const rankClass = spec.isCollected ? `is-collected is-rank-${spec.rank}` : "is-draft";
+  const rankClass = `${spec.isCollected ? `is-collected is-rank-${spec.rank}` : "is-draft"}${spec.chapter ? ` is-book is-ch-${spec.chapter}` : ""}`;
   // 理由の札は写真に重ねない。全員に同じ理由が並ぶ時は、呼び出し側でよはくの一言にまとめて、ここには違いだけを渡す。
   const reasonChip = opts.reasonChip != null
     ? opts.reasonChip
@@ -5786,6 +5790,7 @@ function renderRecipeTradingCard(recipe, opts = {}) {
             <h4 class="rc-dish-title">${recipeTitleHtml(recipe)}</h4>
             ${reasonChip ? `<span class="rc-reason-chip">${escapeHtml(reasonChip)}</span>` : ""}
           </div>
+          ${spec.catchLine ? `<p class="rc-catch">${escapeHtml(spec.catchLine)}</p>` : ""}
           <p class="rc-tag-line">${tagWords.map((w) => `<span>${escapeHtml(w)}</span>`).join("")}</p>
           <dl class="rc-stats">${stats.map(([k, v, cls]) => `<div class="${cls}"><dt>${k}</dt><dd>${escapeHtml(v)}</dd></div>`).join("")}</dl>
           ${spec.creator ? `<p class="rc-creator">by ${escapeHtml(spec.creator)}</p>` : ""}
@@ -6014,7 +6019,7 @@ function renderCardFlipModal() {
     <div class="rc-flip-backdrop" data-action="life-card-flip-close"></div>
     <div class="rc-flip-card">
       <div class="rc-flip-head">
-        <span class="rc-flip-tag">📖 カード裏面（材料・作り方・出典）</span>
+        <span class="rc-flip-tag">${r.card ? `📖 ${escapeHtml(spec.cardNo)}・${escapeHtml(bookChapterName(r.card.chapter))}` : "📖 カード裏面（材料・作り方・出典）"}</span>
         <button type="button" class="round-icon" data-action="life-card-flip-close" aria-label="裏面を閉じる">✕</button>
       </div>
       <div class="rc-flip-hero">
@@ -6027,6 +6032,7 @@ function renderCardFlipModal() {
         </div>
       </div>
 
+      ${renderCardStory(r)}
       ${r.videoUrl ? `<div class="rc-flip-video">
         ${thumb ? `<img src="${escapeAttr(thumb)}" alt="${escapeAttr(r.title)}の動画サムネイル" loading="lazy">` : ""}
         <div class="rc-flip-video-body">
@@ -6131,19 +6137,80 @@ function renderCardGetModal() {
   </div>`;
 }
 
-// 「📖 わが家のカード図鑑」シート（GET済のカードと、これから作れる未調理カードを一覧）
-// わが家のカード図鑑：振り返りタブの「わたしの食卓」の見せ方の1つ（カレンダー・写真・図鑑。2026-11-11 のユーザーの判断）
+// ----- わが家のカード図鑑：最初から入っている48品（No.001〜048・6章）に固定（2026-11-15 のユーザーの判断。APP_MAP §70） -----
+const BOOK_CHAPTERS = [["meat", "🥩", "肉のおかず"], ["fish", "🐟", "魚のおかず"], ["eggtofu", "🥚", "卵と豆腐"], ["veg", "🥬", "野菜"], ["bowl", "🍚", "丼・ワンプレート"], ["noodle", "🍜", "麺とパン"]];
+const bookNo = (n) => `No.${String(n).padStart(3, "0")}`;
+const bookChapterName = (id) => (BOOK_CHAPTERS.find((c) => c[0] === id) || ["", "", ""])[2];
+const bookCards = () => Lifestyle.starters.filter((r) => r.card).sort((a, b) => a.card.no - b.card.no);
+// その料理で埋まる図鑑のカード：48品そのもの・その保存した写し・同じ料理名（親）の動画レシピ。なければ null（番外）。
+function bookCardRecipe(recipe) {
+  if (!recipe) return null;
+  const cards = bookCards();
+  const direct = cards.find((s) => s.id === recipe.id || s.id === recipe.starterId);
+  if (direct) return direct;
+  const norm = (x) => (typeof folderNorm === "function" ? folderNorm(x) : String(x || "").trim());
+  const k = recipe.dish ? norm(recipe.dish) : "";
+  return k ? cards.find((s) => s.dish && norm(s.dish) === k) || null : null;
+}
+// 食べられないもの・苦手なものが入っていて作れないカードは「対象外」（そろえる数に入れない）。時間・道具では外さない。
+function bookExcluded(recipe) {
+  const p = dailyProfile();
+  if (!(p.restrictions?.length || p.dislikes?.length)) return false;
+  return !Lifestyle.fit(recipe, Lifestyle.profile({ completed: true, restrictions: p.restrictions, dislikes: p.dislikes }), today()).ok;
+}
+// 図鑑の進み具合：got＝作ったカード／target＝そろえる数（対象外を除く。対象外でも作っていれば数える）
+function bookProgress() {
+  const rows = bookCards().map((r) => { const cooks = cardCookCount(r); return { r, cooks, out: cooks === 0 && bookExcluded(r) }; });
+  return { rows, got: rows.filter((x) => x.cooks > 0).length, target: rows.filter((x) => !x.out).length, out: rows.filter((x) => x.out).length };
+}
+// カードの裏の読みもの（図鑑の48品だけ）：ひとこと＋5つの見出し。同じ料理名の動画レシピがあれば、そちらへ誘う。
+function renderCardStory(r) {
+  const c = r?.card;
+  if (!c) return "";
+  const rows = [["🍳", "作れると", c.make], ["😋", "食べる人は", c.eat], ["🥗", "栄養メモ", c.nutrition], ["⏱", "ここが楽", c.easy], ["💡", "豆知識", c.trivia]].filter((x) => x[2]);
+  const videos = r.dish && typeof parentChildren === "function" && !isViewer() ? parentChildren(parentKeyOf(r)).filter((x) => x.videoUrl).length : 0;
+  return `<section class="rc-story is-ch-${escapeAttr(c.chapter)}" aria-label="このカードのはなし">
+    <p class="rc-story-catch hand"><span class="marker">${escapeHtml(c.catch)}</span></p>
+    <dl class="rc-story-list">${rows.map(([icon, label, text]) => `<div><dt><span aria-hidden="true">${icon}</span> ${label}</dt><dd>${escapeHtml(text)}</dd></div>`).join("")}</dl>
+    ${videos ? `<button type="button" class="secondary-button rc-story-videos" data-action="life-card-videos" data-dish="${escapeAttr(r.dish)}">🎬 動画の作り方を見る（${videos}本）›</button>` : ""}
+  </section>`;
+}
+function renderBookTile({ r, cooks, out }) {
+  const rank = cooks >= 3 ? "gold" : cooks === 2 ? "silver" : cooks >= 1 ? "bronze" : "";
+  const state = cooks >= 3 ? `👑 定番・${cooks}回` : cooks === 2 ? "★★ 常連・2回" : cooks === 1 ? "★ GET" : out ? "対象外" : "まだ";
+  const cls = cooks > 0 ? `is-got is-rank-${rank}` : out ? "is-out" : "is-yet";
+  return `<button type="button" class="bk-tile ${cls}" data-action="life-card-flip" data-recipe="${escapeAttr(r.id)}" aria-label="${escapeAttr(`${bookNo(r.card.no)} ${r.title}（${state}）`)}">
+    <span class="bk-no">${bookNo(r.card.no)}</span>
+    <span class="bk-art"><img src="${escapeAttr(cardArtOf(r))}" alt="" loading="lazy"></span>
+    <b class="bk-name">${escapeHtml(r.title)}</b>
+    <small class="bk-state">${escapeHtml(state)}</small>
+  </button>`;
+}
+// 振り返りタブの「わたしの食卓」の見せ方の1つ（カレンダー・写真・図鑑。2026-11-11 のユーザーの判断）
 function renderCardBookInline() {
-  const all = allDinnerRecipes();
-  const collected = all.filter((r) => cardCookCount(r) > 0);
-  const drafts = all.filter((r) => cardCookCount(r) === 0).slice(0, 12);
+  const { rows, got, target, out } = bookProgress();
+  const pct = target ? Math.round((got / target) * 100) : 0;
+  const chapters = BOOK_CHAPTERS.map(([id, icon, name]) => {
+    const list = rows.filter((x) => x.r.card.chapter === id);
+    const g = list.filter((x) => x.cooks > 0).length, t = list.filter((x) => !x.out).length;
+    const done = t > 0 && g >= t;
+    return `<section class="bk-chapter is-ch-${id}${done ? " is-done" : ""}" aria-label="${escapeAttr(name)}">
+      <h4 class="bk-chapter-head"><span>${icon} ${escapeHtml(name)}</span><b>${done ? "🎉 コンプリート" : `${g} / ${t}`}</b></h4>
+      <div class="bk-grid">${list.map(renderBookTile).join("")}</div>
+    </section>`;
+  }).join("");
+  // 番外：図鑑の48品にあたらない料理（集めた動画・自分のレシピ）で、作ったことのあるもの
+  const extras = isViewer() ? [] : allDinnerRecipes().filter((r) => cardCookCount(r) > 0 && !bookCardRecipe(r));
+  const words = got === 0 ? "「作った！」を記録すると、カードが集まるよ" : got >= target ? "ぜんぶそろった！ 次は 👑 定番に育てよう" : `あと${target - got}枚。同じ料理の動画レシピで作っても集まるよ`;
   return `<div class="rc-book">
-    <p class="small muted">献立で選んで「作った！」を記録すると、カードが集まります（GET済 ${collected.length}枚）。</p>
-    ${collected.length ? `<h4 class="rc-book-sec-title">✨ 作ってGETしたカード（${collected.length}枚）</h4>
-      <div class="rc-grid">${collected.map((r) => renderRecipeTradingCard(r, { mode: "book" })).join("")}</div>`
-    : `<div class="rc-book-empty"><p>まだGETしたカードがありません。献立を作って「作った！」を押すと、ここにカードが集まります。</p></div>`}
-    <h4 class="rc-book-sec-title">📝 これから作ってGETできるカード（一部）</h4>
-    <div class="rc-grid">${drafts.map((r) => renderRecipeTradingCard(r, { mode: "book" })).join("")}</div>
+    <div class="bk-summary">
+      <p class="bk-count"><b>${got}</b><span> / ${target}枚</span></p>
+      <div class="bk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${got}" aria-label="図鑑の進み具合"><i style="width:${pct}%"></i></div>
+      <p class="small muted">${escapeHtml(words)}${out ? `（食べられないものが入る${out}枚は対象外）` : ""}</p>
+    </div>
+    ${chapters}
+    ${extras.length ? `<h4 class="rc-book-sec-title">✨ 番外のカード（${extras.length}枚）</h4><p class="small muted">図鑑の48品のほかに、作った料理です。</p>
+      <div class="rc-grid">${extras.map((r) => renderRecipeTradingCard(r, { mode: "book" })).join("")}</div>` : ""}
   </div>`;
 }
 // 古い呼び名（テスト・ほかの場所から）
@@ -6217,6 +6284,16 @@ function handleCardTrayAction(action, data, before) {
     return true;
   }
   // 決定済みのまとまりの候補カードを開く・閉じる（§67-1-4）
+  // カードの裏の「🎬 動画の作り方を見る」：裏面を閉じて、レシピ一覧でその料理名を探す（§70）
+  if (action === "life-card-videos" && data.dish) {
+    trayFlipId = "";
+    syncHasSheetBodyClass();
+    state.searchText = String(data.dish).slice(0, 20);
+    if (typeof recipeTab !== "undefined") recipeTab = "starter";
+    if (typeof folderOpen !== "undefined") folderOpen = "";
+    state.view = "collection";
+    return true;
+  }
   if (action === "life-tray-more") { trayMoreOpen = true; trayPage = 0; return true; }
   if (action === "life-tray-less") { trayMoreOpen = false; trayActiveChosen = false; trayAnchorId = ""; return true; }
   if (action === "life-tray-select-day" && data.date) {
