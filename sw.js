@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v235";
-const APP_VERSION = "20261114-new-starters";
+const CACHE_NAME = "ripigochi-v236";
+const APP_VERSION = "20261115-card-art-1";
 const CORE_ASSETS = [
   "./assets/dish-picks/shogayaki.webp",
   "./assets/dish-picks/karaage.webp",
@@ -25,7 +25,7 @@ const CORE_ASSETS = [
   `./taste-ui.js?v=${APP_VERSION}`,
   ...Array.from({length:8}, (_,i) => `./assets/taste/${i+1}.webp`),
   ...["teriyaki","tomato-pasta","porkkimchi","kinoko-udon","tofu-egg","tomato-cheese"].map(n => `./assets/dishes/${n}.webp`),
-  ...["03","04","07","08","09","10","11","12","14","15","16","17","18","19","20","21","22","23","24","25","26","27","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"].map(n => `./assets/dishes/starter-${n}.webp`),
+  ...["03", "04", "07", "08", "09", "10", "11", "12", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "51", "52", "53", "54", "55", "59", "60", "61", "62", "65", "66", "67", "69", "70", "71", "75", "76", "77", "78", "83", "84", "85", "86", "87", "90", "91", "92", "93", "94", "95", "96"].map(n => `./assets/dishes/starter-${n}.webp`),
   ...["rice","noodle","bread","okazu"].map(n => `./assets/dishes/fallback-${n}.webp`),
   ...["normal","wave","popup","open","wait","bowl","happy"].map(n => `./assets/yohaku/${n}.webp?v=${APP_VERSION}`),
   `./starter-recipes.js?v=${APP_VERSION}`,

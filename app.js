@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261114-new-starters";
+const APP_VERSION = "20261115-card-art-1";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -2116,7 +2116,7 @@ const STARTER_PHOTOS = {
   "starter-06": "assets/dishes/tomato-cheese.webp",
 };
 // Split from AI-generated 3x2 sheets (scripts/split-dish-sheet.py); keep in sync with sw.js.
-const STARTER_SHEET_PHOTOS = ["03", "04", "07", "08", "09", "10", "11", "12", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48"];
+const STARTER_SHEET_PHOTOS = ["03", "04", "07", "08", "09", "10", "11", "12", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "51", "52", "53", "54", "55", "59", "60", "61", "62", "65", "66", "67", "69", "70", "71", "75", "76", "77", "78", "83", "84", "85", "86", "87", "90", "91", "92", "93", "94", "95", "96"];
 STARTER_SHEET_PHOTOS.forEach((n) => { STARTER_PHOTOS[`starter-${n}`] = `assets/dishes/starter-${n}.webp`; });
 function recipeThumbnail(recipe) {
   if (recipe.thumbnailUrl) return recipe.thumbnailUrl;
