@@ -766,6 +766,23 @@ function planDecideSummary(days, block = "") {
   for (const x of picked) for (const k of new Set(Lifestyle.useUpKeys(x.recipe))) freq.set(k, (freq.get(k) || 0) + 1);
   return { buy, reuse: [...freq.entries()].filter(([, c]) => c >= 2).map(([k]) => k).slice(0, 2) };
 }
+// 決定した直後のまとめ（1回だけ。ほかの操作・タブの切り替えで消える）：{ dates, invite }
+let planDone = null;
+function renderPlanDone() {
+  if (!planDone || isViewer()) return "";
+  const slots = planDone.dates.map((d) => state.mealSlots?.[d]).filter((x) => x?.status === "confirmed" && x.recipe);
+  if (!slots.length) return "";
+  const last = slots[slots.length - 1].date;
+  // 1週間より先（次回の分）は、どの水曜か分かるように日付で
+  const until = last === today() ? "今夜は" : daysBetween(today(), last) > 6 ? `${formatDate(last)}（${weekdayLabel(last)}）まで` : `${weekdayLabel(last)}曜まで`;
+  const list = dailyShopping();
+  const buy = list.filter((x) => x.status === "buy").length, have = list.filter((x) => x.status === "have").length;
+  const freq = new Map();
+  for (const x of slots) for (const k of new Set(Lifestyle.useUpKeys(x.recipe))) freq.set(k, (freq.get(k) || 0) + 1);
+  const reuse = [...freq.entries()].filter(([, c]) => c >= 2).map(([k]) => k).slice(0, 2);
+  const lines = [reuse.length ? `🧺 <b>${escapeHtml(reuse.join("・"))}</b>を使い回し` : "", have ? `🧂 <b>${have}品</b>は家にある物で` : ""].filter(Boolean);
+  return `<section class="plan-done" role="status" aria-label="献立が決まりました"><h2>${until}、<span class="marker nobr">もう考えなくて大丈夫</span></h2><p class="plan-done-sub">${slots.length}日分の夜ごはんが決まりました</p><div class="plan-done-thumbs">${slots.map((x) => dishTile(x.recipe)).join("")}</div>${lines.length ? `<p class="plan-done-sum">${lines.join("<br>")}</p>` : ""}${dailyButton("go-view", buy ? `🛒 買う物 ${buy}品を見る` : "🛒 買い物リストを見る", 'data-view="shopping"', true)}<button type="button" class="text-button" data-action="life-plan-done-close">あとで見る</button>${planDone.invite ? renderFirstInvite() : ""}</section>`;
+}
 let planTuneOpen = false; // 「好みに寄せる」を押した後は、開いたまま組み直しを見せる
 function renderPlanDecide(days, block = "") {
   const todo = days.filter((d) => d.candidate);
@@ -836,7 +853,7 @@ function renderDailyPlan() {
   // 外したもの：週のカレンダー（ページと同じ情報）・バランスの内訳・まとめて評価（ページの「評価する」と今日の画面で）・
   // 動画の読み取りの案内・ふたりで使う誘い（最初の献立の画面で1回）・「お試しの提案」・食材制限の ⓘ（作る画面と設定にある）。
   const list = `<section class="plan-list">${cards}${trayOn && !rhythmOn() ? renderTrayActionBar(trayDays) : ready && !rhythmOn() ? renderPlanDecide(plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart)) : ""}</section>`;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${renderFirstInvite()}${trayOn ? renderCardTraySheet() : ""}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderPlanDone()}${list}${trayOn ? renderCardTraySheet() : ""}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
 }
 // ---- 献立のページ（買い物のひとかたまりごと・横スライド） ----
 let planPage = ""; // 見ているページ（ひとかたまりの key）。描き直しても同じページのまま
@@ -3130,7 +3147,14 @@ function handleDailyAction(action, data) {
     planTuneOpen = false;
     if (hadConfirmed) changedShopping(before);
     else shoppingNotice = "";
-    state.view = "shopping";
+    // 決定した直後は、買い物タブへ飛ばずに「もう考えなくて大丈夫」のまとめを献立タブに出す（2026-11-15。docs/UX_REDESIGN.md の2番・APP_MAP §77）
+    if (targets.length) {
+      const chunk = only || plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart).map((d) => d.date);
+      planDone = { dates: chunk.filter((d) => state.mealSlots?.[d]?.status === "confirmed" && d >= today()), invite: firstPlanReveal && dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled() };
+      state.view = "plan";
+      // まとめは献立タブのいちばん上に出るので、決定ボタンを押した位置から上へ戻す
+      try { globalThis.scrollTo?.({ top: 0 }); } catch {}
+    } else state.view = "shopping";
   }
   // 献立が始まる前の日の「今夜のおすすめ」を決める（§68）。その日だけの一品で、リズムの始まりは動かさない。
   if (action === "life-tonight-pick" && !isViewer() && prestartUntil() && !state.mealSlots?.[today()]) {
@@ -3626,6 +3650,9 @@ function handleDailyAction(action, data) {
   // The first-plan welcome stays until the next real action on the plan.
   if (!["life-finish", "life-rhythm", "life-plan-tune"].includes(action)) firstPlanReveal = false;
   if (action === "life-reveal-close") firstPlanReveal = false;
+  // 決定直後のまとめは、ほかの操作をしたら片づける（招待の「あとで」は招待だけ閉じる）
+  if (action === "life-reveal-close" && planDone) planDone.invite = false;
+  else if (action !== "life-confirm") planDone = null;
   if (action === "life-record-back") { recordDraft = null; state.view = "repeat"; }
   if (action === "life-record-cycle" && recordDraft && CYCLE_CHOICES.some((c) => c.cycle === data.cycle)) {
     recordDraft.memo = document.querySelector("#record-memo")?.value ?? recordDraft.memo;
@@ -4769,8 +4796,6 @@ function renderFirstPlanReveal() {
     ${invite ? "" : `<button type="button" class="text-button" data-action="life-reveal-close">閉じる</button>`}</section>`;
 }
 function renderFirstInvite() {
-  if (!firstPlanReveal || isViewer()) return "";
-  if (!(dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled())) return "";
   return `<div class="first-invite is-after"><p><b>ふたりで使う？</b><br><small>相手が「これ食べたい」を送れるようになります。</small></p><div class="actions">${dailyButton("life-share-open", "相手を招待する")}<button type="button" class="text-button" data-action="life-reveal-close">あとで</button></div></div>`;
 }
 
@@ -4864,6 +4889,7 @@ function resetCardTrayModals() {
   // タブを切り替えたら、裏面などの重なった画面は閉じる。選び直しの途中（下書き）は残す（献立タブに戻れば続きから）
   trayOpen = false;
   trayMoreOpen = false;
+  planDone = null;
   if (!isTrayDraftActive()) {
     trayDraft = {};
     trayInitialDraft = {};

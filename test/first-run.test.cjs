@@ -203,6 +203,8 @@ test("first-plan tune buttons: a tap remembers the lean and re-plans only undeci
   const run = app("2026-11-16T10:00:00");
   finishWith(run, "mix");
   assert.equal(run("firstPlanReveal"), true);
+  // 招待の案内は、決める前は出さない（決定直後のまとめの中で。APP_MAP §77）
+  assert.ok(!run("renderDailyPlan()").includes("life-share-open"), "no invite before deciding");
   // 好みに寄せるボタンは、お祝いの中ではなく、決定ボタンの下の「ちょっと違う？」に（最初は開いている。docs/UX_REDESIGN.md）
   assert.ok(!run("renderFirstPlanReveal()").includes("life-plan-tune"), "the welcome no longer pushes the menu down");
   const html = run("renderDailyPlan()");

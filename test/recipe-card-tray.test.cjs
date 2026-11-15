@@ -1026,6 +1026,18 @@ test("23. Plan tab is quiet: plan cards, one decide button with the shopping/reu
   run(`handleDailyAction("life-confirm", {})`);
   assert.equal(run(`dailyShopping().filter((x) => x.status === "buy").length`), n);
   assert.ok(!run(`renderDailyPlan()`).includes("plan-decide"), "Nothing to decide after deciding");
+  // 決定した直後：献立タブのまま「もう考えなくて大丈夫」のまとめ。買う物の数は買い物リストと同じ（APP_MAP §77）
+  assert.equal(run(`state.view`), "plan");
+  const done = run(`renderPlanDone()`);
+  assert.match(done, /曜まで、<span class="marker nobr">もう考えなくて大丈夫/);
+  assert.ok(done.includes(`🛒 買う物 ${n}品を見る`) && done.includes('data-view="shopping"'));
+  assert.equal((done.match(/class="dish-tile/g) || []).length, run(`planDone.dates.length`), "One photo per decided day");
+  assert.ok(run(`renderDailyPlan()`).indexOf("plan-done") < run(`renderDailyPlan()`).indexOf('class="plan-list"'), "Above the plan cards");
+  // ほかの操作・タブの切り替えで片づく
+  run(`handleDailyAction("life-plan-done-close", {})`);
+  assert.equal(run(`renderPlanDone()`), "");
+  run(`planDone = { dates: [], invite: false }; resetCardTrayModals()`);
+  assert.equal(run(`planDone`), null);
   // 先に1日だけ決めて、その材料を買った後：予告は、買った印を引いた数（Codex review #252）
   const run3 = app();
   run3(`const d = dailyPlan().find((x) => x.candidate); confirmDaily(d);`);
