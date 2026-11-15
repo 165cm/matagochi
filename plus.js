@@ -283,7 +283,7 @@ function renderFeedbackSheet() {
   const close = '<button type="button" class="tk-close" data-action="life-fb-close" aria-label="閉じる">×</button>';
   let body;
   if (f.step === "thanks") body = `<div class="fb-head"><p class="fb-title">💐 お気持ち、ありがとう！</p>${close}</div>
-    <p class="fb-lead">いまはβ版。<b>ぜんぶ無料</b>でお使いください。</p>
+    <p class="fb-lead">いまは開発期間（2026年12月31日まで）。<b>ぜんぶ無料</b>でお使いください。</p>
     <p class="fb-gift">🎁 改善してほしいことを送ってくれた方に、正式版で<b>3か月無料</b>の招待コードを。</p>
     <button type="button" class="primary-button full-button" data-action="life-fb-form">✍️ 意見を送る</button>
     <button type="button" class="text-button full-button" data-action="life-fb-close">閉じる</button>`;
