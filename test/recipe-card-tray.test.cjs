@@ -343,7 +343,7 @@ test("7. Opening 3-day tray from '今夜の4皿' (swapDate) commits pass learnin
   );
 });
 
-test("8. Card Book opens in the reflection tab (図鑑) and cooking does not block 1-tap post-meal rating", () => {
+test("8. Card Book lives in the recipe tab (🃏 図鑑); the card back can add the dish to the plan; cooking does not block 1-tap post-meal rating", () => {
   const run = app();
   const todayDate = run(`today()`);
   const recipe = run(`dailyPlan().find(d => d.date === ${JSON.stringify(todayDate)})?.candidate?.recipe || allDinnerRecipes()[0]`);
@@ -359,15 +359,35 @@ test("8. Card Book opens in the reflection tab (図鑑) and cooking does not blo
   assert.ok(todayHtml.includes("tonight-quick-rate") && todayHtml.includes('data-action="life-rate"'), "Today tab must show 1-tap rating immediately after cooking");
   assert.ok(todayHtml.includes("rc-get-inline-banner"), "Today tab shows non-blocking inline Card GET banner");
 
-  // 図鑑は振り返りタブの「🃏 図鑑」で見る（2026-11-11 のユーザーの判断）
+  // 図鑑はレシピタブの「🃏 図鑑」で見る（2026-11-15 のユーザーの判断。APP_MAP §78）
   run(`setView = (v) => { state.view = v; }`);
   run(`handleCardTrayAction("life-card-book-open", {})`);
-  assert.equal(run(`state.view`), "repeat");
-  assert.equal(run(`reflView`), "book");
+  assert.equal(run(`state.view`), "collection");
+  assert.equal(run(`recipeTab`), "book");
+  const bookHtml = run(`renderCollection()`);
+  assert.match(bookHtml, /data-action="life-recipe-tab" data-tab="book">🃏 図鑑 <small>1\/\d+<\/small>/, "The tab shows the progress");
+  assert.ok(bookHtml.includes("rc-book") && bookHtml.includes("bk-chapter"), "Card book renders in the recipe tab");
+  assert.ok(!bookHtml.includes("recipe-grid"), "No recipe list under the book");
   const reflHtml = run(`renderReflection()`);
-  assert.ok(reflHtml.includes('data-view="book" aria-pressed="true"'), "図鑑 is a view of the reflection tab");
-  assert.ok(reflHtml.includes("rc-book"), "Card book renders inline in the reflection tab");
+  assert.ok(!reflHtml.includes("rc-book") && !reflHtml.includes('data-view="book"'), "The reflection tab no longer holds the book");
+  assert.ok(reflHtml.includes('data-action="life-card-book-open"'), "…but links to it");
   assert.ok(!run(`renderToday()`).includes("わが家のカード図鑑"), "Card book no longer opens over Today");
+  // 探している時は、図鑑のタブでも検索の結果を出す
+  run(`state.searchText = "鮭"`);
+  assert.ok(run(`renderCollection()`).includes("recipe-grid"));
+  run(`state.searchText = ""`);
+  // カードの裏の「🗓 献立に入れる」：その料理の画面で「いつ？」が開く
+  const yet = run(`bookProgress().rows.find((x) => !x.cooks && !x.out).r.id`);
+  run(`handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(yet)} })`);
+  assert.ok(run(`renderCollection()`).includes('data-action="life-card-place"'), "The back offers 献立に入れる");
+  run(`handleCardTrayAction("life-card-place", { recipe: ${JSON.stringify(yet)} })`);
+  assert.equal(run(`trayFlipId`), "");
+  assert.equal(run(`state.view`), "recipe");
+  assert.equal(run(`placeRecipeId`), yet);
+  assert.ok(run(`renderPlaceSheet(detailRecipe())`).includes('data-action="life-place"'), "Days to choose from");
+  // 見るだけの家族には出さない
+  run(`state.view = "collection"; isViewer = () => true; handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(yet)} })`);
+  assert.ok(!run(`renderCardFlipModal()`).includes("life-card-place"));
 });
 
 test("9. The tray is part of the plan tab (no sheet); Escape closes only the card back; tab switch keeps an edited draft", () => {

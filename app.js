@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261115-plan-done";
+const APP_VERSION = "20261115-recipe-book";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1816,9 +1816,11 @@ function renderPickedDishes(starters) {
 const mineLabel = () => (syncEnabled() ? "わが家のレシピ" : "わたしのレシピ");
 function renderCollection() {
   loadDiscover();
-  if (!["starter", "saved", "folders"].includes(recipeTab)) recipeTab = "starter";
+  if (!["starter", "saved", "folders", "book"].includes(recipeTab)) recipeTab = "starter";
   // おすすめを隠している人は、わたしのレシピだけ。
   if (recipeTab === "starter" && !showStarters()) recipeTab = "saved";
+  // 🃏 図鑑（48品）はレシピタブの中（2026-11-15 のユーザーの判断。docs/UX_REDESIGN.md の3番・APP_MAP §78）
+  const book = typeof bookProgress === "function" ? bookProgress() : null;
   const query = state.searchText.trim();
   const allSaved = getFilteredRecipes({ allMeals: true });
   const profile = dailyProfile();
@@ -1856,7 +1858,8 @@ function renderCollection() {
   const head = `${isViewer() ? '<p class="page-hint">食べたいのは🙋で送ろう</p>' : `<div class="page-actions"><button type="button" class="round-icon round-add" data-action="go-view" data-view="register" aria-label="レシピを追加する"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>`}
     <label class="search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="recipe-search" type="search" placeholder="料理名・材料・投稿者で探す" aria-label="レシピを探す" value="${escapeAttr(state.searchText)}"></label>
     ${renderStarterHint()}
-    <div class="recipe-tabs" role="tablist" aria-label="表示するレシピ">${showStarters() ? tab("starter", "おすすめ") : ""}${tab("saved", mineLabel(), state.recipes.length)}</div>`;
+    <div class="recipe-tabs" role="tablist" aria-label="表示するレシピ">${showStarters() ? tab("starter", "おすすめ") : ""}${book ? tab("book", "🃏 図鑑", `${book.got}/${book.target}`) : ""}${tab("saved", mineLabel(), state.recipes.length)}</div>`;
+  if (recipeTab === "book" && !query && book) return `${head}${renderCardBookInline()}${trayFlipId ? renderCardFlipModal() : ""}`;
   if (recipeTab === "folders" && !query) return `${head}<button type="button" class="text-button cooking-back" data-action="life-recipe-tab" data-tab="saved">‹ ${mineLabel()}</button>${renderFolders()}`;
   const grid = (tiles, empty) => `<section class="recipe-grid">${tiles || (filtering ? '<p class="muted small">この組み合わせの料理はありません。条件をひとつ外してみてください。</p>' : empty)}</section>`;
   if (mineTab) {

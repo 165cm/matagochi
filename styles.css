@@ -5834,3 +5834,12 @@ body.has-sheet { overflow: hidden; }
 .plan-done > .primary-button { width: 100%; min-height: 52px; font-size: 16px; }
 .plan-done > .text-button { min-height: 44px; }
 .plan-done .first-invite.is-after { margin: 4px 0 0; text-align: left; }
+
+/* 図鑑はレシピタブへ（2026-11-15。APP_MAP §78）：まだのカードも絵は色つきのまま見せる（次に作る料理を選べる） */
+.bk-tile.is-yet .bk-art img { filter: none; opacity: 1; }
+.bk-tile.is-yet .bk-name { color: var(--ink); }
+.rc-flip-foot { display: flex; flex-wrap: wrap; gap: 8px; }
+.rc-flip-foot > button { flex: 1 1 140px; min-height: 48px; }
+/* アプリの幅は広い画面でもスマホ幅のままなので、図鑑はいつも3列（6列だと絵と料理名がつぶれる）。3つのタブは1行に収める */
+@media (min-width: 560px) { .bk-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.recipe-tabs .chip-tab { padding: 0 6px; font-size: 13px; white-space: nowrap; }

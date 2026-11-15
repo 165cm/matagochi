@@ -17,12 +17,13 @@ function app() {
 // 新着をまねる：定番の料理に料理名（dish）をつけて n 品。
 const seed = (run, n = 30, dishes = ["麻婆豆腐", "肉じゃが", "", ""]) => run(`discover.trends = Array.from({ length: ${n} }, (_, i) => { const r = Lifestyle.curated[i % Lifestyle.curated.length]; const d = ${JSON.stringify(dishes)}[i % ${dishes.length}]; return { videoId: "v" + i, title: (d ? d + i : r.title + i), ingredients: r.ingredients, steps: r.steps, videoUrl: "https://youtu.be/v" + i, thumbnailUrl: "", channelTitle: "テスト", ...(d ? { dish: { name: d } } : {}), planning: r.planning, tags: [] }; }); discover.savedAt = new Date().toISOString();`);
 
-test("two tabs only; the list starts with search, one row of mood buttons and the dishes", () => {
+test("three tabs (おすすめ・🃏 図鑑・わたしのレシピ); the list starts with search, one row of mood buttons and the dishes", () => {
   const run = app();
   seed(run);
   const html = run("renderCollection()");
   const tabs = html.match(/data-action="life-recipe-tab" data-tab="(\w+)"/g).map((x) => x.match(/data-tab="(\w+)"/)[1]);
-  assert.deepEqual([...new Set(tabs)], ["starter", "saved"]);
+  // 2026-11-15：図鑑がふりかえりタブから引っ越してきた（APP_MAP §78）
+  assert.deepEqual([...new Set(tabs)], ["starter", "book", "saved"]);
   assert.ok(html.includes("料理名・材料・投稿者で探す"));
   assert.ok(!html.includes("save-guide") && !html.includes("paste-recipe-url"), "no save instructions on top");
   assert.ok(!html.includes('class="facets"'), "the full filter list is folded");
