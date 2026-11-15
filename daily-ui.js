@@ -745,8 +745,6 @@ function renderPlanBalance(plan, locks = new Set()) {
   return `<p class="plan-balance-low small" role="status">🥬 ${escapeHtml(b.vegLabel)}</p>`;
   return `<div class="plan-balance-bar" role="status" aria-label="献立のバランス"><span class="pb-chip pb-protein">${escapeHtml(b.proteinText)}</span><span class="pb-chip pb-veg ${b.vegCount < 3 ? "is-low" : ""}">${escapeHtml(b.vegLabel)}</span><span class="pb-mood">${escapeHtml(b.moodNote)}</span>${tip(`主菜の内訳と、使う野菜の種類（${b.vegKinds.length ? b.vegKinds.join("・") : "なし"}）のざっくり目安です。栄養価の計算ではありません`)}</div>`;
 }
-// 献立タブの中に候補カードの棚（3日トレイ）を出すか。false＝出さない（しくみは残してある。片づけは docs/UX_REDESIGN.md の4番）
-let TRAY_INLINE = false;
 // まとまりを決める時の1行：買う物の数と、2日以上で使う食材（すでにある計算だけ。新しい推定はしない）
 function planDecideSummary(days, block = "") {
   const picked = days.map((d) => ({ date: d.date, recipe: d.slot?.status === "confirmed" ? d.slot.recipe : d.candidate?.recipe, todo: !!d.candidate })).filter((x) => x.recipe);
@@ -798,20 +796,10 @@ function renderDailyPlan() {
   const locks = lockedDates(plan);
   shareShown(plan.filter((d) => !locks.has(d.date) && !d.off));
   const n = state.planLength || 3;
-  // 献立トレイは献立タブの中にまとめる（2026-11-11 のユーザーの判断）：上の献立カードが「トレイ」。下に決定・よはく・候補カード
-  // 2026-11-15 のユーザーの判断（docs/UX_REDESIGN.md）：献立タブは「見る → 決める」だけ。候補カードの棚は出さず、変えるのは「⇄ 変更」（今夜の4皿）の1つ
-  const trayDays = isViewer() || !TRAY_INLINE ? [] : trayTargetDays();
-  const trayOn = trayDays.length > 0;
-  if (trayOn) prepareInlineTray(trayDays);
-  const trayDates = new Set(trayDays.map((d) => d.date));
-  const thinking = trayOn && trayThinking;
+  // 献立タブは「見る → 決める」だけ（2026-11-15。APP_MAP §76）：変えるのは「⇄ 変更」（今夜の4皿）の1つ
   const cardList = plan
     .map((day, dayIdx) => {
-      const inTray = trayDates.has(day.date);
-      const drafted = inTray && Object.prototype.hasOwnProperty.call(trayDraft, day.date) && (trayDraft[day.date] || null) !== (trayInitialDraft[day.date] || null);
-      const recipe = inTray ? trayDayRecipe(day) : day.slot?.recipe || day.candidate?.recipe;
-      const trayIdx = inTray ? trayDays.findIndex((d) => d.date === day.date) : -1;
-      const isActive = inTray && trayActiveDate === day.date && (trayActiveChosen || !trayDayRecipe(day));
+      const recipe = day.slot?.recipe || day.candidate?.recipe;
       const dateLabel = `${formatDate(day.date)}（${weekdayLabel(day.date)}）`;
       const badge = day.date === today() ? '<span class="today-badge">今夜</span>' : "";
       if (day.prestart) return `<article class="plan-card is-off"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>🛒</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">いつもどおりで</strong><p class="plan-time">献立は${formatDate(prestartUntil())}から</p></div></article>`;
@@ -821,24 +809,18 @@ function renderDailyPlan() {
         return `<article class="plan-card is-off"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>${SKIP_OF[day.slot?.kind]?.icon || "🌙"}</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">${escapeHtml(skipLabel(day.slot))}</strong><div class="plan-controls"><button type="button" class="plan-icon" data-action="life-reopen" data-date="${day.date}">料理する</button></div></div></article>`;
       // ロックの日（無料の、明日から先）：料理はチラ見せして、決める操作の代わりにプラスの案内（2026-11-15。APP_MAP §74）
       if (locks.has(day.date)) return renderPeekCard(day);
-      // トレイの日：よはくが考えている間は点が跳ねる。空にした日は「下から選んでね」
-      if (inTray && thinking)
-        return `<article class="plan-card is-dish is-thinking" style="--i:${trayIdx}" aria-busy="true"><div class="plan-photo plan-think-photo">${badge}<span class="tray-think-dots" aria-hidden="true"><i></i><i></i><i></i></span></div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title plan-think-title">考え中…</strong></div></article>`;
-      if (inTray && !recipe)
-        return `<article class="plan-card is-dish is-tray-empty ${isActive ? "is-tray-active" : ""}"><button type="button" class="plan-photo plan-empty-photo" data-action="life-tray-select-day" data-date="${day.date}" aria-pressed="${isActive}" aria-label="${dateLabel}の料理を下の候補から選ぶ">${badge}<span>${isActive ? "👇 下のカードから選んでね" : "＋ この日を選ぶ"}</span></button><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">まだ決まっていません</strong></div></article>`;
       if (!recipe)
         return `<article class="plan-card"><div class="plan-photo yohaku-tile">${yohaku("normal")}${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">条件に合う候補がありません</strong><p class="plan-time">時間・食材・器具をゆるめるか、レシピを追加してください。</p><div class="plan-controls">${widenButtons([day.date])}${dailyButton("life-profile", "条件を確認")}</div></div></article>`;
-      const status = drafted ? "選び直した" : day.slot?.status === "cooked" ? "作った" : day.slot ? "確定" : "";
+      const status = day.slot?.status === "cooked" ? "作った" : day.slot ? "確定" : "";
       // 文字は少なく（2026-10-28 のユーザーの判断）：前の買い物の食材を使う時だけ添える（ほかの理由は今日の画面で）。
       const note = carryNote(day.slot) || "";
       const minutes = recipe.planning?.minutes ? `⏱ ${recipe.planning.minutes}分` : "";
       // 「⋯」はカードの下にメニューを開く（カードの外にはみ出すと、スマホでは押せない）。
       const more = day.slot?.status === "cooked" || isViewer() ? "" : `<button type="button" class="plan-icon plan-more-btn" data-action="life-more" data-date="${day.date}" aria-expanded="${moreDate === day.date}" aria-label="${dateLabel}のその他の操作">${moreDate === day.date ? "×" : "⋯"}</button>`;
-      const swap = day.slot?.status === "cooked" ? "" : inTray ? `<button type="button" class="plan-icon plan-swap ${isActive ? "is-active" : ""}" data-action="life-tray-select-day" data-date="${day.date}" data-scroll="cards" aria-pressed="${isActive}" aria-label="${dateLabel}の料理を下の候補から選び直す"><span aria-hidden="true">🔄</span><span class="plan-icon-label">${isActive ? "選び直し中" : "選び直す"}</span></button>` : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">変更</span>'}</button>`;
+      const swap = day.slot?.status === "cooked" ? "" : `<button type="button" class="plan-icon plan-swap" data-action="${swapDate === day.date ? "life-close-swap" : "life-swap"}" data-date="${day.date}" aria-expanded="${swapDate === day.date}" aria-label="${swapDate === day.date ? "候補を閉じる" : `${dateLabel}の料理を入れ替える`}">${swapDate === day.date ? "閉じる" : isViewer() ? '<span aria-hidden="true">🙋</span><span class="plan-icon-label">別のがいい</span>' : '<span aria-hidden="true">⇄</span><span class="plan-icon-label">変更</span>'}</button>`;
       // 写真を上に大きく（動画のサムネイルと同じ16:9）。日付・状態・時間は1行に、料理名、ボタンの行（ごはん準備・添え物も同じ行）。
-      // 選び直した日は、まだ献立に入っていないので、写真と料理名からはカードの裏面（材料・作り方・動画）を開く
-      const open = drafted ? `data-action="life-card-flip" data-recipe="${escapeAttr(recipe.id)}"` : `data-action="life-cook" data-date="${day.date}"`;
-      return `<article class="plan-card is-dish ${swapDate === day.date ? "is-swapping" : ""} ${isActive ? "is-tray-active" : ""} ${inTray && trayRevealFresh ? "is-reveal" : ""}" ${inTray ? `style="--i:${trayIdx}"` : ""}><button type="button" class="plan-photo plan-main" ${open} aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}${(() => { const b = day.slot?.status === "cooked" || drafted ? "" : planBadge(day); return b ? `<i class="plan-reason-badge">${escapeHtml(b)}</i>` : ""; })()}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}${minutes ? ` · ${minutes}` : ""}</p><button type="button" class="plan-title" ${open}>${recipeTitleHtml(recipe)}</button>${note ? `<p class="hand plan-note">${escapeHtml(note)}</p>` : ""}${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : "🎬 動画で作り方をそろえる"}</button>` : ""}<div class="plan-controls">${drafted ? "" : renderPlanStapleNote(recipe, day.slot, day.date)}${swap}${drafted ? "" : more}</div></div>${day.slot && !drafted ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${renderPlanMenu(plan, day)}${renderSkipPanel(day.date)}`;
+      const open = `data-action="life-cook" data-date="${day.date}"`;
+      return `<article class="plan-card is-dish ${swapDate === day.date ? "is-swapping" : ""}"><button type="button" class="plan-photo plan-main" ${open} aria-label="${dateLabel} ${escapeAttr(recipe.title)}の作り方を見る">${dishTile(recipe)}${badge}${(() => { const b = day.slot?.status === "cooked" ? "" : planBadge(day); return b ? `<i class="plan-reason-badge">${escapeHtml(b)}</i>` : ""; })()}</button><div class="plan-body"><p class="plan-date">${dateLabel}${status ? ` · <b class="plan-status">${status}</b>` : ""}${minutes ? ` · ${minutes}` : ""}</p><button type="button" class="plan-title" ${open}>${recipeTitleHtml(recipe)}</button>${note ? `<p class="hand plan-note">${escapeHtml(note)}</p>` : ""}${!isViewer() && !recipe.steps?.length && canRereadRecipe(recipe) ? `<button type="button" class="text-button plan-fill" data-action="life-fill-video" data-recipe="${escapeAttr(recipe.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === recipe.id ? "動画を読んでいます…" : "🎬 動画で作り方をそろえる"}</button>` : ""}<div class="plan-controls">${renderPlanStapleNote(recipe, day.slot, day.date)}${swap}${more}</div></div>${day.slot ? conditionWarning(recipe, day.date) : ""}${renderSwapRequests(day.date)}</article>${renderPlanMenu(plan, day)}${renderSkipPanel(day.date)}`;
     })
     ;
   // 条件に合う料理が足りず、同じ料理が2回出ている時は、条件をゆるめずにそう伝える（PR 4a・docs/PERSONALIZE_PLAN.md §7.2）。
@@ -852,8 +834,8 @@ function renderDailyPlan() {
   // その下は押すことがある時だけ：無料の日数・リクエストの受付（ふたり）・野菜が少ない時の1行・届いたリクエスト・残っている食材・リズムの案内。
   // 外したもの：週のカレンダー（ページと同じ情報）・バランスの内訳・まとめて評価（ページの「評価する」と今日の画面で）・
   // 動画の読み取りの案内・ふたりで使う誘い（最初の献立の画面で1回）・「お試しの提案」・食材制限の ⓘ（作る画面と設定にある）。
-  const list = `<section class="plan-list">${cards}${trayOn && !rhythmOn() ? renderTrayActionBar(trayDays) : ready && !rhythmOn() ? renderPlanDecide(plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart)) : ""}</section>`;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderPlanDone()}${list}${trayOn ? renderCardTraySheet() : ""}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
+  const list = `<section class="plan-list">${cards}${ready && !rhythmOn() ? renderPlanDecide(plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart)) : ""}</section>`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${renderPlanDone()}${list}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
 }
 // ---- 献立のページ（買い物のひとかたまりごと・横スライド） ----
 let planPage = ""; // 見ているページ（ひとかたまりの key）。描き直しても同じページのまま
@@ -891,8 +873,7 @@ function renderPlanPages(plan, cardList, locks) {
     const st = blockStatus(b);
     const rows = [...b.dates, ...extra(b, i)].sort().map((d) => (d < today() ? renderPastPlanRow(d) : at.has(d) ? cardList[at.get(d)] : "")).join("");
     const needs = plan.some((d) => b.dates.includes(d.date) && d.candidate && !locks.has(d.date));
-    const isTrayBlock = TRAY_INLINE && !isViewer() && trayTargetDates.length && b.dates.some((d) => trayTargetDates.includes(d));
-    const foot = isTrayBlock ? `<div class="block-foot">${renderTrayActionBar(trayTargetDays())}</div>` : needs && !isViewer() ? `<div class="block-foot">${renderPlanDecide(plan.filter((d) => b.dates.includes(d.date) && !locks.has(d.date) && !d.off), b.key)}</div>` : "";
+    const foot = needs && !isViewer() ? `<div class="block-foot">${renderPlanDecide(plan.filter((d) => b.dates.includes(d.date) && !locks.has(d.date) && !d.off), b.key)}</div>` : "";
     return `<section class="plan-page" data-page="${b.key}" aria-label="${escapeAttr(blockRange(b))}の献立"><h3 class="block-head is-${st}"><span>${blockRange(b)}</span><small>${(label[st] || label.past)(b)}</small></h3>${rows}${foot}</section>`;
   }).join("");
   // 同じ曜日のかたまり（木〜土が2つ）でも見分けられるように、タブは「前回・今回・次回」。
@@ -913,15 +894,9 @@ function placePlanPages({ smooth = false } = {}) {
     t = setTimeout(() => {
       const near = [...box.children].reduce((a, el) => (Math.abs(el.offsetLeft - box.offsetLeft - box.scrollLeft) < Math.abs(a.offsetLeft - box.offsetLeft - box.scrollLeft) ? el : a));
       if (near?.dataset.page && near.dataset.page !== planPage) {
-        // 選び直しの途中は、ほかのかたまりへ動かない（ボタンで動く時と同じ。Codex review #240）
-        if (isTrayDraftActive()) {
-          showToast("選び直しの途中です。先に決定するか「元の献立に戻す」を押してね");
-          placePlanPages({ smooth: true });
-          return;
-        }
         planPage = near.dataset.page;
         document.querySelectorAll(".plan-dot").forEach((d) => d.setAttribute("aria-pressed", String(d.dataset.page === planPage)));
-        // 下の候補カード・決定ボタンを、見ているかたまりの日に合わせて描き直す
+        // 決定ボタンを、見ているかたまりの日に合わせて描き直す
         if (!isViewer() && typeof render === "function") render();
       }
     }, 120);
@@ -1358,9 +1333,7 @@ function renderSwapChoices() {
   const reviewRows = review.length ? `<details class="swap-review"><summary>確認すると選べる ${review.length}品</summary>${review.slice(0, 6).map(({ r }) => `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`).join("")}</details>` : "";
   const day = `${formatDate(swapDate)}（${weekdayLabel(swapDate)}）`;
   // 「📖 レシピの棚から選ぶ」は、献立が始まる前の日には出さない：レシピの画面の「献立に入れる」（placeDays）はその日を選べない（Codex review #252）
-  // 献立トレイは献立タブの中にあるので、この画面から切り替える入口は置かない（2026-11-11）
-  const traySwitch = "";
-  return `<div class="swap-backdrop" data-action="life-close-swap" aria-hidden="true"></div><section class="swap-panel swap-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="${day}の料理を選ぶ"><div class="swap-head"><b>${day}</b>${traySwitch}<button type="button" class="round-icon swap-close" data-action="life-close-swap" aria-label="閉じる">✕</button></div>${chips ? `<div class="swap-chips" role="group" aria-label="食べたい気分">${chips}</div>` : ""}${status}${grid}<div class="swap-bottom">${nav}</div><div class="swap-foot">${reviewRows}${viewer || (prestartUntil() && swapDate < prestartUntil()) ? "" : `<button type="button" class="text-button swap-shelf" data-action="life-swap-shelf">📖 レシピの棚から選ぶ ›</button>`}${renderUrlInsert()}</div></section>`;
+  return `<div class="swap-backdrop" data-action="life-close-swap" aria-hidden="true"></div><section class="swap-panel swap-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="${day}の料理を選ぶ"><div class="swap-head"><b>${day}</b><button type="button" class="round-icon swap-close" data-action="life-close-swap" aria-label="閉じる">✕</button></div>${chips ? `<div class="swap-chips" role="group" aria-label="食べたい気分">${chips}</div>` : ""}${status}${grid}<div class="swap-bottom">${nav}</div><div class="swap-foot">${reviewRows}${viewer || (prestartUntil() && swapDate < prestartUntil()) ? "" : `<button type="button" class="text-button swap-shelf" data-action="life-swap-shelf">📖 レシピの棚から選ぶ ›</button>`}${renderUrlInsert()}</div></section>`;
 }
 // Photo when we have one, otherwise a warm tile with a staple emoji (clearly labelled as an image).
 // よはく：画面の余白にこっそり住んでいるキャラクター。1画面に1匹まで、文字やボタンには重ねない。
@@ -3195,7 +3168,6 @@ function handleDailyAction(action, data) {
     state.view = "plan";
   }
   if (action === "life-plan-page" && data.page) {
-    if (isTrayDraftActive() && data.page !== planPage) { showToast("選び直しの途中です。先に決定するか「元に戻す」を押してね"); return true; }
     planPage = data.page; render(); placePlanPages({ smooth: true }); return true; }
   if (action === "life-swap") {
     const b = rhythmOn() && planPageBlocks().find((x) => x.dates.includes(data.date));
@@ -4183,34 +4155,8 @@ function syncHasSheetBodyClass() {
   document.body?.classList?.toggle("has-sheet", hasModal);
   return hasModal;
 }
-// よはくの吹き出しを1文字ずつ出す（言葉が変わった時だけ。途中で描き直されても続きから。動きを減らす設定では一度に出す）
-let trayTypedSay = "";
-let trayTypedAt = 0;
-let trayTypeTimer = 0;
-function typeTrayBubble() {
-  const bar = document.querySelector?.(".tray-yohaku-bar");
-  if (!bar) { trayTypedSay = ""; if (trayTypeTimer && typeof clearInterval === "function") clearInterval(trayTypeTimer); return; }
-  const say = bar.dataset?.say || bar.getAttribute?.("data-say") || "";
-  const el = bar.querySelector?.(".tray-bubble-text");
-  if (!el) return;
-  const chars = [...say];
-  if (say !== trayTypedSay) { trayTypedSay = say; trayTypedAt = 0; }
-  if (trayTypedAt >= chars.length) return;
-  const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  if (reduce || typeof setInterval !== "function") { trayTypedAt = chars.length; return; }
-  clearInterval(trayTypeTimer);
-  el.textContent = chars.slice(0, trayTypedAt).join("");
-  bar.classList?.add("is-typing");
-  trayTypeTimer = setInterval(() => {
-    if (!el.isConnected || trayTypedSay !== say) { clearInterval(trayTypeTimer); return; }
-    trayTypedAt += 1;
-    el.textContent = chars.slice(0, trayTypedAt).join("");
-    if (trayTypedAt >= chars.length) { clearInterval(trayTypeTimer); bar.classList?.remove("is-typing"); }
-  }, 40);
-}
 function bindSwapSheet() {
   syncHasSheetBodyClass();
-  if (typeof document !== "undefined") typeTrayBubble();
   // 画面の向き・大きさが変わって並べる数（4皿／6皿）が変わったら、描き直す。
   if (!swapSizeSeen && globalThis.addEventListener) globalThis.addEventListener("resize", () => { if (swapDate && state.view === "plan" && swapSize() !== swapSizeSeen) render(); });
   swapSizeSeen = swapSize();
@@ -4804,33 +4750,11 @@ function renderFirstInvite() {
   return `<div class="first-invite is-after"><p><b>ふたりで使う？</b><br><small>相手が「これ食べたい」を送れるようになります。</small></p><div class="actions">${dailyButton("life-share-open", "相手を招待する")}<button type="button" class="text-button" data-action="life-reveal-close">あとで</button></div></div>`;
 }
 
-// ----- 🃏 カフェ風レシピカード＆3日分の献立トレイ -----
-let trayOpen = false;
-let trayActiveDate = "";
-let trayMood = "";
-let trayPage = 0;
-let trayAnchorId = "";
+// ----- 🃏 レシピカード（図鑑・カードの裏・GET の知らせ） -----
 let trayFlipId = "";
-let trayClearedDates = new Set();
-let trayDraft = {};
-let trayInitialDraft = {};
-let trayBasePlan = {};
-let trayTargetDates = [];
-let trayUndoStack = [];
-// 開いた直後の「よはくが考えている」演出（1.5秒）と、そのあとの「考えてみたよ！」
-let trayThinking = false;
-let trayThinkToken = 0;
-let trayRevealFresh = false;
-let trayThoughtKeys = new Set();
-// 決定済みのまとまりでは、候補カードを閉じた1行にする（2026-11-14 のユーザーの判断。APP_MAP §67-1-4）。「ほかの候補を見る」で開いた時だけ true。
-let trayMoreOpen = false;
-let trayActiveChosen = false; // 「🔄 選び直す」で日を選んだ時だけ、その日を目立たせる（空の日はいつも目立たせる）
-let trayLastPlaced = null; // 直前に置いた料理（よはくが「◯曜は『◯◯』にしたよ」と言う）
 let cardGetRecipeId = "";
 let cardGetBannerRecipeId = "";
-let cardBookOpen = false;
 let lastModalTriggerSelector = "";
-let trayTriggerSelector = "";
 let flipTriggerSelector = "";
 
 const MAX_CARD_CACHE = 600;
@@ -4838,7 +4762,6 @@ const CARD_COOK_MEMO = new Map();
 const CARD_ART_MEMO = new Map();
 const NUTRITION_MEMO = new Map();
 const CARD_SPEC_MEMO = new Map();
-const TRAY_CANDIDATE_BASE_MEMO = new Map();
 
 function setBoundedMemo(map, key, val) {
   if (map.size >= MAX_CARD_CACHE && !map.has(key)) {
@@ -4854,7 +4777,6 @@ function clearCardTrayCaches() {
   CARD_ART_MEMO.clear();
   NUTRITION_MEMO.clear();
   CARD_SPEC_MEMO.clear();
-  TRAY_CANDIDATE_BASE_MEMO.clear();
 }
 
 function evalsSignature() {
@@ -4891,48 +4813,12 @@ function recipeRevisionKey(recipe) {
 }
 
 function resetCardTrayModals() {
-  // タブを切り替えたら、裏面などの重なった画面は閉じる。選び直しの途中（下書き）は残す（献立タブに戻れば続きから）
-  trayOpen = false;
-  trayMoreOpen = false;
+  // タブを切り替えたら、裏面などの重なった画面と、決定直後のまとめは閉じる
   planDone = null;
-  if (!isTrayDraftActive()) {
-    trayDraft = {};
-    trayInitialDraft = {};
-    trayBasePlan = {};
-    trayTargetDates = [];
-    trayUndoStack = [];
-    trayClearedDates = new Set();
-    // 「🔄 選び直す」で日を選んだだけ（何も変えていない）の時は、その印も戻す＝決定済みなら候補は閉じる（Codex review #243）
-    trayActiveChosen = false;
-  }
-  trayThinking = false;
-  trayThinkToken += 1;
-  trayAnchorId = "";
   trayFlipId = "";
-  cardBookOpen = false;
   cardGetRecipeId = "";
   cardGetBannerRecipeId = "";
   document.body?.classList?.remove("has-sheet");
-}
-
-function isTrayDraftActive() {
-  return Object.keys(trayDraft).some((date) => (trayDraft[date] || null) !== (trayInitialDraft[date] || null));
-}
-
-function syncTrayAfterConflictResolution(date, chosen) {
-  if (!date) return;
-  if (Object.prototype.hasOwnProperty.call(trayBasePlan, date)) {
-    const snap = typeof planSnapshot === "function" ? planSnapshot(state)?.[date] : null;
-    trayBasePlan[date] = snap ? clone(snap) : chosen ? clone(chosen) : null;
-  }
-  const chosenId = chosen?.slot?.recipe?.id || chosen?.override || chosen?.draft?.id || null;
-  if (Object.prototype.hasOwnProperty.call(trayInitialDraft, date)) {
-    trayInitialDraft[date] = chosenId;
-  }
-  if (Object.prototype.hasOwnProperty.call(trayDraft, date)) {
-    trayDraft[date] = chosenId;
-    syncTrayClearedSet();
-  }
 }
 
 // 試作版の「✨ 作ってカードGET！を試す」で入った demo-get-* 記録だけを安全に整理する（本物の調理記録や保存レシピは消さない）
@@ -5767,59 +5653,6 @@ function recipeCardSpec(recipe) {
   return setBoundedMemo(CARD_SPEC_MEMO, specKey, out);
 }
 
-// トレイに並べた料理の「使い回し野菜・主役の重なり」の事実まとめ（選択画面の4ゲージ・健康コンボは廃止）
-function computeTrayCombo(days) {
-  const targetDays = days || trayTargetDays();
-  const placed = targetDays
-    .map((d) => ({ day: d, recipe: trayDayRecipe(d) }))
-    .filter((x) => !!x.recipe);
-  const count = placed.length;
-  if (!count) {
-    return {
-      count: 0,
-      totalSlots: targetDays.length,
-      avgMinutes: 0,
-      sharedVegList: [],
-      proteinSummary: "",
-    };
-  }
-  const specs = placed.map((x) => ({ ...x, spec: recipeCardSpec(x.recipe), traits: Lifestyle.traits(x.recipe) }));
-  const totalMin = specs.reduce((s, x) => s + x.spec.minutes, 0);
-  const avgMinutes = Math.round(totalMin / count);
-  const vegFreq = new Map();
-  for (const x of specs) {
-    for (const v of Lifestyle.useUpKeys(x.recipe)) {
-      vegFreq.set(v, (vegFreq.get(v) || 0) + 1);
-    }
-  }
-  const sharedVegList = [...vegFreq.entries()].filter(([, c]) => c >= 2).map(([v]) => v);
-  const proteinSummary = specs.map((x) => x.spec.pName).join("・");
-  return {
-    count,
-    totalSlots: targetDays.length,
-    avgMinutes,
-    sharedVegList,
-    proteinSummary,
-  };
-}
-
-// トレイの対象となる日（今のブロックの料理する日、または直近3日分）
-function trayTargetDays() {
-  const plan = dailyPlan();
-  const locks = lockedDates(plan);
-  let days = plan.filter((d) => !d.off && !d.prestart && !locks.has(d.date) && d.slot?.status !== "cooked" && d.slot?.status !== "off");
-  if (rhythmOn()) {
-    const blocks = planPageBlocks();
-    const current = blocks.find((b) => b.key === planPage) || blocks.find((b) => b.end >= today()) || blocks[0];
-    if (current) {
-      const bDays = days.filter((d) => current.dates.includes(d.date));
-      if (bDays.length) days = bDays;
-    }
-  }
-  // 献立タブの中のトレイなので、表示している日はすべて対象（7日でも、決定ボタンで全部の日を決められるように。Codex review #240）
-  return days;
-}
-
 function findDinnerRecipeById(recipeId) {
   if (!recipeId) return null;
   return (
@@ -5831,164 +5664,6 @@ function findDinnerRecipeById(recipeId) {
   );
 }
 
-// トレイの下書き（trayDraft）を開く時点で初期化する。
-// 各日の最初のレシピIDを trayDraft に固定するため、月曜だけ変えても火曜・水曜が勝手に別料理へ再計算されない。
-function initTrayDraft(days) {
-  const targetDays = days || trayTargetDays();
-  trayDraft = {};
-  trayInitialDraft = {};
-  trayBasePlan = {};
-  trayTargetDates = targetDays.map((d) => d.date);
-  trayUndoStack = [];
-  trayClearedDates = new Set();
-  TRAY_CANDIDATE_BASE_MEMO.clear();
-  const snap = typeof planSnapshot === "function" ? planSnapshot(state) : {};
-  for (const d of targetDays) {
-    const r = d.slot?.recipe || d.candidate?.recipe || null;
-    const id = r?.id || null;
-    trayDraft[d.date] = id;
-    trayInitialDraft[d.date] = id;
-    trayBasePlan[d.date] = snap[d.date] ? clone(snap[d.date]) : null;
-    if (!id) trayClearedDates.add(d.date);
-  }
-}
-
-function pushTrayUndo() {
-  trayUndoStack.push({
-    draft: { ...trayDraft },
-    activeDate: trayActiveDate,
-  });
-  if (trayUndoStack.length > 20) trayUndoStack.shift();
-}
-
-function syncTrayClearedSet() {
-  trayClearedDates = new Set(
-    Object.entries(trayDraft)
-      .filter(([, id]) => !id)
-      .map(([date]) => date)
-  );
-}
-
-// トレイ上でその日にいま入っているレシピ（トレイ編集中は trayDraft を参照し、決定するまで本体の献立を書き換えない）
-function trayDayRecipe(day) {
-  if (!day) return null;
-  if (trayOpen && Object.prototype.hasOwnProperty.call(trayDraft, day.date)) {
-    const draftId = trayDraft[day.date];
-    if (!draftId) return null;
-    return findDinnerRecipeById(draftId) || (day.slot?.recipe?.id === draftId ? day.slot.recipe : day.candidate?.recipe?.id === draftId ? day.candidate.recipe : null);
-  }
-  if (trayClearedDates.has(day.date)) return null;
-  return day.slot?.recipe || day.candidate?.recipe || null;
-}
-
-// トレイの棚スイッチ定義
-const TRAY_SHELVES = [
-  ["", "✨ おすすめ", () => true],
-  ["fav", "😋 好物・GET済", (r) => cardCookCount(r) > 0 || loveScore(r) >= 4],
-  ["quick", "⚡ 15分以内", (r) => (r.planning?.minutes || 99) <= 15],
-  ["meat", "🥩 お肉", (r) => Lifestyle.traits(r).protein === "meat"],
-  ["fish", "🐟 お魚", (r) => Lifestyle.traits(r).protein === "fish"],
-  ["bowl", "🍜 麺・丼", (r) => ["rice", "noodle"].includes(Lifestyle.traits(r).staple)],
-  ["light", "🍋 さっぱり", (r) => Lifestyle.tags(r).includes("light")],
-];
-
-// 「🔍 似た皿」でなぜ近いかを短い日本語で返す
-function similarReasonText(anchor, target) {
-  if (!anchor || !target || anchor.id === target.id) return "";
-  const at = Lifestyle.traits(anchor);
-  const tt = Lifestyle.traits(target);
-  const atags = new Set(Lifestyle.tags(anchor));
-  const ttags = Lifestyle.tags(target);
-  const parts = [];
-  const pNames = { meat: "お肉", fish: "お魚", eggtofu: "卵・豆腐", veg: "野菜" };
-  const sNames = { rice: "丼・ごはん", noodle: "麺", bread: "パン", other: "おかず" };
-  if (at.protein === tt.protein && pNames[tt.protein]) parts.push(`同じ${pNames[tt.protein]}`);
-  if (at.staple === tt.staple && sNames[tt.staple]) parts.push(sNames[tt.staple]);
-  if (ttags.includes("light") && atags.has("light")) parts.push("さっぱり");
-  else if (ttags.includes("spicy") && atags.has("spicy")) parts.push("ピリ辛");
-  else if (ttags.includes("rich") && atags.has("rich")) parts.push("こってり");
-  return parts.slice(0, 2).join("・") || "近いタイプ";
-}
-
-// トレイでいま選んでいる日に出す候補カード一覧（他枠とのバランス・使い回し・似た料理を考慮）
-function trayCandidateList(activeDate, days) {
-  const p = dailyProfile();
-  const otherRecipes = days
-    .filter((d) => d.date !== activeDate)
-    .map((d) => trayDayRecipe(d))
-    .filter(Boolean);
-  const otherIds = new Set(otherRecipes.map((r) => r.id));
-  const otherParents = new Set(otherRecipes.map((r) => parentKeyOf(r)).filter(Boolean));
-  const otherProteins = new Set(otherRecipes.map((r) => Lifestyle.traits(r).protein));
-  const otherStaples = new Set(otherRecipes.map((r) => Lifestyle.traits(r).staple));
-  const sharedVeg = new Set();
-  for (const r of otherRecipes) {
-    for (const v of Lifestyle.useUpKeys(r)) sharedVeg.add(v);
-  }
-  const currentOnDay = trayDayRecipe(days.find((d) => d.date === activeDate));
-  const shelf = TRAY_SHELVES.find(([k]) => k === trayMood) || TRAY_SHELVES[0];
-  const anchor = trayAnchorId ? findDinnerRecipeById(trayAnchorId) : null;
-  const anchorTraits = anchor ? Lifestyle.traits(anchor) : null;
-  const anchorTags = anchor ? new Set(Lifestyle.tags(anchor)) : null;
-
-  const all = allDinnerRecipes();
-  const baseKey = `${activeDate}|${all.length}|${state?.recipes?.length || 0}|${evalsSignature()}|${state?.foodProfile?.updatedAt || ""}|${state?.householdProfile?.updatedAt || ""}`;
-  let fitBase = TRAY_CANDIDATE_BASE_MEMO.get(baseKey);
-  if (!fitBase) {
-    fitBase = all
-      .filter((r) => !Object.values(recipeRatings(r)).includes("never"))
-      .map((r) => {
-        const fit = Lifestyle.fit(r, p, activeDate);
-        if (!fit.ok) return null;
-        return {
-          r,
-          fit,
-          pk: parentKeyOf(r),
-          traits: Lifestyle.traits(r),
-          tags: Lifestyle.tags(r),
-          useUpKeys: Lifestyle.useUpKeys(r),
-        };
-      })
-      .filter(Boolean);
-    setBoundedMemo(TRAY_CANDIDATE_BASE_MEMO, baseKey, fitBase);
-  }
-
-  const seenParents = new Set();
-  const scored = [];
-  for (const x of fitBase) {
-    if (otherIds.has(x.r.id)) continue;
-    if (x.r.id !== trayAnchorId && x.r.id === currentOnDay?.id) continue;
-    if (x.r.id !== trayAnchorId && !shelf[2](x.r)) continue;
-    const pk = x.pk;
-    if (pk && x.r.id !== trayAnchorId) {
-      if (otherParents.has(pk) || seenParents.has(pk)) continue;
-      seenParents.add(pk);
-    }
-    const t = x.traits;
-    const tags = x.tags;
-    let score = (x.fit.score || 0) + (x.r.curated ? 0 : 3);
-    if (!otherProteins.has(t.protein)) score += 8;
-    if (!otherStaples.has(t.staple)) score += 5;
-    let sharedVegHit = "";
-    for (const v of x.useUpKeys) {
-      if (sharedVeg.has(v)) { score += 6; sharedVegHit = v; break; }
-    }
-    let simReason = "";
-    if (anchor && x.r.id === anchor.id) {
-      score += 10000;
-      simReason = "起点の料理";
-    } else if (anchorTraits) {
-      if (t.protein === anchorTraits.protein) score += 25;
-      if (t.staple === anchorTraits.staple) score += 20;
-      if (t.cuisine === anchorTraits.cuisine) score += 10;
-      for (const tg of tags) if (anchorTags.has(tg)) score += 6;
-      simReason = similarReasonText(anchor, x.r);
-    }
-    scored.push({ r: x.r, score, sharedVegHit, simReason });
-  }
-  scored.sort((a, b) => b.score - a.score);
-  return scored;
-}
 
 // トレーディングカード1枚のHTML
 // 表面は「料理の絵・料理名・調理時間」が中心。栄養ジェム・王冠は出さず、裏面に置く。
@@ -5996,12 +5671,9 @@ function renderRecipeTradingCard(recipe, opts = {}) {
   if (!recipe) return "";
   const spec = recipeCardSpec(recipe);
   const {
-    activeDate = "",
-    dayWord = "",
     sharedVegHit = "",
     simReason = "",
     isAnchor = false,
-    mode = "tray",
   } = opts;
   const rankClass = `${spec.isCollected ? `is-collected is-rank-${spec.rank}` : "is-draft"}${spec.chapter ? ` is-book is-ch-${spec.chapter}` : ""}`;
   // 理由の札は写真に重ねない。全員に同じ理由が並ぶ時は、呼び出し側でよはくの一言にまとめて、ここには違いだけを渡す。
@@ -6046,192 +5718,6 @@ function renderRecipeTradingCard(recipe, opts = {}) {
       </div>
     </article>
 
-    ${mode === "tray" ? `<div class="rc-dock" role="group" aria-label="${escapeAttr(recipe.title)}の操作">
-      <button type="button" class="rc-dock-place" data-action="life-tray-place" data-recipe="${escapeAttr(recipe.id)}" data-date="${escapeAttr(activeDate)}" aria-label="${escapeAttr(recipe.title)}を${escapeAttr(dayWord)}に並べる">
-        <span aria-hidden="true">📥</span> <b>${escapeHtml(dayWord)}へ</b>
-      </button>
-      <button type="button" class="rc-dock-icon ${isAnchor ? "is-active" : ""}" data-action="life-tray-similar" data-recipe="${escapeAttr(recipe.id)}" aria-pressed="${isAnchor}" title="この料理と似たカードを集める" aria-label="${escapeAttr(recipe.title)}と似た料理を集める">
-        <span aria-hidden="true">🔍</span><small>似た皿</small>
-      </button>
-    </div>` : ""}
-  </div>`;
-}
-
-// 献立タブの中の献立トレイ（2026-11-11 のユーザーの判断：別の画面に切り替えず、献立カードの下に置く）
-// 下書きは、何かを変えた時に初めて作る（変えていない間は、家族の同期などで献立が変わってもそのまま追いかける）。
-function prepareInlineTray(days) {
-  trayOpen = true;
-  const dates = days.map((d) => d.date);
-  const sameDates = trayTargetDates.length === dates.length && trayTargetDates.every((d, i) => d === dates[i]);
-  if (!isTrayDraftActive() && (!sameDates || !trayUndoStack.length)) {
-    if (Object.keys(trayDraft).length || !sameDates) {
-      trayDraft = {};
-      trayInitialDraft = {};
-      trayBasePlan = {};
-      trayClearedDates = new Set();
-      TRAY_CANDIDATE_BASE_MEMO.clear();
-    }
-    trayTargetDates = dates;
-  }
-  if (!trayActiveDate || !dates.includes(trayActiveDate)) {
-    const firstEmpty = days.find((d) => !trayDayRecipe(d));
-    trayActiveDate = (firstEmpty || days[0]).date;
-  }
-  // 自動で選んだ料理（まだ決めていない日）がある時だけ、よはくが1.5秒「考える」（同じ顔ぶれでは1回だけ。動きを減らす設定・テストでは出さない）
-  const autoPicked = days.some((d) => !d.slot && d.candidate);
-  const thinkKey = `${dates.join(",")}|${days.map((d) => trayDayRecipe(d)?.id || "").join(",")}`;
-  const canAnimate = typeof globalThis.matchMedia === "function" && !globalThis.matchMedia("(prefers-reduced-motion: reduce)")?.matches && typeof setTimeout === "function";
-  if (autoPicked && canAnimate && !trayThinking && !trayThoughtKeys.has(thinkKey) && !isTrayDraftActive()) {
-    trayThoughtKeys.add(thinkKey);
-    trayThinking = true;
-    const token = ++trayThinkToken;
-    setTimeout(() => {
-      if (token !== trayThinkToken) return;
-      trayThinking = false;
-      trayRevealFresh = true;
-      if (state.view === "plan" && typeof render === "function") render();
-    }, 1500);
-  }
-}
-
-// 献立カードのすぐ下：決定・空にする・戻す
-function renderTrayActionBar(days) {
-  if (!days?.length || trayThinking) return "";
-  const filled = days.filter((d) => !!trayDayRecipe(d)).length;
-  const all = filled === days.length;
-  const dirty = isTrayDraftActive();
-  const needConfirm = dirty || days.some((d) => !d.slot);
-  const main = all && needConfirm
-    ? `<button type="button" class="primary-button tray-confirm-btn" data-action="life-tray-confirm-all">✓ この${days.length}日分で決定・買い物へ</button>`
-    : !all
-      ? `<p class="tray-need" role="status">あと${days.length - filled}日分、下のカードから選んでね</p>`
-      : `<p class="tray-need is-done">${days.length}日分は決定済み ✓</p>`;
-  const clear = filled > 0 ? `<button type="button" class="secondary-button tray-clear-all-btn" data-action="life-tray-clear-all">🧹 空にする</button>` : "";
-  const sub = [
-    trayUndoStack.length ? `<button type="button" class="text-button" data-action="life-tray-undo">↩ 1つ戻す</button>` : "",
-    dirty ? `<button type="button" class="text-button" data-action="life-tray-close">元の献立に戻す</button>` : "",
-  ].filter(Boolean).join("");
-  return `<div class="tray-action-bar"><div class="tray-action-row">${main}${clear}</div>${sub ? `<div class="tray-action-sub">${sub}</div>` : ""}</div>`;
-}
-
-// 献立カードの下：棚・候補カード。よはくは候補の外（画面全体の下）に貼りつけ、献立カードを見ている時も目に入るようにする
-function renderCardTraySheet() {
-  const days = trayTargetDays();
-  if (!days.length) return "";
-  if (!trayOpen) prepareInlineTray(days);
-  if (!trayActiveDate || !days.some((d) => d.date === trayActiveDate)) {
-    const firstEmpty = days.find((d) => !trayDayRecipe(d));
-    trayActiveDate = (firstEmpty || days[0]).date;
-  }
-  const activeDay = days.find((d) => d.date === trayActiveDate) || days[0];
-  const activeWd = `${weekdayLabel(activeDay.date)}曜`;
-  const filledCount = days.filter((d) => !!trayDayRecipe(d)).length;
-  const allFilled = filledCount === days.length;
-  const thinking = trayThinking;
-  // 全部の日が決定済みで、選び直しの途中でもない時は、候補カードを出さない（決めた後の献立タブを短くする）。
-  // 「🔄 選び直す」（trayActiveChosen）・「🔍 似た皿」（trayAnchorId）・「ほかの候補を見る」（trayMoreOpen）で開く。
-  const decided = !thinking && allFilled && !isTrayDraftActive() && days.every((d) => d.slot);
-  if (decided && !trayActiveChosen && !trayAnchorId && !trayMoreOpen) {
-    const words = `${days.length}日分そろってるよ。変えたい日は「🔄 選び直す」を押してね`;
-    return `<section class="tray-inline is-collapsed" id="tray-cards" aria-label="ほかの候補">
-    <button type="button" class="tray-more-btn" data-action="life-tray-more" aria-expanded="false"><span>🃏 ほかの候補を見る</span><i aria-hidden="true">›</i></button>
-  </section>
-  <div class="tray-yohaku-bar is-dock" data-say="${escapeAttr(words)}">
-    ${yohaku("happy", "swap-yohaku")}
-    <p class="swap-bubble tray-bubble" role="status"><span class="sr-only">${escapeHtml(words)}</span><span class="tray-bubble-text" aria-hidden="true">${escapeHtml(words)}</span></p>
-  </div>`;
-  }
-  const combo = computeTrayCombo(days);
-
-  // 候補カード（理由の札をまとめるため、先に決める）
-  const anchorRecipe = trayAnchorId ? findDinnerRecipeById(trayAnchorId) : null;
-  const size = 6;
-  const candidates = thinking ? [] : trayCandidateList(activeDay.date, days);
-  const startIdx = candidates.length ? (trayPage * size) % Math.max(1, candidates.length) : 0;
-  const pageItems = [];
-  if (candidates.length) {
-    for (let i = 0; i < Math.min(size, candidates.length); i += 1) {
-      pageItems.push(candidates[(startIdx + i) % candidates.length]);
-    }
-  }
-  // 「似た皿」の時、2枚以上に同じ理由が並ぶなら、その理由はよはくが1回だけ言い、カードには違う理由だけを出す
-  const reasonCount = new Map();
-  for (const item of pageItems) if (item.simReason && item.r.id !== trayAnchorId) reasonCount.set(item.simReason, (reasonCount.get(item.simReason) || 0) + 1);
-  const [commonReason = "", commonCount = 0] = [...reasonCount.entries()].sort((a, b) => b[1] - a[1])[0] || [];
-  const sharedReason = commonCount >= 2 ? commonReason : "";
-  // 使い回せる野菜も、2枚以上で同じならカードからは外し、よはくが1回だけ言う
-  const vegCount = new Map();
-  for (const item of pageItems) if (!item.simReason && item.sharedVegHit) vegCount.set(item.sharedVegHit, (vegCount.get(item.sharedVegHit) || 0) + 1);
-  const sharedVeg = [...vegCount.entries()].filter(([, c]) => c >= 2).map(([v]) => v);
-
-  let yohakuPose = "normal";
-  let yohakuWords = `${activeWd}に入れる一皿を選ぼう（あと${Math.max(0, days.length - filledCount)}日分）`;
-  if (thinking) {
-    yohakuPose = "wait";
-    yohakuWords = `${days.length}日分の献立を考えてるよ…`;
-  } else if (trayLastPlaced) {
-    yohakuPose = "happy";
-    yohakuWords = allFilled
-      ? `${trayLastPlaced.wd}曜は「${trayLastPlaced.title}」にしたよ！ ${days.length}日分そろったから「決定」で買い物へ`
-      : `${trayLastPlaced.wd}曜は「${trayLastPlaced.title}」にしたよ！ 次は${activeWd}の1皿`;
-  } else if (anchorRecipe) {
-    yohakuPose = "happy";
-    yohakuWords = sharedReason
-      ? `🔍「${anchorRecipe.title}」に近い、${sharedReason}の料理を集めたよ`
-      : `🔍「${anchorRecipe.title}」に近い料理を集めたよ`;
-  } else if (trayRevealFresh && filledCount > 0) {
-    yohakuPose = "happy";
-    yohakuWords = allFilled
-      ? `考えてみたよ！ このままでよければ「決定」。変えたい日は「🔄 選び直す」を押してね`
-      : `考えてみたよ！ 空いている${activeWd}の1皿を下から選んでね`;
-  } else if (allFilled) {
-    yohakuPose = "happy";
-    yohakuWords = trayActiveChosen ? `${activeWd}を入れ替えるよ。下のカードから選んでね` : `${days.length}日分そろってるよ。変えたい日は「🔄 選び直す」を押してね`;
-  } else if (filledCount === 0) {
-    yohakuPose = "wave";
-    yohakuWords = `まずは${activeWd}の1皿を選ぼう`;
-  } else if (sharedVeg.length > 0) {
-    yohakuPose = "happy";
-    yohakuWords = `🥬 ${sharedVeg.slice(0, 2).join("・")}を使い回せる料理を先に並べたよ。${activeWd}の1皿を選んでね`;
-  } else if (combo.sharedVegList.length > 0) {
-    yohakuPose = "happy";
-    yohakuWords = `🥬 ${combo.sharedVegList[0]}を使い回せる組み合わせ！次は${activeWd}へ`;
-  } else {
-    yohakuPose = "happy";
-    yohakuWords = `次は${activeWd}の一皿を選ぼう（重ならない候補にしたよ）`;
-  }
-
-  const cardsHtml = thinking
-    ? `<div class="rc-grid is-thinking" aria-hidden="true">${Array.from({ length: 4 }, () => `<div class="rc-skeleton"></div>`).join("")}</div>`
-    : pageItems.length
-    ? `<div class="rc-grid">${pageItems.map((item) => renderRecipeTradingCard(item.r, {
-        reasonChip: item.r.id === trayAnchorId
-          ? "🔍 起点"
-          : item.simReason
-            ? (item.simReason === sharedReason ? "" : `🔍 ${item.simReason}`)
-            : item.sharedVegHit ? (sharedVeg.includes(item.sharedVegHit) ? "" : `🥬 ${item.sharedVegHit}使い回し`) : undefined,
-        activeDate: activeDay.date,
-        dayWord: activeWd,
-        sharedVegHit: item.sharedVegHit,
-        simReason: item.simReason,
-        isAnchor: item.r.id === trayAnchorId,
-        mode: "tray",
-      })).join("")}</div>`
-    : `<p class="swap-empty">この棚に合う料理がありません。別の棚を選んでみてね。</p>`;
-
-  return `<section class="tray-inline" id="tray-cards" aria-label="${escapeAttr(activeWd)}に入れる候補">
-    <h3 class="tray-inline-head">${thinking ? "候補を集めています…" : allFilled && !trayActiveChosen ? `🃏 ほかの候補（「${escapeHtml(activeWd)}へ」で入れ替え）` : `🃏 ${escapeHtml(activeWd)}に入れる候補`}${trayAnchorId && !thinking ? ` <button type="button" class="tray-sim-reset-btn" data-action="life-tray-similar-clear">元の候補に戻る</button>` : decided ? ` <button type="button" class="tray-sim-reset-btn" data-action="life-tray-less" aria-expanded="true">閉じる</button>` : ""}</h3>
-    <div class="tray-shelves" role="group" aria-label="料理の棚">
-      ${TRAY_SHELVES.map(([k, label]) => `<button type="button" class="chip-button tray-shelf-chip" data-action="life-tray-mood" data-mood="${k}" aria-pressed="${trayMood === k}" ${thinking ? "disabled" : ""}>${label}</button>`).join("")}
-    </div>
-    ${cardsHtml}
-    <div class="tray-bottom-bar">
-      ${!thinking && candidates.length > size ? `<button type="button" class="secondary-button swap-more" data-action="life-tray-next-page">🔄 別の${size}皿を見る（全${candidates.length}品）</button>` : ""}
-    </div>
-  </section>
-  <div class="tray-yohaku-bar is-dock" data-say="${escapeAttr(yohakuWords)}">
-    ${yohaku(yohakuPose, "swap-yohaku")}
-    <p class="swap-bubble tray-bubble" role="status"><span class="sr-only">${escapeHtml(yohakuWords)}</span><span class="tray-bubble-text" aria-hidden="true">${escapeHtml(yohakuWords)}</span></p>
   </div>`;
 }
 
@@ -6241,9 +5727,6 @@ function renderCardFlipModal() {
   if (!r) return "";
   const spec = recipeCardSpec(r);
   const n = spec.nutrition;
-  const days = trayTargetDays();
-  const activeDay = days.find((d) => d.date === trayActiveDate) || days[0];
-  const activeWd = activeDay ? `${weekdayLabel(activeDay.date)}曜` : "献立";
   const servings = dailyProfile().servings || 2;
   const thumb = typeof recipeThumbnail === "function" ? recipeThumbnail(r) : "";
   const creator = (typeof creatorName === "function" && creatorName(r)) || (typeof authorOf === "function" && authorOf(r)) || r.author || r.channelTitle || "";
@@ -6317,7 +5800,6 @@ function renderCardFlipModal() {
       </details>
 
       <div class="rc-flip-foot">
-        ${activeDay && trayOpen && state.view === "plan" ? `<button type="button" class="primary-button" data-action="life-tray-place" data-recipe="${escapeAttr(r.id)}" data-date="${escapeAttr(activeDay.date)}">📥 ${escapeHtml(activeWd)}のトレイに並べる</button>` : ""}
         ${!isViewer() && state.view !== "plan" && allDinnerRecipes().some((x) => x.id === r.id || x.starterId === r.id) ? `<button type="button" class="primary-button" data-action="life-card-place" data-recipe="${escapeAttr(r.id)}">🗓 献立に入れる</button>` : ""}
         <button type="button" class="secondary-button" data-action="life-card-flip-close">閉じる</button>
       </div>
@@ -6474,65 +5956,8 @@ function previewCardGetModal(recipeId) {
   return true;
 }
 
-// トレイ＆カード関連のアクション処理
+// カード（裏面・図鑑・GET の知らせ）のアクション処理
 function handleCardTrayAction(action, data, before) {
-  // 「考えてみたよ！」は、開いた直後だけ。何か操作したら、ふつうの案内に戻す（裏面を見るだけなら残す）
-  if (trayRevealFresh && /^life-tray-(?!open)/.test(action)) trayRevealFresh = false;
-  if (trayLastPlaced && /^life-tray-/.test(action)) trayLastPlaced = null;
-  // 考えている間は、トレイの操作を受け付けない（閉じるのはOK）
-  if (trayThinking && /^life-tray-/.test(action) && !["life-tray-open", "life-tray-close"].includes(action)) return true;
-  const mutationActions = new Set([
-    "life-tray-open",
-    "life-tray-place",
-    "life-tray-clear-all",
-    "life-tray-clear-one",
-    "life-tray-undo",
-    "life-tray-confirm-all",
-  ]);
-  if (mutationActions.has(action) && isViewer()) {
-    showToast("見るだけモードです。食べたいものは🙋で送ってね。");
-    return true;
-  }
-
-  if (action === "life-tray-open") {
-    // 献立トレイは献立タブの中にある。ほかの場所から呼ばれたら、献立タブへ移って、その日を選ぶ
-    if (swapDate) {
-      swapCommit();
-      swapDate = "";
-    }
-    cardBookOpen = false;
-    trayAnchorId = "";
-    trayFlipId = "";
-    trayPage = 0;
-    // 先に献立タブへ（タブを変えると重なった画面が閉じるため、下書きはそのあとで作る）
-    if (state.view !== "plan") {
-      if (typeof setView === "function") setView("plan");
-      else state.view = "plan";
-    }
-    const days = trayTargetDays();
-    prepareInlineTray(days);
-    // 呼ばれた時点の献立を下書きの元として固定する（変えていなければ、次に描く時に献立を追いかける形へ戻る）
-    if (!isTrayDraftActive() && days.length) initTrayDraft(days);
-    if (data.date && days.some((d) => d.date === String(data.date))) trayActiveDate = String(data.date);
-    syncHasSheetBodyClass();
-    return true;
-  }
-  if (action === "life-tray-close") {
-    // 「元の献立に戻す」：下書き（trayDraft）を捨てる。献立・買い物・同期は何も変えていない
-    trayFlipId = "";
-    trayAnchorId = "";
-    trayDraft = {};
-    trayInitialDraft = {};
-    trayBasePlan = {};
-    trayUndoStack = [];
-    trayClearedDates = new Set();
-    trayOpen = false;
-    trayThinking = false;
-    trayThinkToken += 1;
-    syncHasSheetBodyClass();
-    return true;
-  }
-  // 決定済みのまとまりの候補カードを開く・閉じる（§67-1-4）
   // カードの裏の「🎬 動画の作り方を見る」：裏面を閉じて、レシピ一覧でその料理名を探す（§70）
   if (action === "life-card-videos" && data.dish) {
     trayFlipId = "";
@@ -6541,219 +5966,6 @@ function handleCardTrayAction(action, data, before) {
     if (typeof recipeTab !== "undefined") recipeTab = "starter";
     if (typeof folderOpen !== "undefined") folderOpen = "";
     state.view = "collection";
-    return true;
-  }
-  if (action === "life-tray-more") { trayMoreOpen = true; trayPage = 0; return true; }
-  if (action === "life-tray-less") { trayMoreOpen = false; trayActiveChosen = false; trayAnchorId = ""; return true; }
-  if (action === "life-tray-select-day" && data.date) {
-    trayActiveDate = String(data.date);
-    trayActiveChosen = true;
-    trayPage = 0;
-    // 「🔄 選び直す」から来た時は、下の候補カードまで送る
-    if (data.scroll === "cards" && typeof setTimeout === "function" && typeof document !== "undefined") {
-      setTimeout(() => document.getElementById?.("tray-cards")?.scrollIntoView?.({ behavior: "smooth", block: "start" }), 30);
-    }
-    return true;
-  }
-  if (action === "life-tray-undo") {
-    const prev = trayUndoStack.pop();
-    if (prev) {
-      trayDraft = { ...prev.draft };
-      if (prev.activeDate) trayActiveDate = prev.activeDate;
-      syncTrayClearedSet();
-      showToast("↩ 1つ前の状態に戻しました");
-    }
-    return true;
-  }
-  if (action === "life-tray-clear-all") {
-    const days = trayTargetDays();
-    if (!Object.keys(trayDraft).length) initTrayDraft(days);
-    pushTrayUndo();
-    for (const d of days) {
-      trayDraft[d.date] = null;
-    }
-    syncTrayClearedSet();
-    if (days[0]) trayActiveDate = days[0].date;
-    trayActiveChosen = false;
-    trayAnchorId = "";
-    trayPage = 0;
-    return true;
-  }
-  if (action === "life-tray-clear-one" && data.date) {
-    const targetDate = String(data.date);
-    if (!Object.keys(trayDraft).length) initTrayDraft(trayTargetDays());
-    if (Object.prototype.hasOwnProperty.call(trayDraft, targetDate)) {
-      pushTrayUndo();
-      trayDraft[targetDate] = null;
-      syncTrayClearedSet();
-      trayActiveDate = targetDate;
-    }
-    return true;
-  }
-  if (action === "life-tray-mood") {
-    trayMood = trayMood === data.mood ? "" : String(data.mood || "");
-    trayPage = 0;
-    return true;
-  }
-  if (action === "life-tray-similar" && data.recipe) {
-    trayAnchorId = trayAnchorId === data.recipe ? "" : String(data.recipe);
-    trayPage = 0;
-    return true;
-  }
-  if (action === "life-tray-similar-clear") {
-    trayAnchorId = "";
-    trayPage = 0;
-    return true;
-  }
-  if (action === "life-tray-next-page") {
-    trayPage += 1;
-    return true;
-  }
-  if (action === "life-tray-place" && data.recipe) {
-    const plan = dailyPlan();
-    const locks = lockedDates(plan);
-    const days = trayTargetDays();
-    if (!Object.keys(trayDraft).length) initTrayDraft(days);
-    const targetDate = String(data.date || trayActiveDate || days[0]?.date || "");
-    const dayObj = plan.find((d) => d.date === targetDate);
-    if (!targetDate || !dayObj || locks.has(targetDate) || dayObj.off || dayObj.prestart || dayObj.slot?.status === "cooked" || dayObj.slot?.status === "off") {
-      showToast("この日は変更できません。");
-      return true;
-    }
-    const r = findDinnerRecipeById(data.recipe);
-    if (!r) return true;
-    const fit = Lifestyle.fit(r, dailyProfile(), targetDate);
-    if (!fit.ok) {
-      showToast("条件（食べられない食材・器具・時間）に合わないため並べられません。");
-      return true;
-    }
-    pushTrayUndo();
-    trayDraft[targetDate] = r.id;
-    syncTrayClearedSet();
-    trayFlipId = "";
-    trayAnchorId = "";
-    trayPage = 0;
-
-    // 次の空席（または次の日）へフォーカスを移動
-    const curIdx = days.findIndex((d) => d.date === targetDate);
-    const nextEmpty = days.slice(curIdx + 1).find((d) => !trayDayRecipe(d))
-      || days.find((d) => !trayDayRecipe(d))
-      || days[curIdx + 1]
-      || days[curIdx];
-    if (nextEmpty) trayActiveDate = nextEmpty.date;
-    trayActiveChosen = false;
-    trayMoreOpen = false;
-    trayLastPlaced = { wd: weekdayLabel(targetDate), title: r.title };
-    return true;
-  }
-  if (action === "life-tray-confirm-all") {
-    const plan = dailyPlan();
-    const locks = lockedDates(plan);
-    const currentDays = trayTargetDays();
-    if (!Object.keys(trayDraft).length && currentDays.length) initTrayDraft(currentDays);
-    const targetDates = trayTargetDates.length
-      ? [...trayTargetDates]
-      : Object.keys(trayInitialDraft).length
-        ? Object.keys(trayInitialDraft)
-        : currentDays.map((d) => d.date);
-    if (!targetDates.length) return true;
-
-    // 1. 事前検証（トレイを開いた時点の全対象日について、1日でもお休み・調理済み・ロック・空席・制約違反があれば部分確定せず中断）
-    const p = dailyProfile();
-    const validated = [];
-    for (const date of targetDates) {
-      const latestDay = plan.find((x) => x.date === date);
-      if (!latestDay || locks.has(date) || latestDay.off || latestDay.prestart || latestDay.slot?.status === "cooked" || latestDay.slot?.status === "off") {
-        showToast(`${formatDate(date)}は変更できない状態のため、決定を中断しました。`);
-        return true;
-      }
-      const rid = trayDraft[date];
-      if (!rid) {
-        showToast("すべての日の料理を並べてから決定してください。");
-        return true;
-      }
-      const r = findDinnerRecipeById(rid);
-      if (!r || !Lifestyle.fit(r, p, date).ok) {
-        showToast(`「${r?.title || "選択中の料理"}」が条件に合わないため、決定を中断しました。`);
-        return true;
-      }
-      validated.push({ date, day: latestDay, recipe: r });
-    }
-
-    // 2. 家族共有でトレイ編集中の間に他端末から同じ日が書き換えられていないか検査（無言上書きの防止）
-    // 競合を検出した時点では saveOwnRecipe を呼ばず、トレイの下書き（他日の変更を含む）も破棄せず保持する
-    if (typeof planSnapshot === "function" && typeof samePlan === "function") {
-      const currentSnap = planSnapshot(state);
-      const conflictDates = [];
-      for (const item of validated) {
-        const baseSnap = trayBasePlan[item.date] || null;
-        const nowSnap = currentSnap[item.date] || null;
-        if (Object.prototype.hasOwnProperty.call(trayBasePlan, item.date) && !samePlan(baseSnap, nowSnap)) {
-          const previewSlot = confirmedSlot(item.date, clone(item.recipe));
-          const localSnap = { slot: previewSlot };
-          if (!samePlan(localSnap, nowSnap)) {
-            state.sync = state.sync || {};
-            state.sync.conflicts = state.sync.conflicts || {};
-            state.sync.conflicts[item.date] = { local: localSnap, remote: nowSnap };
-            conflictDates.push(item.date);
-          }
-        }
-      }
-      if (conflictDates.length) {
-        trayOpen = false;
-        trayFlipId = "";
-        syncHasSheetBodyClass();
-        showToast("家族の端末で同じ日の献立が更新されたため、残す献立を選んでください。");
-        return true;
-      }
-    }
-
-    // 3. 既存の life-confirm と同じ確定パイプラインを通す
-    // 開いた時と同じ料理のまま・すでに確定済みの日は confirmDaily を呼ばない（買い物済み食材がリストに復活するのを防ぐ）
-    if (rhythmOn()) {
-      const blocks = planPageBlocks();
-      const currentBlock = blocks.find((b) => b.key === planPage) || blocks.find((b) => b.end >= today()) || blocks[0];
-      if (currentBlock) {
-        planPage = currentBlock.key;
-        shopPage = currentBlock.key;
-        shopCombineNext = false;
-      }
-    }
-    trackDaily("plan_confirmed", {
-      days: validated.length,
-      via: "tray",
-    });
-
-    const hadConfirmed = targetDates.some((date) => state.mealSlots?.[date]?.status === "confirmed");
-    state.planOverrides = state.planOverrides || {};
-    let changedAnyConfirmed = false;
-    for (const item of validated) {
-      const existingSlot = state.mealSlots?.[item.date];
-      const unchangedConfirmed =
-        existingSlot?.status === "confirmed" &&
-        trayDraft[item.date] === trayInitialDraft[item.date] &&
-        (existingSlot.recipe?.id === item.recipe.id || existingSlot.recipe?.starterId === item.recipe.id);
-      if (unchangedConfirmed) continue;
-      state.planOverrides[item.date] = item.recipe.id;
-      confirmDaily({ date: item.date }, item.recipe);
-      changedAnyConfirmed = true;
-    }
-    if (hadConfirmed && changedAnyConfirmed) changedShopping(before || []);
-    else if (!hadConfirmed) shoppingNotice = "";
-
-    trayOpen = false;
-    trayFlipId = "";
-    trayAnchorId = "";
-    trayDraft = {};
-    trayInitialDraft = {};
-    trayBasePlan = {};
-    trayTargetDates = [];
-    trayUndoStack = [];
-    trayClearedDates = new Set();
-    if (typeof setView === "function") setView("shopping");
-    else state.view = "shopping";
-    syncHasSheetBodyClass();
-    showToast(`🎉 ${validated.length}日分の献立を決定しました！買い物リストへ進みます`);
     return true;
   }
   if (action === "life-card-flip" && data.recipe) {
@@ -6794,18 +6006,11 @@ function handleCardTrayAction(action, data, before) {
     // 図鑑はレシピタブで見る（2026-11-15。§78）
     cardGetRecipeId = "";
     trayFlipId = "";
-    cardBookOpen = false;
     if (typeof recipeTab !== "undefined") recipeTab = "book";
     if (typeof folderOpen !== "undefined") folderOpen = "";
     state.searchText = "";
     if (typeof setView === "function") setView("collection");
     else state.view = "collection";
-    syncHasSheetBodyClass();
-    return true;
-  }
-  if (action === "life-card-book-close") {
-    cardBookOpen = false;
-    trayFlipId = "";
     syncHasSheetBodyClass();
     return true;
   }

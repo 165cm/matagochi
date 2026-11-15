@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261115-recipe-book";
+const APP_VERSION = "20261116-tidy";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -308,7 +308,6 @@ function hasUnsavedWork() {
   if (typeof recordDraft !== "undefined" && recordDraft) return true; // 記録の編集
   if (typeof talkTypeDraft !== "undefined" && talkTypeDraft) return true; // 晩ごはんタイプの質問の途中
   if (typeof timeFix !== "undefined" && timeFix) return true; // ▶ の時刻を直している途中
-  if (typeof isTrayDraftActive === "function" && isTrayDraftActive()) return true; // 献立トレイの下書き編集中
   if (state?.editingRecipeId || ["register", "playlist", "recordDetails"].includes(state?.view)) return true; // レシピの登録・編集
   return false;
 }
@@ -1182,9 +1181,6 @@ async function handleSyncPlanAction(action, data) {
   }
   if (chosen) plan[data.date] = chosen; else delete plan[data.date];
   putPlan(state, plan);
-  if (typeof syncTrayAfterConflictResolution === "function") {
-    syncTrayAfterConflictResolution(data.date, chosen);
-  }
   delete state.sync.conflicts[data.date];
   saveState(); render();
   if (!Object.keys(state.sync.conflicts).length) { if(account) await ensureAccountSync().catch(e=>{syncRuntimeStatus=syncErrorText(e);}); else await syncNow({ silent: true }); }

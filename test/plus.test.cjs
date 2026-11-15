@@ -78,8 +78,17 @@ test('locked days are shown (peek), not hidden; the shopping tab peeks at the la
   assert.equal(run('paywall'), null);
 });
 
+// 日付を決めたテスト用の時計（本物の時計だと、日曜の夜は今週の通知がもう残っておらず、下の「other weeks still notify」が落ちる）
+function fixedDate(iso) {
+  const t = Date.parse(iso);
+  return class extends Date {
+    constructor(...a) { if (a.length) super(...a); else super(t); }
+    static now() { return t; }
+  };
+}
+
 test('pause weeks: 4-week plan moves the bill a week per pause; yearly earns a renewal discount up to 10 weeks; 3 in a row, 14 a year', () => {
-  const run = app();
+  const run = app({ Date: fixedDate('2026-11-11T10:00:00') }); // 水曜の朝
   setup(run);
   const mon = run('addDays(weekStartOf(today()), 7)');
   run(`state.plus = { plan: "four", since: today(), until: addDays(today(), 27), pauses: [] }`);

@@ -132,10 +132,9 @@ test("1. Demo action never modifies recipes, evaluations, or sync data, and clea
   const beforeRecipesCount = run(`state.recipes.length`);
   const beforeEvalsCount = run(`state.evaluations.length`);
 
-  // Normal tray sheet must NOT render demo GET button
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const sheetHtml = run(`renderCardTraySheet()`);
-  assert.ok(!sheetHtml.includes("life-card-get-demo"), "Public tray UI must not show GET demo button");
+  // Normal screens must NOT render demo GET button
+  run(`recipeTab = "book"`);
+  assert.ok(!run(`renderDailyPlan()`).includes("life-card-get-demo") && !run(`renderCollection()`).includes("life-card-get-demo"), "Public UI must not show GET demo button");
 
   // Even if life-card-get-demo is invoked directly, it must NOT write to state.recipes or state.evaluations
   run(`handleCardTrayAction("life-card-get-demo", { recipe: ${JSON.stringify(rId)} })`);
@@ -157,190 +156,19 @@ test("1. Demo action never modifies recipes, evaluations, or sync data, and clea
   assert.ok(run(`Boolean(state.tombstones.evaluations["demo-get-1700000001"])`));
 });
 
-test("2 & 3. Tray draft isolation: placing 1 card does not change other days, undo restores previous draft, and closing discards draft without modifying plan or shopping", () => {
-  const run = app();
-  const beforePlan = run(`JSON.parse(JSON.stringify(dailyPlan()))`);
-  const beforeShopping = run(`JSON.parse(JSON.stringify(dailyShopping()))`);
-  const beforeOverrides = run(`JSON.parse(JSON.stringify(state.planOverrides || {}))`);
-
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const days = run(`trayTargetDays()`);
-  const d0 = days[0].date;
-  const d1 = days[1].date;
-  const d2 = days[2].date;
-  const initialD0 = run(`trayDraft[${JSON.stringify(d0)}]`);
-  const initialD1 = run(`trayDraft[${JSON.stringify(d1)}]`);
-  const initialD2 = run(`trayDraft[${JSON.stringify(d2)}]`);
-
-  // Place a different recipe on day 0
-  const sheetHtml = run(`renderCardTraySheet()`);
-  const candidates = [...sheetHtml.matchAll(/data-action="life-tray-place" data-recipe="([^"]+)"/g)].map((m) => m[1]);
-  const newRecipeId = candidates.find((id) => id !== initialD0) || candidates[0];
-
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(newRecipeId)} })`);
-
-  // Day 0 changed in draft, but Day 1 and Day 2 in draft are completely untouched
-  assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), newRecipeId);
-  assert.equal(run(`trayDraft[${JSON.stringify(d1)}]`), initialD1, "Day 2 must not reshuffle when Day 1 changes");
-  assert.equal(run(`trayDraft[${JSON.stringify(d2)}]`), initialD2, "Day 3 must not reshuffle when Day 1 changes");
-
-  // Underlying state.planOverrides is still untouched while in draft
-  assert.deepEqual(run(`JSON.parse(JSON.stringify(state.planOverrides || {}))`), beforeOverrides);
-
-  // Undo restores Day 0 to initialD0
-  run(`handleCardTrayAction("life-tray-undo", {})`);
-  assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), initialD0);
-
-  // Place again, then close tray without confirming -> discards draft
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(newRecipeId)} })`);
-  run(`handleCardTrayAction("life-tray-close", {})`);
-  assert.equal(run(`trayOpen`), false);
-  assert.equal(run(`isTrayDraftActive()`), false);
-  assert.deepEqual(run(`JSON.parse(JSON.stringify(dailyPlan()))`), beforePlan);
-  assert.deepEqual(run(`JSON.parse(JSON.stringify(dailyShopping()))`), beforeShopping);
-});
-
-test("4. Confirming the tray updates mealSlots, dailyShopping, planPage/shopPage, trackDaily, switches to shopping view, and detects concurrent family conflicts", () => {
-  const run = app();
-  run(`setView = (v) => { state.view = v; }`);
-
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const days = run(`trayTargetDays()`);
-  const d0 = days[0].date;
-  const sheetHtml = run(`renderCardTraySheet()`);
-  const pickedId = sheetHtml.match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
-
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pickedId)} })`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-
-  assert.equal(run(`trayOpen`), false);
-  assert.equal(run(`state.view`), "shopping");
-  assert.equal(run(`state.planOverrides[${JSON.stringify(d0)}]`), pickedId);
-  assert.equal(run(`state.mealSlots[${JSON.stringify(d0)}]?.status`), "confirmed");
-  assert.equal(run(`state.mealSlots[${JSON.stringify(d0)}]?.recipe?.id`), pickedId);
-
-  const shop = run(`dailyShopping()`);
-  assert.ok(Array.isArray(shop) && shop.length > 0);
-
-  // Concurrent family edit conflict detection
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const familyOtherRecipe = run(`allDinnerRecipes().find(r => r.id !== ${JSON.stringify(pickedId)})`);
-  // Simulate a remote family sync changing d0's confirmed mealSlot while tray is open
-  run(`state.mealSlots[${JSON.stringify(d0)}] = confirmedSlot(${JSON.stringify(d0)}, ${JSON.stringify(familyOtherRecipe)})`);
-  run(`trayDraft[${JSON.stringify(d0)}] = ${JSON.stringify(pickedId)}`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-
-  // Must record conflict instead of silently overwriting family member's change
-  assert.equal(run(`state.mealSlots[${JSON.stringify(d0)}]?.recipe?.id`), familyOtherRecipe.id);
-  assert.ok(run(`Boolean(state.sync?.conflicts?.[${JSON.stringify(d0)}])`));
-});
-
-test("5. Viewer mode (isViewer) blocks tray open/place/clear/confirm and dailyRecord", () => {
+test("5. Viewer mode (isViewer): no decide button, and dailyRecord does nothing", () => {
   const run = app();
   run(`isViewer = () => true`);
-  const beforeOverrides = run(`JSON.parse(JSON.stringify(state.planOverrides || {}))`);
   const beforeEvals = run(`state.evaluations.length`);
-
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  assert.equal(run(`trayOpen`), false, "Viewer must not open tray");
+  const html = run(`renderDailyPlan()`);
+  assert.ok(!html.includes('data-action="life-confirm"') && !html.includes("plan-decide"), "Viewer cannot decide the plan");
 
   const d0 = run(`dailyPlan()[0].date`);
   const r0 = run(`allDinnerRecipes()[0]`);
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(r0.id)} })`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-  assert.deepEqual(run(`JSON.parse(JSON.stringify(state.planOverrides || {}))`), beforeOverrides);
-
   run(`dailyRecord({ date: ${JSON.stringify(d0)}, status: "confirmed", recipe: ${JSON.stringify(r0)} })`);
   assert.equal(run(`state.evaluations.length`), beforeEvals, "Viewer must not record cooked dishes");
-
-  assert.equal(run(`VIEWER_BLOCKED.includes("life-tray-open")`), true);
-  assert.equal(run(`VIEWER_BLOCKED.includes("life-tray-place")`), true);
-  assert.equal(run(`VIEWER_BLOCKED.includes("life-tray-confirm-all")`), true);
   assert.equal(run(`VIEWER_BLOCKED.includes("life-cooked")`), true);
-});
-
-test("6. Restricted ingredients, unsupported equipment, overtime, cooked, off, and locked days cannot be placed or confirmed", () => {
-  const run = app();
-  // Restrict shrimp ("えび"), limit weekday/weekend time to 15 min, and disallow オーブン
-  run(`
-    state.foodProfile = Lifestyle.profile({
-      ...dailyProfile(),
-      restrictions: ["えび"],
-      weekdayMinutes: 15,
-      weekendMinutes: 15,
-      equipment: { ...Lifestyle.equipmentDefaults({}), オーブン: "none" }
-    });
-    state.recipes.push(
-      {
-        id: "bad-allergen",
-        title: "えびチリ",
-        mealType: "dinner",
-        planning: { minutes: 10, equipment: ["フライパン"], contains: ["えび"], verified: true },
-        ingredients: [{ name: "むきえび", amount: "200g" }],
-        steps: ["フライパンで炒める"]
-      },
-      {
-        id: "bad-time",
-        title: "じっくり煮込み",
-        mealType: "dinner",
-        planning: { minutes: 45, equipment: ["鍋"], contains: [], verified: true },
-        ingredients: [{ name: "豚肉", amount: "200g" }],
-        steps: ["鍋で煮る"]
-      },
-      {
-        id: "bad-equip",
-        title: "オーブン焼き",
-        mealType: "dinner",
-        planning: { minutes: 10, equipment: ["オーブン"], contains: [], verified: true },
-        ingredients: [{ name: "鶏肉", amount: "200g" }],
-        steps: ["オーブンで焼く"]
-      }
-    );
-  `);
-
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const d0 = run(`trayTargetDays()[0].date`);
-  const origD0 = run(`trayDraft[${JSON.stringify(d0)}]`);
-
-  // Attempt to place restricted / overtime / unsupported equipment recipes
-  run(`handleCardTrayAction("life-tray-place", { recipe: "bad-allergen" })`);
-  assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), origD0);
-
-  run(`handleCardTrayAction("life-tray-place", { recipe: "bad-time" })`);
-  assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), origD0);
-
-  run(`handleCardTrayAction("life-tray-place", { recipe: "bad-equip" })`);
-  assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), origD0);
-
-  // If a draft has an invalid recipe injected, confirm-all aborts without partial update
-  run(`trayDraft[${JSON.stringify(d0)}] = "bad-allergen"`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-  assert.notEqual(run(`state.planOverrides?.[${JSON.stringify(d0)}]`), "bad-allergen");
-  assert.notEqual(run(`state.mealSlots?.[${JSON.stringify(d0)}]?.status`), "confirmed");
-
-  // Cooked / off day is excluded from trayTargetDays and cannot be modified
-  run(`handleCardTrayAction("life-tray-close", {})`);
-  run(`state.mealSlots[${JSON.stringify(d0)}] = { date: ${JSON.stringify(d0)}, status: "off", updatedAt: nowIso() }`);
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const editableDates = run(`trayTargetDays().map(d => d.date)`);
-  assert.ok(!editableDates.includes(d0), "Off day must not be editable in tray");
-});
-
-test("7. Opening 3-day tray from '今夜の4皿' (swapDate) commits pass learning (swapCommit) before switching", () => {
-  const run = app();
-  const d0 = run(`dailyPlan()[0].date`);
-  const rPass = run(`allDinnerRecipes()[0].id`);
-
-  run(`swapDate = ${JSON.stringify(d0)}`);
-  run(`swapRemoved = [{ id: ${JSON.stringify(rPass)}, bulk: false }]`);
-
-  run(`handleCardTrayAction("life-tray-open", { date: ${JSON.stringify(d0)} })`);
-  assert.equal(run(`swapDate`), "", "swapDate must be cleared when opening tray");
-  assert.equal(run(`trayOpen`), true, "trayOpen must be true");
-  assert.ok(
-    run(`Boolean(state.passMemo?.rests?.[${JSON.stringify(rPass)}])`),
-    "swapCommit must have persisted passed recipe rest period before switching to tray"
-  );
+  assert.equal(run(`VIEWER_BLOCKED.includes("life-confirm")`), true);
 });
 
 test("8. Card Book lives in the recipe tab (🃏 図鑑); the card back can add the dish to the plan; cooking does not block 1-tap post-meal rating", () => {
@@ -393,13 +221,12 @@ test("8. Card Book lives in the recipe tab (🃏 図鑑); the card back can add 
   assert.ok(!run(`renderCardFlipModal()`).includes("life-card-place"));
 });
 
-test("9. The tray is part of the plan tab (no sheet); Escape closes only the card back; tab switch keeps an edited draft", () => {
+test("9. Card back is a modal: it locks the page, Escape closes it, and a tab switch closes it", () => {
   const run = app();
   const rId = run(`allDinnerRecipes()[0].id`);
 
-  run(`handleCardTrayAction("life-tray-open", {})`);
   run(`bindSwapSheet()`);
-  assert.equal(run(`document.body.classList.contains("has-sheet")`), false, "Inline tray is not a modal");
+  assert.equal(run(`document.body.classList.contains("has-sheet")`), false, "Nothing is open at first");
 
   run(`handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(rId)} })`);
   run(`bindSwapSheet()`);
@@ -410,16 +237,11 @@ test("9. The tray is part of the plan tab (no sheet); Escape closes only the car
   assert.equal(run(`trayFlipId`), "");
   assert.equal(run(`document.body.classList.contains("has-sheet")`), false);
 
-  // 選び直しの途中でタブを切り替えても、下書きは残る
-  const d0 = run(`trayTargetDays()[0].date`);
-  run(`handleCardTrayAction("life-tray-clear-one", { date: ${JSON.stringify(d0)} })`);
-  assert.equal(run(`isTrayDraftActive()`), true);
+  // タブを切り替えると、開いていた裏面は閉じる
+  run(`handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(rId)} })`);
   run(`resetCardTrayModals()`);
-  assert.equal(run(`isTrayDraftActive()`), true, "Edited draft survives a tab switch");
+  assert.equal(run(`trayFlipId`), "");
   assert.equal(run(`document.body.classList.contains("has-sheet")`), false);
-  // 「元の献立に戻す」で捨てられる
-  run(`handleCardTrayAction("life-tray-close", {})`);
-  assert.equal(run(`isTrayDraftActive()`), false);
 });
 
 test("10. Stage 2 Nutrition Engine: prevents false ingredient matches, parses fractions/ranges/invalid quantities, and never fabricates servings or clamped salt", () => {
@@ -516,7 +338,7 @@ test("11. Stage 3 Honest Image Resolution: never assigns another dish's illustra
   assert.equal(infoFallback.label, "イメージ");
 });
 
-test("12. Performance benchmark with 400 recipes and cache invalidation on recipe edit", () => {
+test("12. Performance benchmark with 400 recipes (plan tab and card book) and cache invalidation on recipe edit", () => {
   const run = app();
   run(`
     for (let i = 0; i < 360; i++) {
@@ -540,19 +362,15 @@ test("12. Performance benchmark with 400 recipes and cache invalidation on recip
   assert.ok(totalRecipes >= 400, `Expected >= 400 recipes, got ${totalRecipes}`);
 
   const t0 = performance.now();
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const html1 = run(`renderCardTraySheet()`);
-  const openMs = performance.now() - t0;
-
-  const pickedId = html1.match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
+  const html1 = run(`renderDailyPlan()`);
+  const planMs = performance.now() - t0;
   const t1 = performance.now();
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pickedId)} })`);
-  const html2 = run(`renderCardTraySheet()`);
-  const placeMs = performance.now() - t1;
+  const html2 = run(`renderCardBookInline()`);
+  const bookMs = performance.now() - t1;
 
-  assert.ok(openMs < 500, `Expected tray open + render < 500ms for 400 recipes, took ${openMs.toFixed(1)}ms`);
-  assert.ok(placeMs < 250, `Expected card place + render < 250ms for 400 recipes, took ${placeMs.toFixed(1)}ms`);
-  assert.ok(html2.includes("に入れる候補"));
+  assert.ok(planMs < 500, `Expected the plan tab < 500ms for 400 recipes, took ${planMs.toFixed(1)}ms`);
+  assert.ok(bookMs < 500, `Expected the card book < 500ms for 400 recipes, took ${bookMs.toFixed(1)}ms`);
+  assert.ok(html1.includes("plan-decide") && html2.includes("bk-chapter"));
 
   // Verify cache invalidates when a recipe's ingredients change
   const beforeSalt = run(`estimateRecipeNutrition(state.recipes.find(r => r.id === "perf-r-0")).saltG`);
@@ -563,121 +381,6 @@ test("12. Performance benchmark with 400 recipes and cache invalidation on recip
   `);
   const afterSalt = run(`estimateRecipeNutrition(state.recipes.find(r => r.id === "perf-r-0")).saltG`);
   assert.ok(afterSalt > beforeSalt, "Nutrition memo must invalidate when recipe ingredients/updatedAt change");
-});
-
-test("13. Regression (Claude #1): Unchanged already-confirmed day is NOT re-confirmed by life-tray-confirm-all, keeping shopped items off the shopping list", () => {
-  const run = app();
-  run(`setView = (v) => { state.view = v; }`);
-  const days = run(`trayTargetDays()`);
-  const d0 = days[0].date;
-  const d1 = days[1].date;
-  const r0 = run(`allDinnerRecipes()[0]`);
-  const r1 = run(`allDinnerRecipes()[1]`);
-  const r2 = run(`allDinnerRecipes()[2]`);
-
-  // Day 0 is already confirmed and shopped at an earlier timestamp
-  run(`
-    confirmDaily({ date: ${JSON.stringify(d0)} }, ${JSON.stringify(r0)});
-    state.mealSlots[${JSON.stringify(d0)}].updatedAt = "2026-11-08T08:00:00.000Z";
-    state.shopDone = { legacy: "2026-11-08T09:00:00.000Z" };
-  `);
-  assert.equal(run(`dailyShopping().length`), 0, "Before tray open, already-shopped Day 0 has 0 items to buy");
-
-  // Open tray, leave Day 0 unchanged, and change only Day 1
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d1)} })`);
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(r1.id)}, date: ${JSON.stringify(d1)} })`);
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(r2.id)}, date: ${JSON.stringify(days[2].date)} })`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-
-  assert.equal(
-    run(`state.mealSlots[${JSON.stringify(d0)}].updatedAt`),
-    "2026-11-08T08:00:00.000Z",
-    "Unchanged confirmed day must keep its original updatedAt so shopDone stays newer"
-  );
-  // Shopping list must contain only newly confirmed days' ingredients, not Day 0's already-shopped items
-  const shopUses = run(`dailyShopping().flatMap(i => i.uses || [])`);
-  assert.ok(!shopUses.includes(r0.title), "Already-shopped unchanged day d0 must not return to shopping list");
-  assert.ok(shopUses.includes(r1.title), "Newly confirmed day d1 must appear on shopping list");
-});
-
-test("14. Regression (Claude #2 & Codex #2, #3): Empty slot hides confirm button & blocks confirm-all; target day becoming off/cooked/locked during edit aborts all days", () => {
-  const run = app();
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const days = run(`trayTargetDays()`);
-  const d0 = days[0].date;
-  const d1 = days[1].date;
-
-  // All 3 slots filled initially -> confirm button is shown
-  assert.ok(run(`renderTrayActionBar(trayTargetDays())`).includes("life-tray-confirm-all"));
-
-  // Clear one slot -> confirm button must NOT be rendered, and direct confirm-all must abort without confirming remaining days
-  run(`handleCardTrayAction("life-tray-clear-one", { date: ${JSON.stringify(d0)} })`);
-  assert.ok(!run(`renderTrayActionBar(trayTargetDays())`).includes("life-tray-confirm-all"), "Confirm button must be hidden when any slot is empty");
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-  assert.notEqual(run(`state.mealSlots?.[${JSON.stringify(d1)}]?.status`), "confirmed", "Must not partially confirm when a slot is empty");
-
-  // Re-open with all slots filled, then d0 becomes 'off' while tray is open -> confirm-all must abort all days
-  run(`handleCardTrayAction("life-tray-close", {})`);
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  run(`state.mealSlots[${JSON.stringify(d0)}] = { date: ${JSON.stringify(d0)}, status: "off", updatedAt: nowIso() }`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-  assert.notEqual(run(`state.mealSlots?.[${JSON.stringify(d1)}]?.status`), "confirmed", "Must abort all days if any pinned target date became off while tray was open");
-});
-
-test("15. Regression (Codex #1): Conflict resolution uses c.local, does not prematurely save discover recipe, and preserves other days' tray draft", async () => {
-  const run = app();
-  const days = run(`trayTargetDays()`);
-  const d0 = days[0].date;
-  const d1 = days[1].date;
-
-  // Add a discover recipe to candidate pool
-  run(`
-    discover.savedAt = "2026-11-09T09:00:00Z";
-    discover.trends = [{
-      videoId: "vidtest1",
-      title: "新着テスト鶏の照り焼き",
-      videoUrl: "https://www.youtube.com/watch?v=vidtest1",
-      thumbnailUrl: "https://i.ytimg.com/vi/vidtest1/hqdefault.jpg",
-      planning: { minutes: 15, easy: true, equipment: ["フライパン"], contains: ["鶏肉"], tasks: [] },
-      sourceServings: 2,
-      ingredients: [{ name: "鶏もも肉", amount: "250g" }, { name: "しょうゆ", amount: "大さじ1" }],
-      steps: ["フライパンで焼く"]
-    }];
-    discover.popular = [];
-    discoverRecipes();
-  `);
-  const rRemote = run(`allDinnerRecipes().find(r => r.id !== "trend-vidtest1")`);
-  const rDay1Pick = run(`allDinnerRecipes().find(r => r.id !== "trend-vidtest1" && r.id !== ${JSON.stringify(rRemote.id)})`);
-  const recipesBefore = run(`state.recipes.length`);
-
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  run(`handleCardTrayAction("life-tray-place", { recipe: "trend-vidtest1", date: ${JSON.stringify(d0)} })`);
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(rDay1Pick.id)}, date: ${JSON.stringify(d1)} })`);
-
-  // Simulate remote family device confirming rRemote on d0 while tray was open
-  run(`state.mealSlots[${JSON.stringify(d0)}] = confirmedSlot(${JSON.stringify(d0)}, ${JSON.stringify(rRemote)})`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-
-  // 1. Conflict detected, discover recipe NOT saved to state.recipes yet
-  assert.ok(run(`Boolean(state.sync?.conflicts?.[${JSON.stringify(d0)}])`));
-  assert.equal(run(`state.recipes.length`), recipesBefore, "Discover recipe must not be saved before user chooses local in conflict");
-
-  // 2. Conflict choice UI shows the local tray choice ("新着テスト鶏の照り焼き"), NOT the remote recipe
-  const conflictHtml = run(`renderPlanConflictChoices(state.sync.conflicts)`);
-  assert.ok(conflictHtml.includes("この端末：新着テスト鶏の照り焼き"), `Expected local tray recipe title in conflict button, got: ${conflictHtml}`);
-
-  // 3. Other day's draft (d1) is preserved
-  assert.equal(run(`trayDraft[${JSON.stringify(d1)}]`), rDay1Pick.id, "Non-conflicting day's draft must be preserved");
-
-  // 4. Choosing 'sync-plan-local' applies c.local (and saves the discover recipe now)
-  await run(`handleSyncPlanAction("sync-plan-local", { date: ${JSON.stringify(d0)} })`);
-  assert.equal(run(`state.mealSlots[${JSON.stringify(d0)}]?.recipe?.title`), "新着テスト鶏の照り焼き");
-  assert.equal(run(`state.recipes.length`), recipesBefore + 1, "Discover recipe is saved once local conflict choice is selected");
-
-  // 5. Re-opening tray keeps d1's draft intact so user can finish confirming
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  assert.equal(run(`trayDraft[${JSON.stringify(d1)}]`), rDay1Pick.id);
 });
 
 test("16. Regression (Claude #3 & Codex #4, #5): Ponzu salt, diluted liquid broth vs dry granules, plain oil kcal, impossible salt cap, and partial vs total separation", () => {
@@ -788,7 +491,7 @@ test("17. Regression (Claude #6 & #7 & Codex #6): Viewer hides all '作った' b
   assert.equal(specAfter.rank, "gold", "Changing 2nd evaluation's rating to 'tomorrow' must invalidate CARD_SPEC_MEMO and upgrade rank to gold");
 });
 
-test("18. Regression (Codex Round 3): Aburaage is not oil, unquantified ingredients consistently invalidate macro/salt, and remaining draft protects hasUnsavedWork after resolving last conflict", () => {
+test("18. Regression (Codex Round 3): Aburaage is not oil, and unquantified ingredients consistently invalidate macro/salt", () => {
   const run = app();
 
   // 1. Codex #1: 油, 米油, 油揚げ, 厚揚げ distinction
@@ -865,39 +568,9 @@ test("18. Regression (Codex Round 3): Aburaage is not oil, unquantified ingredie
   assert.equal(nMilkSome.kcal, null, "Milk '適量' must make total kcal null");
   assert.ok(nMilkSome.partialSaltG != null && nMilkSome.partialSaltG > 0);
   assert.ok(nMilkSome.partialKcal != null && nMilkSome.partialKcal > 0);
-
-  // 3. Codex #3: Resolving last conflict while other days have drafts keeps hasUnsavedWork() true
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const days = run(`trayTargetDays()`);
-  const d0 = days[0].date;
-  const d1 = days[1].date;
-  const rA = run(`allDinnerRecipes()[0]`);
-  const rB = run(`allDinnerRecipes()[1]`);
-  const rC = run(`allDinnerRecipes()[2]`);
-
-  // Open tray, edit d0 and d1
-  run(`handleCardTrayAction("life-tray-place", { date: ${JSON.stringify(d0)}, recipe: ${JSON.stringify(rA.id)} })`);
-  run(`handleCardTrayAction("life-tray-place", { date: ${JSON.stringify(d1)}, recipe: ${JSON.stringify(rB.id)} })`);
-
-  // Simulate tray closed (e.g., conflict dialog on top) with a conflict on d0
-  run(`trayOpen = false`);
-  run(`state.sync.conflicts = { [${JSON.stringify(d0)}]: { local: ${JSON.stringify(rA)}, remote: ${JSON.stringify(rC)} } }`);
-  assert.ok(run(`isTrayDraftActive()`), "Draft should be active during conflict");
-  assert.ok(run(`hasUnsavedWork()`), "hasUnsavedWork should be true during conflict");
-
-  // Resolve d0 conflict by picking local selection
-  run(`syncTrayAfterConflictResolution(${JSON.stringify(d0)}, { slot: { recipe: ${JSON.stringify(rA)} } })`);
-  run(`delete state.sync.conflicts[${JSON.stringify(d0)}]`);
-
-  // Now conflicts is empty ({}), trayOpen is false, but d1 draft is still unsaved!
-  assert.equal(run(`Object.keys(state.sync.conflicts).length`), 0, "Conflicts are completely cleared");
-  assert.equal(run(`trayOpen`), false, "Tray is closed");
-  assert.notEqual(run(`trayDraft[${JSON.stringify(d1)}]`), run(`trayInitialDraft[${JSON.stringify(d1)}]`), "d1 draft is still different from initial");
-  assert.ok(run(`isTrayDraftActive()`), "isTrayDraftActive must be true because d1 has an unsaved draft");
-  assert.ok(run(`hasUnsavedWork()`), "hasUnsavedWork must remain true to protect unsaved d1 draft from automatic reload/sync");
 });
 
-test("19. Regression (PR #238 review): parseAmountQuantity('1/2袋（100g）') -> 100g, syncTrayAfterConflictResolution sets samePlan true, and bindSwapSheet prioritizes .rc-flip-overlay", () => {
+test("19. Regression (PR #238 review): parseAmountQuantity('1/2袋（100g）') -> 100g, and bindSwapSheet prioritizes .rc-flip-overlay", () => {
   const run = app();
 
   // 1. parseAmountQuantity paren weight extraction
@@ -951,25 +624,7 @@ test("19. Regression (PR #238 review): parseAmountQuantity('1/2袋（100g）') -
   assert.equal(pqNegRangeParen.invalid, true);
   assert.equal(pqNegRangeParen.qty, null);
 
-  // 2. syncTrayAfterConflictResolution keeps trayBasePlan in sync with planSnapshot (samePlan === true)
-  const days = run(`trayTargetDays()`);
-  const d0 = days[0].date;
-  const rA = run(`allDinnerRecipes()[0]`);
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  run(`handleCardTrayAction("life-tray-place", { date: ${JSON.stringify(d0)}, recipe: ${JSON.stringify(rA.id)} })`);
-
-  // Simulate conflict resolution selecting local recipe
-  const chosenSlot = run(`confirmedSlot(${JSON.stringify(d0)}, ${JSON.stringify(rA)})`);
-  run(`
-    const plan = planSnapshot(state);
-    plan[${JSON.stringify(d0)}] = { slot: ${JSON.stringify(chosenSlot)} };
-    putPlan(state, plan);
-    syncTrayAfterConflictResolution(${JSON.stringify(d0)}, { slot: ${JSON.stringify(chosenSlot)} });
-  `);
-  const isSame = run(`samePlan(trayBasePlan[${JSON.stringify(d0)}], planSnapshot(state)[${JSON.stringify(d0)}])`);
-  assert.equal(isSame, true, "trayBasePlan must match planSnapshot after conflict resolution so samePlan is true and conflict is not repeatedly flagged");
-
-  // 3. bindSwapSheet prioritizes .rc-flip-overlay over background .swap-sheet
+  // 2. bindSwapSheet prioritizes .rc-flip-overlay over background .swap-sheet
   run(`
     let focusedElement = null;
     const flipOverlay = {
@@ -994,45 +649,14 @@ test("19. Regression (PR #238 review): parseAmountQuantity('1/2袋（100g）') -
   assert.equal(run(`focusedElement`), "flip-btn", "bindSwapSheet must focus inside the topmost .rc-flip-overlay, not background .swap-sheet");
 });
 
-test("20. Card front: no reason ribbon over the photo, richer collector info, and no duplicate 裏面 button", () => {
+test("20. Card front (card book extras): no reason ribbon over the photo, collector info, corner peel, and no place dock", () => {
   const run = app();
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const html = run(`renderCardTraySheet()`);
+  const html = run(`renderRecipeTradingCard(allDinnerRecipes()[0], { mode: "book" })`);
   assert.ok(!html.includes("rc-unique-ribbon"), "Reason must not be overlaid on the photo");
   assert.ok(html.includes('class="rc-stats"'), "Card shows 作った・技・材料");
   assert.ok(html.includes('class="rc-tag-line"'), "Card shows taste/type tags");
-  assert.ok(!/<small>裏面<\/small>/.test(html), "Back side opens from the corner peel only (no 裏面 dock button)");
   assert.ok(html.includes("rc-corner-peel"));
-  assert.equal(run(`trayThinking`), false, "No thinking delay without animation support (tests, reduced motion)");
-});
-
-test("21. Similar mode: a reason shared by 2+ cards is said once by よはく, not repeated on every card", () => {
-  const run = app();
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const first = run(`renderCardTraySheet()`).match(/data-action="life-tray-similar" data-recipe="([^"]+)"/)[1];
-  run(`handleCardTrayAction("life-tray-similar", { recipe: ${JSON.stringify(first)} })`);
-  const html = run(`renderCardTraySheet()`);
-  const chips = [...html.matchAll(/<span class="rc-reason-chip">([^<]+)<\/span>/g)].map((m) => m[1]);
-  const counts = chips.reduce((m, c) => m.set(c, (m.get(c) || 0) + 1), new Map());
-  for (const [chip, n] of counts) assert.ok(n < 2, `chip "${chip}" must not repeat (${n} cards)`);
-  const say = html.match(/class="tray-yohaku-bar[^"]*" data-say="([^"]+)"/)[1];
-  assert.match(say, /に近い/);
-});
-
-test("22. Thinking state blocks tray edits until the reveal, and closing cancels it", () => {
-  const run = app();
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  const d0 = run(`trayTargetDays()[0].date`);
-  const before = run(`trayDraft[${JSON.stringify(d0)}]`);
-  run(`trayThinking = true`);
-  const html = run(`renderCardTraySheet()`);
-  assert.ok(html.includes("考えてる"), "よはく says she is thinking");
-  assert.ok(!html.includes('data-action="life-tray-place"'), "No cards to place while thinking");
-  assert.ok(!html.includes("life-tray-confirm-all"), "No confirm while thinking");
-  run(`handleCardTrayAction("life-tray-clear-one", { date: ${JSON.stringify(d0)} })`);
-  assert.equal(run(`trayDraft[${JSON.stringify(d0)}]`), before, "Edits are ignored while thinking");
-  run(`handleCardTrayAction("life-tray-close", {})`);
-  assert.equal(run(`trayThinking`), false);
+  assert.ok(!html.includes("rc-dock") && !html.includes("life-tray-"), "No day-placing dock: the plan changes through ⇄ 変更 only");
 });
 
 test("23. Plan tab is quiet: plan cards, one decide button with the shopping/reuse line, no candidate shelf; ⇄ 変更 opens the 4-dish sheet (docs/UX_REDESIGN.md)", () => {
@@ -1083,66 +707,6 @@ test("23. Plan tab is quiet: plan cards, one decide button with the shopping/reu
   assert.equal(run2(`state.view`), "collection");
 });
 
-test("24. 7-day plan: the tray covers every shown day, so 決定 confirms all 7 (Codex review #240)", () => {
-  const run = app();
-  run(`state.planLength = 7`);
-  const days = run(`trayTargetDays()`);
-  const shown = run(`dailyPlan().filter((d) => !d.off && !d.prestart && d.candidate).length`);
-  assert.equal(days.length, shown, "All shown cooking days are tray days");
-  run(`setView = (v) => { state.view = v; }`);
-  run(`handleCardTrayAction("life-tray-open", {})`);
-  run(`handleCardTrayAction("life-tray-confirm-all", {})`);
-  for (const d of days) assert.equal(run(`state.mealSlots[${JSON.stringify(d.date)}]?.status`), "confirmed", `${d.date} is confirmed`);
-});
-
-// 2026-11-14 のユーザーの判断（APP_MAP §67-1-4）：決めた後の献立タブを短くする。全部の日が決定済みなら、候補カードは閉じた1行。
-test("25. Decided round: candidates collapse to one line; ほかの候補を見る / 🔄 選び直す open them, 閉じる and a new 決定 close them", () => {
-  const run = app();
-  // 決める前は、今までどおり候補カードが出る
-  const before = run(`renderCardTraySheet()`);
-  assert.ok(before.includes("rc-grid") && before.includes("tray-shelves"), "Candidates are shown before deciding");
-  assert.ok(!before.includes("life-tray-more"));
-  run(`handleCardTrayAction("life-tray-confirm-all", {}, [])`);
-  assert.ok(run(`trayTargetDays().every((d) => d.slot)`), "Every day is decided");
-  const closed = run(`renderCardTraySheet()`);
-  assert.ok(closed.includes('data-action="life-tray-more"') && closed.includes("ほかの候補を見る"), "One closed line");
-  assert.ok(!closed.includes("rc-grid") && !closed.includes("tray-shelves"), "No candidate cards or shelves");
-  assert.ok(closed.includes('id="tray-cards"'), "The scroll target stays");
-  assert.ok(closed.includes("tray-yohaku-bar") && closed.includes("選び直す"), "Yohaku still says how to change a day");
-  // ほかの候補を見る → 開く。閉じる → 戻る
-  run(`handleCardTrayAction("life-tray-more", {}, [])`);
-  const open = run(`renderCardTraySheet()`);
-  assert.ok(open.includes("rc-grid") && open.includes('data-action="life-tray-less"'), "Opened, with 閉じる");
-  run(`handleCardTrayAction("life-tray-less", {}, [])`);
-  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'));
-  // 🔄 選び直す → その日の候補が開く
-  const d0 = run(`trayTargetDays()[0].date`);
-  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d0)} }, [])`);
-  const picking = run(`renderCardTraySheet()`);
-  assert.ok(picking.includes("rc-grid"), "選び直す opens the candidates");
-  // 入れ替えた（下書き）間は開いたまま。もう一度決定すると、また閉じた1行に戻る
-  const pick = picking.match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pick)}, date: ${JSON.stringify(d0)} }, [])`);
-  assert.ok(run(`renderCardTraySheet()`).includes("rc-grid"), "Open while a change is pending");
-  run(`handleCardTrayAction("life-tray-confirm-all", {}, [])`);
-  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'), "Closed again after deciding");
-  // タブを切り替えたら、開いていた候補は閉じる
-  run(`handleCardTrayAction("life-tray-more", {}, []); resetCardTrayModals()`);
-  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'));
-  // Codex review #243：「🔄 選び直す」を押しただけ（何も変えていない）でタブを切り替えた時も、戻ったら閉じている
-  const d1 = run(`trayTargetDays()[0].date`);
-  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d1)} }, [])`);
-  assert.ok(run(`renderCardTraySheet()`).includes("rc-grid"));
-  run(`resetCardTrayModals()`);
-  assert.ok(run(`renderCardTraySheet()`).includes('data-action="life-tray-more"'), "Closed after a tab switch with no change");
-  // 入れ替えの途中（下書きあり）でタブを切り替えた時は、今までどおり続きから（開いたまま）
-  run(`handleCardTrayAction("life-tray-select-day", { date: ${JSON.stringify(d1)} }, [])`);
-  const pick2 = run(`renderCardTraySheet()`).match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pick2)}, date: ${JSON.stringify(d1)} }, []); resetCardTrayModals()`);
-  assert.ok(run(`renderCardTraySheet()`).includes("rc-grid"), "A pending change keeps the candidates open");
-});
-
-// 2026-11-15 のユーザーの判断（APP_MAP §70）：図鑑は最初から入っている48品（No.001〜048・6章）に固定。
 test("26. Card book: 48 fixed cards in six chapters, progress count, ranks, excluded cards, extras, and the story on the back", () => {
   const run = app();
   run(`state.onboarded = true`);
