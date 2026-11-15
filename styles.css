@@ -5806,3 +5806,19 @@ body.has-sheet { overflow: hidden; }
 .pause-uses li small { margin-left: auto; color: var(--muted); font-size: 12px; }
 .pause-demo { margin-top: 12px; }
 .plan-card.is-pause .plan-title { color: var(--muted); }
+
+/* 献立タブをしずかに（2026-11-15。docs/UX_REDESIGN.md）：決定ボタン1つ・買う物と使い回しの1行・好みに寄せるは折りたたみ */
+.plan-decide { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; }
+.plan-decide > .primary-button { width: 100%; min-height: 52px; font-size: 16px; }
+.plan-decide-sum { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--surface-soft); font-size: 13px; text-align: center; }
+.plan-decide-sum b { font-weight: 900; }
+.plan-tune-fold > summary { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--tomato); font-size: 13px; font-weight: 700; cursor: pointer; list-style: none; }
+.plan-tune-fold > summary::-webkit-details-marker { display: none; }
+.plan-tune-fold > summary::after { content: "›"; }
+.plan-tune-fold[open] > summary::after { content: "⌄"; }
+.plan-tune-fold .first-tune { margin: 0 0 4px; }
+.first-reveal.is-brief { padding: 12px 14px; border-radius: 18px; text-align: left; }
+.first-reveal.is-brief h2 { font-size: 18px; }
+.first-reveal.is-brief p { font-size: 13px; color: var(--muted); }
+.first-invite.is-after { margin: 12px 0; padding: 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.swap-shelf { min-height: 44px; }

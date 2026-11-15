@@ -199,7 +199,11 @@ test("first-plan tune buttons: a tap remembers the lean and re-plans only undeci
   const run = app("2026-11-16T10:00:00");
   finishWith(run, "mix");
   assert.equal(run("firstPlanReveal"), true);
-  const html = run("renderFirstPlanReveal()");
+  // 好みに寄せるボタンは、お祝いの中ではなく、決定ボタンの下の「ちょっと違う？」に（最初は開いている。docs/UX_REDESIGN.md）
+  assert.ok(!run("renderFirstPlanReveal()").includes("life-plan-tune"), "the welcome no longer pushes the menu down");
+  const html = run("renderDailyPlan()");
+  assert.ok(html.includes('<details class="plan-tune-fold" open>'), "open on the first plan");
+  assert.ok(html.indexOf("plan-tune-fold") > html.indexOf('data-action="life-confirm"'), "under the decide button");
   for (const t of ["魚を増やして", "もっと手軽に", "丼・麺も入れて", "おかず＋ごはんを多めに"]) assert.ok(html.includes(t), t);
   // 1日だけ決めておく（決めた日は変えない）
   run(`const d0 = dailyPlan().find((d) => d.candidate); state.mealSlots[d0.date] = { date: d0.date, status: "confirmed", recipe: d0.candidate.recipe, servings: 2 }; globalThis.__d0 = d0.date; globalThis.__r0 = d0.candidate.recipe.id;`);
@@ -210,7 +214,7 @@ test("first-plan tune buttons: a tap remembers the lean and re-plans only undeci
   assert.ok(fish(planStats(run)) > before, "more fish");
   assert.equal(run("state.mealSlots[__d0].recipe.id === __r0"), true, "a decided day stays");
   assert.equal(run("firstPlanReveal"), true, "the welcome stays open to press another");
-  assert.ok(run(`renderFirstPlanReveal()`).includes('data-tune="fish" aria-pressed="true"'));
+  assert.ok(run(`renderDailyPlan()`).includes('data-tune="fish" aria-pressed="true"'));
   assert.ok(planStats(run).some((d) => d.badge === "🐟 魚を増やした日" || /魚/.test(d.reason)));
   // 自分で選んだ料理の本体が下書きにしかない日も、そのまま（Codex review #246）
   run(`const d1 = dailyPlan().find((d) => d.candidate && d.date !== __d0); const own = { ...clone(d1.candidate.recipe), id: "trend-gone", title: "消えた新着の料理", curated: false }; state.planDrafts[d1.date] = own; state.planOverrides[d1.date] = own.id; globalThis.__d1 = d1.date;`);
