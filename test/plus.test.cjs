@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const fullSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
 const source = fullSource.slice(0, fullSource.lastIndexOf('document.querySelectorAll(".tab")'));
-function app() {
-  const context = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] } });
+function app(extra = {}) {
+  const context = vm.createContext({ console, URL, Date, document: { querySelector: () => null, querySelectorAll: () => [] }, ...extra });
   for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','skills.js','aisles.js','lifestyle.js','profile-talk.js','talk-ui.js','daily-ui.js','playlist-import.js','household.js','skill-quiz.js','cook-level.js','weekly.js','cook-type.js','plan-moves.js','plus.js','cook-mode.js','folders.js','install.js','push.js','tickets.js','account.js','discover.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
   vm.runInContext(source, context);
   return (code) => vm.runInContext(code, context);
@@ -162,4 +162,60 @@ test('usage summary: only today, only known events, days since the start; nothin
   assert.equal(s.n, 8);
   assert.deepEqual(s.events, { meal_cooked: 1, meal_rated: 2 });
   assert.deepEqual(Object.keys(s).sort(), ['anon', 'day', 'events', 'members', 'n', 'recipes', 'synced', 'v']);
+});
+
+// お試しをサーバーで持つ（2026-11-15。APP_MAP §75）
+test('the server trial (signed in) wins over the device one; it starts from the device start once, and can be extended once', async () => {
+  const store = { 'ripigochi-session': 'tok' };
+  const run = app({ setTimeout, clearTimeout, MATAGOCHI_API_BASE_URL: 'https://api.test', localStorage: { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } } });
+  setup(run, { trial: true });
+  run('state.trialFrom = addDays(today(), -10)');
+  run('account = { email: "hana@example.com" }');
+  const localEnd = run('trialEnd()');
+  const calls = [];
+  run(`globalThis.__calls = [];
+    fetchWithTimeout = async (url, init = {}) => { __calls.push([url.replace("https://api.test", ""), init.body ? JSON.parse(init.body) : null]);
+      const path = url.replace("https://api.test/api/plus/", "");
+      const trial = { start: state.trialFrom, end: addDays(today(), 2), extended: path === "trial/extend" };
+      const body = path === "status" ? { trial: null, canExtend: false } : path === "trial/start" ? { trial, canExtend: true } : { trial: { ...trial, end: addDays(today(), 16) }, canExtend: false };
+      return { ok: true, status: 200, json: async () => body }; };`);
+  await run('refreshPlusTrial()');
+  const sent = JSON.parse(run('JSON.stringify(__calls)'));
+  assert.deepEqual(sent.map((c) => c[0]), ['/api/plus/status', '/api/plus/trial/start']);
+  assert.equal(sent[1][1].from, run('state.trialFrom'), 'the device start carries over');
+  assert.equal(run('trialEnd()'), run('addDays(today(), 2)'), 'the server end wins');
+  assert.notEqual(run('trialEnd()'), localEnd);
+  assert.match(run('renderTrialSettings()'), /お試しをあと2週間のばす/);
+  await run('extendTrial()');
+  assert.equal(run('trialEnd()'), run('addDays(today(), 16)'));
+  assert.equal(run('state.trialServer.extended'), true);
+  assert.doesNotMatch(run('renderTrialSettings()'), /あと2週間のばす/, 'only once');
+  // 保存しても残る・家族の同期には入れない
+  run('state = normalizeState(JSON.parse(JSON.stringify(state))); saveState = () => {}; render = () => {};');
+  assert.equal(run('state.trialServer.end'), run('addDays(today(), 16)'));
+  // 本人にひも付く：別のアカウントでは使わない・ログアウトで捨てる（Codex review #250）
+  run('account = { email: "taro@example.com" }');
+  assert.equal(run('trialEnd()'), localEnd, 'another account does not get her trial');
+  assert.equal(run('renderTrialSettings().includes("あと2週間")'), false);
+  run('account = { email: "hana@example.com" }');
+  assert.equal(run('trialEnd()'), run('addDays(today(), 16)'));
+  run('signOutLocal()');
+  assert.equal(run('state.trialServer'), null, 'signing out drops it');
+  assert.equal(run('trialEnd()'), localEnd);
+  // 受け取りの途中で別のアカウントに変わったら、保存しない
+  store['ripigochi-session'] = 'tok';
+  run('account = { email: "hana@example.com" }');
+  const pending = run('(() => { const p = refreshPlusTrial(); account = { email: "taro@example.com" }; return p; })()');
+  await pending;
+  assert.equal(run('state.trialServer'), null, 'a late answer for the old account is not saved');
+  // その日にもう受け取っていれば、画面に戻っても受け取り直さない。日が変わったら受け取り直す
+  run('account = { email: "hana@example.com" }; __calls.length = 0');
+  await run('refreshPlusTrial()');
+  const n = run('__calls.length');
+  await run('refreshPlusTrial({ ifStale: true })');
+  assert.equal(run('__calls.length'), n, 'not again on the same day');
+  run('state.trialServer.checkedOn = addDays(today(), -1)');
+  await run('refreshPlusTrial({ ifStale: true })');
+  assert.ok(run('__calls.length') > n, 'again on a new day (so the extend button can appear)');
+  assert.equal(run('JSON.stringify(typeof syncPayload === "function" ? syncPayload() : {}).includes("trialServer")'), false);
 });

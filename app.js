@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261115-plus-redo";
+const APP_VERSION = "20261115-plus-trial";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -91,6 +91,7 @@ const demoState = {
   skillPhoto: null,
   menuAlbum: [],
   trialFrom: "",
+  trialServer: null,
   freePicks: {},
   plus: null,
   sync: { code: "", roomId: "", lastSyncAt: "" },
@@ -416,6 +417,8 @@ function normalizeState(saved) {
     menuAlbum: normalizeMenuAlbum(saved.menuAlbum),
     // 無料期間のはじまり。今までの人は、この版を開いた日から数える。
     trialFrom: normalizeDateInput(saved.trialFrom) || (saved.onboarded ? today() : ""),
+    // サーバーのお試し（ログインしている時。端末だけに持つ・家族には同期しない。APP_MAP §75）
+    trialServer: typeof normalizeTrialServer === "function" ? normalizeTrialServer(saved.trialServer) : null,
     freePicks: normalizeFreePicks(saved.freePicks),
     // プラスの状態（決済の前はプレビューだけ）：プラン・払い済みの最後の日・期間の始まり・お休みの週（APP_MAP §74）
     plus: saved.plus && /^\d{4}-\d{2}-\d{2}$/.test(saved.plus.until || "") ? { until: saved.plus.until, plan: saved.plus.plan === "four" ? "four" : "year", ...(/^\d{4}-\d{2}-\d{2}$/.test(saved.plus.since || "") ? { since: saved.plus.since } : {}), pauses: [...new Set((Array.isArray(saved.plus.pauses) ? saved.plus.pauses : []).filter((w) => /^\d{4}-\d{2}-\d{2}$/.test(w)))].sort().slice(-60) } : null,
@@ -2751,6 +2754,7 @@ function settingRow(id, icon, label, summary, body) {
 }
 function openSetting(id) {
   settingsOpen = id;
+  if (id === "plus" && typeof refreshPlusTrial === "function") refreshPlusTrial({ ifStale: true });
   render();
   document.querySelector(`#setting-${id}`)?.scrollIntoView({ block: "start" });
 }
@@ -2895,6 +2899,7 @@ function bindEvents() {
     const id = el.id.replace("setting-", "");
     if (el.open) {
       settingsOpen = id;
+      if (id === "plus" && typeof refreshPlusTrial === "function") refreshPlusTrial({ ifStale: true });
       document.querySelectorAll("details.setting-row[open]").forEach((other) => { if (other !== el) other.open = false; });
     } else if (settingsOpen === id) settingsOpen = "";
   }));
@@ -4827,7 +4832,7 @@ document.addEventListener("visibilitychange", () => {
   // アプリに戻ってきたら、他の端末の変更を取り込む
   if (document.visibilityState === "visible" && state) {
     if (authToken() && !account) loadAuth();
-    else if (account) ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); });
+    else if (account) { ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); }); if (typeof refreshPlusTrial === "function") refreshPlusTrial({ ifStale: true }); }
     else if (syncEnabled()) syncNow({ silent: true });
   }
 });
