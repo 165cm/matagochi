@@ -1680,6 +1680,52 @@ function pantryHasAlert() {
 }
 
 let shopUndo = null; // { text, undo() }：直近の1つだけ
+// 常備品は会話風に（2026-11-15。APP_MAP §72）：買う物に入った調味料・粉・乾物のうち、家にあるか分からない物を、
+// 買い物リストの上でよはくが聞く。「ない物」だけ押す（押さなかった物は家にある＝常備品として覚え、次から聞かない）。
+let pantryAskMissing = new Set(); // 「ない」を押した行の id
+let pantryAskLater = false; // 「あとで」：アプリを開き直すまで聞かない
+const PANTRY_ASK_MAX = 24;
+function pantryNameOf(item) {
+  const pantry = dailyProfile().pantry || {};
+  return Object.keys(pantry).find((n) => Lifestyle.key(n) === item.id || (Lifestyle.key(n) === "米" && item.id === "ごはん")) || item.name;
+}
+function pantryAskItems(items) {
+  if (isViewer() || pantryAskLater) return [];
+  const pantry = dailyProfile().pantry || {};
+  // 聞くのは調味料・油と、乾物・缶詰・粉の売り場の物だけ（レモンなど、印が調味料でも青果の物は聞かない）
+  return items.filter((i) => i.status === "buy" && !state.shoppingMarks?.[i.id] && Lifestyle.keeps(i) && ["seasoning", "dry"].includes(Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {})) && !["have", "none"].includes(pantry[pantryNameOf(i)])).slice(0, PANTRY_ASK_MAX);
+}
+function renderPantryAsk(items) {
+  const ask = pantryAskItems(items);
+  if (!ask.length) return "";
+  const first = !Object.values(dailyProfile().pantry || {}).some((v) => v === "have" || v === "none");
+  const missing = ask.filter((i) => pantryAskMissing.has(i.id)).length;
+  const have = ask.length - missing;
+  return `<section class="pantry-ask" aria-label="家にある調味料の確認"><div class="pantry-ask-talk">${yohaku("popup", "pantry-ask-yohaku")}<p class="pantry-ask-bubble">${first ? "買う前に、ちょっとだけ。" : `新しい調味料が${ask.length}つ。`}<br>この中で、家に<b>ない物</b>だけ押してね</p></div>
+    <div class="tool-chips pantry-ask-chips">${ask.map((i) => `<button type="button" class="tool-chip pantry-ask-chip" data-action="life-pantry-ask" data-id="${escapeAttr(i.id)}" aria-pressed="${pantryAskMissing.has(i.id)}">${escapeHtml(i.name.replace(/[（(].*$/, "") || i.name)}<small>${pantryAskMissing.has(i.id) ? "ない → 買う" : "ある"}</small></button>`).join("")}</div>
+    <div class="pantry-ask-actions">${dailyButton("life-pantry-ask-done", missing ? `これでOK（${missing}品を買う）` : "全部ある", "", true)}<button type="button" class="text-button" data-action="life-pantry-ask-later">あとで</button></div>
+    <p class="muted small">「ある」の物は常備品として覚えて、次から聞きません（常備品のページで直せます）</p></section>`;
+}
+function pantryAskDone() {
+  const ask = pantryAskItems(shopPageItems());
+  if (!ask.length) return;
+  const prev = ask.map((i) => ({ i, name: pantryNameOf(i), mark: state.shoppingMarks[i.id] ? { ...state.shoppingMarks[i.id] } : null, pantry: dailyProfile().pantry?.[pantryNameOf(i)] }));
+  let missing = 0;
+  for (const { i, name } of prev) {
+    const out = pantryAskMissing.has(i.id);
+    if (out) missing += 1;
+    state.shoppingMarks[i.id] = { status: out ? "buy" : "have", signature: i.signature, updatedAt: nowIso() };
+    setPantry(name, out ? "none" : "have");
+  }
+  pantryAskMissing = new Set();
+  trackDaily("pantry_asked", { asked: prev.length, missing });
+  shopUndo = {
+    text: `🧂 ${prev.length - missing}品は家に${missing ? `・${missing}品を買う` : "ある"}`,
+    // 印は消さずに、新しい日時の「買う」で戻す（消すだけだと、同期で相手の「家にある」が戻ってくる。Codex review #247）。
+    // 戻した物は印がつくので、もう一度は聞かない（行の「⋯」で家にある／買うを選べる）。
+    undo: () => { for (const x of prev) { state.shoppingMarks[x.i.id] = x.mark ? { ...x.mark, updatedAt: nowIso() } : { status: "buy", signature: x.i.signature, updatedAt: nowIso() }; setPantry(x.name, x.pantry || "unknown"); } },
+  };
+}
 let shopPantryOpen = false; // 常備品の畳みを、描き直しても開いたままに
 let activeSwipeId = null; // 買い物リストで左スライド展開中の品ID
 let activePantrySwipe = null; // 常備品リストで左スライド展開中の品名
@@ -1843,6 +1889,7 @@ function renderDailyShopping() {
   </section>
   ${emptySection}
   ${aisleEdit ? '<button type="button" class="primary-button full-button" data-action="life-aisle-edit">売り場の直しを終える</button>' : ""}
+  ${ctx.isShopped ? "" : renderPantryAsk(items)}
   ${swipeHintLine}
   ${ctx.isShopped && buy ? `<h3 class="shop-sec-head is-add">🛒 追加で買うもの <span class="badge">${buy}</span></h3>` : ""}
   ${buy ? `<div class="shop-list">${groups("buy")}</div>` : ""}
@@ -3450,6 +3497,9 @@ function handleDailyAction(action, data) {
   if (action === "life-pantry-open") { pantryReturn = state.view === "pantry" ? pantryReturn : state.view; state.view = "pantry"; }
   if (action === "life-pantry-back") state.view = pantryReturn || "shopping";
   if (action === "life-shop-undo") { shopUndo?.undo(); shopUndo = null; }
+  if (action === "life-pantry-ask" && data.id) { pantryAskMissing.has(data.id) ? pantryAskMissing.delete(data.id) : pantryAskMissing.add(data.id); }
+  if (action === "life-pantry-ask-done" && !isViewer()) pantryAskDone();
+  if (action === "life-pantry-ask-later") { pantryAskLater = true; pantryAskMissing = new Set(); }
   if (action === "life-shop-undo-close") shopUndo = null;
   if (action === "life-shop-pantry-out" && data.name) {
     const name = data.name;

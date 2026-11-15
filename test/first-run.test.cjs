@@ -234,3 +234,40 @@ test("first-plan tune buttons: a tap remembers the lean and re-plans only undeci
   run(`handleDailyAction("life-reveal-close",{})`);
   assert.equal(run("firstPlanReveal"), false);
 });
+
+// 常備品は会話風に（2026-11-15。APP_MAP §72）
+test("before the first shopping, yohaku asks about pantry items once: tap only what is missing; the rest are remembered as on hand", () => {
+  const run = app("2026-11-16T10:00:00");
+  finishWith(run, "mix");
+  run(`for (const d of dailyPlan().filter((d) => d.candidate)) state.mealSlots[d.date] = { date: d.date, status: "confirmed", recipe: d.candidate.recipe, servings: 2 }`);
+  const ask = JSON.parse(run("JSON.stringify(pantryAskItems(shopPageItems()).map((i) => [i.id, i.name]))"));
+  assert.ok(ask.length >= 5, "seasonings and dry goods are asked");
+  assert.ok(ask.every(([, n]) => !/レモン|キャベツ|肉|もやし/.test(n)), "fresh food is not asked");
+  assert.ok(run("renderPantryAsk(shopPageItems())").includes("買う前に、ちょっとだけ"));
+  const [missId, missName] = ask[0];
+  run(`handleDailyAction("life-pantry-ask",{id:${JSON.stringify(missId)}})`);
+  assert.ok(run("renderPantryAsk(shopPageItems())").includes("これでOK（1品を買う）"));
+  run(`handleDailyAction("life-pantry-ask-done",{})`);
+  const items = JSON.parse(run("JSON.stringify(Object.fromEntries(shopPageItems().map((i) => [i.id, i.status])))"));
+  assert.equal(items[missId], "buy", "the missing one stays on the list");
+  assert.ok(ask.slice(1).every(([id]) => items[id] === "have"), "the rest move to 家にある");
+  assert.equal(run(`dailyProfile().pantry[${JSON.stringify(missName)}]`), "none");
+  assert.equal(run(`dailyProfile().pantry[${JSON.stringify(ask[1][1])}]`), "have", "remembered as a pantry item");
+  assert.equal(run("pantryAskItems(shopPageItems()).length"), 0, "not asked again");
+  assert.equal(run("renderPantryAsk(shopPageItems())"), "");
+  // 元に戻す
+  run(`handleDailyAction("life-shop-undo",{})`);
+  const back = JSON.parse(run("JSON.stringify(Object.fromEntries(shopPageItems().map((i) => [i.id, i.status])))"));
+  assert.ok(ask.every(([id]) => back[id] === "buy"), "undo puts them back on the list");
+  assert.ok(ask.every(([id]) => run(`state.shoppingMarks[${JSON.stringify(id)}]?.status`) === "buy"), "with a fresh 買う mark, so a sync cannot bring 家にある back (Codex review #247)");
+  assert.equal(run(`dailyProfile().pantry[${JSON.stringify(ask[1][1])}]`), "unknown", "and the pantry is undone");
+});
+
+test("pantry ask: あとで hides it until the app is opened again", () => {
+  const run = app("2026-11-16T10:00:00");
+  finishWith(run, "mix");
+  run(`for (const d of dailyPlan().filter((d) => d.candidate)) state.mealSlots[d.date] = { date: d.date, status: "confirmed", recipe: d.candidate.recipe, servings: 2 }`);
+  assert.ok(run("renderPantryAsk(shopPageItems())").length > 0);
+  run(`handleDailyAction("life-pantry-ask-later",{})`);
+  assert.equal(run("renderPantryAsk(shopPageItems())"), "");
+});
