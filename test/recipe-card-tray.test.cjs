@@ -377,7 +377,6 @@ test("9. The tray is part of the plan tab (no sheet); Escape closes only the car
   run(`handleCardTrayAction("life-tray-open", {})`);
   run(`bindSwapSheet()`);
   assert.equal(run(`document.body.classList.contains("has-sheet")`), false, "Inline tray is not a modal");
-  assert.ok(run(`renderDailyPlan()`).includes('id="tray-cards"'), "Candidate cards are inside the plan tab");
 
   run(`handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(rId)} })`);
   run(`bindSwapSheet()`);
@@ -1013,27 +1012,40 @@ test("22. Thinking state blocks tray edits until the reveal, and closing cancels
   assert.equal(run(`trayThinking`), false);
 });
 
-test("23. Plan tab: the tray days show as the big plan cards, with confirm/空にする right under them and no switch to a separate tray", () => {
+test("23. Plan tab is quiet: plan cards, one decide button with the shopping/reuse line, no candidate shelf; ⇄ 変更 opens the 4-dish sheet (docs/UX_REDESIGN.md)", () => {
   const run = app();
   const html = run(`renderDailyPlan()`);
-  assert.ok(!html.includes("wt-open-btn"), "No separate 3日トレイ entry");
-  assert.ok(!html.includes("tray-slot-card"), "No small slots");
-  const listEnd = html.indexOf("</section>", html.indexOf('class="plan-list"'));
-  const bar = html.indexOf("tray-action-bar");
-  assert.ok(bar > 0 && bar < listEnd, "Confirm bar sits inside the plan list, under the cards");
-  assert.ok(html.indexOf('id="tray-cards"') > listEnd, "Candidates come after the plan cards");
-  assert.ok(html.includes('data-action="life-tray-select-day"'), "Each plan card has 🔄 選び直す");
-  // 選び直した日は、大きな献立カードにその料理が出る
-  const d0 = run(`trayTargetDays()[0].date`);
-  const pick = run(`renderCardTraySheet()`).match(/data-action="life-tray-place" data-recipe="([^"]+)"/)[1];
-  run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pick)}, date: ${JSON.stringify(d0)} })`);
-  const html2 = run(`renderDailyPlan()`);
-  const title = run(`findDinnerRecipeById(${JSON.stringify(pick)}).title`);
-  assert.ok(html2.includes("選び直した"), "Draft day is marked");
-  assert.ok(html2.includes(title.slice(0, 6)), "Picked dish is shown big in the plan card");
-  // 見るだけの家族にはトレイを出さない
-  run(`isViewer = () => true`);
-  assert.ok(!run(`renderDailyPlan()`).includes("tray-cards"));
+  for (const gone of ["tray-cards", "rc-grid", "tray-shelves", "tray-yohaku-bar", "life-tray-select-day", "life-tray-clear-all", "life-tray-confirm-all"]) assert.ok(!html.includes(gone), `${gone} is not in the plan tab`);
+  assert.ok(html.includes('data-action="life-swap"'), "Every undecided day changes through the same ⇄ 変更");
+  assert.equal((html.match(/data-action="life-confirm"/g) || []).length, 1, "One decide button for the shown days");
+  assert.match(html, /✓ この\d日分で決定/);
+  assert.match(html, /plan-decide-sum[^>]*>🛒 買う物 <b>\d+品<\/b>/, "Shows how many things to buy before deciding");
+  assert.ok(html.includes('<details class="plan-tune-fold">'), "Tune buttons are folded away");
+  // 予告の数は、決定した後の買い物リストと同じ
+  const n = Number(html.match(/買う物 <b>(\d+)品/)[1]);
+  run(`handleDailyAction("life-confirm", {})`);
+  assert.equal(run(`dailyShopping().filter((x) => x.status === "buy").length`), n);
+  assert.ok(!run(`renderDailyPlan()`).includes("plan-decide"), "Nothing to decide after deciding");
+  // 先に1日だけ決めて、その材料を買った後：予告は、買った印を引いた数（Codex review #252）
+  const run3 = app();
+  run3(`const d = dailyPlan().find((x) => x.candidate); confirmDaily(d);`);
+  run3(`for (const x of dailyShopping().filter((x) => x.status === "buy")) handleDailyAction("life-shopping-status", { id: x.id, status: "have" });`);
+  assert.equal(run3(`dailyShopping().filter((x) => x.status === "buy").length`), 0, "Day 1 is all marked");
+  const html3 = run3(`renderDailyPlan()`);
+  const n3 = Number(html3.match(/買う物 <b>(\d+)品/)[1]);
+  const slotsBefore = run3(`JSON.stringify(state.mealSlots)`);
+  run3(`renderDailyPlan()`);
+  assert.equal(run3(`JSON.stringify(state.mealSlots)`), slotsBefore, "The preview never changes the plan");
+  run3(`handleDailyAction("life-confirm", {})`);
+  assert.equal(run3(`dailyShopping().filter((x) => x.status === "buy").length`), n3, "Bought marks are respected in the preview");
+  // 4皿から「レシピの棚」へ：閉じてレシピタブ
+  const run2 = app();
+  const d0 = run2(`dailyPlan().find((d) => d.candidate).date`);
+  run2(`handleDailyAction("life-swap", { date: ${JSON.stringify(d0)} })`);
+  assert.ok(run2(`renderSwapChoices()`).includes('data-action="life-swap-shelf"'));
+  run2(`handleDailyAction("life-swap-shelf", {})`);
+  assert.equal(run2(`swapDate`), "");
+  assert.equal(run2(`state.view`), "collection");
 });
 
 test("24. 7-day plan: the tray covers every shown day, so 決定 confirms all 7 (Codex review #240)", () => {

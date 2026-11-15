@@ -745,13 +745,45 @@ function renderPlanBalance(plan, locks = new Set()) {
   return `<p class="plan-balance-low small" role="status">🥬 ${escapeHtml(b.vegLabel)}</p>`;
   return `<div class="plan-balance-bar" role="status" aria-label="献立のバランス"><span class="pb-chip pb-protein">${escapeHtml(b.proteinText)}</span><span class="pb-chip pb-veg ${b.vegCount < 3 ? "is-low" : ""}">${escapeHtml(b.vegLabel)}</span><span class="pb-mood">${escapeHtml(b.moodNote)}</span>${tip(`主菜の内訳と、使う野菜の種類（${b.vegKinds.length ? b.vegKinds.join("・") : "なし"}）のざっくり目安です。栄養価の計算ではありません`)}</div>`;
 }
+// 献立タブの中に候補カードの棚（3日トレイ）を出すか。false＝出さない（しくみは残してある。片づけは docs/UX_REDESIGN.md の4番）
+let TRAY_INLINE = false;
+// まとまりを決める時の1行：買う物の数と、2日以上で使う食材（すでにある計算だけ。新しい推定はしない）
+function planDecideSummary(days, block = "") {
+  const picked = days.map((d) => ({ date: d.date, recipe: d.slot?.status === "confirmed" ? d.slot.recipe : d.candidate?.recipe, todo: !!d.candidate })).filter((x) => x.recipe);
+  if (!picked.length) return { buy: 0, reuse: [] };
+  // 買う物の数は、決定した後の買い物リストそのもので数える（買った印・代用・パス・手で足した品・買い物のまとまりも同じ。Codex review #252）。
+  // 決めていない日を仮に決めた形にして数え、すぐ元に戻す（保存も同期もしない）
+  const keep = { slots: state.mealSlots, page: shopPage, combine: shopCombineNext };
+  let buy = 0;
+  try {
+    state.mealSlots = { ...keep.slots, ...Object.fromEntries(picked.filter((x) => x.todo).map((x) => [x.date, confirmedSlot(x.date, x.recipe)])) };
+    if (block) { shopPage = block; shopCombineNext = false; }
+    buy = dailyShopping().filter((x) => x.status === "buy").length;
+  } finally {
+    state.mealSlots = keep.slots; shopPage = keep.page; shopCombineNext = keep.combine;
+  }
+  const freq = new Map();
+  for (const x of picked) for (const k of new Set(Lifestyle.useUpKeys(x.recipe))) freq.set(k, (freq.get(k) || 0) + 1);
+  return { buy, reuse: [...freq.entries()].filter(([, c]) => c >= 2).map(([k]) => k).slice(0, 2) };
+}
+let planTuneOpen = false; // 「好みに寄せる」を押した後は、開いたまま組み直しを見せる
+function renderPlanDecide(days, block = "") {
+  const todo = days.filter((d) => d.candidate);
+  if (!todo.length || isViewer()) return "";
+  const all = days.filter((d) => d.candidate || d.slot?.status === "confirmed");
+  const { buy, reuse } = planDecideSummary(all, block);
+  const sum = [buy ? `🛒 買う物 <b>${buy}品</b>` : "", reuse.length ? `🧺 使い回し <b>${escapeHtml(reuse.join("・"))}</b>` : ""].filter(Boolean).join("　");
+  const open = planTuneOpen || firstPlanReveal;
+  return `<div class="plan-decide">${dailyButton("life-confirm", `✓ この${all.length}日分で決定`, block ? `data-block="${block}"` : "", true)}${sum ? `<p class="plan-decide-sum" role="status">${sum}</p>` : ""}<details class="plan-tune-fold"${open ? " open" : ""}><summary>ちょっと違う？ 好みに寄せる</summary>${renderPlanTunes()}</details></div>`;
+}
 function renderDailyPlan() {
   const plan = dailyPlan();
   const locks = lockedDates(plan);
   shareShown(plan.filter((d) => !locks.has(d.date) && !d.off));
   const n = state.planLength || 3;
   // 献立トレイは献立タブの中にまとめる（2026-11-11 のユーザーの判断）：上の献立カードが「トレイ」。下に決定・よはく・候補カード
-  const trayDays = isViewer() ? [] : trayTargetDays();
+  // 2026-11-15 のユーザーの判断（docs/UX_REDESIGN.md）：献立タブは「見る → 決める」だけ。候補カードの棚は出さず、変えるのは「⇄ 変更」（今夜の4皿）の1つ
+  const trayDays = isViewer() || !TRAY_INLINE ? [] : trayTargetDays();
   const trayOn = trayDays.length > 0;
   if (trayOn) prepareInlineTray(trayDays);
   const trayDates = new Set(trayDays.map((d) => d.date));
@@ -803,8 +835,8 @@ function renderDailyPlan() {
   // その下は押すことがある時だけ：無料の日数・リクエストの受付（ふたり）・野菜が少ない時の1行・届いたリクエスト・残っている食材・リズムの案内。
   // 外したもの：週のカレンダー（ページと同じ情報）・バランスの内訳・まとめて評価（ページの「評価する」と今日の画面で）・
   // 動画の読み取りの案内・ふたりで使う誘い（最初の献立の画面で1回）・「お試しの提案」・食材制限の ⓘ（作る画面と設定にある）。
-  const list = `<section class="plan-list">${cards}${trayOn && !rhythmOn() ? renderTrayActionBar(trayDays) : ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}</section>`;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${trayOn ? renderCardTraySheet() : ""}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
+  const list = `<section class="plan-list">${cards}${trayOn && !rhythmOn() ? renderTrayActionBar(trayDays) : ready && !rhythmOn() ? renderPlanDecide(plan.filter((d) => !locks.has(d.date) && !d.off && !d.prestart)) : ""}</section>`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${renderFirstInvite()}${trayOn ? renderCardTraySheet() : ""}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
 }
 // ---- 献立のページ（買い物のひとかたまりごと・横スライド） ----
 let planPage = ""; // 見ているページ（ひとかたまりの key）。描き直しても同じページのまま
@@ -842,8 +874,8 @@ function renderPlanPages(plan, cardList, locks) {
     const st = blockStatus(b);
     const rows = [...b.dates, ...extra(b, i)].sort().map((d) => (d < today() ? renderPastPlanRow(d) : at.has(d) ? cardList[at.get(d)] : "")).join("");
     const needs = plan.some((d) => b.dates.includes(d.date) && d.candidate && !locks.has(d.date));
-    const isTrayBlock = !isViewer() && trayTargetDates.length && b.dates.some((d) => trayTargetDates.includes(d));
-    const foot = isTrayBlock ? `<div class="block-foot">${renderTrayActionBar(trayTargetDays())}</div>` : needs && !isViewer() ? `<div class="block-foot">${dailyButton("life-confirm", `${blockRange(b)}をこれで決定`, `data-block="${b.key}"`, true)}</div>` : "";
+    const isTrayBlock = TRAY_INLINE && !isViewer() && trayTargetDates.length && b.dates.some((d) => trayTargetDates.includes(d));
+    const foot = isTrayBlock ? `<div class="block-foot">${renderTrayActionBar(trayTargetDays())}</div>` : needs && !isViewer() ? `<div class="block-foot">${renderPlanDecide(plan.filter((d) => b.dates.includes(d.date) && !locks.has(d.date) && !d.off), b.key)}</div>` : "";
     return `<section class="plan-page" data-page="${b.key}" aria-label="${escapeAttr(blockRange(b))}の献立"><h3 class="block-head is-${st}"><span>${blockRange(b)}</span><small>${(label[st] || label.past)(b)}</small></h3>${rows}${foot}</section>`;
   }).join("");
   // 同じ曜日のかたまり（木〜土が2つ）でも見分けられるように、タブは「前回・今回・次回」。
@@ -1308,9 +1340,10 @@ function renderSwapChoices() {
   // 時間・材料を確かめれば選べる自分のレシピは、閉じた1行に（確認すれば選べるので隠さない）。
   const reviewRows = review.length ? `<details class="swap-review"><summary>確認すると選べる ${review.length}品</summary>${review.slice(0, 6).map(({ r }) => `<button type="button" class="swap-option needs-review" data-action="life-review-saved" data-recipe="${escapeAttr(r.id)}" data-date="${swapDate}">${planThumb(r)}<span><strong>${recipeTitleHtml(r)}</strong><small>確認が必要 · 時間と材料を確認すると選べます</small></span><b aria-hidden="true">確認</b></button>`).join("")}</details>` : "";
   const day = `${formatDate(swapDate)}（${weekdayLabel(swapDate)}）`;
+  // 「📖 レシピの棚から選ぶ」は、献立が始まる前の日には出さない：レシピの画面の「献立に入れる」（placeDays）はその日を選べない（Codex review #252）
   // 献立トレイは献立タブの中にあるので、この画面から切り替える入口は置かない（2026-11-11）
   const traySwitch = "";
-  return `<div class="swap-backdrop" data-action="life-close-swap" aria-hidden="true"></div><section class="swap-panel swap-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="${day}の料理を選ぶ"><div class="swap-head"><b>${day}</b>${traySwitch}<button type="button" class="round-icon swap-close" data-action="life-close-swap" aria-label="閉じる">✕</button></div>${chips ? `<div class="swap-chips" role="group" aria-label="食べたい気分">${chips}</div>` : ""}${status}${grid}<div class="swap-bottom">${nav}</div><div class="swap-foot">${reviewRows}${renderUrlInsert()}</div></section>`;
+  return `<div class="swap-backdrop" data-action="life-close-swap" aria-hidden="true"></div><section class="swap-panel swap-sheet" role="dialog" aria-modal="true" tabindex="-1" aria-label="${day}の料理を選ぶ"><div class="swap-head"><b>${day}</b>${traySwitch}<button type="button" class="round-icon swap-close" data-action="life-close-swap" aria-label="閉じる">✕</button></div>${chips ? `<div class="swap-chips" role="group" aria-label="食べたい気分">${chips}</div>` : ""}${status}${grid}<div class="swap-bottom">${nav}</div><div class="swap-foot">${reviewRows}${viewer || (prestartUntil() && swapDate < prestartUntil()) ? "" : `<button type="button" class="text-button swap-shelf" data-action="life-swap-shelf">📖 レシピの棚から選ぶ ›</button>`}${renderUrlInsert()}</div></section>`;
 }
 // Photo when we have one, otherwise a warm tile with a staple emoji (clearly labelled as an image).
 // よはく：画面の余白にこっそり住んでいるキャラクター。1画面に1匹まで、文字やボタンには重ねない。
@@ -3094,6 +3127,7 @@ function handleDailyAction(action, data) {
     const targets = plan.filter((d) => d.candidate && !locks.has(d.date) && (!only || only.includes(d.date)));
     const hadConfirmed = targets.some((d) => state.mealSlots?.[d.date]?.status === "confirmed");
     targets.forEach((d) => confirmDaily(d));
+    planTuneOpen = false;
     if (hadConfirmed) changedShopping(before);
     else shoppingNotice = "";
     state.view = "shopping";
@@ -3154,6 +3188,8 @@ function handleDailyAction(action, data) {
   }
   // 献立が始まる前の日の「⇄ ほかの一皿」は今日タブから開く。その日は献立タブに出ないので、閉じた時・選んだ時は今日タブへ戻す（§68。Codex review #242）。
   const backToToday = (date) => { if (date && prestartUntil() && date < prestartUntil()) state.view = "today"; };
+  // 今夜の4皿から「レシピの棚」へ：パスの記録を残して閉じ、レシピタブを開く（料理の画面の「🗓 献立に入れる」で日を選ぶ）
+  if (action === "life-swap-shelf") { swapCommit(); swapDate = ""; state.view = "collection"; }
   if (action === "life-close-swap") { if (swapDate && !swapPick) trackDaily("swap_closed"); swapCommit(); backToToday(swapDate); swapDate = ""; }
   if (handleCardTrayAction(action, data, before)) {
     saveState();
@@ -4711,6 +4747,7 @@ function planTune(id) {
   const first = rhythmOn() ? currentBlocks()[0] : null;
   const changed = dailyPlan().filter((d) => dates.includes(d.date) && (!first || first.dates.includes(d.date)) && d.candidate?.recipe?.id && d.candidate.recipe.id !== old[d.date]).length;
   changedShopping(before);
+  planTuneOpen = true;
   trackDaily("first_plan_tuned", { tune: id, on });
   touchSettings();
   saveState();
@@ -4726,10 +4763,15 @@ function renderFirstPlanReveal() {
   const b = rhythmOn() ? currentBlocks()[0] : null;
   const why = [sp ? `★${sp.level}までの料理` : "", dailyProfile().weekdayMinutes ? `${dailyProfile().weekdayMinutes}分以内` : "", MEAL_SHAPE_OF[dailyProfile().mealShape] && dailyProfile().mealShape !== "mix" ? `${MEAL_SHAPE_OF[dailyProfile().mealShape]}中心` : "", "かぶらない組み合わせ"].filter(Boolean).join("・");
   const invite = dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled();
-  return `<section class="first-reveal"><p class="first-reveal-emoji" aria-hidden="true">🎉</p><h2>最初の献立が<br><span class="marker nobr">できました！</span></h2>
-    <p>${b ? `${blockRange(b)}の分を、` : ""}${escapeHtml(why)}で選びました。気になる日は「入れ替え」でどうぞ。</p>
-    ${renderPlanTunes()}
-    ${invite ? `<div class="first-invite"><p><b>ふたりで使う？</b><br><small>相手が「これ食べたい」を送れるようになります。</small></p><div class="actions">${dailyButton("life-share-open", "相手を招待する")}<button type="button" class="text-button" data-action="life-reveal-close">あとで</button></div></div>` : `<button type="button" class="text-button" data-action="life-reveal-close">閉じる</button>`}</section>`;
+  // まず献立を見せる（2026-11-15。docs/UX_REDESIGN.md）：お祝いは短い帯だけ。調整は決定ボタンの下、招待は献立の下
+  return `<section class="first-reveal is-brief"><h2>🎉 最初の献立が<span class="marker nobr">できました！</span></h2>
+    <p>${b ? `${blockRange(b)}の分を、` : ""}${escapeHtml(why)}で選びました。気になる日は「⇄ 変更」でどうぞ。</p>
+    ${invite ? "" : `<button type="button" class="text-button" data-action="life-reveal-close">閉じる</button>`}</section>`;
+}
+function renderFirstInvite() {
+  if (!firstPlanReveal || isViewer()) return "";
+  if (!(dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled())) return "";
+  return `<div class="first-invite is-after"><p><b>ふたりで使う？</b><br><small>相手が「これ食べたい」を送れるようになります。</small></p><div class="actions">${dailyButton("life-share-open", "相手を招待する")}<button type="button" class="text-button" data-action="life-reveal-close">あとで</button></div></div>`;
 }
 
 // ----- 🃏 カフェ風レシピカード＆3日分の献立トレイ -----
