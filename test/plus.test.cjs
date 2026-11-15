@@ -72,6 +72,7 @@ test('locked days are shown (peek), not hidden; the shopping tab peeks at the la
   assert.doesNotMatch(sheet, /1食あたり|毎日の献立|家族で共有/);
   assert.match(sheet, /600円/);
   assert.match(sheet, /6,000円/);
+  assert.match(sheet, /1,800円おトク/, 'the yearly saving in yen, under the price');
   assert.match(sheet, /利用規約/);
   run('handleDailyAction("life-pay-close", {})');
   assert.equal(run('paywall'), null);

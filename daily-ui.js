@@ -4268,7 +4268,7 @@ function renderPaywall() {
   const goal = GOAL_OF[p.goal] || GOAL_OF.time;
   const t = trialPlan();
   const saving = Math.round((1 - PLANS.year.price / (PLANS.four.price * 13)) * 100);
-  const plan = (id) => { const x = PLANS[id]; return `<button type="button" class="pw-plan" data-action="life-pay-plan" data-plan="${id}" aria-pressed="${paywall.plan === id}">${id === "year" ? `<span class="pw-badge">${saving}%OFF</span>` : ""}<b>${x.label}</b><span class="pw-price">${x.price.toLocaleString()}円<small>／${x.per}</small></span>${x.note ? `<small>${x.note}</small>` : ""}</button>`; };
+  const plan = (id) => { const x = PLANS[id]; return `<button type="button" class="pw-plan" data-action="life-pay-plan" data-plan="${id}" aria-pressed="${paywall.plan === id}">${id === "year" ? `<span class="pw-badge">${saving}%OFF</span>` : ""}<b>${x.label}</b><span class="pw-price">${x.price.toLocaleString()}円<small>／${x.per}</small>${id === "year" ? `<em class="pw-save">${(PLANS.four.price * 13 - x.price).toLocaleString()}円おトク</em>` : ""}</span>${x.note ? `<small>${x.note}</small>` : ""}</button>`; };
   const legal = '<a href="legal/terms.html" target="_blank" rel="noopener">利用規約</a>・<a href="legal/tokushoho.html" target="_blank" rel="noopener">特定商取引法に基づく表記</a>';
   // 2か所の案内（ロックの日・3日を使い切った）から開いた時：プラスでできることを、絵文字と短い言葉で。
   const from = paywall.from && PLUS_FROM[paywall.from];
