@@ -380,10 +380,13 @@ test("8. Card Book lives in the recipe tab (🃏 図鑑); the card back can add 
   const yet = run(`bookProgress().rows.find((x) => !x.cooks && !x.out).r.id`);
   run(`handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(yet)} })`);
   assert.ok(run(`renderCollection()`).includes('data-action="life-card-place"'), "The back offers 献立に入れる");
+  // 裏面を開いている間は、後ろの図鑑が動かない（Codex review #254）
+  assert.equal(run(`syncHasSheetBodyClass()`), true, "The page behind is locked while the back is open in the recipe tab");
   run(`handleCardTrayAction("life-card-place", { recipe: ${JSON.stringify(yet)} })`);
   assert.equal(run(`trayFlipId`), "");
   assert.equal(run(`state.view`), "recipe");
   assert.equal(run(`placeRecipeId`), yet);
+  assert.equal(run(`syncHasSheetBodyClass()`), false, "…and unlocked once it is closed");
   assert.ok(run(`renderPlaceSheet(detailRecipe())`).includes('data-action="life-place"'), "Days to choose from");
   // 見るだけの家族には出さない
   run(`state.view = "collection"; isViewer = () => true; handleCardTrayAction("life-card-flip", { recipe: ${JSON.stringify(yet)} })`);

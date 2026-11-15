@@ -4176,7 +4176,9 @@ function syncHasSheetBodyClass() {
   const inPlanOrToday = !state?.view || state.view === "plan" || state.view === "today";
   const hasModal = Boolean(
     (swapDate && (!state?.view || state.view === "plan")) ||
-    ((trayFlipId || cardGetRecipeId) && (inPlanOrToday || state.view === "repeat"))
+    ((trayFlipId || cardGetRecipeId) && (inPlanOrToday || state.view === "repeat")) ||
+    // レシピタブの図鑑で開いたカードの裏（§78。Codex review #254）
+    (trayFlipId && state.view === "collection")
   );
   document.body?.classList?.toggle("has-sheet", hasModal);
   return hasModal;
