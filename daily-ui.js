@@ -748,11 +748,20 @@ function renderPlanBalance(plan, locks = new Set()) {
 // 献立タブの中に候補カードの棚（3日トレイ）を出すか。false＝出さない（しくみは残してある。片づけは docs/UX_REDESIGN.md の4番）
 let TRAY_INLINE = false;
 // まとまりを決める時の1行：買う物の数と、2日以上で使う食材（すでにある計算だけ。新しい推定はしない）
-function planDecideSummary(days) {
-  const picked = days.map((d) => ({ date: d.date, recipe: d.slot?.status === "confirmed" ? d.slot.recipe : d.candidate?.recipe })).filter((x) => x.recipe);
+function planDecideSummary(days, block = "") {
+  const picked = days.map((d) => ({ date: d.date, recipe: d.slot?.status === "confirmed" ? d.slot.recipe : d.candidate?.recipe, todo: !!d.candidate })).filter((x) => x.recipe);
   if (!picked.length) return { buy: 0, reuse: [] };
-  const slots = Object.fromEntries(picked.map((x) => [x.date, confirmedSlot(x.date, x.recipe)]));
-  const buy = Lifestyle.shopping({ slots, start: "0000-01-01", end: "9999-12-31", scale: scaleAmountForServings, combine: combineAmounts, pantry: dailyProfile().pantry, marks: {}, manual: {} }).filter((x) => x.status === "buy").length;
+  // 買う物の数は、決定した後の買い物リストそのもので数える（買った印・代用・パス・手で足した品・買い物のまとまりも同じ。Codex review #252）。
+  // 決めていない日を仮に決めた形にして数え、すぐ元に戻す（保存も同期もしない）
+  const keep = { slots: state.mealSlots, page: shopPage, combine: shopCombineNext };
+  let buy = 0;
+  try {
+    state.mealSlots = { ...keep.slots, ...Object.fromEntries(picked.filter((x) => x.todo).map((x) => [x.date, confirmedSlot(x.date, x.recipe)])) };
+    if (block) { shopPage = block; shopCombineNext = false; }
+    buy = dailyShopping().filter((x) => x.status === "buy").length;
+  } finally {
+    state.mealSlots = keep.slots; shopPage = keep.page; shopCombineNext = keep.combine;
+  }
   const freq = new Map();
   for (const x of picked) for (const k of new Set(Lifestyle.useUpKeys(x.recipe))) freq.set(k, (freq.get(k) || 0) + 1);
   return { buy, reuse: [...freq.entries()].filter(([, c]) => c >= 2).map(([k]) => k).slice(0, 2) };
@@ -762,7 +771,7 @@ function renderPlanDecide(days, block = "") {
   const todo = days.filter((d) => d.candidate);
   if (!todo.length || isViewer()) return "";
   const all = days.filter((d) => d.candidate || d.slot?.status === "confirmed");
-  const { buy, reuse } = planDecideSummary(all);
+  const { buy, reuse } = planDecideSummary(all, block);
   const sum = [buy ? `🛒 買う物 <b>${buy}品</b>` : "", reuse.length ? `🧺 使い回し <b>${escapeHtml(reuse.join("・"))}</b>` : ""].filter(Boolean).join("　");
   const open = planTuneOpen || firstPlanReveal;
   return `<div class="plan-decide">${dailyButton("life-confirm", `✓ この${all.length}日分で決定`, block ? `data-block="${block}"` : "", true)}${sum ? `<p class="plan-decide-sum" role="status">${sum}</p>` : ""}<details class="plan-tune-fold"${open ? " open" : ""}><summary>ちょっと違う？ 好みに寄せる</summary>${renderPlanTunes()}</details></div>`;

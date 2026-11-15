@@ -1026,6 +1026,18 @@ test("23. Plan tab is quiet: plan cards, one decide button with the shopping/reu
   run(`handleDailyAction("life-confirm", {})`);
   assert.equal(run(`dailyShopping().filter((x) => x.status === "buy").length`), n);
   assert.ok(!run(`renderDailyPlan()`).includes("plan-decide"), "Nothing to decide after deciding");
+  // 先に1日だけ決めて、その材料を買った後：予告は、買った印を引いた数（Codex review #252）
+  const run3 = app();
+  run3(`const d = dailyPlan().find((x) => x.candidate); confirmDaily(d);`);
+  run3(`for (const x of dailyShopping().filter((x) => x.status === "buy")) handleDailyAction("life-shopping-status", { id: x.id, status: "have" });`);
+  assert.equal(run3(`dailyShopping().filter((x) => x.status === "buy").length`), 0, "Day 1 is all marked");
+  const html3 = run3(`renderDailyPlan()`);
+  const n3 = Number(html3.match(/買う物 <b>(\d+)品/)[1]);
+  const slotsBefore = run3(`JSON.stringify(state.mealSlots)`);
+  run3(`renderDailyPlan()`);
+  assert.equal(run3(`JSON.stringify(state.mealSlots)`), slotsBefore, "The preview never changes the plan");
+  run3(`handleDailyAction("life-confirm", {})`);
+  assert.equal(run3(`dailyShopping().filter((x) => x.status === "buy").length`), n3, "Bought marks are respected in the preview");
   // 4皿から「レシピの棚」へ：閉じてレシピタブ
   const run2 = app();
   const d0 = run2(`dailyPlan().find((d) => d.candidate).date`);
