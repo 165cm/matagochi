@@ -68,6 +68,7 @@ async function loadAuth() {
     } catch {}
   }
   if (account && !authTransferPage()) { try { await ensureAccountSync(); } catch (e) { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); } }
+  if (account && !authTransferPage() && typeof refreshPlusTrial === "function") refreshPlusTrial();
   authLoaded = true;
   updateSyncSaveLabel();
   // 描き直すのは設定画面を開いている時だけ（入力中の画面や初回設定の自動送りを邪魔しない）。
@@ -97,6 +98,7 @@ async function afterSignIn({ token, account: acct }) {
   loginEmail = ""; loginCodeSent = false;
   showToast(restored ? "ログインしました。家族の共有を戻しました。" : "ログインしました。");
   refreshTickets();
+  if (typeof refreshPlusTrial === "function") refreshPlusTrial();
   render();
 }
 // アカウントに、この端末の識別子・合言葉・自分の名前を覚えさせる。合言葉は、共有をやめた時だけ消す。

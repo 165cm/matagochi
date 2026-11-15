@@ -61,6 +61,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | 取り込み | `POST /api/import/youtube`（説明欄→AI、`mode:"video"` で動画をAIが読む・1日の上限の1回）・`/api/import/youtube/playlist`・`/api/import/images`・`/api/oembed/tiktok`・`/api/import/youtube/timecodes`（手順の時刻。AI の1日の予算の中で動き、動画の接続先を切り替える時も切り替えの直前ごとに予算を確かめる） |
 | 同期 | `GET/PUT /api/sync/rooms/:roomId`（写真は `/photos/:hash`） |
 | ログイン | `/api/auth/google`・`/api/auth/email/start`・`/api/auth/email/verify`・`/api/auth/me`・`POST /api/auth/sync`（保存先確定／明示切替） |
+| プラスの無料お試し | ログインが要る。`GET /api/plus/status`・`POST /api/plus/trial/start`（`from`：端末で始めた日。30日まで引き継ぐ）・`POST /api/plus/trial/extend`（1回だけ・最大2週間）。保存先は `plus/trials/<アカウント>`（`api/src/plusTrial.js`。APP_MAP §75） |
 | 通知 | `/api/push/*` |
 | 1日の上限 | `GET /api/tickets`（その日の回数・家庭の登録）・`POST /api/tickets/claim`（古い版のため。何も配らない） |
 | 投稿者 | `POST /api/creators/request`（掲載停止の申し込み）・`/api/creators/verify`（YouTubeでログイン）・`/api/creators/me`（持ち主の操作・動画を一覧に戻す）・`POST /api/creators/corrections`（修正依頼）・管理 `/api/admin/creators*`（承認画面 `admin/creators.html`） |

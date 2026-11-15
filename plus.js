@@ -21,7 +21,8 @@ function plusActive() {
   const until = plusUntil();
   return !!until && until >= today();
 }
-const trialEnd = () => (state.trialFrom ? trialPlan(state.trialFrom).end : "");
+// お試しの終わり：ログインしていればサーバーの日（本人ごとに1回・延長も。APP_MAP §75）、なければ端末で始めた日から。
+const trialEnd = () => state.trialServer?.end || (state.trialFrom ? trialPlan(state.trialFrom).end : "");
 const inTrial = (date = today()) => !state.trialFrom || date <= trialEnd();
 const weekStartOf = (date) => addDays(date, -((dow(date) + 6) % 7));
 const takenSlot = (slot) => slot?.status === "confirmed" || slot?.status === "cooked";
@@ -173,7 +174,7 @@ function renderPlusSettings() {
   const preview = paywallPreview();
   const status = s ? `<dl class="planning-summary"><div><dt>プラン</dt><dd>${s.plan === "four" ? "4週 600円" : "1年 6,000円"}</dd></div><div><dt>${s.plan === "four" ? "次の請求" : "次の更新"}</dt><dd>${(() => { const d = addDays(plusUntil(), 1); return `${d.slice(0, 4) !== today().slice(0, 4) ? `${d.slice(0, 4)}年` : ""}${formatDate(d)}`; })()}</dd></div></dl>` : "";
   const demo = preview ? `<div class="pause-demo"><p class="muted small">プレビュー：決済の前なので、試しにプランを選べます</p><div class="tool-chips">${["four", "year"].map((id) => `<button type="button" class="tool-chip" data-action="life-plus-demo" data-plan="${id}" aria-pressed="${s?.plan === id}">${id === "four" ? "4週プラン" : "年額プラン"}</button>`).join("")}${s ? '<button type="button" class="text-button" data-action="life-plus-demo" data-plan="">プラスをやめる</button>' : ""}</div></div>` : "";
-  return `${status}<h3 class="quick-sub">⏸ お休み週</h3>${renderPauseSettings()}${demo}`;
+  return `${status}${s ? "" : renderTrialSettings()}<h3 class="quick-sub">⏸ お休み週</h3>${renderPauseSettings()}${demo}`;
 }
 function plusSettingsSummary() {
   const s = plusState();
@@ -181,7 +182,57 @@ function plusSettingsSummary() {
   const n = s.pauses.filter((w) => w >= weekStartOf(today())).length;
   return `${s.plan === "four" ? "4週プラン" : "年額プラン"}${n ? `・お休み${n}週` : ""}`;
 }
+// ── お試しをサーバーで持つ（2026-11-15。APP_MAP §75）。ログインしている時だけ。端末で始めていたお試しは、始めた日を引き継ぐ。
+let plusTrialBusy = false;
+const DATE_RE_PLUS = /^\d{4}-\d{2}-\d{2}$/;
+function normalizeTrialServer(raw) {
+  if (!raw || !DATE_RE_PLUS.test(raw.start || "") || !DATE_RE_PLUS.test(raw.end || "")) return null;
+  return { start: raw.start, end: raw.end, extended: !!raw.extended, canExtend: !!raw.canExtend };
+}
+function setTrialServer(data) {
+  state.trialServer = data?.trial ? normalizeTrialServer({ ...data.trial, canExtend: data.canExtend }) : null;
+  saveState();
+}
+async function plusApi(path, body) {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/plus/${path}`, body ? { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) } : { headers: authHeaders() }, 10_000);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error?.message || "つながりませんでした。");
+  return data;
+}
+// ログインの確認のあと・ログインした時に呼ぶ。まだサーバーにお試しがなければ、端末で始めた日で始める。
+async function refreshPlusTrial() {
+  if (!API_BASE_URL || typeof authToken !== "function" || !authToken() || !state?.onboarded || isViewer()) return;
+  try {
+    let data = await plusApi("status");
+    if (!data.trial && state.trialFrom) data = await plusApi("trial/start", { from: state.trialFrom });
+    setTrialServer(data);
+  } catch {}
+}
+async function extendTrial() {
+  if (plusTrialBusy) return;
+  if (!authToken()) { showToast("お試しをのばすには、設定の「ログイン」からログインしてください。"); return; }
+  plusTrialBusy = true; render();
+  try {
+    const data = await plusApi("trial/extend", {});
+    setTrialServer(data);
+    trackDaily("trial_extended");
+    showToast(`お試しを${formatDate(data.trial.end)}までのばしました。`);
+  } catch (error) { showToast(error.message); }
+  plusTrialBusy = false; render();
+}
+function renderTrialSettings() {
+  const t = state.trialServer;
+  const end = trialEnd();
+  if (!end) return "";
+  const active = today() <= end;
+  const login = typeof authToken === "function" && authToken();
+  const line = `<p class="pause-rule">${active ? `🎁 お試し中：<b>${formatDate(end)}まで</b>` : `お試しは${formatDate(end)}で終わりました`}${t?.extended ? "（延長ずみ）" : ""}</p>`;
+  const extend = t?.canExtend ? `<button type="button" class="secondary-button" data-action="life-trial-extend" ${plusTrialBusy ? "disabled" : ""}>${plusTrialBusy ? "のばしています…" : "🎁 お試しをあと2週間のばす（1回だけ）"}</button>` : "";
+  const note = login ? "" : '<p class="muted small">ログインすると、お試しが機種変更でも続き、1回だけ2週間のばせます</p>';
+  return `<h3 class="quick-sub">🎁 無料お試し</h3>${line}${extend}${note}`;
+}
 function handlePlusAction(action, data) {
+  if (action === "life-trial-extend") { extendTrial(); return true; }
   if (action === "life-plus-open") { openPlus(data.from); render(); return true; }
   if (action === "life-pause-week" && !isViewer()) { if (togglePause(data.week)) { touchSettings(); saveState(); if (typeof queuePushSync === "function") queuePushSync(); } render(); return true; }
   if (action === "life-plus-demo" && paywallPreview()) {

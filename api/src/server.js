@@ -6,6 +6,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createRecipeCatalog, createRecipeStore } from "./recipeCatalog.js";
 import { createTicketBook, DAILY_USES } from "./tickets.js";
 import { createAuth } from "./auth.js";
+import { createPlusTrials } from "./plusTrial.js";
 import { createTrendBook, SEED_QUERIES, TREND_YEN_PER_AI, waveStatus } from "./trends.js";
 import { createPopularBook } from "./popular.js";
 import { createDishBook, cleanDishName } from "./dishes.js";
@@ -46,6 +47,7 @@ export function createApp(env = process.env, deps = {}) {
   const photoStore = "photoStore" in deps ? deps.photoStore : createPhotoStore(env);
   const recipeStore = deps.recipeStore ?? createRecipeStore(env);
   const auth = createAuth(recipeStore, env, { sendMail: deps.sendMail, fetch: deps.fetch || globalThis.fetch, now: deps.now || Date.now });
+  const plusTrials = createPlusTrials(recipeStore, { now: deps.now || Date.now });
   const tickets = recipeStore ? createTicketBook(recipeStore, { now: deps.now || Date.now, limit: Number(env.DAILY_USES || DAILY_USES) }) : null;
   const catalog = createRecipeCatalog(recipeStore,
     deps.importRecipe || ((url, options = {}) => importYouTubeRecipe(url, {
@@ -165,6 +167,10 @@ export function createApp(env = process.env, deps = {}) {
   app.post("/api/auth/sync", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then(uid => auth.ensureSync(uid, req.body))); });
   app.post("/api/auth/transfer", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => auth.transferStart(uid))); });
   app.post("/api/auth/transfer/redeem", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, auth.transferRedeem(req.body?.code)); });
+  // リピごちプラスの無料お試し（本人ごとに1回・サーバーで管理。APP_MAP §75）
+  app.get("/api/plus/status", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => plusTrials.status(uid))); });
+  app.post("/api/plus/trial/start", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => plusTrials.start(uid, req.body || {}))); });
+  app.post("/api/plus/trial/extend", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, signedIn(req).then((uid) => plusTrials.extend(uid))); });
   // 新着レシピ：集める（GitHubの定期実行が毎日ノックする。1日・1週の上限を超えては動かない）と、見せる（読み出すだけ）。みんなの定番も読み出すだけ。
   // ブラウザが持つのは1分まで（掲載停止をすぐ反映するため。サーバーの側は10分持つが、停止・再開で捨てる）。
   app.get("/api/trends", (req, res) => { res.setHeader("Cache-Control", "public, max-age=60"); send(res, trendBook.list()); });
