@@ -23,7 +23,7 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：アプリ全体の見直し ④片づけ（2026-11-15 のユーザーの判断：1番から順に） | レビュー待ち | claude/fervent-lovelace-d6tsd6 | 止めてあった下書きトレイのしくみ（`trayDraft`・候補カードの棚・`life-tray-*`）と、そのテスト11件・使わなくなった見た目の指定を取り除いた。画面は変えていない。日付で落ちるテスト1件（お休み週・日曜の夜）を日付固定に。アプリ514件PASS、390×844／844×390／1440×900 で主な画面を確認（APP_MAP §76）。見直しはこれで一区切り | daily-ui.js, app.js, household.js, styles.css, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, test/plus.test.cjs, docs/* |
+| Claude：アプリ全体の見直し ④片づけ（2026-11-15 のユーザーの判断：1番から順に） | 公開済み（#255） | claude/fervent-lovelace-d6tsd6 | 止めてあった下書きトレイのしくみ（`trayDraft`・候補カードの棚・`life-tray-*`）と、そのテスト11件・使わなくなった見た目の指定を取り除いた。画面は変えていない。日付で落ちるテスト1件（お休み週・日曜の夜）を日付固定に。アプリ514件PASS、390×844／844×390／1440×900 で主な画面を確認（APP_MAP §76）。見直しはこれで一区切り | daily-ui.js, app.js, household.js, styles.css, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, test/plus.test.cjs, docs/* |
 | Claude：アプリ全体の見直し ③レシピタブに図鑑（2026-11-15 のユーザーの判断） | 公開済み（#254） | claude/fervent-lovelace-d6tsd6 | レシピタブを「おすすめ／🃏 図鑑 ◯/48／わたしのレシピ」に（図鑑をふりかえりタブから引っ越し）・まだのカードも絵は色つき・いつも3列・カードの裏に「🗓 献立に入れる」・ふりかえりは「🃏 図鑑 ›」の入口だけ。アプリ525件PASS、390×844／844×390／1440×900 確認済み（APP_MAP §78）。最初に開くタブは「おすすめ」のまま（2026-11-16 のユーザーの判断） | app.js, daily-ui.js, styles.css, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, test/recipe-list.test.cjs, docs/* |
 | Claude：アプリ全体の見直し ②決定直後のまとめ（2026-11-15 のユーザーの判断） | 公開済み（#253） | claude/fervent-lovelace-d6tsd6 | 決定を押すと、買い物タブへ飛ばずに献立タブの上へ「◯曜まで、もう考えなくて大丈夫」（決めた料理の写真・使い回し・家にある物・［🛒 買う物◯品を見る］［あとで見る］）。最初の献立の時は招待もここ。アプリ524件PASS、390×844／844×390／1440×900 確認済み（APP_MAP §77）。次：③レシピタブを図鑑に ④片づけ | daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, test/shopping-ux.test.cjs, test/first-run.test.cjs, docs/* |
 | Claude：アプリ全体の見直し ①献立タブをしずかに（2026-11-15 のユーザーの判断：見直し案の3点とも OK） | 公開済み（#252） | claude/fervent-lovelace-d6tsd6 | 献立タブは献立カードと決定ボタン1つ（下に「🛒 買う物◯品　🧺 使い回し」）・変えるのは「⇄ 変更」（今夜の4皿）だけ・4皿から「📖 レシピの棚から選ぶ」・好みに寄せるは折りたたみ・はじめての画面はまず献立。候補カードの棚は止めた（`TRAY_INLINE=false`）。アプリ524件PASS、390×844／844×390／1440×900 確認済み（APP_MAP §76・`docs/UX_REDESIGN.md`）。次：②決定直後のまとめ ③レシピタブを図鑑に ④片づけ | daily-ui.js, styles.css, app.js, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, test/first-run.test.cjs, docs/* |
@@ -89,6 +89,8 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 - 候補の数：本番は足りていた（新着415品＋最初の48品）。足りないのは料理の種類と分野 → 上の「作業中」の行で対応
 
 ## 最近終わったこと（新しい順）
+
+- アプリ全体の見直し（#252〜#255、公開済み。全体の案は `docs/UX_REDESIGN.md`）：①献立タブをしずかに（決定ボタン1つ・変えるのは「⇄ 変更」だけ。APP_MAP §76）②決定直後のまとめ「もう考えなくて大丈夫」（§77）③レシピタブに図鑑（おすすめ／🃏 図鑑／わたしのレシピ。§78）④使わなくなった下書きトレイのしくみの片づけ。確かめていないこと：記録がたまった状態・家族で共有している状態（同じ日の競合を選ぶ画面）・リズムを使わない設定の実画面
 
 - 届いた新着を全部、献立と今夜の4皿の候補に（#237、公開済み）：日ごとのくじで先頭120品だけ使っていたのをやめ、届いた約400品を全部使う。保険の上限600品を超えた時だけ条件に合う料理を先に残す。保存量を超えたら減らして保存し直す。Codex は利用上限のため Claude がレビューして2件を直して公開（APP_MAP §66）
 - 今夜の4皿の見直し（#236、公開済み）：時間・理由・目立つ「✕ パス」を写真のすぐ下の1行に／秘書のよはくが吹き出しで気持ちを代弁（「こってりの気分じゃないんだね」）・「少なめ：[こってり ✕]」／写真からレシピへ「この料理にする／◯皿に戻る」／広い画面・縦に長いスマホは6皿。Codex は利用上限のため、Claude がレビューして2件を直して公開（APP_MAP §64-4）。次は新着の約400品を候補に使う
