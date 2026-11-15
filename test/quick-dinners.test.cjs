@@ -45,8 +45,8 @@ test("every quick starter dish has its illustration, listed the same in app.js a
   for (const r of Starter.recipes.filter((x) => x.minutes <= 10 && Number(x.id.replace("starter-", "")) <= 48)) {
     assert.ok(app.includes(r.id.replace("starter-", "")), `${r.title}: no illustration`);
   }
-  // 2026-11-14 に作り直した48品（starter-51〜98）の絵は、画像を作ってから足す（docs/STARTER_RECIPES.md）。
-  // それまでは主食ごとのイメージ写真（「イメージ」と表示）で出る。
+  // 図鑑の48品（starter-51〜98）は、全部に絵がある（2026-11-15。Midjourney の画風B。docs/STARTER_RECIPES.md）
+  for (const r of L.starters) assert.ok(app.includes(r.id.replace("starter-", "")), `${r.title}: no card art`);
 });
 
 // 2026-11-15 のユーザーの判断：図鑑は最初から入っている48品（No.001〜048・6章）。表はひとこと、裏は読みごたえのある5つの見出し。
