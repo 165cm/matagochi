@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261115-week-receipt";
+const APP_VERSION = "20261115-plus-redo";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -417,7 +417,8 @@ function normalizeState(saved) {
     // 無料期間のはじまり。今までの人は、この版を開いた日から数える。
     trialFrom: normalizeDateInput(saved.trialFrom) || (saved.onboarded ? today() : ""),
     freePicks: normalizeFreePicks(saved.freePicks),
-    plus: saved.plus && /^\d{4}-\d{2}-\d{2}$/.test(saved.plus.until || "") ? { until: saved.plus.until } : null,
+    // プラスの状態（決済の前はプレビューだけ）：プラン・払い済みの最後の日・期間の始まり・お休みの週（APP_MAP §74）
+    plus: saved.plus && /^\d{4}-\d{2}-\d{2}$/.test(saved.plus.until || "") ? { until: saved.plus.until, plan: saved.plus.plan === "four" ? "four" : "year", ...(/^\d{4}-\d{2}-\d{2}$/.test(saved.plus.since || "") ? { since: saved.plus.since } : {}), pauses: [...new Set((Array.isArray(saved.plus.pauses) ? saved.plus.pauses : []).filter((w) => /^\d{4}-\d{2}-\d{2}$/.test(w)))].sort().slice(-60) } : null,
     originalIngredients: normalizeIngredientList(saved.originalIngredients || []),
     extractedIngredients: normalizeIngredientList(saved.extractedIngredients || []),
     repeatDraft: normalizeRepeatDraft(saved.repeatDraft || saved.ratingDraft || base.repeatDraft, family),
@@ -2828,6 +2829,7 @@ function renderSettings() {
       ${isViewer() ? "" : `<h3 class="quick-sub">献立の寄せ方</h3>${renderPlanTunes()}`}
       <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><button class="secondary-button full-button" data-action="life-pantry-open">🫙 常備品だけ変える</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p>`)}
     ${(() => { const t = renderTalkSetting(); return settingRow("talk", "💬", "わが家のごはん方針", t.summary, t.body); })()}
+    ${isViewer() || !(plusState() || paywallPreview()) ? "" : settingRow("plus", "✨", "リピごちプラス", plusSettingsSummary(), renderPlusSettings())}
     ${settingRow("rhythm", "🗓", "献立のリズム", rhythmOn() ? `${RHYTHMS[state.rhythm.preset].label}（${rhythmShape(rhythmBlocks())}）・買い物${state.rhythm.shopBefore === 0 ? "初日" : "前日"}${state.rhythm.shopTime}` : "未設定", renderRhythmSettings())}
     ${isViewer() ? "" : settingRow("skill", "🔪", "料理の腕前", sp ? `${Skills.stars(sp.level)} ${SKILL_TYPES[sp.level].name}` : "未設定（すべての料理を同じように並べる）", renderSkillSettings())}
     ${isViewer() ? "" : settingRow("starters", "🍳", "おすすめレシピ", showStarters() ? "使う" : "使わない（自分のレシピだけ）", renderStarterSettings())}

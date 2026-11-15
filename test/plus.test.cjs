@@ -21,70 +21,55 @@ function setup(run, { trial = false } = {}) {
 const cookable = (run) => JSON.parse(run('JSON.stringify(dailyPlan().filter((d) => !d.off && !d.prestart && d.candidate).map((d) => d.date))'));
 const weekOf = (run, d) => run(`weekStartOf("${d}")`);
 
-test('during the trial nothing is locked; after it, 3 days a week stay free', () => {
+// 2026-11-15 の作り直し（APP_MAP §74）：無料＝毎日「今夜の1品」。明日から先をまとめて決めるのがプラス。
+test('during the trial nothing is locked; after it, only tonight stays free — every later day is locked', () => {
   const run = app();
   setup(run, { trial: true });
   assert.equal(run('lockedDates().size'), 0, 'trial');
   setup(run);
   const days = cookable(run);
   const locked = JSON.parse(run('JSON.stringify([...lockedDates()])'));
-  const byWeek = {};
-  for (const d of days) (byWeek[weekOf(run, d)] ||= []).push(d);
-  for (const [w, list] of Object.entries(byWeek)) {
-    const free = list.filter((d) => !locked.includes(d));
-    assert.equal(free.length, Math.min(3, list.length), `week ${w}: 3 free days`);
-    assert.deepEqual(free, list.slice(0, free.length), 'the earliest days are free');
-  }
   assert.ok(locked.length > 0);
+  assert.ok(!locked.includes(run('today()')), 'tonight is never locked');
+  assert.deepEqual(locked, days.filter((d) => d > run('today()')), 'every later undecided day is locked');
   run('gatingOverride = false');
   assert.equal(run('lockedDates().size'), 0, 'off until payments go live');
 });
 
-test('confirmed days count toward the 3 and are never locked; eat-out days do not count', () => {
+test('decided days are never locked; the plan confirms only tonight', () => {
   const run = app();
   setup(run);
   const days = cookable(run);
   const last = days[days.length - 1];
   run(`confirmDaily({ date: "${last}" }, dailyPlan().find((d) => d.date === "${last}").candidate.recipe)`);
-  assert.equal(run(`lockedDates().has("${last}")`), false, 'a decided day stays');
-  const w = weekOf(run, last);
-  const free = JSON.parse(run(`JSON.stringify(freeDatesOfWeek("${w}"))`));
-  assert.ok(free.includes(last) && free.length <= 3);
-  // 外食の日は数えない：無料の日を外食にすると、次の日が無料になる
-  const first = free.find((d) => d !== last);
-  run(`state.mealSlots["${first}"] = { status: "off", kind: "out", date: "${first}" }`);
-  const free2 = JSON.parse(run(`JSON.stringify(freeDatesOfWeek("${w}"))`));
-  assert.ok(!free2.includes(first));
-  assert.equal(free2.length, Math.min(3, days.filter((d) => weekOf(run, d) === w && d !== first).length));
-});
-
-test('a locked day can be swapped into the 3; the plan confirms only free days', () => {
-  const run = app();
-  setup(run);
-  const locked = JSON.parse(run('JSON.stringify([...lockedDates()])'));
-  const target = locked[0];
-  assert.equal(run(`pickFreeDay("${target}")`), true);
-  assert.equal(run(`lockedDates().has("${target}")`), false, 'the picked day is free now');
-  assert.equal(run(`freeDatesOfWeek(weekStartOf("${target}")).length`), 3);
-  run('handleDailyAction("life-confirm", {})');
+  assert.equal(run(`lockedDates().has("${last}")`), false, 'a decided day (e.g. from the trial) stays');
+  run('state.mealSlots = {}; handleDailyAction("life-confirm", {})');
   const confirmed = JSON.parse(run('JSON.stringify(Object.keys(state.mealSlots).filter((d) => state.mealSlots[d].status === "confirmed"))'));
-  const stillLocked = JSON.parse(run('JSON.stringify([...lockedDates()])'));
-  assert.ok(confirmed.length > 0);
-  assert.ok(confirmed.every((d) => !stillLocked.includes(d)));
-  assert.equal(run(`state.mealSlots["${stillLocked[0]}"]`), undefined, 'a locked day is not confirmed');
+  assert.ok(confirmed.every((d) => d <= run('today()')), confirmed.join(','));
 });
 
-test('plus unlocks every day; the locked card and the upsell sheet', () => {
+test('locked days are shown (peek), not hidden; the shopping tab peeks at the later list; plus unlocks every day', () => {
   const run = app();
   setup(run);
-  assert.match(run('renderDailyPlan()'), /lock-strip/);
-  assert.equal((run('renderDailyPlan()').match(/class="lock-strip"/g) || []).length, run('(() => { const p = dailyPlan(), l = lockedDates(p); return p.filter((d, i) => l.has(d.date) && !(i > 0 && l.has(p[i - 1].date))).length; })()'), 'one line for each run of locked days');
+  const html = run('renderDailyPlan()');
+  const locked = run('lockedDates().size');
+  assert.equal((html.match(/plan-card is-dish is-peek/g) || []).length, locked, 'one peek card per locked day');
+  assert.match(html, /プラスで決める/);
+  assert.doesNotMatch(html, /lock-strip/);
+  const peek = JSON.parse(run('JSON.stringify(lockedShoppingPeek())'));
+  assert.equal(peek.days, locked);
+  assert.ok(peek.names.length > 0);
+  assert.match(run('renderShoppingPeek()'), /まとめ買いはプラス/);
   run('state.plus = { until: addDays(today(), 10) }');
   assert.equal(run('lockedDates().size'), 0);
-  assert.doesNotMatch(run('renderDailyPlan()'), /lock-strip/);
+  assert.doesNotMatch(run('renderDailyPlan()'), /is-peek/);
+  assert.equal(run('renderShoppingPeek()'), '');
   run('state.plus = null; handleDailyAction("life-plus-open", { from: "locked" })');
   const sheet = run('renderPaywall()');
-  assert.match(sheet, /毎日の献立はプラスで/);
+  assert.match(sheet, /今日なに作ろう/);
+  assert.match(sheet, /捨てる食材/);
+  assert.match(sheet, /まとめ買い/);
+  assert.doesNotMatch(sheet, /1食あたり|毎日の献立|家族で共有/);
   assert.match(sheet, /600円/);
   assert.match(sheet, /6,000円/);
   assert.match(sheet, /利用規約/);
@@ -92,11 +77,43 @@ test('plus unlocks every day; the locked card and the upsell sheet', () => {
   assert.equal(run('paywall'), null);
 });
 
+test('pause weeks: 4-week plan moves the bill a week per pause; yearly earns a renewal discount up to 10 weeks; 3 in a row, 14 a year', () => {
+  const run = app();
+  setup(run);
+  const mon = run('addDays(weekStartOf(today()), 7)');
+  run(`state.plus = { plan: "four", since: today(), until: addDays(today(), 27), pauses: [] }`);
+  const base = run('plusUntil()');
+  assert.equal(run(`togglePause("${mon}")`), true);
+  assert.equal(run('plusUntil()'), run(`addDays("${base}", 7)`), 'the bill moves a week (no charge for the pause)');
+  assert.equal(run(`dailyPlan().filter((d) => weekStartOf(d.date) === "${mon}").every((d) => d.off && d.pause && !d.candidate)`), true, 'no plan in a paused week');
+  assert.equal(run(`togglePause(addDays("${mon}", 7))`), true);
+  assert.equal(run(`togglePause(addDays("${mon}", 14))`), true);
+  assert.equal(run(`pauseCheck(addDays("${mon}", 21)).ok`), false, 'four in a row is too many');
+  assert.equal(run(`pauseCheck(weekStartOf(addDays(today(), -7))).ok`), false, 'a past week cannot be paused');
+  run(`togglePause(addDays("${mon}", 14))`);
+  assert.equal(run('plusState().pauses.length'), 2, 'a future pause can be undone');
+  // 年額：割引は10週分まで・1年で14週まで
+  const weeks = Array.from({ length: 20 }, (_, i) => run(`addDays("${mon}", ${7 * 2 * i})`));
+  run(`state.plus = { plan: "year", since: today(), until: addDays(today(), 364), pauses: [] }`);
+  let n = 0;
+  for (const w of weeks) if (run(`togglePause("${w}")`)) n += 1;
+  assert.equal(n, 14, '14 weeks a year');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(pauseCredit())')), { weeks: 10, yen: 10 * Math.round(6000 / 52) }, 'discount capped at 10 weeks');
+  assert.equal(run('plusUntil()'), run('addDays(today(), 364)'), 'yearly: the term does not move');
+  // 保存しても残る
+  run('state = normalizeState(JSON.parse(JSON.stringify(state))); saveState = () => {}; render = () => {};');
+  assert.equal(run('plusState().pauses.length'), 14);
+  assert.equal(run('plusState().plan'), 'year');
+  const settings = run('renderPlusSettings()');
+  assert.match(settings, /次の更新で割引/);
+  assert.match(settings, /年末年始の帰省/);
+});
+
 test('the trial start is kept for existing users and set at the end of the first setup', () => {
   const run = app();
   assert.equal(run('normalizeState({ ...clone(demoState), onboarded: true, trialFrom: "" }).trialFrom'), run('today()'));
   assert.equal(run('normalizeState({ ...clone(demoState), onboarded: true, trialFrom: "2026-09-01" }).trialFrom'), '2026-09-01');
-  assert.deepEqual(JSON.parse(run('JSON.stringify(normalizeFreePicks({ "2026-09-28": ["2026-09-30", "x"], bad: [] }))')), { '2026-09-28': ['2026-09-30'] });
+  assert.deepEqual(JSON.parse(run('JSON.stringify(normalizeFreePicks({ "2026-09-28": ["2026-09-30", "x"], bad: [] }))')), { '2026-09-28': ['2026-09-30'] }, 'old saves still load');
 });
 
 test('in the beta, a pay button says thank you and invites feedback for a 3-month code', () => {
