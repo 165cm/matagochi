@@ -394,6 +394,8 @@ function dailyPlanNow({ exclude = [] } = {}) {
   });
   for (const day of plan) {
     if (day.candidate && state.planDrafts?.[day.date] && !state.planOverrides[day.date]) day.candidate.chosen = false;
+    // お休み週（プラス。APP_MAP §74）：決めていない日は献立を出さない（決めた日・作った日はそのまま）
+    if (typeof pausedWeek === "function" && pausedWeek(day.date) && !["confirmed", "cooked"].includes(day.slot?.status)) { day.off = true; day.pause = true; day.candidate = null; }
   }
   return plan;
 }
@@ -764,16 +766,12 @@ function renderDailyPlan() {
       const dateLabel = `${formatDate(day.date)}（${weekdayLabel(day.date)}）`;
       const badge = day.date === today() ? '<span class="today-badge">今夜</span>' : "";
       if (day.prestart) return `<article class="plan-card is-off"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>🛒</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">いつもどおりで</strong><p class="plan-time">献立は${formatDate(prestartUntil())}から</p></div></article>`;
+      if (day.pause)
+        return `<article class="plan-card is-off is-pause"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>⏸</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">お休み週</strong><p class="plan-time">献立と通知はお休み。設定の「✨ リピごちプラス」で戻せます</p></div></article>`;
       if (day.slot?.status === "off" || day.off)
         return `<article class="plan-card is-off"><div class="plan-photo"><span class="dish-tile dish-art-tile" aria-hidden="true"><span>${SKIP_OF[day.slot?.kind]?.icon || "🌙"}</span></span>${badge}</div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title">${escapeHtml(skipLabel(day.slot))}</strong><div class="plan-controls"><button type="button" class="plan-icon" data-action="life-reopen" data-date="${day.date}">料理する</button></div></div></article>`;
-      // ロックの日：続いている日を1行にまとめる（2日目以降は何も出さない）。
-      if (locks.has(day.date)) {
-        const i = plan.indexOf(day);
-        if (i > 0 && locks.has(plan[i - 1].date)) return "";
-        const run = [];
-        for (let k = i; k < plan.length && locks.has(plan[k].date); k += 1) run.push(plan[k].date);
-        return renderLockStrip(run);
-      }
+      // ロックの日（無料の、明日から先）：料理はチラ見せして、決める操作の代わりにプラスの案内（2026-11-15。APP_MAP §74）
+      if (locks.has(day.date)) return renderPeekCard(day);
       // トレイの日：よはくが考えている間は点が跳ねる。空にした日は「下から選んでね」
       if (inTray && thinking)
         return `<article class="plan-card is-dish is-thinking" style="--i:${trayIdx}" aria-busy="true"><div class="plan-photo plan-think-photo">${badge}<span class="tray-think-dots" aria-hidden="true"><i></i><i></i><i></i></span></div><div class="plan-body"><p class="plan-date">${dateLabel}</p><strong class="plan-title plan-think-title">考え中…</strong></div></article>`;
@@ -806,7 +804,7 @@ function renderDailyPlan() {
   // 外したもの：週のカレンダー（ページと同じ情報）・バランスの内訳・まとめて評価（ページの「評価する」と今日の画面で）・
   // 動画の読み取りの案内・ふたりで使う誘い（最初の献立の画面で1回）・「お試しの提案」・食材制限の ⓘ（作る画面と設定にある）。
   const list = `<section class="plan-list">${cards}${trayOn && !rhythmOn() ? renderTrayActionBar(trayDays) : ready && !isViewer() && !rhythmOn() ? dailyButton("life-confirm", "これで決定・買い物へ", "", true) : ""}</section>`;
-  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${trayOn ? renderCardTraySheet() : ""}${renderFreeUsedCard(plan)}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
+  return `${renderFirstPlanReveal()}<section class="plan-top"><div class="plan-tools page-actions">${rhythmOn() ? "" : `<div class="segmented" role="group" aria-label="献立の日数">${[3, 7].map((d) => `<button class="choice-button" aria-pressed="${n === d}" data-action="life-length" data-length="${d}">${d}日</button>`).join("")}</div>`}${isViewer() ? "" : `<button type="button" class="round-icon" data-action="${!state.foodProfile?.completed ? "life-quick" : "life-profile"}" aria-label="条件を調整"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>`}</div></section>${list}${trayOn ? renderCardTraySheet() : ""}${renderRoundCard()}${renderPlanBalance(plan, locks)}${isViewer() ? "" : renderRequests()}${renderLeftoverPanel()}${renderRhythmInvite()}${swapDate ? renderSwapChoices() : ""}${trayFlipId ? renderCardFlipModal() : ""}${renderCardGetModal()}`;
 }
 // ---- 献立のページ（買い物のひとかたまりごと・横スライド） ----
 let planPage = ""; // 見ているページ（ひとかたまりの key）。描き直しても同じページのまま
@@ -1890,6 +1888,7 @@ function renderDailyShopping() {
   ${emptySection}
   ${aisleEdit ? '<button type="button" class="primary-button full-button" data-action="life-aisle-edit">売り場の直しを終える</button>' : ""}
   ${ctx.isShopped ? "" : renderPantryAsk(items)}
+  ${ctx.isShopped ? "" : renderShoppingPeek()}
   ${swipeHintLine}
   ${ctx.isShopped && buy ? `<h3 class="shop-sec-head is-add">🛒 追加で買うもの <span class="badge">${buy}</span></h3>` : ""}
   ${buy ? `<div class="shop-list">${groups("buy")}</div>` : ""}
@@ -4245,7 +4244,8 @@ function resultLines(p) {
 /* ---- 課金の案内（リピごちプラス）：献立ができた直後、期待がいちばん高い時に出す。閉じられる。
    閉じようとした人には、値引きではなく「無料期間の延長」をすすめる。
    決済（Stripe）の準備ができるまでは、?paywall=1 で開いた時だけ出すプレビュー。 */
-const PLANS = { year: { label: "1年", price: 6000, per: "年", note: "月500円" }, four: { label: "4週間", price: 600, per: "4週", note: "週150円" } };
+// 見せ方（2026-11-15 のユーザーの判断）：1食あたりの値段は出さない（食費と比べられて高く見える）。お休み週の扱いを添える
+const PLANS = { year: { label: "1年", price: 6000, per: "年", note: "月500円・お休みは更新で割引" }, four: { label: "4週間", price: 600, per: "4週", note: "週150円・お休みは課金なし" } };
 // 無料期間：今日から次の月曜までの半端な日＋月曜から2週間。解約しようとした時に「＋2週間」をすすめる（決済と一緒に作る）。
 function trialPlan(from = today()) {
   let start = from;
@@ -4268,7 +4268,7 @@ function renderPaywall() {
   const goal = GOAL_OF[p.goal] || GOAL_OF.time;
   const t = trialPlan();
   const saving = Math.round((1 - PLANS.year.price / (PLANS.four.price * 13)) * 100);
-  const plan = (id) => { const x = PLANS[id]; return `<button type="button" class="pw-plan" data-action="life-pay-plan" data-plan="${id}" aria-pressed="${paywall.plan === id}">${id === "year" ? `<span class="pw-badge">${saving}%OFF</span>` : ""}<b>${x.label}</b><span class="pw-price">${x.price.toLocaleString()}円<small>／${x.per}</small></span>${x.note ? `<small>${x.note}</small>` : ""}</button>`; };
+  const plan = (id) => { const x = PLANS[id]; return `<button type="button" class="pw-plan" data-action="life-pay-plan" data-plan="${id}" aria-pressed="${paywall.plan === id}">${id === "year" ? `<span class="pw-badge">${saving}%OFF</span>` : ""}<b>${x.label}</b><span class="pw-price">${x.price.toLocaleString()}円<small>／${x.per}</small>${id === "year" ? `<em class="pw-save">${(PLANS.four.price * 13 - x.price).toLocaleString()}円おトク</em>` : ""}</span>${x.note ? `<small>${x.note}</small>` : ""}</button>`; };
   const legal = '<a href="legal/terms.html" target="_blank" rel="noopener">利用規約</a>・<a href="legal/tokushoho.html" target="_blank" rel="noopener">特定商取引法に基づく表記</a>';
   // 2か所の案内（ロックの日・3日を使い切った）から開いた時：プラスでできることを、絵文字と短い言葉で。
   const from = paywall.from && PLUS_FROM[paywall.from];
@@ -4276,6 +4276,7 @@ function renderPaywall() {
     <button type="button" class="pw-close" data-action="life-pay-close" aria-label="閉じる">×</button>
     <p class="pw-kicker">${from}</p>
     <h2>✨ リピごちプラス</h2>
+    <p class="pw-copy"><b>${escapeHtml(PLUS_COPY.main)}</b><small>${escapeHtml(PLUS_COPY.sub)}</small></p>
     <ul class="pw-perks">${PLUS_PERKS.map(([i, t]) => `<li><span aria-hidden="true">${i}</span>${t}</li>`).join("")}</ul>
     <div class="pw-plans">${plan("year")}${plan("four")}</div>
     <button type="button" class="primary-button full-button pw-start" data-action="life-pay-start">プラスにする</button>
@@ -4284,7 +4285,7 @@ function renderPaywall() {
     <button type="button" class="pw-close" data-action="life-pay-close" aria-label="閉じる">×</button>
     <p class="pw-kicker">あなた専用の献立ができました</p>
     <h2>${goal.icon} この献立で、<br><span class="marker">${escapeHtml(goal.label.replace(/、/, ""))}</span></h2>
-    <ol class="pw-timeline"><li><b>今日</b><span>すべての機能を無料ではじめる</span></li><li><b>${md(t.start)}〜${md(t.end)}</b><span>まるごと2週間、無料で献立づくり</span></li><li><b>${md(t.notify)}</b><span>無料期間が終わる前に、お知らせします</span></li><li><b>${md(t.charge)}</b><span>ここからは献立が週3日分まで。毎日ならプラスへ</span></li></ol>
+    <ol class="pw-timeline"><li><b>今日</b><span>すべての機能を無料ではじめる</span></li><li><b>${md(t.start)}〜${md(t.end)}</b><span>まるごと2週間、無料で献立づくり</span></li><li><b>${md(t.notify)}</b><span>無料期間が終わる前に、お知らせします</span></li><li><b>${md(t.charge)}</b><span>ここからも「今夜の1品」は無料。まとめて決めるならプラスへ</span></li></ol>
     <div class="pw-plans">${plan("year")}${plan("four")}</div>
     <button type="button" class="primary-button full-button pw-start" data-action="life-pay-start">無料ではじめる</button>
     <p class="muted small pw-fine">カードの登録は不要です。無料期間のあと、自動で料金がかかることはありません。${paywallPreview() ? "（プレビュー：決済はまだ準備中です）" : ""}<br><a href="legal/terms.html" target="_blank" rel="noopener">利用規約</a>・<a href="legal/tokushoho.html" target="_blank" rel="noopener">特定商取引法に基づく表記</a></p></div></div>`;

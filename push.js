@@ -28,6 +28,8 @@ function pushSchedule(info = pushInfo()) {
   const add = (id, at, title, body, url = "") => { if (at.getTime() > now && at.getTime() < now + 14 * 86_400_000) items.push({ id, at: at.toISOString(), title, body, url }); };
   if (rhythmOn()) {
     for (const b of currentBlocks()) {
+      // お休み週（プラス。APP_MAP §74）：まとまりの日がみんなお休みなら、献立・買い物の通知を出さない（Codex review #249）
+      if (typeof pausedWeek === "function" && b.dates.every((d) => pausedWeek(d))) continue;
       const shopAt = new Date(b.shopAt), status = blockStatus(b);
       const range = blockRange(b), hm = b.shopAt.slice(11, 16);
       if (info.decide && status === "open") add(`decide-${b.key}`, new Date(shopAt.getTime() - 3 * 3600_000), `🗓 ${range}の献立を決めよう`, `${hm}の買い物までに。候補はもう並んでいます。`, "?view=plan");
@@ -36,7 +38,7 @@ function pushSchedule(info = pushInfo()) {
   }
   const plan = dailyPlan(), locks = typeof lockedDates === "function" ? lockedDates(plan) : new Set();
   for (const d of plan) {
-    if (locks.has(d.date)) continue;
+    if (locks.has(d.date) || (typeof pausedWeek === "function" && pausedWeek(d.date))) continue;
     const slot = d.slot, recipe = slot?.status === "confirmed" ? slot.recipe : !slot && !d.off ? d.candidate?.recipe : null;
     if (!recipe) continue;
     const f = typeof folderOfRecipe === "function" ? folderOfRecipe(recipe) : null;

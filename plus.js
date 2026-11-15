@@ -1,13 +1,12 @@
-/* 無料とリピごちプラスの出し分け。決済（Stripe）と一緒に本番で有効にする（GATING_LIVE）。
-   それまでは ?paywall=1 のプレビューの時だけ効く。?plus=on で、この端末をプラス扱いにできる（試す用）。
-   ・無料期間：使い始めた日から次の月曜までの半端な日＋2週間（trialPlan）。カード不要・自動で課金しない
-   ・無料期間のあと、無料は1週間（月〜日）に献立3日分まで。外食・お休みの日は数えない
-   ・3日は自動で選ぶ（決めた日・作った日が先、あとは早い日から）。ロックの日から「この日を3日に入れる」で入れ替えられる
-   ・決めた日・作った日はロックしない（無料期間中に決めた分もそのまま）
+/* 無料とリピごちプラスの出し分け（2026-11-15 の作り直し。正本は docs/FREE_PAID_BOUNDARY.md・APP_MAP §74）。
+   決済（Stripe）と一緒に本番で有効にする（GATING_LIVE）。それまでは ?paywall=1 のプレビューの時だけ効く。?plus=on で、この端末をプラス扱いにできる（試す用）。
+   ・無料：毎日「今夜の1品」を決められる（今日は決してロックしない）。候補の入れ替えの回数は制限しない
+   ・プラス：まとめて決める（明日から先の日）・まとめ買いの買い物リスト・食材の使い回し
+   ・無料でも、明日から先の献立と買い物リストはチラ見せする（ぼかさない）。決める操作だけプラス
+   ・決めた日・作った日はロックしない（お試し中に決めた分もそのまま）
    ・プラスは、同期している家族みんなで使える（決済と一緒に、サーバーの状態を state.plus に入れる）
-   ・プラスの案内は2か所だけ：3日を使い切った時／ロックの日を押した時（チケットの仕組みは 2026-10-28 にやめた） */
+   ・お休み週：4週プランは課金を止めて自動で再開（期限が1週のびる）。年額は次の更新で割引（10週分まで）。連続3週まで・1年で14週まで */
 const GATING_LIVE = false;
-const FREE_DAYS = 3;
 let gatingOverride = null; // テスト用
 function gatingOn() {
   if (gatingOverride !== null) return gatingOverride;
@@ -19,87 +18,176 @@ function plusActive() {
     if (q === "on" || q === "off") localStorage.setItem("ripigochi-plus", q);
     if (localStorage.getItem("ripigochi-plus") === "on") return true;
   } catch {}
-  return !!state.plus?.until && state.plus.until >= today();
+  const until = plusUntil();
+  return !!until && until >= today();
 }
 const trialEnd = () => (state.trialFrom ? trialPlan(state.trialFrom).end : "");
 const inTrial = (date = today()) => !state.trialFrom || date <= trialEnd();
 const weekStartOf = (date) => addDays(date, -((dow(date) + 6) % 7));
 const takenSlot = (slot) => slot?.status === "confirmed" || slot?.status === "cooked";
-// 週ごとの無料の日：決めた日・作った日 → 自分で選んだ日 → 献立の早い日 の順に3日まで（決めた日が3日を超えていれば、それは全部）。
-function freeDatesOfWeek(weekStart, plan = dailyPlan()) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const cookable = (date) => { const d = plan.find((x) => x.date === date); const slot = state.mealSlots?.[date]; return slot?.status !== "off" && !d?.off && !d?.prestart; };
-  const taken = days.filter((date) => takenSlot(state.mealSlots?.[date]));
-  const picks = (state.freePicks?.[weekStart] || []).filter((date) => days.includes(date) && date >= today() && cookable(date));
-  const planned = plan.filter((d) => days.includes(d.date) && d.date >= today() && cookable(d.date)).map((d) => d.date);
-  const out = [...taken];
-  for (const date of [...picks, ...planned]) if (!out.includes(date) && out.length < FREE_DAYS) out.push(date);
-  return out;
-}
-// この献立の中でロックする日（Set）。
+// この献立の中でロックする日（Set）：無料（お試しのあと）は、今日より先の、まだ決めていない日。
 function lockedDates(plan = dailyPlan()) {
   const locked = new Set();
   if (!gatingOn() || plusActive()) return locked;
-  const weeks = new Map();
   for (const d of plan) {
-    if (d.off || d.prestart || inTrial(d.date) || takenSlot(d.slot) || d.slot?.status === "off") continue;
-    const w = weekStartOf(d.date);
-    if (!weeks.has(w)) weeks.set(w, freeDatesOfWeek(w, plan));
-    if (!weeks.get(w).includes(d.date)) locked.add(d.date);
+    if (d.date <= today() || d.off || d.prestart || inTrial(d.date) || takenSlot(d.slot) || d.slot?.status === "off") continue;
+    locked.add(d.date);
   }
   return locked;
 }
 const isLocked = (date, plan) => lockedDates(plan).has(date);
-// ロックの日を「3日」に入れる。決めていない無料の日のうち、いちばん遅い日と入れ替える。
-function pickFreeDay(date) {
-  const plan = dailyPlan(), w = weekStartOf(date);
-  const free = freeDatesOfWeek(w, plan);
-  const loose = free.filter((d) => !takenSlot(state.mealSlots?.[d]));
-  if (!loose.length) { showToast("今週の3日分はもう決まっています。決めた日を外すと入れ替えられます。"); return false; }
-  const drop = loose[loose.length - 1];
-  const keep = free.filter((d) => d !== drop && !takenSlot(state.mealSlots?.[d]));
-  state.freePicks = { ...(state.freePicks || {}), [w]: [date, ...keep].slice(0, FREE_DAYS) };
-  // 古い週の選択は消す
-  for (const k of Object.keys(state.freePicks)) if (k < weekStartOf(addDays(today(), -7))) delete state.freePicks[k];
-  showToast(`${formatDate(date)}を無料の3日に入れました。${formatDate(drop)}はロックされます。`);
-  trackDaily("free_pick", { date, drop });
-  return true;
-}
+// 以前の「週3日」の選び直し（state.freePicks）は使わない。古い保存データを読めるように、形だけ残す。
 function normalizeFreePicks(raw) {
   if (!raw || typeof raw !== "object") return {};
-  return Object.fromEntries(Object.entries(raw).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && Array.isArray(v)).map(([k, v]) => [k, v.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, FREE_DAYS)]));
+  return Object.fromEntries(Object.entries(raw).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && Array.isArray(v)).map(([k, v]) => [k, v.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 3)]));
 }
 // ── 表示（文字は最小限。説明はⓘに入れる）
 const LOCK_TITLE = "🔒 今夜はプラスの日";
 const WD_SHORT = ["日", "月", "火", "水", "木", "金", "土"];
-// 続いているロックの日を1行にまとめる：「🔒 木 金 土 日 ⓘ　✨ 毎日にする」。曜日を押すと無料の3日と入れ替え。
-function renderLockStrip(dates) {
-  const days = dates.map((d) => `<button type="button" class="lock-day" data-action="life-free-pick" data-date="${d}" aria-label="${formatDate(d)}を無料の日にする">${WD_SHORT[dow(d)]}</button>`).join("");
-  return `<div class="lock-strip"><span class="lock-days" aria-hidden="true">🔒</span>${days}${tip("無料は週3日まで。曜日をタップで入れ替え")}<button type="button" class="lock-plus" data-action="life-plus-open" data-from="locked">✨ 毎日にする</button></div>`;
+// チラ見せのカード：料理の写真と名前は見せる。決める操作の代わりに「✨ まとめて決めるならプラス」。
+function renderPeekCard(day) {
+  const recipe = day.candidate?.recipe;
+  const dateLabel = `${formatDate(day.date)}（${weekdayLabel(day.date)}）`;
+  if (!recipe) return "";
+  return `<article class="plan-card is-dish is-peek"><div class="plan-photo">${dishTile(recipe)}<i class="peek-lock" aria-hidden="true">🔒</i></div><div class="plan-body"><p class="plan-date">${dateLabel}${recipe.planning?.minutes ? ` · ⏱ ${recipe.planning.minutes}分` : ""}</p><strong class="plan-title">${escapeHtml(recipe.title)}</strong><button type="button" class="text-button peek-plus" data-action="life-plus-open" data-from="locked" aria-label="${escapeAttr(dateLabel)}も決める（リピごちプラス）">✨ プラスで決める</button></div></article>`;
 }
-// 3日を使い切った週に、1回だけ出す1行（×で、その週は出さない）。
-function renderFreeUsedCard(plan = dailyPlan()) {
-  if (!gatingOn() || plusActive() || isViewer()) return "";
-  const locked = lockedDates(plan);
-  const w = weekStartOf(today());
-  const lockedThisWeek = [...locked].filter((d) => weekStartOf(d) === w).length;
-  const used = Array.from({ length: 7 }, (_, i) => addDays(w, i)).filter((d) => takenSlot(state.mealSlots?.[d])).length;
-  let seen = "";
-  try { seen = localStorage.getItem("ripigochi-free-used") || ""; } catch {}
-  if (used < FREE_DAYS || !lockedThisWeek || seen === w) return "";
-  return `<div class="plus-nudge"><span>🎉 無料3日 決定・🔒あと${lockedThisWeek}日</span><button type="button" class="lock-plus" data-action="life-plus-open" data-from="used">✨ プラス</button><button type="button" class="tk-close" data-action="life-free-used-close" data-week="${w}" aria-label="閉じる">×</button></div>`;
+// 買い物タブのチラ見せ：この先の献立（ロックの日）で買う物の名前だけ。数量・売り場・チェックはプラス。
+function lockedShoppingPeek(plan = dailyPlan()) {
+  const locks = lockedDates(plan);
+  if (!locks.size) return null;
+  const names = new Map();
+  for (const d of plan) {
+    if (!locks.has(d.date)) continue;
+    for (const i of d.candidate?.recipe?.ingredients || []) {
+      if (!i?.name || Lifestyle.keeps(i)) continue;
+      const name = i.name.replace(/[（(].*$/, "") || i.name;
+      const k = Lifestyle.key(name);
+      if (!names.has(k)) names.set(k, name);
+    }
+  }
+  return { days: locks.size, names: [...names.values()] };
 }
-const PLUS_FROM = { locked: "🔒 毎日の献立はプラスで", used: "🎉 今週の3日分、決定！" };
-const PLUS_PERKS = [["🗓", "毎日の献立"], ["👫", "家族で共有"], ["🔕", "いつでも解約"]];
+function renderShoppingPeek() {
+  if (isViewer()) return "";
+  const peek = lockedShoppingPeek();
+  if (!peek || !peek.names.length) return "";
+  const shown = peek.names.slice(0, 12);
+  return `<section class="shop-peek" aria-label="この先の買い物リスト（プラス）"><h3>🔒 この先${peek.days}日分の買い物</h3><p class="shop-peek-names">${shown.map(escapeHtml).join("・")}${peek.names.length > shown.length ? ` ほか${peek.names.length - shown.length}品` : ""}</p><p class="muted small">まとめて決めると、数量つきの1枚のリストに。使い回せる食材はまとめて買えます</p><button type="button" class="lock-plus" data-action="life-plus-open" data-from="shop">✨ まとめ買いはプラス</button></section>`;
+}
+// 案内の見出しと、プラスでできること（2026-11-15：見せ方は「考える回数」が主、「捨てる食材」が添え）
+const PLUS_FROM = { locked: "🗓 この先も、まとめて決める", shop: "🛒 まとめ買いのリスト", pause: "⏸ お休み週" };
+const PLUS_PERKS = [["🗓", "3日・5日分をまとめて決める"], ["🛒", "まとめ買いの買い物リスト"], ["🧺", "食材の使い回し"], ["⏸", "お休み週（自動で再開）"]];
+const PLUS_COPY = { main: "毎晩の「今日なに作ろう？」を、週1回に。", sub: "使い切れずに捨てる食材が、週に1つ減れば元がとれます。" };
 function openPlus(from) {
   if (!PLUS_FROM[from]) return;
   paywall = { plan: "year", from };
   trackDaily("plus_view", { from });
 }
+
+// ── お休み週（2026-11-15 のユーザーの判断）。決済の前なので、状態は state.plus に持つ（決済と一緒にサーバーの状態に置き換える）。
+// state.plus = { plan: "four" | "year", until: 払い済みの最後の日, since: 今の期間の始まり, pauses: [お休みにした週の月曜…] }
+const PAUSE_RUN_MAX = 3; // 連続は3週まで
+const PAUSE_YEAR_MAX = 14; // 1年（365日）で14週まで
+const PAUSE_CREDIT_MAX = 10; // 年額の割引は10週分まで
+const YEAR_WEEK_PRICE = Math.round(6000 / 52); // 年額の1週あたり（約115円）
+const PAUSE_USES = [["🧳", "年末年始の帰省", "2週間"], ["🤒", "家族の風邪で作れない週", "1週"], ["🍱", "出張・繁忙期で外食ばかり", "1〜2週"], ["👶", "里帰り出産", "3週連続"]];
+function plusState() {
+  const x = state.plus;
+  if (!x || !/^\d{4}-\d{2}-\d{2}$/.test(x.until || "")) return null;
+  return { plan: x.plan === "four" ? "four" : "year", until: x.until, since: /^\d{4}-\d{2}-\d{2}$/.test(x.since || "") ? x.since : addDays(x.until, x.plan === "four" ? -27 : -364), pauses: [...new Set((x.pauses || []).filter((w) => /^\d{4}-\d{2}-\d{2}$/.test(w)))].sort() };
+}
+const termPauses = (s) => s.pauses.filter((w) => w >= weekStartOf(s.since));
+// プラスの最後の日：4週プランは、いまの期間（のびた分も含む）の中で始まるお休みの週の数だけ、1週ずつのびる。
+// 期間より後のお休みの予約は、その期間が来た時に数える（いまの請求日は動かさない。Codex review #249）。
+function plusUntil() {
+  const s = plusState();
+  if (!s) return "";
+  if (s.plan !== "four") return s.until;
+  let end = s.until;
+  for (const w of termPauses(s)) if (w <= end) end = addDays(end, 7);
+  return end;
+}
+// 年額：次の更新で引く額（10週分まで）
+function pauseCredit(s = plusState()) {
+  if (!s || s.plan !== "year") return { weeks: 0, yen: 0 };
+  const weeks = Math.min(PAUSE_CREDIT_MAX, termPauses(s).length);
+  return { weeks, yen: weeks * YEAR_WEEK_PRICE };
+}
+const pausedWeek = (date) => (plusState()?.pauses || []).includes(weekStartOf(date));
+// お休みにできる週か：来週の月曜から先（今週の月曜が今日ならその週も）・連続3週まで・1年で14週まで。
+function pauseCheck(week, s = plusState()) {
+  if (!s) return { ok: false, why: "プラスの時に使えます" };
+  if (week < weekStartOf(today()) || (week === weekStartOf(today()) && week !== today())) return { ok: false, why: "始まった週はお休みにできません" };
+  const set = new Set([...s.pauses, week]);
+  let run = 1;
+  for (let w = addDays(week, -7); set.has(w); w = addDays(w, -7)) run += 1;
+  for (let w = addDays(week, 7); set.has(w); w = addDays(w, 7)) run += 1;
+  if (run > PAUSE_RUN_MAX) return { ok: false, why: `続けてお休みできるのは${PAUSE_RUN_MAX}週までです` };
+  // 1年：この週を含む365日のどこで数えても14週まで（前の1年・後ろの1年の両方で確かめる）
+  const before = [...set].filter((w) => w <= week && daysBetween(w, week) < 365).length;
+  const after = [...set].filter((w) => w >= week && daysBetween(week, w) < 365).length;
+  if (Math.max(before, after) > PAUSE_YEAR_MAX) return { ok: false, why: `お休みは1年で${PAUSE_YEAR_MAX}週までです` };
+  return { ok: true, why: "" };
+}
+function togglePause(week) {
+  const s = plusState();
+  if (!s) return false;
+  if (s.pauses.includes(week)) {
+    if (week < today()) { showToast("始まった週は戻せません。"); return false; }
+    state.plus = { ...state.plus, pauses: s.pauses.filter((w) => w !== week) };
+    showToast(`${formatDate(week)}からの週のお休みを取り消しました。`);
+    trackDaily("pause_off", { week });
+    return true;
+  }
+  const c = pauseCheck(week, s);
+  if (!c.ok) { showToast(c.why); return false; }
+  state.plus = { ...state.plus, pauses: [...s.pauses, week].sort() };
+  const credit = pauseCredit();
+  showToast(s.plan === "four" ? `${formatDate(week)}からの1週間をお休みにしました。その分、次の請求が1週のびます（自動で再開）。` : `${formatDate(week)}からの1週間をお休みにしました。${credit.weeks >= PAUSE_CREDIT_MAX && termPauses(plusState()).length > PAUSE_CREDIT_MAX ? "割引は10週分までです。" : `次の更新で${credit.yen.toLocaleString()}円引き。`}`);
+  trackDaily("pause_on", { week, plan: s.plan });
+  return true;
+}
+function renderPauseSettings() {
+  const s = plusState();
+  if (!s) return `<p class="muted small">リピごちプラスの時に、使わない週をお休みにできます。</p>${PAUSE_USES.length ? renderPauseUses() : ""}`;
+  const weeks = Array.from({ length: 8 }, (_, i) => addDays(weekStartOf(today()), 7 * (i + (dow(today()) === 1 ? 0 : 1))));
+  const used = s.pauses.filter((w) => Math.abs(daysBetween(w, today())) < 365).length;
+  const credit = pauseCredit(s);
+  const head = s.plan === "four"
+    ? `<p class="pause-rule"><b>お休みの週は課金なし</b>。その分、次の請求日が1週のびて、終わったら自動で再開します。</p>`
+    : `<p class="pause-rule"><b>お休みの週は、次の更新で割引</b>（1週 約${YEAR_WEEK_PRICE}円・${PAUSE_CREDIT_MAX}週分まで）。いまの割引：<b>${credit.yen.toLocaleString()}円</b>（${credit.weeks}週分）</p>`;
+  const chip = (w) => {
+    const on = s.pauses.includes(w);
+    const c = on ? { ok: true } : pauseCheck(w, s);
+    return `<button type="button" class="tool-chip pause-week" data-action="life-pause-week" data-week="${w}" aria-pressed="${on}" ${!on && !c.ok ? `disabled title="${escapeAttr(c.why)}"` : ""}>${md(w)}〜<small>${on ? "お休み" : "使う"}</small></button>`;
+  };
+  return `${head}<div class="tool-chips pause-weeks">${weeks.map(chip).join("")}</div>
+    <p class="muted small">続けて${PAUSE_RUN_MAX}週まで・1年で${PAUSE_YEAR_MAX}週まで（あと${Math.max(0, PAUSE_YEAR_MAX - used)}週）。お休みの週は献立を出さず、通知も止めます</p>${renderPauseUses()}`;
+}
+function renderPauseUses() {
+  return `<div class="pause-uses"><p class="small"><b>こんな時に、1タップでお休み</b></p><ul>${PAUSE_USES.map(([i, t, n]) => `<li><span aria-hidden="true">${i}</span>${escapeHtml(t)}<small>${escapeHtml(n)}</small></li>`).join("")}</ul></div>`;
+}
+// 設定の「✨ リピごちプラス」：プラスの時か、プレビューの時だけ出す
+function renderPlusSettings() {
+  const s = plusState();
+  const preview = paywallPreview();
+  const status = s ? `<dl class="planning-summary"><div><dt>プラン</dt><dd>${s.plan === "four" ? "4週 600円" : "1年 6,000円"}</dd></div><div><dt>${s.plan === "four" ? "次の請求" : "次の更新"}</dt><dd>${(() => { const d = addDays(plusUntil(), 1); return `${d.slice(0, 4) !== today().slice(0, 4) ? `${d.slice(0, 4)}年` : ""}${formatDate(d)}`; })()}</dd></div></dl>` : "";
+  const demo = preview ? `<div class="pause-demo"><p class="muted small">プレビュー：決済の前なので、試しにプランを選べます</p><div class="tool-chips">${["four", "year"].map((id) => `<button type="button" class="tool-chip" data-action="life-plus-demo" data-plan="${id}" aria-pressed="${s?.plan === id}">${id === "four" ? "4週プラン" : "年額プラン"}</button>`).join("")}${s ? '<button type="button" class="text-button" data-action="life-plus-demo" data-plan="">プラスをやめる</button>' : ""}</div></div>` : "";
+  return `${status}<h3 class="quick-sub">⏸ お休み週</h3>${renderPauseSettings()}${demo}`;
+}
+function plusSettingsSummary() {
+  const s = plusState();
+  if (!s) return "プラスにすると、まとめて決める・お休み週が使えます";
+  const n = s.pauses.filter((w) => w >= weekStartOf(today())).length;
+  return `${s.plan === "four" ? "4週プラン" : "年額プラン"}${n ? `・お休み${n}週` : ""}`;
+}
 function handlePlusAction(action, data) {
   if (action === "life-plus-open") { openPlus(data.from); render(); return true; }
-  if (action === "life-free-pick") { if (pickFreeDay(data.date)) saveState(); render(); return true; }
-  if (action === "life-free-used-close") { try { localStorage.setItem("ripigochi-free-used", data.week || ""); } catch {} render(); return true; }
+  if (action === "life-pause-week" && !isViewer()) { if (togglePause(data.week)) { touchSettings(); saveState(); if (typeof queuePushSync === "function") queuePushSync(); } render(); return true; }
+  if (action === "life-plus-demo" && paywallPreview()) {
+    state.plus = data.plan ? { plan: data.plan, since: today(), until: addDays(today(), data.plan === "four" ? 27 : 364), pauses: plusState()?.pauses || [] } : null;
+    saveState(); render(); return true;
+  }
   return false;
 }
 
