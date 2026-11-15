@@ -22,7 +22,9 @@ function plusActive() {
   return !!until && until >= today();
 }
 // お試しの終わり：ログインしていればサーバーの日（本人ごとに1回・延長も。APP_MAP §75）、なければ端末で始めた日から。
-const trialEnd = () => state.trialServer?.end || (state.trialFrom ? trialPlan(state.trialFrom).end : "");
+// サーバーのお試しは、ログインしている本人のものだけ使う（ログアウト・別のアカウントでは使わない。Codex review #250）
+const trialServerMine = () => { const t = state.trialServer; return t && typeof authToken === "function" && authToken() && typeof account !== "undefined" && account?.email && t.email === account.email ? t : null; };
+const trialEnd = () => trialServerMine()?.end || (state.trialFrom ? trialPlan(state.trialFrom).end : "");
 const inTrial = (date = today()) => !state.trialFrom || date <= trialEnd();
 const weekStartOf = (date) => addDays(date, -((dow(date) + 6) % 7));
 const takenSlot = (slot) => slot?.status === "confirmed" || slot?.status === "cooked";
@@ -186,13 +188,16 @@ function plusSettingsSummary() {
 let plusTrialBusy = false;
 const DATE_RE_PLUS = /^\d{4}-\d{2}-\d{2}$/;
 function normalizeTrialServer(raw) {
-  if (!raw || !DATE_RE_PLUS.test(raw.start || "") || !DATE_RE_PLUS.test(raw.end || "")) return null;
-  return { start: raw.start, end: raw.end, extended: !!raw.extended, canExtend: !!raw.canExtend };
+  if (!raw || !DATE_RE_PLUS.test(raw.start || "") || !DATE_RE_PLUS.test(raw.end || "") || typeof raw.email !== "string" || !raw.email) return null;
+  return { start: raw.start, end: raw.end, extended: !!raw.extended, canExtend: !!raw.canExtend, email: raw.email.slice(0, 254), checkedOn: DATE_RE_PLUS.test(raw.checkedOn || "") ? raw.checkedOn : "" };
 }
-function setTrialServer(data) {
-  state.trialServer = data?.trial ? normalizeTrialServer({ ...data.trial, canExtend: data.canExtend }) : null;
+// 受け取ったお試しは、受け取りを始めた時の本人（email）にひも付けて保存する
+function setTrialServer(data, email) {
+  state.trialServer = data?.trial && email ? normalizeTrialServer({ ...data.trial, canExtend: data.canExtend, email, checkedOn: today() }) : null;
   saveState();
 }
+// ログアウトした時・別のアカウントに変わった時は捨てる（account.js の signOutLocal から）
+function clearTrialServer() { if (state?.trialServer) { state.trialServer = null; saveState(); } }
 async function plusApi(path, body) {
   const response = await fetchWithTimeout(`${API_BASE_URL}/api/plus/${path}`, body ? { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) } : { headers: authHeaders() }, 10_000);
   const data = await response.json().catch(() => ({}));
@@ -200,28 +205,36 @@ async function plusApi(path, body) {
   return data;
 }
 // ログインの確認のあと・ログインした時に呼ぶ。まだサーバーにお試しがなければ、端末で始めた日で始める。
-async function refreshPlusTrial() {
-  if (!API_BASE_URL || typeof authToken !== "function" || !authToken() || !state?.onboarded || isViewer()) return;
+// 画面に戻った時・設定を開いた時は、その日にまだ受け取っていなければ受け取り直す（延長できる時期に入ったら、ボタンが出るように。Codex review #250）
+async function refreshPlusTrial({ ifStale = false } = {}) {
+  if (!API_BASE_URL || typeof authToken !== "function" || !authToken() || !account?.email || !state?.onboarded || isViewer()) return;
+  const token = authToken(), email = account.email;
+  if (ifStale && trialServerMine()?.checkedOn === today()) return;
+  if (state.trialServer && state.trialServer.email !== email) state.trialServer = null;
   try {
     let data = await plusApi("status");
     if (!data.trial && state.trialFrom) data = await plusApi("trial/start", { from: state.trialFrom });
-    setTrialServer(data);
+    // 受け取りの途中でログアウト・別のアカウントに変わっていたら、保存しない
+    if (authToken() !== token || account?.email !== email) return;
+    setTrialServer(data, email);
+    if (state.view === "settings") render();
   } catch {}
 }
 async function extendTrial() {
   if (plusTrialBusy) return;
   if (!authToken()) { showToast("お試しをのばすには、設定の「ログイン」からログインしてください。"); return; }
   plusTrialBusy = true; render();
+  const token = authToken(), email = account?.email || "";
   try {
     const data = await plusApi("trial/extend", {});
-    setTrialServer(data);
+    if (authToken() === token && account?.email === email) setTrialServer(data, email);
     trackDaily("trial_extended");
     showToast(`お試しを${formatDate(data.trial.end)}までのばしました。`);
   } catch (error) { showToast(error.message); }
   plusTrialBusy = false; render();
 }
 function renderTrialSettings() {
-  const t = state.trialServer;
+  const t = trialServerMine();
   const end = trialEnd();
   if (!end) return "";
   const active = today() <= end;

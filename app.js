@@ -2754,6 +2754,7 @@ function settingRow(id, icon, label, summary, body) {
 }
 function openSetting(id) {
   settingsOpen = id;
+  if (id === "plus" && typeof refreshPlusTrial === "function") refreshPlusTrial({ ifStale: true });
   render();
   document.querySelector(`#setting-${id}`)?.scrollIntoView({ block: "start" });
 }
@@ -2898,6 +2899,7 @@ function bindEvents() {
     const id = el.id.replace("setting-", "");
     if (el.open) {
       settingsOpen = id;
+      if (id === "plus" && typeof refreshPlusTrial === "function") refreshPlusTrial({ ifStale: true });
       document.querySelectorAll("details.setting-row[open]").forEach((other) => { if (other !== el) other.open = false; });
     } else if (settingsOpen === id) settingsOpen = "";
   }));
@@ -4830,7 +4832,7 @@ document.addEventListener("visibilitychange", () => {
   // アプリに戻ってきたら、他の端末の変更を取り込む
   if (document.visibilityState === "visible" && state) {
     if (authToken() && !account) loadAuth();
-    else if (account) ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); });
+    else if (account) { ensureAccountSync().catch(e => { syncRuntimeStatus = syncErrorText(e); updateSyncSaveLabel(); }); if (typeof refreshPlusTrial === "function") refreshPlusTrial({ ifStale: true }); }
     else if (syncEnabled()) syncNow({ silent: true });
   }
 });

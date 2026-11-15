@@ -77,6 +77,7 @@ async function loadAuth() {
 function signOutLocal() {
   try { localStorage.removeItem("ripigochi-session"); } catch {}
   account = null; transferCode = ""; transferExpires = ""; finishGoogleWait(); googleButtonState = "";
+  if (typeof clearTrialServer === "function") clearTrialServer();
 }
 async function authPost(path, body, signed = false) {
   const response = await fetchWithTimeout(`${API_BASE_URL}/api/auth/${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...(signed ? authHeaders() : {}) }, body: JSON.stringify(body) }, 20_000);
