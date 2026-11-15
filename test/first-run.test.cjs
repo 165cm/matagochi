@@ -262,4 +262,3 @@ test("before the first shopping, yohaku asks about pantry items once: tap only w
   run(`handleDailyAction("life-pantry-ask-later",{})`);
   assert.equal(run("renderPantryAsk(shopPageItems())"), "");
 });
-
