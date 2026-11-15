@@ -97,11 +97,15 @@ function plusState() {
   return { plan: x.plan === "four" ? "four" : "year", until: x.until, since: /^\d{4}-\d{2}-\d{2}$/.test(x.since || "") ? x.since : addDays(x.until, x.plan === "four" ? -27 : -364), pauses: [...new Set((x.pauses || []).filter((w) => /^\d{4}-\d{2}-\d{2}$/.test(w)))].sort() };
 }
 const termPauses = (s) => s.pauses.filter((w) => w >= weekStartOf(s.since));
-// プラスの最後の日：4週プランは、この期間のお休みの週の数だけのびる。
+// プラスの最後の日：4週プランは、いまの期間（のびた分も含む）の中で始まるお休みの週の数だけ、1週ずつのびる。
+// 期間より後のお休みの予約は、その期間が来た時に数える（いまの請求日は動かさない。Codex review #249）。
 function plusUntil() {
   const s = plusState();
   if (!s) return "";
-  return s.plan === "four" ? addDays(s.until, 7 * termPauses(s).length) : s.until;
+  if (s.plan !== "four") return s.until;
+  let end = s.until;
+  for (const w of termPauses(s)) if (w <= end) end = addDays(end, 7);
+  return end;
 }
 // 年額：次の更新で引く額（10週分まで）
 function pauseCredit(s = plusState()) {
@@ -179,7 +183,7 @@ function plusSettingsSummary() {
 }
 function handlePlusAction(action, data) {
   if (action === "life-plus-open") { openPlus(data.from); render(); return true; }
-  if (action === "life-pause-week" && !isViewer()) { if (togglePause(data.week)) { touchSettings(); saveState(); } render(); return true; }
+  if (action === "life-pause-week" && !isViewer()) { if (togglePause(data.week)) { touchSettings(); saveState(); if (typeof queuePushSync === "function") queuePushSync(); } render(); return true; }
   if (action === "life-plus-demo" && paywallPreview()) {
     state.plus = data.plan ? { plan: data.plan, since: today(), until: addDays(today(), data.plan === "four" ? 27 : 364), pauses: plusState()?.pauses || [] } : null;
     saveState(); render(); return true;

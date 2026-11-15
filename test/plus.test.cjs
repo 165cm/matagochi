@@ -93,6 +93,20 @@ test('pause weeks: 4-week plan moves the bill a week per pause; yearly earns a r
   assert.equal(run(`pauseCheck(weekStartOf(addDays(today(), -7))).ok`), false, 'a past week cannot be paused');
   run(`togglePause(addDays("${mon}", 14))`);
   assert.equal(run('plusState().pauses.length'), 2, 'a future pause can be undone');
+  // いまの期間より後のお休みの予約は、いまの請求日を動かさない（Codex review #249）
+  run(`state.plus = { plan: "four", since: today(), until: addDays(today(), 27), pauses: [addDays(weekStartOf(today()), 42)] }`);
+  assert.equal(run('plusUntil()'), run('addDays(today(), 27)'), 'a pause after this term does not move this bill');
+  run(`state.plus.pauses.push(addDays(weekStartOf(today()), 14))`);
+  assert.equal(run('plusUntil()'), run('addDays(today(), 34)'), 'only the pause inside the term counts');
+  // お休みの週は、献立・買い物・今夜の通知を作らない（Codex review #249）
+  run(`state.plus = { plan: "four", since: today(), until: addDays(today(), 27), pauses: ["${mon}"] }`);
+  // 通知を作るには、決めた日が要る（決めていない日は候補）：お休みの週の日を、休む前に決めておく
+  run(`state.plus.pauses = []; for (const d of dailyPlan().filter((d) => d.candidate && weekStartOf(d.date) === "${mon}")) confirmDaily(d); state.plus.pauses = ["${mon}"]`);
+  assert.ok(Number(run(`Object.values(state.mealSlots).filter((x) => x.status === "confirmed" && weekStartOf(x.date) === "${mon}").length`)) > 0, 'a decided day in the paused week');
+  const ids = JSON.parse(run(`JSON.stringify(pushSchedule({ decide: true, shop: true, tonight: true, record: true }).map((x) => x.id))`));
+  const dated = ids.map((id) => id.match(/\d{4}-\d{2}-\d{2}/)?.[0]).filter(Boolean);
+  assert.ok(dated.length > 0, 'other weeks still notify');
+  assert.ok(dated.every((d) => run(`weekStartOf("${d}")`) !== mon), ids.join(','));
   // 年額：割引は10週分まで・1年で14週まで
   const weeks = Array.from({ length: 20 }, (_, i) => run(`addDays("${mon}", ${7 * 2 * i})`));
   run(`state.plus = { plan: "year", since: today(), until: addDays(today(), 364), pauses: [] }`);
