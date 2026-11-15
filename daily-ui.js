@@ -1721,7 +1721,9 @@ function pantryAskDone() {
   trackDaily("pantry_asked", { asked: prev.length, missing });
   shopUndo = {
     text: `🧂 ${prev.length - missing}品は家に${missing ? `・${missing}品を買う` : "ある"}`,
-    undo: () => { for (const x of prev) { if (x.mark) state.shoppingMarks[x.i.id] = { ...x.mark, updatedAt: nowIso() }; else delete state.shoppingMarks[x.i.id]; setPantry(x.name, x.pantry || "unknown"); } },
+    // 印は消さずに、新しい日時の「買う」で戻す（消すだけだと、同期で相手の「家にある」が戻ってくる。Codex review #247）。
+    // 戻した物は印がつくので、もう一度は聞かない（行の「⋯」で家にある／買うを選べる）。
+    undo: () => { for (const x of prev) { state.shoppingMarks[x.i.id] = x.mark ? { ...x.mark, updatedAt: nowIso() } : { status: "buy", signature: x.i.signature, updatedAt: nowIso() }; setPantry(x.name, x.pantry || "unknown"); } },
   };
 }
 let shopPantryOpen = false; // 常備品の畳みを、描き直しても開いたままに
