@@ -1798,6 +1798,8 @@
     curated: { version: 2, role: r.role },
     // 親の料理名（集めた動画の作り方と同じ名前。folders.js parentKeyOf で同じ料理としてまとまる）。
     ...(r.dish ? { dish: r.dish } : {}),
+    // 図鑑のカード（No.・章・表のひとこと・裏の5つの見出し。2026-11-15。docs/STARTER_RECIPES.md）
+    ...(Starter.cards?.[r.id] ? { card: Starter.cards[r.id] } : {}),
     note: "調理時間は目安です。炊飯・解凍は別途。市販品の原材料表示を確認してください。",
   })));
   // 2026-11-14 のユーザーの判断：最初の48品を作り直した（starter-51〜98。docs/STARTER_RECIPES.md）。

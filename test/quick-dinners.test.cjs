@@ -48,3 +48,30 @@ test("every quick starter dish has its illustration, listed the same in app.js a
   // 2026-11-14 に作り直した48品（starter-51〜98）の絵は、画像を作ってから足す（docs/STARTER_RECIPES.md）。
   // それまでは主食ごとのイメージ写真（「イメージ」と表示）で出る。
 });
+
+// 2026-11-15 のユーザーの判断：図鑑は最初から入っている48品（No.001〜048・6章）。表はひとこと、裏は読みごたえのある5つの見出し。
+test("the 48 dishes are the card book: numbers 1-48, six chapters, a short front line and five back sections each", () => {
+  const cards = Starter.cards;
+  const now = L.starters;
+  assert.equal(now.length, 48);
+  assert.deepEqual(now.map((r) => r.card?.no).sort((a, b) => a - b), Array.from({ length: 48 }, (_, i) => i + 1), "No.001-048, each once");
+  const chapters = { meat: 0, fish: 0, eggtofu: 0, veg: 0, bowl: 0, noodle: 0 };
+  for (const r of now) {
+    const c = r.card;
+    assert.ok(c, `${r.title}: no card`);
+    assert.ok(c.chapter in chapters, `${r.title}: chapter ${c.chapter}`);
+    chapters[c.chapter] += 1;
+    assert.ok([...c.catch].length <= 22, `${r.title}: the front line is short (${c.catch})`);
+    for (const k of ["make", "eat", "nutrition", "easy", "trivia"]) assert.ok(c[k] && c[k].length >= 15, `${r.title}: ${k}`);
+    // 体への効果をうたわない（栄養は目安の言い方）
+    assert.doesNotMatch(Object.values(c).join(""), /効く|治る|予防|改善|ダイエット/, r.title);
+  }
+  assert.deepEqual(chapters, { meat: 11, fish: 9, eggtofu: 5, veg: 3, bowl: 12, noodle: 8 });
+  // 番号は章の順（肉 → 魚 → 卵と豆腐 → 野菜 → 丼 → 麺とパン）
+  const order = ["meat", "fish", "eggtofu", "veg", "bowl", "noodle"];
+  const byNo = [...now].sort((a, b) => a.card.no - b.card.no).map((r) => order.indexOf(r.card.chapter));
+  assert.deepEqual(byNo, [...byNo].sort((a, b) => a - b));
+  // 引退した以前の48品にはカードがない（図鑑は新しい48品だけ）
+  assert.ok(L.curated.filter((r) => r.retired).every((r) => !r.card));
+  assert.equal(Object.keys(cards).length, 48);
+});
