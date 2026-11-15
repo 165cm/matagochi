@@ -2344,7 +2344,8 @@ function renderStaples(recipeOf) {
   return `<section class="staple-card"><h3>🏆 わが家の定番 <span class="badge">${list.length}品</span> ${tip("2回以上つくって、「また食べたい」がついた料理")}</h3><ul class="staple-list">${list.map(({ recipe, times, last }) => `<li>${dishTile(recipe, "staple-photo")}<div><b>${escapeHtml(recipe.title)}</b><small>${times}回・前回 ${escapeHtml(formatDate(last))} ${rankBadge(times)}</small></div>${can(recipe) ? `<button type="button" class="secondary-button" data-action="life-replan" data-recipe="${escapeAttr(recipe.id)}" aria-label="${escapeAttr(recipe.title)}をもう一度、献立に入れる">🔁 もう一度</button>` : ""}</li>`).join("")}</ul>${candHtml}</section>`;
 }
 // 「わたしの食卓」の見せ方：月のカレンダー（既定）か、写真の一覧。端末ごとに覚える（なくても動く）。
-let reflView = (() => { try { const v = localStorage.getItem("ripigochi-refl-view"); return v === "grid" || v === "book" ? v : "cal"; } catch { return "cal"; } })();
+// 「図鑑」はレシピタブへ引っ越した（2026-11-15）。前に図鑑を選んでいた人はカレンダーに戻す
+let reflView = (() => { try { const v = localStorage.getItem("ripigochi-refl-view"); return v === "grid" ? v : "cal"; } catch { return "cal"; } })();
 // 記録の月のカレンダー（日曜はじまり）。作った日は写真、2品以上は「+1」。タップでその日のいちばん新しい記録を開く。先の日は空。
 function renderRecordCalendar(list, monthKey, recipeOf, photoOf) {
   // 同じ日の記録は新しい順：更新した日時、同じなら保存の順（新しい記録は state.evaluations の先頭に入る）。
@@ -2456,8 +2457,8 @@ function renderReflection() {
   ${reflMonth === 0 ? renderReflectEvidence() : ""}
   ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
   ${reflMonth === 0 ? renderMenuAlbum() : ""}
-  <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3><div class="view-switch" role="group" aria-label="見せ方">${list.length ? `<button type="button" class="chip-button" data-action="life-refl-view" data-view="cal" aria-pressed="${reflView === "cal"}">📅 カレンダー</button><button type="button" class="chip-button" data-action="life-refl-view" data-view="grid" aria-pressed="${reflView === "grid"}">🖼 写真</button>` : ""}<button type="button" class="chip-button" data-action="life-refl-view" data-view="book" aria-pressed="${reflView === "book"}">🃏 図鑑</button></div></div>
-  ${reflView === "book" ? renderCardBookInline() : tiles ? (reflView === "cal" ? renderRecordCalendar(list, month.key, recipeOf, photoOf) : `<div class="table-grid">${tiles}</div>`) + '<p class="muted small">タップで記録を開く</p>' : `<div class="empty-state">${yohaku("bowl")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>
+  <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3><div class="view-switch" role="group" aria-label="見せ方">${list.length ? `<button type="button" class="chip-button" data-action="life-refl-view" data-view="cal" aria-pressed="${reflView === "cal"}">📅 カレンダー</button><button type="button" class="chip-button" data-action="life-refl-view" data-view="grid" aria-pressed="${reflView === "grid"}">🖼 写真</button>` : ""}<button type="button" class="chip-button" data-action="life-card-book-open">🃏 図鑑 ›</button></div></div>
+  ${tiles ? (reflView === "cal" ? renderRecordCalendar(list, month.key, recipeOf, photoOf) : `<div class="table-grid">${tiles}</div>`) + '<p class="muted small">タップで記録を開く</p>' : `<div class="empty-state">${yohaku("bowl")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>
   ${reflMonth === 0 && typeof renderBackupReminder === "function" ? renderBackupReminder() : ""}
   ${trayFlipId ? renderCardFlipModal() : ""}`;
 }
@@ -3282,9 +3283,9 @@ function handleDailyAction(action, data) {
   }
   if (action === "life-facet" && data.facet in recipeFacets) recipeFacets[data.facet] = recipeFacets[data.facet] === data.value ? "" : data.value;
   if (action === "life-facet-clear") recipeFacets = { home: "", staple: "", main: "", style: "", author: "" };
-  if (action === "life-refl-view") { reflView = data.view === "grid" || data.view === "book" ? data.view : "cal"; try { localStorage.setItem("ripigochi-refl-view", reflView); } catch {} }
+  if (action === "life-refl-view") { reflView = data.view === "grid" ? data.view : "cal"; try { localStorage.setItem("ripigochi-refl-view", reflView); } catch {} }
   if (action === "life-month") reflMonth = Math.min(0, reflMonth + (Number(data.delta) || 0));
-  if (action === "life-recipe-tab") { recipeTab = ["saved", "starter", "folders"].includes(data.tab) ? data.tab : "starter"; folderOpen = ""; quickFilter = ""; starterShown = 40; if (data.tab !== "folders") state.searchText = ""; }
+  if (action === "life-recipe-tab") { recipeTab = ["saved", "starter", "folders", "book"].includes(data.tab) ? data.tab : "starter"; folderOpen = ""; quickFilter = ""; starterShown = 40; if (data.tab !== "folders") state.searchText = ""; }
   if (action === "life-creator") { recipeFacets = { home: "", staple: "", main: "", style: "", author: data.name || "" }; recipeTab = "saved"; }
   if (action === "life-creator-edit") { creatorEditing = data.key || ""; globalThis.setTimeout?.(() => document.querySelector("#creator-alias")?.select?.(), 30); }
   if (action === "life-creator-save" && data.key) {
@@ -4175,7 +4176,9 @@ function syncHasSheetBodyClass() {
   const inPlanOrToday = !state?.view || state.view === "plan" || state.view === "today";
   const hasModal = Boolean(
     (swapDate && (!state?.view || state.view === "plan")) ||
-    ((trayFlipId || cardGetRecipeId) && (inPlanOrToday || state.view === "repeat"))
+    ((trayFlipId || cardGetRecipeId) && (inPlanOrToday || state.view === "repeat")) ||
+    // レシピタブの図鑑で開いたカードの裏（§78。Codex review #254）
+    (trayFlipId && state.view === "collection")
   );
   document.body?.classList?.toggle("has-sheet", hasModal);
   return hasModal;
@@ -6315,6 +6318,7 @@ function renderCardFlipModal() {
 
       <div class="rc-flip-foot">
         ${activeDay && trayOpen && state.view === "plan" ? `<button type="button" class="primary-button" data-action="life-tray-place" data-recipe="${escapeAttr(r.id)}" data-date="${escapeAttr(activeDay.date)}">📥 ${escapeHtml(activeWd)}のトレイに並べる</button>` : ""}
+        ${!isViewer() && state.view !== "plan" && allDinnerRecipes().some((x) => x.id === r.id || x.starterId === r.id) ? `<button type="button" class="primary-button" data-action="life-card-place" data-recipe="${escapeAttr(r.id)}">🗓 献立に入れる</button>` : ""}
         <button type="button" class="secondary-button" data-action="life-card-flip-close">閉じる</button>
       </div>
     </div>
@@ -6431,7 +6435,7 @@ function renderBookTile({ r, cooks, out }) {
     <small class="bk-state">${escapeHtml(state)}</small>
   </button>`;
 }
-// 振り返りタブの「わたしの食卓」の見せ方の1つ（カレンダー・写真・図鑑。2026-11-11 のユーザーの判断）
+// レシピタブの「🃏 図鑑」（2026-11-15 に振り返りタブから引っ越し。§78）
 function renderCardBookInline() {
   const { rows, got, target, out } = bookProgress();
   const pct = target ? Math.round((got / target) * 100) : 0;
@@ -6759,6 +6763,16 @@ function handleCardTrayAction(action, data, before) {
     syncHasSheetBodyClass();
     return true;
   }
+  // カードの裏の「🗓 献立に入れる」：裏面を閉じて、その料理の画面で「いつ？」を開く（日を選ぶしくみはレシピの画面と同じ。§78）
+  if (action === "life-card-place" && data.recipe && !isViewer()) {
+    trayFlipId = "";
+    syncHasSheetBodyClass();
+    recipeDetailId = String(data.recipe);
+    swapDetailId = "";
+    placeRecipeId = recipeDetailId;
+    state.view = "recipe";
+    return true;
+  }
   if (action === "life-card-flip-close") {
     trayFlipId = "";
     lastModalTriggerSelector = flipTriggerSelector || lastModalTriggerSelector;
@@ -6777,14 +6791,15 @@ function handleCardTrayAction(action, data, before) {
     return true;
   }
   if (action === "life-card-book-open") {
-    // 図鑑は振り返りタブで見る
+    // 図鑑はレシピタブで見る（2026-11-15。§78）
     cardGetRecipeId = "";
     trayFlipId = "";
     cardBookOpen = false;
-    reflView = "book";
-    try { localStorage.setItem("ripigochi-refl-view", reflView); } catch {}
-    if (typeof setView === "function") setView("repeat");
-    else state.view = "repeat";
+    if (typeof recipeTab !== "undefined") recipeTab = "book";
+    if (typeof folderOpen !== "undefined") folderOpen = "";
+    state.searchText = "";
+    if (typeof setView === "function") setView("collection");
+    else state.view = "collection";
     syncHasSheetBodyClass();
     return true;
   }
