@@ -131,6 +131,10 @@ test("before the first round: a dish chosen in ⇄ ほかの一皿 becomes tonig
   run(`handleDailyAction("life-finish",{})`);
   const first = run("prestartPick().recipe.id");
   const other = run(`allDinnerRecipes().find((r) => r.id !== ${JSON.stringify(first)} && Lifestyle.fit(r, dailyProfile(), today()).ok).id`);
+  // Codex review #252：始まる前の日は、レシピの棚からは今夜に入れられないので、その入口は出さない
+  run(`handleDailyAction("life-swap",{date: today()})`);
+  assert.ok(!run("renderSwapChoices()").includes("life-swap-shelf"), "no shelf link before the first round");
+  run(`handleDailyAction("life-close-swap",{})`);
   run(`handleDailyAction("life-swap",{date: today()}); handleDailyAction("life-choose",{date: today(), recipe: ${JSON.stringify(other)}})`);
   assert.equal(run("prestartPick().recipe.id"), other);
   assert.ok(run("prestartPick().chosen"));
