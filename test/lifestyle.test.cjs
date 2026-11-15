@@ -1406,10 +1406,10 @@ test("hidden starter recipes leave the list and the planner; bulk delete removes
   assert.ok(run("!!state.tombstones.recipes.own1 && !!state.tombstones.evaluations.e1"));
 });
 
-test("the first-run funnel (2026-10-28): seven screens — people, who eats, foods to avoid, time, rhythm, dishes, result — and it ends on real facts", () => {
+test("the first-run funnel (2026-11-15): eight screens — people, who eats, foods to avoid, time, meal shape, rhythm, dishes, result — and it ends on real facts", () => {
   const run = app();
   const key = () => run("FUNNEL[state.onboardingDraft.quickSetupIndex]");
-  assert.deepEqual(JSON.parse(run("JSON.stringify(FUNNEL)")), [0, "eaters", 4, 3, 1, "picks", "result"]);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(FUNNEL)")), [0, "eaters", 4, 3, "shape", 1, "picks", "result"]);
   run(`handleDailyAction("life-quick",{})`);
   assert.equal(key(), 0, "how many people first");
   run(`handleDailyAction("life-servings",{count:"4"})`);
@@ -1419,19 +1419,23 @@ test("the first-run funnel (2026-10-28): seven screens — people, who eats, foo
   run(`state.onboardingDraft.restrictions=["えび"]; handleDailyAction("life-quick-next",{})`);
   assert.equal(key(), 3, "then the weeknight time (no kitchen tools, no skill)");
   run(`handleDailyAction("life-minutes",{minutes:"45"}); handleDailyAction("life-quick-next",{})`);
-  assert.equal(key(), 1, "then the rhythm");
+  assert.equal(key(), "shape", "then the usual shape of dinner");
+  assert.ok(/おかず＋ごはん/.test(run("renderFunnelStep('shape')[1]")));
+  run(`handleDailyAction("life-shape",{value:"okazu"})`);
+  assert.equal(key(), 1, "a tap moves on to the rhythm");
   run(`handleDailyAction("life-quick-next",{})`);
   assert.equal(run("state.rhythm.preset"), "weekday", "the rhythm starts on weekdays");
   assert.equal(key(), "picks", "then the dishes to try");
   run(`handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
   assert.equal(key(), "result", "a reload keeps the place");
   const lines = JSON.parse(run("JSON.stringify(resultLines(state.onboardingDraft))"));
-  assert.deepEqual(lines.slice(0, 4), ["🍽 4人分（パートナー・子どもと）", "🚫 えびは入れない", "⏱ 平日 45分以内", "🍳 基本の道具"]);
+  assert.deepEqual(lines.slice(0, 5), ["🍽 4人分（パートナー・子どもと）", "🚫 えびは入れない", "⏱ 平日 45分以内", "🍚 いつもの形：おかず＋ごはん", "🍳 基本の道具"]);
   assert.ok(!lines.some((l) => /しています/.test(l)), "no pretending to work");
   assert.equal(run("renderFunnelStep('result')[1].includes('life-finish')"), true);
   run(`handleDailyAction("life-finish",{})`);
   assert.equal(run("state.onboarded"), true);
   assert.equal(run("state.servingCount"), 4);
+  assert.equal(run("state.foodProfile.mealShape"), "okazu", "the shape is kept for the plan");
   assert.equal(run("state.view"), "plan", "no saved policy: the plan");
   assert.ok(/料理の腕前|ごはん方針/.test(run("renderTodayTodos()")), "skill and policy are asked later, from today, one at a time");
 });
@@ -1457,10 +1461,14 @@ test("first-run funnel: people part-way through an older order continue on the s
   assert.equal(at("FUNNEL_V2", "goal", 2), 1);
   assert.equal(at("FUNNEL_V2", "picks", 2), "picks");
   assert.equal(at("FUNNEL_V2", "remind", 2), "result");
+  // 7画面（funnelV 3）：同じ画面のまま（形の画面は、時間より後ろにいる人には出ない）
+  assert.equal(at("FUNNEL_V3", 3, 3), 3);
+  assert.equal(at("FUNNEL_V3", 1, 3), 1);
+  assert.equal(at("FUNNEL_V3", "picks", 3), "picks");
   // 移し替えは一度だけ
   run(`state.onboardingDraft = Lifestyle.profile({ quickSetupIndex: FUNNEL_V2.indexOf("talk") }); state.onboardingDraft.funnelV = 2; profileDraft(); handleDailyAction("life-quick-next",{}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
   assert.equal(run("FUNNEL[profileDraft().quickSetupIndex]"), "picks");
-  assert.equal(run("state.onboardingDraft.funnelV"), 3);
+  assert.equal(run("state.onboardingDraft.funnelV"), 4);
 });
 
 test("the policy talk (no longer in the first run) can still be started and finished from today", () => {

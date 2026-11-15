@@ -296,11 +296,16 @@
   function pantryDefaults(current = {}, names = []) {
     return {...Object.fromEntries(names.filter(n => pantryCommon.includes(n)).map(n => [n, "have"])), ...current};
   }
+  const PLAN_LEANS = ["fish", "meat", "quick", "light"];
   function profile(raw = {}) {
     return {
       detailedSetup: raw.detailedSetup === true,
       // 初回設定の順番の版（2＝2026-09-30 の整理後・3＝2026-10-28 の7画面）。途中の人の移し替えに使う（daily-ui.js migrateFunnel）。
-      ...([2, 3].includes(raw.funnelV) ? { funnelV: raw.funnelV } : {}),
+      ...([2, 3, 4].includes(raw.funnelV) ? { funnelV: raw.funnelV } : {}),
+      // いつもの夜ごはんの形（2026-11-15。初回設定で聞く）：okazu＝おかず＋ごはん／onedish＝丼・麺など1皿／mix＝どちらも
+      ...(["okazu", "onedish", "mix"].includes(raw.mealShape) ? { mealShape: raw.mealShape } : {}),
+      // 最初の献立を見て「寄せたい」と押した方向（魚・肉・手軽・さっぱり）。献立の点数に足すだけで、条件はゆるめない。
+      planLean: Array.isArray(raw.planLean) ? [...new Set(raw.planLean.filter((x) => PLAN_LEANS.includes(x)))] : [],
       // 初回設定の確認の画面で選んだ「今夜から（true）／明日から（false）」。選んでいなければ持たない（時刻で決める）。
       ...(typeof raw.startTonight === "boolean" ? { startTonight: raw.startTonight } : {}),
       quickSetupIndex: Number.isInteger(raw.quickSetupIndex) && raw.quickSetupIndex >= 0 && raw.quickSetupIndex <= 20 ? raw.quickSetupIndex : null,
@@ -778,6 +783,42 @@
     return { score: 0, reason: "" };
   }
   const SCORE = { request: 80, saved: 5 };
+  // 夜ごはんの形と、寄せたい方向（2026-11-15。APP_MAP §71）。好みの重さは「旬」より強く、「リクエスト」や「好物の頃合い」より弱い。
+  const SHAPE_SCORE = 10;
+  const LEAN_SCORE = 10;
+  function shapeLeanScore(recipe, p) {
+    const t = traits(recipe);
+    const tg = tags(recipe);
+    const min = recipe?.planning?.minutes || 0;
+    let n = 0;
+    if (p.mealShape === "okazu") n += t.staple === "other" ? SHAPE_SCORE : -SHAPE_SCORE * 0.8;
+    if (p.mealShape === "onedish") n += t.staple === "other" ? -SHAPE_SCORE * 0.6 : SHAPE_SCORE * 0.6;
+    for (const l of p.planLean || []) {
+      if (l === "fish" && t.protein === "fish") n += LEAN_SCORE;
+      if (l === "meat" && t.protein === "meat") n += LEAN_SCORE;
+      if (l === "quick" && min > 0) n += min <= 10 ? LEAN_SCORE : min <= 15 ? LEAN_SCORE * 0.6 : 0;
+      if (l === "light" && tg.includes("light")) n += LEAN_SCORE;
+    }
+    return n;
+  }
+  // ほかの理由がない日の、短い理由（献立の全部の日に理由を出すため）。合った方向 → 形 → 時間 → 味 の順。
+  function hintOf(recipe, p) {
+    const t = traits(recipe);
+    const tg = tags(recipe);
+    const min = recipe?.planning?.minutes || 0;
+    const lean = p.planLean || [];
+    if (lean.includes("fish") && t.protein === "fish") return "🐟 魚を増やした日";
+    if (lean.includes("meat") && t.protein === "meat") return "🥩 お肉の日";
+    if (lean.includes("light") && tg.includes("light")) return "🍋 さっぱりめ";
+    if (lean.includes("quick") && min && min <= 15) return `⚡ ${min}分で作れる`;
+    if (p.mealShape === "okazu" && t.staple === "other") return "🍚 ごはんに合うおかず";
+    if (p.mealShape === "onedish" && t.staple !== "other") return t.staple === "noodle" ? "🍜 1皿で完結" : "🍚 1皿で完結";
+    if (min && min <= 10) return `⚡ ${min}分で作れる`;
+    if (tg.includes("light")) return "🍋 さっぱり";
+    if (tg.includes("spicy")) return "🌶 ピリ辛";
+    if (t.staple === "other") return "🍚 ごはんに合うおかず";
+    return min ? `⏱ ${min}分` : "🍵 定番の味";
+  }
   const MAX_NEW_PER_PLAN = 1;
   // 献立の日付と料理の id から決まる数（同じ点数の候補の並びに使う。FNV-1a）。
   function tieRank(date, id) {
@@ -973,6 +1014,7 @@
             freshScore(x.fresh, dayInRound(date, i)) +
             x.season.score +
             x.useUp.score +
+            shapeLeanScore(x.recipe, p) +
             (x.pref?.score || 0) -
             // 直近6日に挑戦の料理があれば、次の挑戦はもう少し後ろへ（外さない）。
             (x.challenge && challenges >= 1 ? SKILL_PENALTY : 0) +
@@ -1008,6 +1050,7 @@
         pool.find((x) => x.recipe.id === overrides[date]) || candidates.find((x) => x.recipe.id === overrides[date]) || forced || pinned || pool[0];
       if (selected) {
         if (overrides[date] && selected.recipe.id === overrides[date]) selected.chosen = true;
+        selected.hint = hintOf(selected.recipe, p);
         [selected.request ? `${selected.request.from}のリクエスト` : "", selected.repeat.reason, selected.rotation.reason, selected.fresh.urgency >= 3 && dayInRound(date, i) <= 1 ? `${selected.fresh.label}は日持ちしないので早めに` : "", selected.useUp?.reason, selected.season.reason, selected.pref?.reason]
           .filter(Boolean).reverse().forEach((r) => selected.reasons.unshift(r));
         if (pinned && selected === pinned) selected.reasons.unshift(`📌 毎週${WD[Number(dow)]}曜`);
@@ -2006,6 +2049,8 @@
     sideOf,
     planBalance,
     curated,
+    hintOf,
+    shapeLeanScore,
     starters,
     traits,
     tags,

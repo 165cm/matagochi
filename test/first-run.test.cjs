@@ -21,7 +21,7 @@ function app(now = "2026-10-01T10:00:00") { // 木曜・端末の時刻
   return run;
 }
 // 初回設定を最後の確認の画面まで進める（平日5日のリズム）。
-const toResult = (run) => run(`handleDailyAction("life-quick",{}); handleDailyAction("life-servings",{count:"2"}); for (let i = 0; i < 5; i++) handleDailyAction("life-quick-next",{});`);
+const toResult = (run) => run(`handleDailyAction("life-quick",{}); handleDailyAction("life-servings",{count:"2"}); for (let i = 0; i < 6; i++) handleDailyAction("life-quick-next",{});`);
 
 test("the first-run start: before 17:00 the default is tonight, later it is tomorrow; not on a day off or late at night", () => {
   let run = app("2026-10-01T10:00:00");
@@ -159,4 +159,73 @@ test("on a normal day (the plan has started) nothing changes: no prestart sugges
   run(`handleDailyAction("life-start-when",{when:"tonight"}); handleDailyAction("life-finish",{})`);
   assert.equal(run("prestartPick()"), null);
   assert.ok(!run("renderToday()").includes("life-tonight-pick"));
+});
+
+// 最初の献立の精度（2026-11-15。APP_MAP §71）：夜ごはんの形・好みに寄せるボタン・全部の日に理由。
+const finishWith = (run, shape) => run(`handleDailyAction("life-quick",{}); handleDailyAction("life-servings",{count:"2"}); for (let i = 0; i < 3; i++) handleDailyAction("life-quick-next",{}); ${shape ? `handleDailyAction("life-shape",{value:"${shape}"})` : `handleDailyAction("life-quick-next",{})`}; for (let i = 0; i < 2; i++) handleDailyAction("life-quick-next",{}); handleDailyAction("life-finish",{})`);
+const planStats = (run) => JSON.parse(run(`JSON.stringify(dailyPlan().filter((d) => d.candidate).map((d) => ({ ...Lifestyle.traits(d.candidate.recipe), reason: planReason(d), badge: planBadge(d), id: d.candidate.recipe.id })))`));
+
+test("the usual shape of dinner steers the first plan: おかず＋ごはん → mostly main dishes, 丼・麺 → mostly one-dish meals", () => {
+  const okazu = app("2026-11-16T10:00:00");
+  finishWith(okazu, "okazu");
+  const one = app("2026-11-16T10:00:00");
+  finishWith(one, "onedish");
+  const a = planStats(okazu), b = planStats(one);
+  assert.ok(a.length >= 5 && b.length >= 5);
+  const mains = (xs) => xs.filter((x) => x.staple === "other").length;
+  assert.ok(mains(a) > mains(b) + 2, `okazu ${mains(a)} vs onedish ${mains(b)}`);
+  assert.ok(mains(a) / a.length >= 0.7);
+  assert.ok(mains(b) / b.length <= 0.4);
+  // 形は条件ではない：選ばなくても献立はできる（スキップ）
+  const skip = app("2026-11-16T10:00:00");
+  finishWith(skip, "");
+  assert.equal(skip("state.foodProfile.mealShape"), undefined);
+  assert.ok(planStats(skip).length >= 5);
+});
+
+test("every planned day carries a one-line reason, and the photo badge is never empty", () => {
+  const run = app("2026-11-16T10:00:00");
+  finishWith(run, "mix");
+  const days = planStats(run);
+  assert.ok(days.length >= 5);
+  for (const d of days) {
+    assert.ok(d.reason, `reason for ${d.id}`);
+    assert.ok(d.badge && Array.from(d.badge).length <= 12, `badge for ${d.id}: ${d.badge}`);
+  }
+  assert.equal(run(`Lifestyle.hintOf(Lifestyle.starters.find((r) => r.planning.minutes <= 10), Lifestyle.profile({}))`).includes("分で作れる"), true);
+});
+
+test("first-plan tune buttons: a tap remembers the lean and re-plans only undecided days, on the spot; a second tap undoes it", () => {
+  const run = app("2026-11-16T10:00:00");
+  finishWith(run, "mix");
+  assert.equal(run("firstPlanReveal"), true);
+  const html = run("renderFirstPlanReveal()");
+  for (const t of ["魚を増やして", "もっと手軽に", "丼・麺も入れて", "おかず＋ごはんを多めに"]) assert.ok(html.includes(t), t);
+  // 1日だけ決めておく（決めた日は変えない）
+  run(`const d0 = dailyPlan().find((d) => d.candidate); state.mealSlots[d0.date] = { date: d0.date, status: "confirmed", recipe: d0.candidate.recipe, servings: 2 }; globalThis.__d0 = d0.date; globalThis.__r0 = d0.candidate.recipe.id;`);
+  const fish = (xs) => xs.filter((x) => x.protein === "fish").length;
+  const before = fish(planStats(run));
+  run(`handleDailyAction("life-plan-tune",{tune:"fish"})`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.foodProfile.planLean)")), ["fish"]);
+  assert.ok(fish(planStats(run)) > before, "more fish");
+  assert.equal(run("state.mealSlots[__d0].recipe.id === __r0"), true, "a decided day stays");
+  assert.equal(run("firstPlanReveal"), true, "the welcome stays open to press another");
+  assert.ok(run(`renderFirstPlanReveal()`).includes('data-tune="fish" aria-pressed="true"'));
+  assert.ok(planStats(run).some((d) => d.badge === "🐟 魚を増やした日" || /魚/.test(d.reason)));
+  // 肉を押すと魚は外れる（どちらか一方）
+  run(`handleDailyAction("life-plan-tune",{tune:"meat"})`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.foodProfile.planLean)")), ["meat"]);
+  run(`handleDailyAction("life-plan-tune",{tune:"meat"})`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(state.foodProfile.planLean)")), []);
+  // 形のボタン：押す → その形・もう一度 → どちらも
+  run(`handleDailyAction("life-plan-tune",{tune:"onedish"})`);
+  assert.equal(run("state.foodProfile.mealShape"), "onedish");
+  run(`handleDailyAction("life-plan-tune",{tune:"onedish"})`);
+  assert.equal(run("state.foodProfile.mealShape"), "mix");
+  // 好みは保存しても残る
+  run(`handleDailyAction("life-plan-tune",{tune:"quick"}); state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{};render=()=>{};`);
+  assert.deepEqual(JSON.parse(run("JSON.stringify(Lifestyle.profile(state.foodProfile).planLean)")), ["quick"]);
+  // ほかの操作をしたら、お祝いのカードは閉じる
+  run(`handleDailyAction("life-reveal-close",{})`);
+  assert.equal(run("firstPlanReveal"), false);
 });
