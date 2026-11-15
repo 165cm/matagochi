@@ -5822,3 +5822,15 @@ body.has-sheet { overflow: hidden; }
 .first-reveal.is-brief p { font-size: 13px; color: var(--muted); }
 .first-invite.is-after { margin: 12px 0; padding: 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
 .swap-shelf { min-height: 44px; }
+
+/* 決定した直後のまとめ（2026-11-15。APP_MAP §77） */
+.plan-done { display: grid; gap: 10px; margin: 0 0 16px; padding: 18px 16px; border-radius: 22px; background: #fff1dc; border: 2px solid #f6dcb8; text-align: center; }
+.plan-done h2 { margin: 0; font-size: 20px; line-height: 1.4; }
+.plan-done-sub { margin: 0; color: var(--muted); font-size: 13px; }
+.plan-done-thumbs { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.plan-done-thumbs .dish-tile { width: 68px; height: 68px; flex: 0 0 68px; border-radius: 50%; overflow: hidden; }
+.plan-done-thumbs .dish-tile small { display: none; }
+.plan-done-sum { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--surface); font-size: 13px; line-height: 1.7; }
+.plan-done > .primary-button { width: 100%; min-height: 52px; font-size: 16px; }
+.plan-done > .text-button { min-height: 44px; }
+.plan-done .first-invite.is-after { margin: 4px 0 0; text-align: left; }

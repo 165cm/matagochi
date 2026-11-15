@@ -150,8 +150,10 @@ test("DailyUI: unified .plan-dots tabs, 3-day default, combine next, and new pla
   assert.match(shoppedHtml, /豚肉/);
 
   // 新しく「次回」を献立画面から決定（life-confirm）すると、次回タブの買い物前リストに即座に反映される
+  // 決定の直後は献立タブのまま、まとめのカードから買い物へ（APP_MAP §77）
   run(`handleDailyAction('life-confirm', { block: "${blocks.next.key}" })`);
-  assert.equal(run("state.view"), "shopping");
+  assert.equal(run("state.view"), "plan");
+  assert.match(run("renderDailyPlan()"), /plan-done[\s\S]*data-action="go-view"[^>]*data-view="shopping"/);
   assert.equal(run("activeShopBlock().key"), blocks.next.key);
   const nextHtml = run("renderDailyShopping()");
   assert.match(nextHtml, /🛒 買い物前/);
