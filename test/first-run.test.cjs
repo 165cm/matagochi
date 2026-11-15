@@ -298,4 +298,9 @@ test("the weekly receipt counts this device's records: decided, cooked, reused f
   const html = run("renderWeekReceipt()");
   for (const t of ["今週のリピごち", "11月16日〜11月21日", "決めた夜ごはん", "4食", "使い回した食材", "また食べたい", "図鑑に入った", "来週は", "もう出しません"]) assert.ok(html.includes(t), t);
   assert.ok(run("renderReflection()").includes("week-receipt"), "on top of the reflection tab");
+  // 週の途中で「もう作らない」→「毎週」に変えたら、最新の答えだけ（Codex review #248）
+  run(`state.evaluations.push({ id: "e-2026-11-20", recipeId: __plan[1].id, recipeTitle: __plan[1].title, cookedAt: "2026-11-20", mealType: "dinner", familyRepeatCycles: { 自分: "weekly" } })`);
+  const r2 = JSON.parse(run("JSON.stringify(weekReceipt())"));
+  assert.deepEqual(r2.never, []);
+  assert.ok(r2.loved.includes(run("__plan[1].title")));
 });

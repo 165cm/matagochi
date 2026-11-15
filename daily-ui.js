@@ -2349,9 +2349,10 @@ function weekReceipt(now = today()) {
   }
   const reused = [...uses.values()].filter((u) => u.n >= 2).sort((a, b) => b.n - a.n).map((u) => u.name);
   const titleOf = (e) => recipeById(e.recipeId)?.title || Lifestyle.curated.find((c) => c.id === e.recipeId)?.title || e.recipeTitle || "";
-  const cyc = (e) => Object.values(e.familyRepeatCycles || {});
-  const loved = [...new Set(evals.filter((e) => cyc(e).some((c) => c === "tomorrow" || c === "weekly")).map(titleOf).filter(Boolean))];
-  const never = [...new Set(evals.filter((e) => cyc(e).includes("never")).map(titleOf).filter(Boolean))];
+  // 「来週は」の約束は、献立と同じ「人ごとのいちばん新しい評価」（recipeRatings）で決める（週の途中で答えを変えた時に食い違わない。Codex review #248）
+  const rated = [...new Map(evals.map((e) => [e.recipeId, e])).values()].map((e) => ({ e, cycles: Object.values(recipeRatings(recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || { id: e.recipeId })) }));
+  const never = [...new Set(rated.filter((x) => x.cycles.includes("never")).map((x) => titleOf(x.e)).filter(Boolean))];
+  const loved = [...new Set(rated.filter((x) => !x.cycles.includes("never") && x.cycles.some((c) => c === "tomorrow" || c === "weekly")).map((x) => titleOf(x.e)).filter(Boolean))];
   // 図鑑：この週に初めてそろったカード（それより前に、そのカードを作った記録がない）
   const before = (state.evaluations || []).filter((e) => (e.cookedAt || "").slice(0, 10) < w.start);
   const cardOf = (e) => { const r = recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || (e.recipeTitle ? { id: e.recipeId, title: e.recipeTitle } : null); return r ? bookCardRecipe(r) : null; };
