@@ -65,12 +65,13 @@ function profileDraft() {
   return state.onboardingDraft;
 }
 // 初回設定の途中の人（以前の順番で保存されている）を、今の順番の同じ画面・なければ次に残っている画面へ移す。何度通しても同じ。
-// funnelV：なし＝21段階（FUNNEL_V1）・2＝15画面（FUNNEL_V2）・3＝今の7画面。
+// funnelV：なし＝21段階（FUNNEL_V1）・2＝15画面（FUNNEL_V2）・3＝7画面（FUNNEL_V3）・4＝今の8画面。
 function migrateFunnel(p) {
-  if (!p || p.funnelV === 3) return;
-  const from = p.funnelV === 2 ? FUNNEL_V2 : FUNNEL_V1;
-  p.funnelV = 3;
+  if (!p || p.funnelV === 4) return;
+  const from = p.funnelV === 3 ? FUNNEL_V3 : p.funnelV === 2 ? FUNNEL_V2 : FUNNEL_V1;
+  p.funnelV = 4;
   if (p.quickSetupIndex === null || p.quickSetupIndex === undefined) return;
+  if (from === FUNNEL_V3) { const at = FUNNEL.indexOf(FUNNEL_V3[p.quickSetupIndex]); p.quickSetupIndex = at >= 0 ? at : 0; return; }
   // 21段階 → 15画面
   const v1 = { pain: 0, ratio: "talk", staple: "talk", chains: "talk", priority: "talk", type: "talk", commit: "result", building: "result" };
   // 15画面 → 7画面：外した画面は、次に残っている画面へ（リズムは以前は後ろにあったので、外した画面の多くはリズムへ）。
@@ -399,8 +400,9 @@ function dailyPlanNow({ exclude = [] } = {}) {
 // Why this dish on this day, most important first: request, who wants it again (and when), variety, season.
 function planReason(day) {
   const c = day.candidate;
-  if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.repeat?.reason, day.rotation?.reason, day.useUp?.reason, day.season?.reason].find(Boolean) || "";
-  return c ? [c.request && `${c.request.from}のリクエスト`, c.warn, c.chosen && "✋ 自分で決めた一皿", c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.repeat?.reason, c.rotation?.reason, c.useUp?.reason, c.season?.reason].find(Boolean) || "" : "";
+  // ほかの理由がない日も、短い理由（hint：合った方向・形・時間・味）を出す（2026-11-15。APP_MAP §71）
+  if (day.slot) return [openRequestFor(day.slot.recipe || {}) && `${openRequestFor(day.slot.recipe).from}のリクエスト`, day.repeat?.reason, day.rotation?.reason, day.useUp?.reason, day.season?.reason, day.slot.recipe && day.slot.status !== "cooked" && Lifestyle.hintOf(day.slot.recipe, dailyProfile())].find(Boolean) || "";
+  return c ? [c.request && `${c.request.from}のリクエスト`, c.warn, c.chosen && "✋ 自分で決めた一皿", c.challenge && `ちょっと挑戦 ${"★".repeat(c.skillNeed)}`, c.repeat?.reason, c.rotation?.reason, c.useUp?.reason, c.season?.reason, c.hint].find(Boolean) || "" : "";
 }
 // The last time someone pressed 買い物完了. Meals confirmed before it were bought on that trip.
 function lastShoppedAt() {
@@ -1130,10 +1132,13 @@ function planBadge(day) {
   if (/好物/.test(reason)) return "😋 好物";
   if (/挑戦/.test(reason)) return "★ 挑戦";
   if (/使い回し/.test(reason)) return "🧺 使い回し";
-  if (/毎週/.test(reason) && /📌/.test(reason)) return reason.slice(0, 8);
-  if (/^[🌸🌻🍂⛄]/u.test(reason)) return reason.slice(0, 7);
   if (/日ぶり|久しぶり|ちょうどいい頃/.test(reason)) return "🔁 久しぶり";
-  return "";
+  if (Array.from(reason).length <= 12) return reason; // 短い理由はそのまま（旬・入れ替わり・hint）
+  if (/毎週/.test(reason) && /📌/.test(reason)) return Array.from(reason).slice(0, 8).join("");
+  if (/^[🌸🌻🍂⛄]/u.test(reason)) return Array.from(reason).slice(0, 8).join("");
+  // 長い理由の日も、写真の上には短い理由（hint）を出す（全部の日に理由。2026-11-15）
+  const r = day.slot?.recipe || day.candidate?.recipe;
+  return day.candidate?.hint || (r ? Lifestyle.hintOf(r, dailyProfile()) : "");
 }
 // 今夜の4皿の候補：条件に合う料理だけ（食べられないもの・器具・時間はゆるめない）。料理名（親）ごとに1枚。
 function swapCandidates() {
@@ -2796,6 +2801,11 @@ function handleDailyAction(action, data) {
     p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1);
   }
   if (action === "life-minutes") profileDraft().weekdayMinutes = Number(data.minutes) || 20;
+  if (action === "life-shape") {
+    const p = profileDraft();
+    if (MEAL_SHAPE_OF[data.value]) p.mealShape = data.value;
+    p.quickSetupIndex = Math.min(QUICK_STEPS - 1, p.quickSetupIndex + 1);
+  }
   if (action === "life-chip-add") { addChip(data.field); return true; }
   if (action === "life-chip-remove") { const p = profileDraft(); p[data.field] = (p[data.field] || []).filter((x) => x !== data.name); }
   if (action === "life-eater") { const p = profileDraft(); const on = new Set(p.eaters || []); on.has(data.value) ? on.delete(data.value) : on.add(data.value); p.eaters = EATERS.map(([id]) => id).filter((id) => on.has(id)); }
@@ -3143,6 +3153,8 @@ function handleDailyAction(action, data) {
     swapDate = "";
   }
   // 残っている食材（本人が選ぶ）と、それを使った組み直し。確定・作った・お休みの日は置き換えない。
+  // 最初の献立の「好みに寄せる」ボタン（2026-11-15。APP_MAP §71）：好みを覚えて、決めていない日だけ、その場で組み直す。
+  if (action === "life-plan-tune" && !isViewer() && PLAN_TUNES[data.tune]) { planTune(data.tune); return true; }
   if (action === "life-leftover" && data.name) setLeftover(data.name, !activeLeftovers().includes(data.name));
   if (action === "life-leftover-add") {
     const el = document.querySelector("#leftover-name");
@@ -3468,7 +3480,7 @@ function handleDailyAction(action, data) {
   if (action === "life-starters-unhide" && !isViewer()) { state.starterPref = { ...normalizeStarterPref(state.starterPref), hidden: [], hiddenDishes: [], updatedAt: nowIso() }; showToast("非表示にしたおすすめを戻しました。"); }
   if (action === "life-starters-keep") state.starterPref = { ...normalizeStarterPref(state.starterPref), asked: true, updatedAt: nowIso() };
   // The first-plan welcome stays until the next real action on the plan.
-  if (!["life-finish", "life-rhythm"].includes(action)) firstPlanReveal = false;
+  if (!["life-finish", "life-rhythm", "life-plan-tune"].includes(action)) firstPlanReveal = false;
   if (action === "life-reveal-close") firstPlanReveal = false;
   if (action === "life-record-back") { recordDraft = null; state.view = "repeat"; }
   if (action === "life-record-cycle" && recordDraft && CYCLE_CHOICES.some((c) => c.cycle === data.cycle)) {
@@ -3683,12 +3695,18 @@ const COMMON_DISLIKES = ["パクチー", "ピーマン", "なす", "セロリ", 
 // （人数 → 一緒に食べる人 → 食べられないもの → 平日の時間 → リズム → 気になる料理 → 確認といつから始めるか）。
 // 器具（基本の道具のまま）・腕前・ごはん方針は「今日やること」から1つずつ（料理の腕前・方針・詳しい設定）。
 // 動画の習慣・読み取りのお試し・1年の損・目標・カレンダーの登録は初回から外した（画面の関数は残す）。
-const FUNNEL = [0, "eaters", 4, 3, 1, "picks", "result"];
+// 2026-11-15：平日の時間のあとに「いつもの夜ごはんの形」（shape）を足して8画面（最初の献立の精度を上げる。APP_MAP §71）。
+const FUNNEL = [0, "eaters", 4, 3, "shape", 1, "picks", "result"];
+// 2026-10-28〜11-14 の7画面（途中まで進んだ人の移し替えだけに使う）。
+const FUNNEL_V3 = [0, "eaters", 4, 3, 1, "picks", "result"];
 // 2026-09-30〜10-27 の順番（途中まで進んだ人の移し替えだけに使う）。
 const FUNNEL_V2 = [0, "eaters", 4, "equipment", 3, 2, "talk", "picks", "videos", "demo", "loss", "goal", 1, "remind", "result"];
 // 以前の順番（途中まで進んだ人の移し替えだけに使う）。
 const FUNNEL_V1 = ["pain", 0, "eaters", 4, "equipment", "ratio", "staple", "chains", "priority", 2, "type", "videos", "demo", "loss", "goal", 1, "remind", 3, "picks", "commit", "building"];
 const EATERS = [["me", "🧑", "自分"], ["partner", "💑", "パートナー"], ["kids", "🧒", "子ども（小学生まで）"], ["teens", "🧑‍🎓", "子ども（中学生から）"], ["parents", "👵", "親"], ["friends", "🏠", "同居の友人など"]];
+// いつもの夜ごはんの形（2026-11-15）
+const MEAL_SHAPES = [["okazu", "🍱", "おかず＋ごはん", "主菜を作って、ごはんと食べる"], ["onedish", "🍜", "丼・麺など1皿", "それだけで完結する日が多い"], ["mix", "🔀", "どちらも", "日によっていろいろ"]];
+const MEAL_SHAPE_OF = Object.fromEntries(MEAL_SHAPES.map(([id, , label]) => [id, label]));
 const EATER_OF = Object.fromEntries(EATERS.map(([id, , label]) => [id, label.replace(/（.*$/, "")]));
 const OPTIONAL_TOOLS = ["炊飯器", "トースター", "オーブン", "電気ケトル", "圧力鍋", "ホットプレート", "ミキサー", "はかり"];
 const QUICK_STEPS = FUNNEL.length;
@@ -3697,6 +3715,8 @@ const FUNNEL_ECHO = {
   0: (p) => ({ fridge: "毎日その場で考えるの、大変ですよね。", same: "同じ料理が続くと、飽きちゃいますよね。", tired: "考えるのが一番しんどい、よく聞きます。", ok: "いいですね。もっと楽にしましょう。" })[p.pain] || "",
   demo: (p) => ({ few: "保存したまま、もったいない！1本、試してみましょう。", some: "たまに作れるなら、あと一歩です。", many: "よく作る人ほど、献立にまとめると一気にラクに。", none: "YouTubeで気になった料理を、1本だけ探して貼ってみてください。" })[p.savedVideos] || "",
   eaters: (p) => (p.servings >= 3 ? `${p.servings >= 5 ? "5人以上" : `${p.servings}人分`}ですね。まとめ買いが効く人数です。` : p.servings === 2 ? "2人分ですね。食材を使い切りやすい人数です。" : "1人分ですね。少量でもムダなく回します。"),
+  shape: (p) => ((p.weekdayMinutes || 20) <= 15 ? `平日は${p.weekdayMinutes}分。サッと作れる料理を中心にします。` : `平日は${p.weekdayMinutes || 20}分までですね。`),
+  1: (p) => ({ okazu: "おかず＋ごはん派ですね。主菜を中心に並べます。", onedish: "1皿で完結派ですね。丼や麺を多めにします。", mix: "日によっていろいろ、ですね。" })[p.mealShape] || "",
   4: (p) => ((p.eaters || []).includes("kids") ? "お子さんと一緒の食卓ですね。みんなの「また食べたい」を覚えていきます。" : (p.eaters || []).includes("partner") ? "ふたりの「また食べたい」を覚えていきます。" : ""),
   staple: (p) => { const r = ratioOf(p); return r.self >= 5 ? `自炊が週${r.self}回。しっかり作っていますね。` : r.self >= 3 ? `自炊は週${r.self}回。ちょうどいいバランスです。` : `自炊は週${r.self}回。まずは週1回ふやすところから。`; },
   chains: (p) => ((p.staples || []).includes("noodle") && !(p.staples || []).includes("rice") ? "麺派なんですね。" : (p.staples || []).length >= 3 ? "主食はいろいろ派ですね。" : ""),
@@ -3937,6 +3957,9 @@ function renderFunnelStep(key) {
       </div>${p.remindAdded ? '<p class="fd-ok small">✓ 追加の画面を開きました。保存（追加）まで進めてください。</p>' : ""}`];
   }
 
+  if (key === "shape") {
+    return [`🍚 いつもの夜ごはんは、どんな形？`, `<p class="small">最初の献立の並べ方に使います（あとで変えられます）</p><div class="funnel-picks">${MEAL_SHAPES.map(([id, icon, label, note]) => `<button type="button" class="funnel-pick" data-action="life-shape" data-value="${id}" aria-pressed="${p.mealShape === id}"><span class="fp-icon" aria-hidden="true">${icon}</span><span class="fp-text">${escapeHtml(label)}<small>${escapeHtml(note)}</small></span></button>`).join("")}</div>`];
+  }
   if (key === "eaters") {
     const on = new Set(p.eaters || []);
     return [`👨‍👩‍👧 いま、一緒に食べるのは？`, `<p class="small">複数OK</p><div class="funnel-picks is-grid2">${EATERS.map(([id, icon, label]) => `<button type="button" class="funnel-pick" data-action="life-eater" data-value="${id}" aria-pressed="${on.has(id)}"><span class="fp-icon" aria-hidden="true">${icon}</span>${escapeHtml(label)}</button>`).join("")}</div>`];
@@ -4103,6 +4126,7 @@ function resultLines(p) {
     `🍽 ${p.servings >= 5 ? "5人以上" : `${p.servings || 1}人分`}${eaters.length ? `（${eaters.join("・")}と）` : ""}`,
     avoid.length ? `🚫 ${avoid.slice(0, 4).join("・")}${avoid.length > 4 ? " ほか" : ""}は入れない` : "🚫 食べられないもの：なし",
     `⏱ 平日 ${p.weekdayMinutes || 20}分以内`,
+    ...(MEAL_SHAPE_OF[p.mealShape] ? [`🍚 いつもの形：${MEAL_SHAPE_OF[p.mealShape]}`] : []),
     `🍳 ${tools.length ? `基本の道具＋${tools.slice(0, 3).join("・")}` : "基本の道具"}${sp ? `・★${sp.level}まで` : ""}`,
     ...tp.slice(0, 4).map((x) => x.label),
     // 選んだ数は事実。献立に入るかは条件（食べられないもの・時間・器具）と空いている日しだいなので、ここでは約束しない。
@@ -4202,7 +4226,7 @@ function renderQuickSetup() {
     const [title, body] = renderFunnelStep(key);
     // 主食・お店は、選ぶまで「次へ」の代わりに「スキップ」。
     if ((key === "staple" && !(p.staples || []).length) || (key === "chains" && !(p.chains || []).length)) return shell(title, body, `<button class="text-button" data-action="life-quick-next">スキップ</button>`);
-    const next = ["result", "goal", "pain", "videos", "priority"].includes(key) ? "" : key === "remind" ? `<button class="primary-button is-quiet" data-action="life-quick-next">${p.remindAdded ? "次へ" : "あとで"}</button>` : nextButton;
+    const next = ["result", "goal", "pain", "videos", "priority"].includes(key) ? "" : key === "shape" ? (p.mealShape ? nextButton : `<button class="text-button" data-action="life-quick-next">スキップ</button>`) : key === "remind" ? `<button class="primary-button is-quiet" data-action="life-quick-next">${p.remindAdded ? "次へ" : "あとで"}</button>` : nextButton;
     return shell(title, body, next);
   }
   if (key === 3 && !p.weekdayMinutes) p.weekdayMinutes = 20;
@@ -4546,14 +4570,55 @@ function renderSkillLine(recipe) {
 
 // 初回設定のあとに一度だけ：「最初の献立ができました」
 let firstPlanReveal = false;
+// 最初の献立を見て押す「好みに寄せる」ボタン。条件（食べられないもの・時間・器具）はゆるめず、並べ方の点数だけ変える。
+// 押し直すと元に戻る。魚と肉、おかずと1皿は、どちらか一方。
+const PLAN_TUNES = {
+  onedish: { label: "🍜 丼・麺も入れて", shape: "onedish" },
+  okazu: { label: "🍱 おかず＋ごはんを多めに", shape: "okazu" },
+  fish: { label: "🐟 魚を増やして", lean: "fish", not: "meat" },
+  meat: { label: "🥩 お肉を多めに", lean: "meat", not: "fish" },
+  quick: { label: "⚡ もっと手軽に", lean: "quick" },
+  light: { label: "🍋 さっぱりめに", lean: "light" },
+};
+function planTuneOn(id) {
+  const t = PLAN_TUNES[id], p = dailyProfile();
+  return t.shape ? p.mealShape === t.shape : (p.planLean || []).includes(t.lean);
+}
+function planTune(id) {
+  const t = PLAN_TUNES[id];
+  const on = !planTuneOn(id);
+  const p = Lifestyle.profile(state.foodProfile || {});
+  if (t.shape) p.mealShape = on ? t.shape : "mix";
+  else p.planLean = on ? [...p.planLean.filter((x) => x !== t.not), t.lean] : p.planLean.filter((x) => x !== t.lean);
+  const before = dailyShopping();
+  const dates = undecidedPlanDates();
+  const old = Object.fromEntries(dailyPlan().map((d) => [d.date, d.candidate?.recipe?.id || ""]));
+  state.foodProfile = { ...state.foodProfile, mealShape: p.mealShape, planLean: p.planLean };
+  // 決めていない日の自動の下書きだけ作り直す（自分で選んだ料理 planOverrides・決めた日・作った日はそのまま）。
+  // 自分で選んだ日の下書きは消さない（新着から外れた料理は、本体が下書きにしか残っていないことがある。Codex review #246）
+  for (const d of dates) if (!state.planOverrides?.[d]) delete state.planDrafts?.[d];
+  // 数えるのは、いま見えている回（リズムがあれば最初のまとまり）だけ。次回分も組み直すが、知らせの数は画面と合わせる。
+  const first = rhythmOn() ? currentBlocks()[0] : null;
+  const changed = dailyPlan().filter((d) => dates.includes(d.date) && (!first || first.dates.includes(d.date)) && d.candidate?.recipe?.id && d.candidate.recipe.id !== old[d.date]).length;
+  changedShopping(before);
+  trackDaily("first_plan_tuned", { tune: id, on });
+  touchSettings();
+  saveState();
+  render();
+  showToast(on ? `「${t.label.replace(/^\S+\s/, "")}」で${changed ? `${changed}日を組み直しました` : "見直しました（今の献立がいちばん合っています）"}。` : `「${t.label.replace(/^\S+\s/, "")}」をやめて、${changed}日を組み直しました。`);
+}
+function renderPlanTunes() {
+  return `<div class="first-tune"><p class="small"><b>もう少し寄せるなら</b>（押すとその場で組み直し）</p><div class="tune-chips">${Object.entries(PLAN_TUNES).map(([id, t]) => `<button type="button" class="tool-chip" data-action="life-plan-tune" data-tune="${id}" aria-pressed="${planTuneOn(id)}">${escapeHtml(t.label)}</button>`).join("")}</div></div>`;
+}
 function renderFirstPlanReveal() {
   if (!firstPlanReveal || isViewer()) return "";
   const sp = skillProfile();
   const b = rhythmOn() ? currentBlocks()[0] : null;
-  const why = [sp ? `★${sp.level}までの料理` : "", dailyProfile().weekdayMinutes ? `${dailyProfile().weekdayMinutes}分以内` : "", "かぶらない組み合わせ"].filter(Boolean).join("・");
+  const why = [sp ? `★${sp.level}までの料理` : "", dailyProfile().weekdayMinutes ? `${dailyProfile().weekdayMinutes}分以内` : "", MEAL_SHAPE_OF[dailyProfile().mealShape] && dailyProfile().mealShape !== "mix" ? `${MEAL_SHAPE_OF[dailyProfile().mealShape]}中心` : "", "かぶらない組み合わせ"].filter(Boolean).join("・");
   const invite = dailyProfile().servings >= 2 && shareAvailable() && !syncEnabled();
   return `<section class="first-reveal"><p class="first-reveal-emoji" aria-hidden="true">🎉</p><h2>最初の献立が<br><span class="marker nobr">できました！</span></h2>
     <p>${b ? `${blockRange(b)}の分を、` : ""}${escapeHtml(why)}で選びました。気になる日は「入れ替え」でどうぞ。</p>
+    ${renderPlanTunes()}
     ${invite ? `<div class="first-invite"><p><b>ふたりで使う？</b><br><small>相手が「これ食べたい」を送れるようになります。</small></p><div class="actions">${dailyButton("life-share-open", "相手を招待する")}<button type="button" class="text-button" data-action="life-reveal-close">あとで</button></div></div>` : `<button type="button" class="text-button" data-action="life-reveal-close">閉じる</button>`}</section>`;
 }
 

@@ -2477,6 +2477,14 @@ button.tile-title { padding: 0; border: 0; background: none; font: inherit; font
 .first-reveal-emoji { font-size: 36px; }
 .first-invite { margin-top: 6px; padding: 12px; border-radius: 16px; background: var(--surface); display: grid; gap: 8px; text-align: left; }
 .first-invite small { color: var(--muted); }
+/* 最初の献立を好みに寄せるボタン（2026-11-15。APP_MAP §71） */
+.first-tune { margin: 4px 0 10px; text-align: left; }
+.first-tune > p { margin: 0 0 8px; color: var(--muted); }
+.first-tune > p b { color: var(--ink); }
+.tune-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.tune-chips .tool-chip { min-height: 40px; padding: 6px 12px; font-size: 13px; }
+.fp-text { display: grid; gap: 2px; }
+.fp-text small { font-size: 12px; font-weight: 500; color: var(--muted); }
 
 /* ----- ごはんの好み診断：結果 ----- */
 .persona-card { display: grid; gap: 10px; text-align: center; }
