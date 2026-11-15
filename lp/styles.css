@@ -641,3 +641,50 @@ button.button { border: 0; cursor: pointer; font-family: inherit; }
   .site-header .beta-chip, .site-header .brand-note { display: none; }
   .site-header .button-small { padding-left: 12px; padding-right: 12px; font-size: 12.5px; white-space: nowrap; }
 }
+
+/* ===== 2026-11-16：短い構成（変わること → 使い方 → くわしい話は閉じる → 最後に、つくった理由） ===== */
+/* 使うと、こう変わる（これまで → これから） */
+.change { padding: 26px 0 30px; background: var(--paper); }
+.ba-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+.ba-list li { display: grid; grid-template-columns: 36px 1fr; column-gap: 10px; align-items: center; padding: 10px 14px; border-radius: 18px; background: #fffdf8; border: 1px solid var(--line); }
+.ba-icon { grid-row: span 2; font-size: 24px; text-align: center; }
+.ba-before, .ba-after { margin: 0; line-height: 1.5; }
+.ba-before { font-size: 12.5px; color: var(--muted); }
+.ba-before::before { content: "これまで"; margin-right: 8px; font-weight: 800; font-size: 11px; }
+.ba-after { font-size: 15px; font-weight: 800; }
+.ba-after::before { content: "これから"; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--tomato); color: #fff; font-size: 11px; font-weight: 900; vertical-align: 2px; }
+@media (min-width: 760px) { .ba-list { grid-template-columns: 1fr 1fr; } }
+
+/* くわしい機能は、ひとつずつ閉じておく */
+.more-info { padding: 30px 0; }
+.acc { margin-top: 8px; border: 1px solid var(--line); border-radius: 18px; background: #fffdf8; overflow: hidden; }
+.acc > summary { list-style: none; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 10px 16px; font-weight: 800; font-size: 15px; cursor: pointer; }
+.acc > summary::-webkit-details-marker { display: none; }
+.acc > summary::after { content: "＋"; margin-left: auto; color: var(--tomato); font-weight: 900; }
+.acc[open] > summary::after { content: "－"; }
+.acc > summary:focus-visible { outline: 3px solid var(--tomato); outline-offset: -3px; }
+.acc > section { padding: 4px 0 18px; background: none; }
+.acc > section > .container { width: auto; margin: 0; padding: 0 14px; }
+.acc h2 { font-size: 19px; }
+.acc .kicker { font-size: 12px; }
+
+/* 全体をつめる */
+.hero { padding-bottom: 18px; }
+.steps, .promise, .trust { padding-top: 28px; padding-bottom: 28px; }
+.food-strip { padding-top: 6px; padding-bottom: 6px; }
+.story { padding: 26px 0; background: none; }
+.faq { padding: 22px 0 26px; }
+.final-cta { padding: 32px 0 44px; }
+
+/* つづけるほど：4行の短い表 */
+.grow-line { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.grow-line li { display: grid; grid-template-columns: 58px 1fr; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 14px; background: #fffdf8; border: 1px solid var(--line); font-size: 14px; line-height: 1.5; }
+.grow-line b { text-align: center; padding: 3px 0; border-radius: 999px; background: var(--tomato); color: #fff; font-size: 12px; font-weight: 900; }
+@media (min-width: 760px) { .grow-line { grid-template-columns: 1fr 1fr; } }
+/* スマホ：大見出しを1行に収める・画面の絵は上のほうだけ見せて短くする */
+@media (max-width: 720px) {
+  .hero h1 { font-size: clamp(25px, 8vw, 34px); }
+  .phone-hero img { aspect-ratio: 640 / 860; object-fit: cover; object-position: top; }
+  .step .phone { width: min(210px, 58vw); }
+  .step .phone img { aspect-ratio: 640 / 1000; object-fit: cover; object-position: top; }
+}

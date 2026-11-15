@@ -19,23 +19,23 @@
     <meta name="twitter:image:alt" content="リピごち ベータ版・ぜんぶ無料。かぶらない、飽きない、また食べたい。" />
     <meta name="theme-color" content="#fff8ee" />
     <link rel="canonical" href="https://165cm.github.io/matagochi/lp/" />
-    <link rel="icon" href="../icons/favicon-32.png?v=20261116-ltv" />
+    <link rel="icon" href="../icons/favicon-32.png?v=20261116-short" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Klee+One:wght@600&display=swap" />
     <link rel="preload" as="image" href="assets/screen-plan.webp" />
-    <link rel="stylesheet" href="styles.css?v=20261116-ltv" />
+    <link rel="stylesheet" href="styles.css?v=20261116-short" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
         <a class="brand" href="#top" aria-label="リピごち トップへ">
-          <img class="brand-icon" src="../icons/icon-192.png?v=20261116-ltv" width="40" height="40" alt="" /><span class="logo">リピごち</span>
+          <img class="brand-icon" src="../icons/icon-192.png?v=20261116-short" width="40" height="40" alt="" /><span class="logo">リピごち</span>
           <span class="beta-chip">BETA</span>
           <span class="hand brand-note">また、これ食べたい。</span>
         </a>
         <div class="header-actions">
-          <a class="header-link wide-only" href="#cook-mode">料理モード</a>
+          <a class="header-link wide-only" href="#change">変わること</a>
           <a class="header-link wide-only" href="#how">使い方</a>
           <a class="button button-primary button-small" href="../?start=quick" data-cta="header">無料ではじめる</a>
         </div>
@@ -43,12 +43,12 @@
     </header>
 
     <main id="top">
-      <!-- ファーストビュー：スマホ1画面で全体像とCTAがすぐわかる -->
+      <!-- ファーストビュー -->
       <section class="hero">
         <div class="container hero-grid">
           <div class="hero-copy">
             <p class="pill pill-beta"><span class="beta-dot" aria-hidden="true"></span>2026年内は全機能無料（登録不要）</p>
-            <h1>かぶらない、飽きない、<br /><span class="marker nobr">また食べたい。</span></h1>
+            <h1><span class="nobr">かぶらない、</span><span class="nobr">飽きない、</span><br /><span class="marker nobr">また食べたい。</span></h1>
             <p class="promise">毎晩の「今日なに作ろう？」を、<span class="nobr">週1回に。</span></p>
             <p class="lead">
               3日分の献立と買い物リストが30秒。<br />
@@ -58,15 +58,7 @@
               <a class="button button-primary button-large" href="../?start=quick" data-cta="hero">無料ではじめる<span aria-hidden="true">›</span></a>
               <div class="cta-sub">
                 <span>登録なし・30秒</span>
-              </div>
-              <details class="more-fold beta-perk-box">
-                <summary class="beta-perk-title">🎁 年内無料と特典（タップで詳細）</summary>
-                <p class="beta-perk-text"><strong>2026年12月31日まで</strong>は開発期間として、全機能が無料です。そのあとも毎日の「今夜の一品」は無料で使え、記録や図鑑は残ります。アプリ内で感想・改善の意見を送ってくれた方には、正式版で使える<strong>「リピごちプラス 3か月無料」招待コード</strong>をお贈りします。</p>
-              </details>
-              <div class="hero-jump-pills" aria-label="主な特徴へ移動">
-                <a href="#grow">🌱 育つ</a>
-                <a href="#cook-mode">✋ 料理モード</a>
-                <a href="#how">📱 つかいかた</a>
+                <span>年内ぜんぶ無料</span>
               </div>
             </div>
           </div>
@@ -82,210 +74,21 @@
         </div>
       </section>
 
-      <!-- 写真で選ぶ（食欲に訴える） -->
-      <section class="food-strip" aria-label="提案される料理の例">
-        <div class="marquee">
-          <div class="marquee-track">
-            <figure><img src="../assets/dishes/starter-51.webp" width="400" height="400" alt="豚こまの生姜焼き" loading="lazy" /><figcaption>豚こまの生姜焼き</figcaption></figure>
-            <figure><img src="../assets/dishes/starter-63.webp" width="400" height="400" alt="鮭のレモン塩ホイル焼き" loading="lazy" /><figcaption>鮭のレモン塩ホイル焼き</figcaption></figure>
-            <figure><img src="../assets/dishes/starter-85.webp" width="400" height="400" alt="親子丼" loading="lazy" /><figcaption>親子丼</figcaption></figure>
-            <figure><img src="../assets/dishes/starter-71.webp" width="400" height="400" alt="ひき肉の麻婆豆腐" loading="lazy" /><figcaption>ひき肉の麻婆豆腐</figcaption></figure>
-            <figure><img src="../assets/dishes/starter-97.webp" width="400" height="400" alt="冷凍うどんの焼きうどん" loading="lazy" /><figcaption>冷凍うどんの焼きうどん</figcaption></figure>
-            <figure><img src="../assets/dishes/starter-52.webp" width="400" height="400" alt="揚げ焼きの塩唐揚げ" loading="lazy" /><figcaption>揚げ焼きの塩唐揚げ</figcaption></figure>
-            <figure aria-hidden="true"><img src="../assets/dishes/starter-51.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>豚こまの生姜焼き</figcaption></figure>
-            <figure aria-hidden="true"><img src="../assets/dishes/starter-63.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>鮭のレモン塩ホイル焼き</figcaption></figure>
-            <figure aria-hidden="true"><img src="../assets/dishes/starter-85.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>親子丼</figcaption></figure>
-            <figure aria-hidden="true"><img src="../assets/dishes/starter-71.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>ひき肉の麻婆豆腐</figcaption></figure>
-            <figure aria-hidden="true"><img src="../assets/dishes/starter-97.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>冷凍うどんの焼きうどん</figcaption></figure>
-            <figure aria-hidden="true"><img src="../assets/dishes/starter-52.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>揚げ焼きの塩唐揚げ</figcaption></figure>
-          </div>
-        </div>
-        <p class="strip-note">最初から入っている48品＋毎日集まるYouTube新着（時短8割）で、飽きない1週間に。<span class="small">絵はアプリのものです</span></p>
-      </section>
-
-      <!-- よくある夜のおはなし（表面は2行＋タップで物語を展開） -->
-      <section class="story">
-        <div class="container narrow center">
-          <p class="kicker">よくある夜のおはなし</p>
-          <h2>「え、それ<span class="marker nobr">おとといも食べたよ。」</span></h2>
-          <p class="story-lead">迷って作ったのに「おとといも食べた」でしゅんとする夜。<br />いつ何を食べたかは、<strong>リピごちが覚えておきます。</strong></p>
-          <details class="more-fold story-fold">
-            <summary>📖 夕方19時のストーリーを読む</summary>
-            <div class="story-card">
-              <p>平日の19時。仕事帰りのスーパーで、スマホを片手に立ち止まる。</p>
-              <p>「今日なに食べたい？」と送ってみても、返ってくるのは「なんでもいい」。</p>
-              <p>迷った末に、いつもの材料をかごへ。急いで作って、<span class="nobr">テーブルに出したとたん――</span><br /><strong>「え、それおとといも食べたよ。」</strong></p>
-              <p>悪気のない、ひと言。でも、ちょっとだけ、しゅんとする。<br />ほんとうは、「おいしい！」って顔が見たかっただけなのに。</p>
-              <p class="story-turn">何をいつ食べたかなんて、忙しい毎日で覚えていなくていい。<br /><strong>それは、リピごちが覚えておきます。</strong></p>
-            </div>
-            <figure class="story-photo">
-              <img src="assets/scene-parent-child.webp" width="1200" height="900" alt="夜の食卓で、丼を手に笑い合う父と娘のイメージ" loading="lazy" decoding="async" />
-              <figcaption class="hand">次の夜は、「え、これ好き！」から。</figcaption>
-            </figure>
-          </details>
+      <!-- 使うと、こう変わる（ビフォーアフター） -->
+      <section class="change" id="change">
+        <div class="container narrow">
+          <p class="kicker center">使うと、こう変わる</p>
+          <h2 class="center">夕方の「どうしよう」が、<span class="marker nobr">なくなる。</span></h2>
+          <ul class="ba-list">
+            <li><span class="ba-icon" aria-hidden="true">🛒</span><p class="ba-before">帰りのスーパーで、献立を考えて立ち止まる</p><p class="ba-after">買う物はもうリストに。迷わず回れる</p></li>
+            <li><span class="ba-icon" aria-hidden="true">💬</span><p class="ba-before">「なんでもいい」に、ひとりで悩む</p><p class="ba-after">3日分が、理由つきで決まっている</p></li>
+            <li><span class="ba-icon" aria-hidden="true">🥬</span><p class="ba-before">使い切れなかった野菜を、週末に捨てる</p><p class="ba-after">同じ野菜を使い回して、使い切る</p></li>
+            <li><span class="ba-icon" aria-hidden="true">🍝</span><p class="ba-before">「それ、おとといも食べたよ」と言われる</p><p class="ba-after">好物が、恋しくなった頃にまた出てくる</p></li>
+          </ul>
         </div>
       </section>
 
-      <!-- 新しい価値：ちょうどいい「また」（カードをタップで詳細） -->
-      <section class="promise" id="features">
-        <div class="container">
-          <p class="kicker center">リピごちが覚えること</p>
-          <h2 class="center">ちょうどいい「また」を、<br /><span class="marker nobr">ふたりの食卓に。</span></h2>
-          <figure class="promise-photo">
-            <img src="assets/scene-couple.webp" width="1200" height="900" alt="ソファでひとつのスマートフォンを見ながら、今夜のごはんを選んで笑うふたりのイメージ" loading="lazy" decoding="async" />
-            <figcaption class="hand">ふたりで選べば、今夜はもっとたのしい。</figcaption>
-          </figure>
-          <div class="promise-grid">
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">🍝→🍚</span>
-                <strong>最近食べたものを覚える</strong>
-              </summary>
-              <p class="hand promise-note">一昨日パスタなら、今日はごはんもの。</p>
-              <p>麺・ごはん、肉・魚・卵豆腐、和・洋・中が続かないように提案。どの日にも「昨日は肉 → 魚」「久しぶり」などの理由が1つ付きます。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">😋😋</span>
-                <strong>ふたりの「また食べたい」</strong>
-              </summary>
-              <p class="hand promise-note">好みの違いも、ごちそうに。</p>
-              <p>食後にひとり1タップ。「😍明日でも」「😋毎週」「🙂月2回」から選ぶだけで、ふたりの重なる好物も、片方だけの好物も、順番に食卓へ。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">📅💛</span>
-                <strong>好物は、ちょうどいい頃に</strong>
-              </summary>
-              <p class="hand promise-note">久しぶりの、あの味。</p>
-              <p>好きな料理は飽きる前、恋しくなった頃に「ふたりの好物・8日ぶり」と理由つきで再登場。4週間で「わが家の定番」が回り始めます。</p>
-            </details>
-          </div>
-        </div>
-      </section>
-
-      <!-- 使うほど良くなる（長く使う理由） -->
-      <section class="promise grow" id="grow">
-        <div class="container">
-          <p class="kicker center">つづけるほど、わが家の味に</p>
-          <h2 class="center">1日目より、<span class="marker nobr">3か月目のほうが便利。</span></h2>
-          <div class="promise-grid">
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon grow-when" aria-hidden="true">1日目</span>
-                <strong>3日分が決まる</strong>
-              </summary>
-              <p class="hand promise-note">水曜まで、もう考えなくて大丈夫。</p>
-              <p>人数・時間・食べられないものなど8つの質問に答えると、3日分の夜ごはんが理由つきで出ます。「決定」を1回押せば、買い物リストまでできあがり。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon grow-when" aria-hidden="true">1週目</span>
-                <strong>買い物のむだが減る</strong>
-              </summary>
-              <p class="hand promise-note">キャベツ半玉、使い切れた。</p>
-              <p>同じ野菜を2日で使い回せる組み合わせを選び、家にある調味料は次から聞きません。まとめ買いの回数が決まると、毎日の寄り道が減ります。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon grow-when" aria-hidden="true">1か月</span>
-                <strong>定番が回り出す</strong>
-              </summary>
-              <p class="hand promise-note">好物は、恋しくなった頃に。</p>
-              <p>食後の1タップ「次はいつ食べたい？」から、家族ひとりずつの好物と周期を覚えます。飽きる前に別の料理へ、久しぶりの頃にまた好物へ。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon grow-when" aria-hidden="true">3か月</span>
-                <strong>図鑑と方針が育つ</strong>
-              </summary>
-              <p class="hand promise-note">この記録は、わが家だけのもの。</p>
-              <p>作るたびに48品の図鑑のカードが集まり、記録をもとに「蒸し料理を増やしますか？」と方針の見直しも提案。たまった記録は、いつでも書き出して残せます。</p>
-            </details>
-          </div>
-        </div>
-      </section>
-
-      <!-- 新機能ハイライト①：深いパーソナライズ「わが家のごはん方針」 -->
-      <section class="feature-spotlight personalize-section" id="personalize">
-        <div class="container split">
-          <div class="split-copy">
-            <p class="kicker">深いパーソナライズ</p>
-            <h2>答えの「理由」まで聞いて、<br /><span class="marker nobr">わが家の方針に。</span></h2>
-            <p class="compact-lead">固定タイプの診断ではなく、<strong>本人が「👍 合ってる」と確かめたことだけ</strong>を献立に使います。</p>
-            <div class="tap-list">
-              <details class="tap-check">
-                <summary>💬 <b>聞き返しでズレを解消</b></summary>
-                <p>「魚×片付けが大変」→「蒸し焼きやレンジの魚料理を候補に入れてみます」と具体的に聞き返して提案します。</p>
-              </details>
-              <details class="tap-check">
-                <summary>⚡ <b>その場で「変えるなら？」</b></summary>
-                <p>最初の1皿を見て「⏱ 時間が長い」「🧺 材料が多い」を押せば、その場で方針を更新して次の料理へ。</p>
-              </details>
-              <details class="tap-check">
-                <summary>📈 <b>記録から根拠つきで育つ</b></summary>
-                <p>「🐟 魚料理3品のうち2品が『また食べたい』。蒸し料理を増やしますか？」と実際の記録から提案。</p>
-              </details>
-              <details class="tap-check">
-                <summary>🛡 <b>食べられないものは厳格に除外</b></summary>
-                <p>原材料の印がなくても材料名（豚こま→肉、鮭→魚、しょうゆ→小麦など）から推測して外し、候補不足でも勝手にゆるめません。</p>
-              </details>
-            </div>
-          </div>
-          <figure class="phone">
-            <img src="assets/screen-talk-policy.jpg" width="640" height="1146" alt="わが家のごはん方針の画面。聞き返し「魚は好きだけど、片付けが大変なんですね。魚を減らすより、レンジやホイル蒸しの魚料理を候補に入れてみます。合っていますか？」と、合ってる・少し違うボタン、最初の提案「鮭としめじのレンジ蒸し」" loading="lazy" decoding="async" />
-            <figcaption>聞き返して確かめる「わが家のごはん方針」</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <!-- 新機能ハイライト②：手がふさがっていても使える「料理モード」 -->
-      <section class="feature-spotlight cookmode-section" id="cook-mode">
-        <div class="container">
-          <p class="kicker center">ほかのレシピアプリとのいちばんの違い</p>
-          <h2 class="center">YouTubeのその場面をくり返す。<br />手が汚れていても、<span class="marker nobr">手と声で進む。</span></h2>
-          <figure class="spotlight-photo">
-            <img src="assets/scene-cook-mode.jpg" width="1200" height="900" alt="夜のキッチンで照り焼きチキンを焼きながら、スマホスタンドの料理モード画面（手順3：タレをからめる、次へ、3:00タイマー）に手のひらをかざしてハンズフリー操作する様子" loading="lazy" decoding="async" />
-            <figcaption class="hand">「次へ」「タイマー」と声をかけるか、カメラに✋を見せるだけ。</figcaption>
-          </figure>
-          <div class="promise-grid promise-grid-4">
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">🔁🎬</span>
-                <strong>手順の場面を自動ループ</strong>
-              </summary>
-              <p class="hand promise-note">巻き戻しの手間がゼロに。</p>
-              <p>いま作っている手順の開始秒から終了秒までを自動でくり返し再生。ズレていたら「⏪-5秒」「📍ここ」「+5秒⏩」で1タップ微調整できます。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">✋🎙️</span>
-                <strong>手の形＆声でハンズフリー</strong>
-              </summary>
-              <p class="hand promise-note">映像も音声もサーバーへ送りません。</p>
-              <p>カメラに手をかざす（✋次へ・✌️戻る・👍タイマー）か、声で「次へ」「タイマー」「材料」と言うだけ。手首でポンと押せる64px特大ボタンも。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">✍🥣</span>
-                <strong>覚えやすい手順と材料整理</strong>
-              </summary>
-              <p class="hand promise-note">画面を行ったり来たりしない。</p>
-              <p>長い動画の説明も、AIが「何を・どうする」がすぐ頭に入る手順に整理。その手順で使う材料と「🥣 A（合わせ調味料）」がすぐ下に出ます。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">⏰🍚</span>
-                <strong>安心タイマー＆炊飯確認</strong>
-              </summary>
-              <p class="hand promise-note">うっかり炊き忘れも防止。</p>
-              <p>手順の「3分」を押すだけでタイマー開始。止めるまで優しいベルが鳴り続け、焦げつきを防ぎます。主菜の日には「🍚 ごはん炊いた？」の確認も。</p>
-            </details>
-          </div>
-        </div>
-      </section>
-
-      <!-- 使い方：スマホ1画面で切り替わる4ステップ・タブ -->
+      <!-- つかいかた（4ステップ） -->
       <section class="steps" id="how">
         <div class="container">
           <p class="kicker center">つかいかた（タップで切り替え）</p>
@@ -370,8 +173,169 @@
         </div>
       </section>
 
-      <!-- 続けられる工夫（2列コンパクトタイル・タップで展開） -->
-      <section class="promise keep" id="keep">
+      <!-- 料理の例 -->
+      <section class="food-strip" aria-label="提案される料理の例">
+        <div class="marquee">
+          <div class="marquee-track">
+            <figure><img src="../assets/dishes/starter-51.webp" width="400" height="400" alt="豚こまの生姜焼き" loading="lazy" /><figcaption>豚こまの生姜焼き</figcaption></figure>
+            <figure><img src="../assets/dishes/starter-63.webp" width="400" height="400" alt="鮭のレモン塩ホイル焼き" loading="lazy" /><figcaption>鮭のレモン塩ホイル焼き</figcaption></figure>
+            <figure><img src="../assets/dishes/starter-85.webp" width="400" height="400" alt="親子丼" loading="lazy" /><figcaption>親子丼</figcaption></figure>
+            <figure><img src="../assets/dishes/starter-71.webp" width="400" height="400" alt="ひき肉の麻婆豆腐" loading="lazy" /><figcaption>ひき肉の麻婆豆腐</figcaption></figure>
+            <figure><img src="../assets/dishes/starter-97.webp" width="400" height="400" alt="冷凍うどんの焼きうどん" loading="lazy" /><figcaption>冷凍うどんの焼きうどん</figcaption></figure>
+            <figure><img src="../assets/dishes/starter-52.webp" width="400" height="400" alt="揚げ焼きの塩唐揚げ" loading="lazy" /><figcaption>揚げ焼きの塩唐揚げ</figcaption></figure>
+            <figure aria-hidden="true"><img src="../assets/dishes/starter-51.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>豚こまの生姜焼き</figcaption></figure>
+            <figure aria-hidden="true"><img src="../assets/dishes/starter-63.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>鮭のレモン塩ホイル焼き</figcaption></figure>
+            <figure aria-hidden="true"><img src="../assets/dishes/starter-85.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>親子丼</figcaption></figure>
+            <figure aria-hidden="true"><img src="../assets/dishes/starter-71.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>ひき肉の麻婆豆腐</figcaption></figure>
+            <figure aria-hidden="true"><img src="../assets/dishes/starter-97.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>冷凍うどんの焼きうどん</figcaption></figure>
+            <figure aria-hidden="true"><img src="../assets/dishes/starter-52.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>揚げ焼きの塩唐揚げ</figcaption></figure>
+          </div>
+        </div>
+        <p class="strip-note">最初から入っている48品＋毎日集まるYouTube新着（時短8割）で、飽きない1週間に。<span class="small">絵はアプリのものです</span></p>
+      </section>
+
+      <!-- つづけるほど良くなる -->
+      <section class="promise grow" id="grow">
+        <div class="container narrow">
+          <p class="kicker center">つづけるほど、わが家の味に</p>
+          <h2 class="center">1日目より、<span class="marker nobr">3か月目のほうが便利。</span></h2>
+          <ol class="grow-line">
+            <li><b>1日目</b><span>3日分が決まる。水曜まで、考えなくていい</span></li>
+            <li><b>1週目</b><span>買い物のむだが減る。野菜を使い切れる</span></li>
+            <li><b>1か月</b><span>好物が、恋しくなった頃に出てくる</span></li>
+            <li><b>3か月</b><span>図鑑とごはん方針が、わが家の形に育つ</span></li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- くわしい機能（閉じたアコーディオン） -->
+      <section class="more-info" id="more">
+        <div class="container narrow">
+          <p class="kicker center">もっと知りたい方へ</p>
+          <h2 class="center">気になるところだけ、<span class="marker nobr">どうぞ。</span></h2>
+          <details class="acc" data-acc="cook-mode">
+            <summary><span aria-hidden="true">✋</span> 動画を見ながら作れる「料理モード」</summary>
+            <section class="feature-spotlight cookmode-section" id="cook-mode">
+        <div class="container">
+          <p class="kicker center">ほかのレシピアプリとのいちばんの違い</p>
+          <h2 class="center">YouTubeのその場面をくり返す。<br />手が汚れていても、<span class="marker nobr">手と声で進む。</span></h2>
+          <figure class="spotlight-photo">
+            <img src="assets/scene-cook-mode.jpg" width="1200" height="900" alt="夜のキッチンで照り焼きチキンを焼きながら、スマホスタンドの料理モード画面（手順3：タレをからめる、次へ、3:00タイマー）に手のひらをかざしてハンズフリー操作する様子" loading="lazy" decoding="async" />
+            <figcaption class="hand">「次へ」「タイマー」と声をかけるか、カメラに✋を見せるだけ。</figcaption>
+          </figure>
+          <div class="promise-grid promise-grid-4">
+            <details class="tap-card">
+              <summary>
+                <span class="promise-icon" aria-hidden="true">🔁🎬</span>
+                <strong>手順の場面を自動ループ</strong>
+              </summary>
+              <p class="hand promise-note">巻き戻しの手間がゼロに。</p>
+              <p>いま作っている手順の開始秒から終了秒までを自動でくり返し再生。ズレていたら「⏪-5秒」「📍ここ」「+5秒⏩」で1タップ微調整できます。</p>
+            </details>
+            <details class="tap-card">
+              <summary>
+                <span class="promise-icon" aria-hidden="true">✋🎙️</span>
+                <strong>手の形＆声でハンズフリー</strong>
+              </summary>
+              <p class="hand promise-note">映像も音声もサーバーへ送りません。</p>
+              <p>カメラに手をかざす（✋次へ・✌️戻る・👍タイマー）か、声で「次へ」「タイマー」「材料」と言うだけ。手首でポンと押せる64px特大ボタンも。</p>
+            </details>
+            <details class="tap-card">
+              <summary>
+                <span class="promise-icon" aria-hidden="true">✍🥣</span>
+                <strong>覚えやすい手順と材料整理</strong>
+              </summary>
+              <p class="hand promise-note">画面を行ったり来たりしない。</p>
+              <p>長い動画の説明も、AIが「何を・どうする」がすぐ頭に入る手順に整理。その手順で使う材料と「🥣 A（合わせ調味料）」がすぐ下に出ます。</p>
+            </details>
+            <details class="tap-card">
+              <summary>
+                <span class="promise-icon" aria-hidden="true">⏰🍚</span>
+                <strong>安心タイマー＆炊飯確認</strong>
+              </summary>
+              <p class="hand promise-note">うっかり炊き忘れも防止。</p>
+              <p>手順の「3分」を押すだけでタイマー開始。止めるまで優しいベルが鳴り続け、焦げつきを防ぎます。主菜の日には「🍚 ごはん炊いた？」の確認も。</p>
+            </details>
+          </div>
+        </div>
+      </section>
+          </details>
+          <details class="acc" data-acc="personalize">
+            <summary><span aria-hidden="true">💬</span> 好みを聞いて覚える「わが家のごはん方針」</summary>
+            <section class="feature-spotlight personalize-section" id="personalize">
+        <div class="container split">
+          <div class="split-copy">
+            <p class="kicker">深いパーソナライズ</p>
+            <h2>答えの「理由」まで聞いて、<br /><span class="marker nobr">わが家の方針に。</span></h2>
+            <p class="compact-lead">固定タイプの診断ではなく、<strong>本人が「👍 合ってる」と確かめたことだけ</strong>を献立に使います。</p>
+            <div class="tap-list">
+              <details class="tap-check">
+                <summary>💬 <b>聞き返しでズレを解消</b></summary>
+                <p>「魚×片付けが大変」→「蒸し焼きやレンジの魚料理を候補に入れてみます」と具体的に聞き返して提案します。</p>
+              </details>
+              <details class="tap-check">
+                <summary>⚡ <b>その場で「変えるなら？」</b></summary>
+                <p>最初の1皿を見て「⏱ 時間が長い」「🧺 材料が多い」を押せば、その場で方針を更新して次の料理へ。</p>
+              </details>
+              <details class="tap-check">
+                <summary>📈 <b>記録から根拠つきで育つ</b></summary>
+                <p>「🐟 魚料理3品のうち2品が『また食べたい』。蒸し料理を増やしますか？」と実際の記録から提案。</p>
+              </details>
+              <details class="tap-check">
+                <summary>🛡 <b>食べられないものは厳格に除外</b></summary>
+                <p>原材料の印がなくても材料名（豚こま→肉、鮭→魚、しょうゆ→小麦など）から推測して外し、候補不足でも勝手にゆるめません。</p>
+              </details>
+            </div>
+          </div>
+          <figure class="phone">
+            <img src="assets/screen-talk-policy.jpg" width="640" height="1146" alt="わが家のごはん方針の画面。聞き返し「魚は好きだけど、片付けが大変なんですね。魚を減らすより、レンジやホイル蒸しの魚料理を候補に入れてみます。合っていますか？」と、合ってる・少し違うボタン、最初の提案「鮭としめじのレンジ蒸し」" loading="lazy" decoding="async" />
+            <figcaption>聞き返して確かめる「わが家のごはん方針」</figcaption>
+          </figure>
+        </div>
+      </section>
+          </details>
+          <details class="acc" data-acc="features">
+            <summary><span aria-hidden="true">🔁</span> かぶらない・飽きないしくみ</summary>
+            <section class="promise" id="features">
+        <div class="container">
+          <p class="kicker center">リピごちが覚えること</p>
+          <h2 class="center">ちょうどいい「また」を、<br /><span class="marker nobr">ふたりの食卓に。</span></h2>
+          <figure class="promise-photo">
+            <img src="assets/scene-couple.webp" width="1200" height="900" alt="ソファでひとつのスマートフォンを見ながら、今夜のごはんを選んで笑うふたりのイメージ" loading="lazy" decoding="async" />
+            <figcaption class="hand">ふたりで選べば、今夜はもっとたのしい。</figcaption>
+          </figure>
+          <div class="promise-grid">
+            <details class="tap-card">
+              <summary>
+                <span class="promise-icon" aria-hidden="true">🍝→🍚</span>
+                <strong>最近食べたものを覚える</strong>
+              </summary>
+              <p class="hand promise-note">一昨日パスタなら、今日はごはんもの。</p>
+              <p>麺・ごはん、肉・魚・卵豆腐、和・洋・中が続かないように提案。どの日にも「昨日は肉 → 魚」「久しぶり」などの理由が1つ付きます。</p>
+            </details>
+            <details class="tap-card">
+              <summary>
+                <span class="promise-icon" aria-hidden="true">😋😋</span>
+                <strong>ふたりの「また食べたい」</strong>
+              </summary>
+              <p class="hand promise-note">好みの違いも、ごちそうに。</p>
+              <p>食後にひとり1タップ。「😍明日でも」「😋毎週」「🙂月2回」から選ぶだけで、ふたりの重なる好物も、片方だけの好物も、順番に食卓へ。</p>
+            </details>
+            <details class="tap-card">
+              <summary>
+                <span class="promise-icon" aria-hidden="true">📅💛</span>
+                <strong>好物は、ちょうどいい頃に</strong>
+              </summary>
+              <p class="hand promise-note">久しぶりの、あの味。</p>
+              <p>好きな料理は飽きる前、恋しくなった頃に「ふたりの好物・8日ぶり」と理由つきで再登場。4週間で「わが家の定番」が回り始めます。</p>
+            </details>
+          </div>
+        </div>
+      </section>
+          </details>
+          <details class="acc" data-acc="keep">
+            <summary><span aria-hidden="true">🧺</span> むりなく続けられる工夫</summary>
+            <section class="promise keep" id="keep">
         <div class="container">
           <p class="kicker center">続けられる工夫（タップで詳細）</p>
           <h2 class="center">むりなく、<span class="marker nobr">飽きずに、ムダなく。</span></h2>
@@ -427,9 +391,10 @@
           </div>
         </div>
       </section>
-
-      <!-- ふたりで使う -->
-      <section class="promise together" id="together">
+          </details>
+          <details class="acc" data-acc="together">
+            <summary><span aria-hidden="true">👫</span> ふたり・家族で使う</summary>
+            <section class="promise together" id="together">
         <div class="container">
           <p class="kicker center">ふたりで使う</p>
           <h2 class="center">招待リンクひとつで、<span class="marker nobr">ふたりの献立に。</span></h2>
@@ -461,9 +426,10 @@
           </div>
         </div>
       </section>
-
-      <!-- 料理の豆知識クイズ ＆ 夜ごはんタイプ診断（コンパクト2カード） -->
-      <section class="quiz quiz-skill" id="quiz">
+          </details>
+          <details class="acc" data-acc="quiz">
+            <summary><span aria-hidden="true">🎓</span> おまけ：料理クイズとタイプ診断</summary>
+            <section class="quiz quiz-skill" id="quiz">
         <div class="container quiz-dual">
           <div class="quiz-card">
             <div class="quiz-copy">
@@ -502,8 +468,11 @@
           </div>
         </div>
       </section>
+          </details>
+        </div>
+      </section>
 
-      <!-- 安心・ベータ版特典・料金予定 -->
+      <!-- 年内無料と、そのあとの予定 -->
       <section class="trust" id="pricing">
         <div class="container">
           <p class="kicker center">年内は開発期間</p>
@@ -524,22 +493,6 @@
               </summary>
               <p class="hand promise-note">年内に始めた分が、そのまま財産に</p>
               <p>開発期間に育てた定番・図鑑・ごはん方針・食事の記録は、期間が終わっても消えません。無料のままでも、見る・もう一度使う・書き出すことができます。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">🛡</span>
-                <strong>登録なし＆安心のデータ保護</strong>
-              </summary>
-              <p class="hand promise-note">バックアップはいつでも無料</p>
-              <p>メールもパスワードも不要ですぐ使えます。設定の「データの保護状態」から1タップでバックアップ保存やGoogleログイン引き継ぎ（iPhoneホーム画面版対応）も可能です。</p>
-            </details>
-            <details class="tap-card">
-              <summary>
-                <span class="promise-icon" aria-hidden="true">🔒</span>
-                <strong>カメラ映像も音声も送らない</strong>
-              </summary>
-              <p class="hand promise-note">端末の中だけで安全に処理</p>
-              <p>料理モードの✋手の形認識や🎙️音声操作、腕前診断の料理写真はリピごちのサーバーに送信・保存しません。わが家のごはん方針も端末ごとに守られます。</p>
             </details>
           </div>
 
@@ -572,44 +525,7 @@
         </div>
       </section>
 
-      <!-- 正式版のお知らせ登録（待機リスト：タップでフォーム展開） -->
-      <section class="waitlist" id="waitlist">
-        <div class="container narrow">
-          <details class="waitlist-card waitlist-fold">
-            <summary class="waitlist-summary">
-              <span>📩 正式版の公開日もメールで受け取る<small class="muted">（任意・無料）</small></span>
-            </summary>
-            <div class="waitlist-body">
-              <p class="center small">いまはブラウザから登録なしでベータ版を使えます。正式版の公開日をメールでも受け取りたい方はこちら。</p>
-              <form class="waitlist-form" data-source="waitlist" novalidate>
-                <label class="field-label" for="wl-email-main">メールアドレス</label>
-                <input id="wl-email-main" class="wl-email" type="email" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required />
-                <fieldset class="wl-household">
-                  <legend class="field-label">いっしょに食べる人数<span class="small muted">（任意）</span></legend>
-                  <label><input type="radio" name="household" value="ひとり" /><span>ひとり</span></label>
-                  <label><input type="radio" name="household" value="ふたり" /><span>ふたり</span></label>
-                  <label><input type="radio" name="household" value="3〜4人" /><span>3〜4人</span></label>
-                  <label><input type="radio" name="household" value="5人以上" /><span>5人以上</span></label>
-                </fieldset>
-                <input class="wl-hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />
-                <button class="button button-dark button-large" type="submit" data-cta="waitlist">正式版のお知らせをメールで受け取る</button>
-                <p class="wl-status" role="status" aria-live="polite"></p>
-                <p class="wl-note small muted">登録は無料。いつでも配信停止できます。<a href="#privacy">メールアドレスの取り扱い</a></p>
-              </form>
-              <div class="wl-done" hidden>
-                <p class="wl-done-title" tabindex="-1">🎉 登録<span class="nobr">ありがとうございます！</span></p>
-                <p>正式版が公開したら、いちばんにお知らせします。</p>
-                <div class="share-row">
-                  <a class="button button-line" href="https://social-plugins.line.me/lineit/share?url=https%3A%2F%2F165cm.github.io%2Fmatagochi%2Flp%2F" target="_blank" rel="noopener">LINEで送る</a>
-                  <a class="button button-dark" href="https://twitter.com/intent/tweet?text=%E3%81%8B%E3%81%B6%E3%82%89%E3%81%AA%E3%81%84%E3%80%81%E9%A3%BD%E3%81%8D%E3%81%AA%E3%81%84%E3%80%81%E3%81%BE%E3%81%9F%E9%A3%9F%E3%81%B9%E3%81%9F%E3%81%84%E3%80%82%E5%A4%9C%E3%81%94%E3%81%AF%E3%82%93%E3%82%A2%E3%83%97%E3%83%AA%E3%80%8C%E3%83%AA%E3%83%94%E3%81%94%E3%81%A1%E3%80%8D%EF%BC%88%E3%83%99%E3%83%BC%E3%82%BF%E7%89%88%E7%84%A1%E6%96%99%E5%85%AC%E9%96%8B%E4%B8%AD%EF%BC%89&url=https%3A%2F%2F165cm.github.io%2Fmatagochi%2Flp%2F" target="_blank" rel="noopener">Xでシェア</a>
-                </div>
-                <p class="small"><a class="text-link" href="../?start=quick">さっそくベータ版を無料で使ってみる →</a></p>
-              </div>
-            </div>
-          </details>
-        </div>
-      </section>
-
+      <!-- よくある質問 -->
       <section class="faq" id="faq">
         <div class="container narrow">
           <h2 class="center">よくある質問</h2>
@@ -657,6 +573,69 @@
         </div>
       </section>
 
+      <!-- つくった理由（最後の後押し） -->
+      <section class="story">
+        <div class="container narrow center">
+          <p class="kicker">リピごちが生まれた夜</p>
+          <h2>「え、それ<span class="marker nobr">おとといも食べたよ。」</span></h2>
+          <p class="story-lead">作ったのは、娘とふたり暮らしの父親。<br />このひと言が、<strong>はじまりでした。</strong></p>
+          <details class="more-fold story-fold">
+            <summary>📖 つくった理由を読む</summary>
+            <div class="story-card">
+              <p>平日の19時。仕事帰りのスーパーで、スマホを片手に立ち止まる。</p>
+              <p>「今日なに食べたい？」と送ってみても、返ってくるのは「なんでもいい」。</p>
+              <p>迷った末に、いつもの材料をかごへ。急いで作って、<span class="nobr">テーブルに出したとたん――</span><br /><strong>「え、それおとといも食べたよ。」</strong></p>
+              <p>悪気のない、ひと言。でも、ちょっとだけ、しゅんとする。<br />ほんとうは、「おいしい！」って顔が見たかっただけなのに。</p>
+              <p class="story-turn">「今日は納豆パスタでいい？」「パスタは一昨日食べたじゃん」。わが家の、ほんとうにあった夜です。</p>
+              <p>何をいつ食べたかなんて、忙しい毎日で覚えていなくていい。<br /><strong>それは、リピごちが覚えておきます。</strong></p>
+            </div>
+            <figure class="story-photo">
+              <img src="assets/scene-parent-child.webp" width="1200" height="900" alt="夜の食卓で、丼を手に笑い合う父と娘のイメージ" loading="lazy" decoding="async" />
+              <figcaption class="hand">次の夜は、「え、これ好き！」から。</figcaption>
+            </figure>
+          </details>
+        </div>
+      </section>
+
+      <!-- 正式版のお知らせ登録 -->
+      <section class="waitlist" id="waitlist">
+        <div class="container narrow">
+          <details class="waitlist-card waitlist-fold">
+            <summary class="waitlist-summary">
+              <span>📩 正式版の公開日もメールで受け取る<small class="muted">（任意・無料）</small></span>
+            </summary>
+            <div class="waitlist-body">
+              <p class="center small">いまはブラウザから登録なしでベータ版を使えます。正式版の公開日をメールでも受け取りたい方はこちら。</p>
+              <form class="waitlist-form" data-source="waitlist" novalidate>
+                <label class="field-label" for="wl-email-main">メールアドレス</label>
+                <input id="wl-email-main" class="wl-email" type="email" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required />
+                <fieldset class="wl-household">
+                  <legend class="field-label">いっしょに食べる人数<span class="small muted">（任意）</span></legend>
+                  <label><input type="radio" name="household" value="ひとり" /><span>ひとり</span></label>
+                  <label><input type="radio" name="household" value="ふたり" /><span>ふたり</span></label>
+                  <label><input type="radio" name="household" value="3〜4人" /><span>3〜4人</span></label>
+                  <label><input type="radio" name="household" value="5人以上" /><span>5人以上</span></label>
+                </fieldset>
+                <input class="wl-hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />
+                <button class="button button-dark button-large" type="submit" data-cta="waitlist">正式版のお知らせをメールで受け取る</button>
+                <p class="wl-status" role="status" aria-live="polite"></p>
+                <p class="wl-note small muted">登録は無料。いつでも配信停止できます。<a href="#privacy">メールアドレスの取り扱い</a></p>
+              </form>
+              <div class="wl-done" hidden>
+                <p class="wl-done-title" tabindex="-1">🎉 登録<span class="nobr">ありがとうございます！</span></p>
+                <p>正式版が公開したら、いちばんにお知らせします。</p>
+                <div class="share-row">
+                  <a class="button button-line" href="https://social-plugins.line.me/lineit/share?url=https%3A%2F%2F165cm.github.io%2Fmatagochi%2Flp%2F" target="_blank" rel="noopener">LINEで送る</a>
+                  <a class="button button-dark" href="https://twitter.com/intent/tweet?text=%E3%81%8B%E3%81%B6%E3%82%89%E3%81%AA%E3%81%84%E3%80%81%E9%A3%BD%E3%81%8D%E3%81%AA%E3%81%84%E3%80%81%E3%81%BE%E3%81%9F%E9%A3%9F%E3%81%B9%E3%81%9F%E3%81%84%E3%80%82%E5%A4%9C%E3%81%94%E3%81%AF%E3%82%93%E3%82%A2%E3%83%97%E3%83%AA%E3%80%8C%E3%83%AA%E3%83%94%E3%81%94%E3%81%A1%E3%80%8D%EF%BC%88%E3%83%99%E3%83%BC%E3%82%BF%E7%89%88%E7%84%A1%E6%96%99%E5%85%AC%E9%96%8B%E4%B8%AD%EF%BC%89&url=https%3A%2F%2F165cm.github.io%2Fmatagochi%2Flp%2F" target="_blank" rel="noopener">Xでシェア</a>
+                </div>
+                <p class="small"><a class="text-link" href="../?start=quick">さっそくベータ版を無料で使ってみる →</a></p>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- 最後のボタン -->
       <section class="final-cta">
         <div class="container center final-cta-inner">
           <img class="final-yohaku" src="../assets/yohaku/wave.webp" width="72" height="72" alt="余白に住むキャラクター「よはく」" loading="lazy" />
@@ -690,6 +669,6 @@
       </div>
     </footer>
 
-    <script src="waitlist.js?v=20261116-ltv" defer></script>
+    <script src="waitlist.js?v=20261116-short" defer></script>
   </body>
 </html>

@@ -129,3 +129,18 @@ test("LP surface visible text is less than half of full LP text via progressive 
     `expected surface visible chars (${surfaceChars}) to be < 35% of total (${totalChars})`,
   );
 });
+
+test("LP order (2026-11-16): what changes → how to use → details folded → pricing → FAQ → origin story → final CTA", () => {
+  const at = (needle) => { const i = html.indexOf(needle); assert.ok(i > 0, `missing ${needle}`); return i; };
+  const order = ['class="hero"', 'id="change"', 'id="how"', 'id="grow"', 'id="more"', 'id="pricing"', 'id="faq"', 'class="story"', 'class="final-cta"'].map(at);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "sections are in the agreed order");
+  // これまで → これから（4つ）
+  assert.equal((html.match(/class="ba-before"/g) || []).length, 4);
+  assert.equal((html.match(/class="ba-after"/g) || []).length, 4);
+  // くわしい機能は、閉じたアコーディオンの中（開いたままにしない）
+  const acc = html.match(/<details class="acc"[^>]*>/g) || [];
+  assert.equal(acc.length, 6);
+  assert.ok(acc.every((t) => !/\bopen\b/.test(t)), "feature details start closed");
+  for (const id of ["cook-mode", "personalize", "features", "keep", "together", "quiz"]) assert.ok(at(`id="${id}"`) > at('id="more"') && at(`id="${id}"`) < at('id="pricing"'), `${id} lives inside the folded details`);
+  for (const cls of [".ba-list", ".acc", ".grow-line"]) assert.ok(css.includes(cls), `styles.css should define ${cls}`);
+});
