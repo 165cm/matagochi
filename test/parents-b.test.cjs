@@ -73,7 +73,8 @@ test("hide a parent: not in the list or the auto plan (a chosen day stays); rest
   assert.equal(run("dailyPlan().filter((d)=>d.candidate?.recipe.dish==='八宝菜').length"), 1, "a day you chose yourself stays");
   assert.match(run("renderParentLine(detailRecipe())"), /出すように戻す/);
   run(`handleDailyAction('life-dish-unhide',{parent:${JSON.stringify(key)}})`);
-  assert.equal(run("starterRecipeList().filter((r)=>r.dish==='八宝菜').length"), 3);
+  // 集めた3品と、最初から入っている「カット野菜の八宝菜」（2026-11-14 から同じ料理名）
+  assert.equal(run("starterRecipeList().filter((r)=>r.dish==='八宝菜').length"), 4);
 });
 
 test("review fix (#123): compare does not overwrite a weekday pin", async () => {

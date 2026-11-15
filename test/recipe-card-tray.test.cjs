@@ -1094,3 +1094,63 @@ test("25. Decided round: candidates collapse to one line; ほかの候補を見�
   run(`handleCardTrayAction("life-tray-place", { recipe: ${JSON.stringify(pick2)}, date: ${JSON.stringify(d1)} }, []); resetCardTrayModals()`);
   assert.ok(run(`renderCardTraySheet()`).includes("rc-grid"), "A pending change keeps the candidates open");
 });
+
+// 2026-11-15 のユーザーの判断（APP_MAP §70）：図鑑は最初から入っている48品（No.001〜048・6章）に固定。
+test("26. Card book: 48 fixed cards in six chapters, progress count, ranks, excluded cards, extras, and the story on the back", () => {
+  const run = app();
+  run(`state.onboarded = true`);
+  let html = run(`renderCardBookInline()`);
+  assert.equal((html.match(/class="bk-tile /g) || []).length, 48, "all 48 cards are shown (not a part)");
+  assert.equal((html.match(/class="bk-chapter /g) || []).length, 6);
+  assert.match(html, /<b>0<\/b><span> \/ 48枚<\/span>/);
+  assert.match(html, /No\.001[\s\S]*No\.048/);
+  assert.ok(!html.includes("is-got"), "nothing collected yet");
+  // 作ると集まる。回数でランクが上がる（1回 ★GET・2回 ★★常連・3回 👑定番）
+  const ev = (id, n) => run(`for (let i = 0; i < ${n}; i++) state.evaluations.push({ id: "t-${id}-" + i + "-" + state.evaluations.length, recipeId: "${id}", recipeTitle: Lifestyle.curated.find((r) => r.id === "${id}").title, cookedAt: "2026-11-0" + (i + 1), mealType: "dinner", familyRepeatCycles: {} })`);
+  ev("starter-51", 3); ev("starter-52", 1); ev("starter-62", 2);
+  html = run(`renderCardBookInline()`);
+  assert.match(html, /<b>3<\/b><span> \/ 48枚<\/span>/);
+  assert.match(html, /bk-tile is-got is-rank-gold" data-action="life-card-flip" data-recipe="starter-51"/);
+  assert.match(html, /bk-tile is-got is-rank-bronze" data-action="life-card-flip" data-recipe="starter-52"/);
+  assert.match(html, /bk-tile is-got is-rank-silver" data-action="life-card-flip" data-recipe="starter-62"/);
+  assert.match(html, /肉のおかず<\/span><b>2 \/ 11<\/b>/);
+  // 同じ料理名の動画レシピで作っても、そのカードが埋まる（麻婆豆腐 → No.021）
+  run(`state.recipes.push({ id: "own-mabo", title: "本格 麻婆豆腐", dish: "麻婆豆腐", mealType: "dinner", videoUrl: "https://www.youtube.com/watch?v=aaaaaaaaaaa", ingredients: [{ name: "豆腐", amount: "1丁" }], steps: ["炒める"] });
+       state.evaluations.push({ id: "t-own-mabo", recipeId: "own-mabo", recipeTitle: "本格 麻婆豆腐", cookedAt: "2026-11-05", mealType: "dinner", familyRepeatCycles: {} })`);
+  assert.equal(run(`bookCardRecipe(recipeById("own-mabo")).id`), "starter-71");
+  html = run(`renderCardBookInline()`);
+  assert.match(html, /bk-tile is-got is-rank-bronze" data-action="life-card-flip" data-recipe="starter-71"/);
+  assert.ok(!html.includes("番外のカード"), "a video recipe of a book dish is not an extra");
+  // 図鑑にない料理を作ると「番外」
+  run(`state.recipes.push({ id: "own-x", title: "ラタトゥイユ", mealType: "dinner", ingredients: [{ name: "なす", amount: "1本" }], steps: ["煮る"] });
+       state.evaluations.push({ id: "t-own-x", recipeId: "own-x", recipeTitle: "ラタトゥイユ", cookedAt: "2026-11-06", mealType: "dinner", familyRepeatCycles: {} })`);
+  html = run(`renderCardBookInline()`);
+  assert.match(html, /番外のカード（1枚）/);
+  assert.match(html, /<b>4<\/b><span> \/ 48枚<\/span>/, "extras do not count toward the 48");
+  // 食べられないものが入るカードは対象外（そろえる数から外す）。もう作ったカードは外さない
+  run(`state.foodProfile = Lifestyle.profile({ ...state.foodProfile, restrictions: ["えび"] })`);
+  const prog = JSON.parse(run(`JSON.stringify((({ got, target, out }) => ({ got, target, out }))(bookProgress()))`));
+  assert.ok(prog.out >= 2 && prog.target === 48 - prog.out && prog.got === 4, JSON.stringify(prog));
+  html = run(`renderCardBookInline()`);
+  assert.match(html, /bk-tile is-out" data-action="life-card-flip" data-recipe="starter-69"/, "エビチリ is excluded");
+  assert.match(html, new RegExp(`${prog.out}枚は対象外`));
+  // 時間や道具では対象外にしない
+  run(`state.foodProfile = Lifestyle.profile({ ...state.foodProfile, restrictions: [], weekdayMinutes: 10, weekendMinutes: 10 })`);
+  assert.equal(run(`bookProgress().out`), 0);
+  // カードの裏：番号と章・ひとこと・5つの見出し。大きなカードの表にも番号とひとこと
+  run(`handleCardTrayAction("life-card-flip", { recipe: "starter-51" }, [])`);
+  const back = run(`renderCardFlipModal()`);
+  assert.match(back, /📖 No\.001・肉のおかず/);
+  for (const w of ["白いごはんが止まらない、甘辛しょうが", "作れると", "食べる人は", "栄養メモ", "ここが楽", "豆知識", "ジンゲロール"]) assert.ok(back.includes(w), w);
+  const front = run(`renderRecipeTradingCard(Lifestyle.curated.find((r) => r.id === "starter-51"), { mode: "book" })`);
+  assert.match(front, /is-book is-ch-meat/);
+  assert.match(front, /rc-card-no">No\.001</);
+  assert.match(front, /rc-catch">白いごはんが止まらない、甘辛しょうが</);
+  // 図鑑にない料理のカードには、番号も読みものも出さない
+  assert.equal(run(`renderCardStory(recipeById("own-x"))`), "");
+  // 裏の「🎬 動画の作り方を見る」：裏面を閉じて、その料理名で探す
+  run(`handleCardTrayAction("life-card-videos", { dish: "麻婆豆腐" }, [])`);
+  assert.equal(run(`trayFlipId`), "");
+  assert.equal(run(`state.searchText`), "麻婆豆腐");
+  assert.equal(run(`state.view`), "collection");
+});

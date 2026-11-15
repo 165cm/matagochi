@@ -48,12 +48,13 @@ test("collection: new dishes with the same parent show as one tile with 'ほか�
   await run("loadDiscover({ force: true })");
   const html = run("recipeTab='starter';renderCollection()");
   assert.equal((html.match(/data-action="life-dish-variants"/g) || []).length, 1);
-  assert.match(html, /ほか2つの作り方/);
+  // 集めた2品と、最初から入っている「カット野菜の八宝菜」（2026-11-14 から同じ料理名でまとまる。動画の作り方が表）
+  assert.match(html, /ほか3つの作り方/);
   assert.equal((html.match(/八宝菜<\/button>/g) || []).length, 1, "only one 八宝菜 tile");
   assert.match(html, /お豆腐ふわふわ焼き/);
   run("handleDailyAction('life-dish-variants',{dish:'八宝菜'})");
   const searched = run("renderCollection()");
-  assert.equal((searched.match(/八宝菜<\/button>/g) || []).length, 3, "searching shows every way to make it");
+  assert.equal((searched.match(/八宝菜<\/button>/g) || []).length, 4, "searching shows every way to make it");
   // 自分の定番フォルダ「八宝菜」があれば、集めた八宝菜もそのフォルダが親
   run("state.folders={fabc:{key:'fabc',name:'八宝菜',ranking:[],pinDay:'',updatedAt:nowIso()}}");
   assert.equal(run("parentKeyOf(findDiscover(discoverRecipes()[0].id))"), "fabc");
@@ -78,8 +79,29 @@ test("review fix (#122): grouping happens after the filters (a child that matche
   assert.match(filtered, /陳健一さんの八宝菜/, "B's dish is shown when filtering by B");
   run("recipeFacets.author=''");
   const grouped = run("renderCollection()");
-  assert.match(grouped, /data-dish="唐揚げ">ほか1つの作り方/);
+  // 集めた2品と、最初から入っている「揚げ焼きの塩唐揚げ」（2026-11-14 から同じ料理名）
+  assert.match(grouped, /data-dish="唐揚げ">ほか2つの作り方/);
   run("handleDailyAction('life-dish-variants',{dish:'唐揚げ'})");
   const found = run("renderCollection()");
   assert.match(found, /ジューシーからあげ/, "the child spelled からあげ is found by its parent name");
+});
+
+// 2026-11-14 のユーザーの判断（APP_MAP §69）：最初から入っている料理は、同じ料理名の動画レシピがあれば「🎬 動画の作り方を見る」へ誘う。
+test("a built-in dish with video recipes of the same name points to them; one without videos does not", async () => {
+  const run = app([item(1, "王将風 八宝菜", "八宝菜"), item(2, "陳健一さんの八宝菜", "八宝菜")]);
+  await run("loadDiscover({ force: true })");
+  const starter = run("Lifestyle.starters.find((r) => r.dish === '八宝菜').id");
+  run(`recipeDetailId=${JSON.stringify(starter)}`);
+  const html = run("renderRecipeDetail()");
+  assert.match(html, /🎬 「八宝菜」は<b>動画を見ながら<\/b>も作れます <small>作り方 2本<\/small>/);
+  assert.match(html, /data-action="life-dish-variants" data-dish="八宝菜">動画の作り方を見る/);
+  run("handleDailyAction('life-dish-variants',{dish:'八宝菜'})");
+  assert.equal(run("state.searchText"), "八宝菜");
+  // 同じ料理名の動画がない料理には出さない
+  const other = run("Lifestyle.starters.find((r) => r.dish === '牛丼').id");
+  run(`recipeDetailId=${JSON.stringify(other)}`);
+  assert.doesNotMatch(run("renderRecipeDetail()"), /video-ways/);
+  // 動画の料理そのものには出さない
+  run("recipeDetailId=discoverRecipes()[0].id");
+  assert.doesNotMatch(run("renderRecipeDetail()"), /video-ways/);
 });

@@ -45,8 +45,8 @@ test("PR 4a: how many dishes are left under common conditions uses Lifestyle.fit
 
 test("PR 4a: docs/CATALOG_COVERAGE.md is the current output for the built-in dishes (run node scripts/catalog-coverage.cjs)", () => {
   const file = fs.readFileSync(path.join(__dirname, "..", "docs", "CATALOG_COVERAGE.md"), "utf8");
-  assert.equal(file, markdown(coverage(L.curated), "アプリに最初から入っているおすすめ料理（`Lifestyle.curated`）"));
-  assert.match(file, new RegExp(`\\*\\*${L.curated.length}品\\*\\*`));
+  assert.equal(file, markdown(coverage(L.starters), "アプリに最初から入っているおすすめ料理（`Lifestyle.starters`。引退した以前の48品は数えない）"));
+  assert.match(file, new RegExp(`\\*\\*${L.starters.length}品\\*\\*`));
 });
 
 function app(now = "2026-10-01T03:00:00Z") {

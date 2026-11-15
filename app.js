@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261114-plan-collapse";
+const APP_VERSION = "20261115-card-book";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -1831,12 +1831,13 @@ function renderCollection() {
   const pool = [...(showSaved ? allSaved : []), ...(showStartersHere ? allStarters : [])];
   const saved = showSaved ? allSaved.filter((r) => facetMatch(r) && quickMatch(r)) : [];
   let starters = showStartersHere ? allStarters.filter((r) => facetMatch(r) && quickMatch(r)) : [];
-  // 同じ親（料理名）の集めた料理は、絞り込んだあとで、いちばん上の1品にまとめる（「ほか◯つの作り方」で全部見られる）。探している時はまとめない。
+  // 同じ親（料理名）の料理は、絞り込んだあとで、いちばん上の1品にまとめる（「ほか◯つの作り方」で全部見られる）。探している時はまとめない。
+  // 2026-11-14：最初から入っている料理も同じ料理名でまとめる。並びは集めた動画が先なので、動画の作り方が表に出る（APP_MAP §69）。
   starterVariants = new Map();
   if (!query) {
     const first = new Map();
     starters = starters.filter((r) => {
-      const k = r.discover && r.dish ? parentKeyOf(r) : "";
+      const k = r.dish ? parentKeyOf(r) : "";
       if (!k) return true;
       const top = first.get(k);
       if (top) { starterVariants.get(top).count += 1; return false; }
@@ -2115,7 +2116,7 @@ const STARTER_PHOTOS = {
   "starter-06": "assets/dishes/tomato-cheese.webp",
 };
 // Split from AI-generated 3x2 sheets (scripts/split-dish-sheet.py); keep in sync with sw.js.
-const STARTER_SHEET_PHOTOS = ["03", "04", "07", "08", "09", "10", "11", "12", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48"];
+const STARTER_SHEET_PHOTOS = ["03", "04", "07", "08", "09", "10", "11", "12", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "51", "52", "53", "54", "55", "59", "60", "61", "62", "65", "66", "67", "69", "70", "71", "75", "76", "77", "78", "83", "84", "85", "86", "87", "90", "91", "92", "93", "94", "95", "96", "56", "57", "58", "63", "64", "68", "72", "73", "74", "79", "80", "81", "82", "88", "89", "97", "98"];
 STARTER_SHEET_PHOTOS.forEach((n) => { STARTER_PHOTOS[`starter-${n}`] = `assets/dishes/starter-${n}.webp`; });
 function recipeThumbnail(recipe) {
   if (recipe.thumbnailUrl) return recipe.thumbnailUrl;

@@ -1,0 +1,141 @@
+{
+ "note": "2回目（1段4品の指示文）。scripts/find-card-plates.py の皿の番号（上の段から、左から）。manual は隣の皿とくっついた器を、範囲と器の左の輪郭で切り出したもの",
+ "plates": {
+  "starter-56": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_8dd7ae70-daca-449c-8b85-c57e7b880767_1.png",
+   1
+  ],
+  "starter-57": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_8dd7ae70-daca-449c-8b85-c57e7b880767_1.png",
+   4
+  ],
+  "starter-58": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_8dd7ae70-daca-449c-8b85-c57e7b880767_1.png",
+   3
+  ],
+  "starter-63": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_3097c58b-f991-414f-96a0-961677fb3be0_2.png",
+   1
+  ],
+  "starter-64": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_3097c58b-f991-414f-96a0-961677fb3be0_2.png",
+   2
+  ],
+  "starter-68": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_3097c58b-f991-414f-96a0-961677fb3be0_1.png",
+   5
+  ],
+  "starter-72": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_8dd7ae70-daca-449c-8b85-c57e7b880767_1.png",
+   5
+  ],
+  "starter-73": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_3097c58b-f991-414f-96a0-961677fb3be0_3.png",
+   9
+  ],
+  "starter-74": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_7b180685-11ee-46dc-a88e-3266631cef10_1.png",
+   1
+  ],
+  "starter-79": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_7b180685-11ee-46dc-a88e-3266631cef10_2.png",
+   2
+  ],
+  "starter-80": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_7b180685-11ee-46dc-a88e-3266631cef10_1.png",
+   3
+  ],
+  "starter-81": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_7b180685-11ee-46dc-a88e-3266631cef10_3.png",
+   4
+  ],
+  "starter-82": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_84a497f9-3dff-4b81-bc0f-a57a045681ac_3.png",
+   1
+  ],
+  "starter-88": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_84a497f9-3dff-4b81-bc0f-a57a045681ac_3.png",
+   2
+  ],
+  "starter-89": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_84a497f9-3dff-4b81-bc0f-a57a045681ac_3.png",
+   3
+  ],
+  "starter-95": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_d9793d27-ea2f-459e-bfdf-6e1a8743f24e_3.png",
+   2
+  ],
+  "starter-97": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_84a497f9-3dff-4b81-bc0f-a57a045681ac_3.png",
+   4
+  ],
+  "starter-98": [
+   "Four_original_Japanese_home-cooking_dish_illustrations_in_one_d9793d27-ea2f-459e-bfdf-6e1a8743f24e_3.png",
+   3
+  ]
+ },
+ "manual": {
+  "starter-85": {
+   "image": "Four_original_Japanese_home-cooking_dish_illustrations_in_one_d9793d27-ea2f-459e-bfdf-6e1a8743f24e_3.png",
+   "box": [
+    440,
+    120,
+    852,
+    480
+   ],
+   "left": [
+    [
+     120,
+     452
+    ],
+    [
+     215,
+     455
+    ],
+    [
+     300,
+     500
+    ],
+    [
+     370,
+     556
+    ],
+    [
+     480,
+     556
+    ]
+   ]
+  },
+  "starter-87": {
+   "image": "Four_original_Japanese_home-cooking_dish_illustrations_in_one_d9793d27-ea2f-459e-bfdf-6e1a8743f24e_3.png",
+   "box": [
+    995,
+    430,
+    1450,
+    816
+   ],
+   "left": [
+    [
+     430,
+     1018
+    ],
+    [
+     565,
+     1020
+    ],
+    [
+     650,
+     1060
+    ],
+    [
+     720,
+     1116
+    ],
+    [
+     816,
+     1116
+    ]
+   ]
+  }
+ }
+}

@@ -479,7 +479,7 @@ function renderViewerSetup() {
       <div class="viewer-chips">${Lifestyle.restrictionOptions.map((x) => `<button type="button" class="chip-tab" data-action="life-viewer-restrict" data-name="${escapeAttr(x)}" aria-pressed="${prefs.restrictions.includes(x)}">${escapeHtml(x)}</button>`).join("")}</div>
       ${dailyButton("life-viewer-next", prefs.restrictions.length ? "つぎへ" : "とくにない", "", true)}`,
     () => {
-      const picks = Lifestyle.curated.filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok).slice(0, 12);
+      const picks = Lifestyle.starters.filter((r) => Lifestyle.fit(r, dailyProfile(), today()).ok).slice(0, 12);
       return `<h2>好きそうなのを<br /><span class="marker nobr">タップ！</span></h2><p class="muted small">いくつでもOK。あとで献立に出やすくなります。</p>
       <div class="viewer-likes">${picks.map((r) => `<button type="button" class="viewer-like" data-action="life-viewer-like" data-recipe="${escapeAttr(r.id)}" aria-pressed="${prefs.likes.includes(r.id)}" aria-label="${escapeAttr(r.title)}">${dishTile(r)}<span>${escapeHtml(r.title)}</span></button>`).join("")}</div>
       ${dailyButton("life-viewer-done", "できた！", "", true)}`;
