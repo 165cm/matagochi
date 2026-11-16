@@ -50,6 +50,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 
 - `state` 1つにまとめて `localStorage`（`matagochi-mvp-v1`）へ。写真は IndexedDB
 - 主な項目：`recipes`（保存したレシピ）・`mealSlots`（日付ごとの確定した献立）・`planOverrides`（入れ替え・自分で決めた一皿）・`evaluations`（作った記録と「また食べたい」周期 `familyRepeatCycles`）・`shoppingMarks`（買い物のチェック）・`foodProfile` / `householdProfile`（好み・器具・常備品 `pantry`）・`tasteProfile`（わが家のごはん方針。端末ごと・同期しない）・`family`・`requests`・`plus`・`trialFrom`
+- 買い物の名前：買い物リストでは材料名を `Lifestyle.shoppingName` で「買う物の名前」にそろえる（長ネギ・ネギ → 長ねぎ。辞書は lifestyle.js `SHOP_NAMES`）。`itemPrefs[品] = { action: "sub"|"skip"|"clear", subText, always?, updatedAt }`（`always` はいつも代用・いつもパス。APP_MAP §79）
 - レシピの材料：`{ name, amount, category, group? }`（`group` はタレ・合わせ調味料の印 "A" "☆" "タレ" など）
 - 献立は日付ごとの3方向比較（前回そろった内容・端末・共有先）で統合し、同日競合は本人が選ぶ。`planDrafts`に候補の本体、端末の`sync.planBase`に比較元、`sync.conflicts`に未解決の両案。その他の共有項目は従来の`mergeMap`（`updatedAt`の新しい方）等で統合。取消は削除フラグ・比較元との差分で伝える（APP_MAP §59）
 - **献立を決める**：献立タブの「✓ この◯日分で決定」（`life-confirm`）で、表示している日の候補を `mealSlots` に確定する。料理を変えるのは「⇄ 変更」（今夜の4皿）で `planOverrides` に入れる。以前の3日トレイの下書き（`trayDraft`）は 2026-11-16 になくした（APP_MAP §76）

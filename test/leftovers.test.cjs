@@ -70,7 +70,7 @@ test("PR 5b: leftovers are chosen by the person (candidates are only suggestions
     state.shoppingMarks = { "もやし": { status: "purchased", signature: "x", updatedAt: "2026-09-29T00:00:00.000Z" }, "古い品": { status: "purchased", signature: "x", updatedAt: "2026-09-01T00:00:00.000Z" } };
     state.mealSlots["2026-09-30"] = { date: "2026-09-30", status: "confirmed", recipe: { id: "r1", title: "豚キャベツ", ingredients: [{ name: "豚こま", amount: "200g" }, { name: "水", amount: "100ml" }] }, updatedAt: "2026-09-27T10:00:00.000Z" };`);
   const cand = J(run, "leftoverCandidates()");
-  assert.ok(cand.includes("もやし") && cand.includes("豚こま"), cand.join());
+  assert.ok(cand.includes("もやし") && cand.includes("豚こま切れ肉"), cand.join());
   assert.ok(!cand.includes("古い品") && !cand.includes("水"), "old marks and water are not suggested");
   assert.deepEqual(J(run, "activeLeftovers()"), [], "nothing is used until chosen");
   let html = run("renderDailyPlan()");
