@@ -884,12 +884,12 @@ test("reusing bought ingredients weighs the main ones (meat, fish, tofu 3 / vege
     confirmDaily({ date: today() }, r);
     state.shoppingMarks = Object.fromEntries(r.ingredients.map((i) => [Lifestyle.shoppingKey(Lifestyle.shoppingName(i.name)), { status: "purchased", updatedAt: nowIso() }]));
     handleDailyAction('life-swap',{date:today()});`);
-  assert.deepEqual(JSON.parse(run("JSON.stringify(swapBoughtItems(today()))")), [{ name: "豚こま", weight: 3 }, { name: "キャベツ", weight: 1 }], "no rice, soy sauce or oil; the main one first");
-  assert.ok(run("renderSwapChoices()").includes("🧺 買った豚こま・キャベツを使う"));
+  assert.deepEqual(JSON.parse(run("JSON.stringify(swapBoughtItems(today()))")), [{ name: "豚こま切れ肉", weight: 3 }, { name: "キャベツ", weight: 1 }], "no rice, soy sauce or oil; the main one first");
+  assert.ok(run("renderSwapChoices()").includes("🧺 買った豚こま切れ肉・キャベツを使う"));
   const ids = [...run("renderSwapChoices()").matchAll(/data-action="life-swap-detail" data-recipe="([^"]+)"/g)].map((m) => m[1]);
   const uses = (id, n) => run(`allDinnerRecipes().find((r) => r.id === ${JSON.stringify(id)}).ingredients.some((i) => Lifestyle.shoppingName(i.name) === ${JSON.stringify(n)})`);
-  assert.ok(uses(ids[0], "豚こま") && uses(ids[0], "キャベツ"), "both first");
-  const lastPork = ids.map((id) => uses(id, "豚こま")).lastIndexOf(true);
-  const firstCabbageOnly = ids.findIndex((id) => uses(id, "キャベツ") && !uses(id, "豚こま"));
+  assert.ok(uses(ids[0], "豚こま切れ肉") && uses(ids[0], "キャベツ"), "both first");
+  const lastPork = ids.map((id) => uses(id, "豚こま切れ肉")).lastIndexOf(true);
+  const firstCabbageOnly = ids.findIndex((id) => uses(id, "キャベツ") && !uses(id, "豚こま切れ肉"));
   assert.ok(firstCabbageOnly === -1 || firstCabbageOnly > lastPork, "a dish with only the cabbage comes after the pork dishes");
 });

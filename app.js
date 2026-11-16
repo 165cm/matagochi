@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261116-year-free";
+const APP_VERSION = "20261116-shop-names";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -438,8 +438,27 @@ function normalizePlanOverrides(overrides) {
   );
 }
 
+// 買い物の名前のまとめ（APP_MAP §79）で品の ID が変わった分を、新しい ID に寄せる（「長ネギ」の印 → 「長ねぎ」）。
+// 同じ ID に重なった時は新しい方を残す。手で足した品（manual-…）は触らない。
+function shopKeyNow(k) {
+  if (String(k).startsWith("manual-") || typeof Lifestyle?.shoppingKey !== "function") return k;
+  return Lifestyle.shoppingKey(k) || k;
+}
+function rekeyShopMap(entries, join) {
+  const out = {};
+  for (const [k, v] of entries) {
+    const nk = shopKeyNow(k);
+    const prev = out[nk];
+    if (!prev) out[nk] = v;
+    else {
+      const [newer, older] = String(v.updatedAt || "") >= String(prev.updatedAt || "") ? [v, prev] : [prev, v];
+      out[nk] = join ? join(newer, older) : newer;
+    }
+  }
+  return out;
+}
 function normalizeShoppingMarks(raw) {
-  return Object.fromEntries(
+  return rekeyShopMap(
     Object.entries(raw || {})
       .filter(([, v]) => v && ["buy", "have", "purchased", "later", "sub", "skip"].includes(v.status))
       .map(([k, v]) => [
@@ -450,11 +469,13 @@ function normalizeShoppingMarks(raw) {
           subText: String(v.subText || "").slice(0, 50),
           updatedAt: normalizeTimestamp(v.updatedAt),
         },
-      ])
+      ]),
+    // 同じ扱いの印が2つあった時は、どちらの分も「確かめた」ことにする
+    (newer, older) => (newer.status === older.status && older.signature ? { ...newer, signature: [newer.signature, older.signature].filter(Boolean).join("|") } : newer),
   );
 }
 function normalizeItemPrefs(raw) {
-  return Object.fromEntries(
+  return rekeyShopMap(
     Object.entries(raw || {})
       // clear：取り消して記憶を消した印（同期で古い記憶が戻らないように残す）
       .filter(([, v]) => v && ["sub", "skip", "clear"].includes(v.action))
@@ -463,6 +484,8 @@ function normalizeItemPrefs(raw) {
         {
           action: v.action,
           subText: String(v.subText || "").slice(0, 50),
+          // いつも代用・いつもパス（APP_MAP §79）
+          ...(v.always === true && v.action !== "clear" ? { always: true } : {}),
           updatedAt: normalizeTimestamp(v.updatedAt),
         },
       ])
