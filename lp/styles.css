@@ -643,17 +643,6 @@ button.button { border: 0; cursor: pointer; font-family: inherit; }
 }
 
 /* ===== 2026-11-16：短い構成（変わること → 使い方 → くわしい話は閉じる → 最後に、つくった理由） ===== */
-/* 使うと、こう変わる（これまで → これから） */
-.change { padding: 26px 0 30px; background: var(--paper); }
-.ba-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
-.ba-list li { display: grid; grid-template-columns: 36px 1fr; column-gap: 10px; align-items: center; padding: 10px 14px; border-radius: 18px; background: #fffdf8; border: 1px solid var(--line); }
-.ba-icon { grid-row: span 2; font-size: 24px; text-align: center; }
-.ba-before, .ba-after { margin: 0; line-height: 1.5; }
-.ba-before { font-size: 12.5px; color: var(--muted); }
-.ba-before::before { content: "これまで"; margin-right: 8px; font-weight: 800; font-size: 11px; }
-.ba-after { font-size: 15px; font-weight: 800; }
-.ba-after::before { content: "これから"; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--tomato); color: #fff; font-size: 11px; font-weight: 900; vertical-align: 2px; }
-@media (min-width: 760px) { .ba-list { grid-template-columns: 1fr 1fr; } }
 
 /* くわしい機能は、ひとつずつ閉じておく */
 .more-info { padding: 30px 0; }
@@ -689,11 +678,47 @@ button.button { border: 0; cursor: pointer; font-family: inherit; }
   .step .phone img { aspect-ratio: 640 / 1000; object-fit: cover; object-position: top; }
 }
 
-/* これまで／これからの絵（2枚を横に並べる。札で区別） */
-.ba-pics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 0; }
-.ba-pics figure { position: relative; margin: 0; }
-.ba-pics img { display: block; width: 100%; height: auto; border-radius: 16px; border: 1px solid var(--line); }
-.ba-pics figcaption { position: absolute; left: 8px; top: 8px; padding: 2px 10px; border-radius: 999px; background: rgba(255, 253, 248, .94); color: var(--muted); font-size: 11.5px; font-weight: 900; }
-.ba-pics .is-after figcaption { background: var(--tomato); color: #fff; }
-.ba-pics .is-after img { border-color: var(--tomato); box-shadow: 0 8px 18px rgba(238, 106, 76, .18); }
-.ba-pics figure:not(.is-after) img { filter: saturate(.82); }
+
+/* ===== 2026-11-17：これまで → リピごちで（2つの箱と矢印）・使い方は「絵 → タブ → 文字」 ===== */
+.change { padding: 26px 0 30px; background: var(--paper); }
+.ba-box { display: grid; grid-template-columns: 112px 1fr; gap: 6px 12px; align-items: start; padding: 12px; border-radius: 20px; }
+.ba-pic { grid-row: span 2; margin: 0; }
+.ba-pic img { display: block; width: 100%; height: auto; border-radius: 14px; }
+.ba-label { margin: 0; font-size: 12px; font-weight: 900; letter-spacing: .08em; }
+.ba-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; line-height: 1.5; }
+.ba-items li { position: relative; padding-left: 20px; }
+.ba-box.is-before { margin-top: 14px; background: #f1ece5; color: #6d635a; }
+.ba-box.is-before .ba-pic img { filter: grayscale(.45) brightness(.98); }
+.ba-box.is-before .ba-items li::before { content: "×"; position: absolute; left: 2px; color: #a59a8f; font-weight: 900; }
+.ba-box.is-after { background: #fffdf8; border: 2px solid var(--tomato); box-shadow: 0 12px 26px rgba(238, 106, 76, .16); }
+.ba-box.is-after .ba-label { color: var(--tomato); }
+.ba-box.is-after .ba-items { font-size: 14.5px; color: var(--ink); }
+.ba-box.is-after .ba-items b { background: linear-gradient(transparent 62%, var(--yellow-soft) 62%); }
+.ba-box.is-after .ba-items li::before { content: "✓"; position: absolute; left: 0; color: #fff; background: var(--tomato); width: 16px; height: 16px; border-radius: 50%; font-size: 11px; line-height: 16px; text-align: center; top: 3px; }
+.ba-arrow { display: flex; flex-direction: column; align-items: center; margin: 4px 0; color: var(--tomato); font-size: 12px; font-weight: 900; }
+.ba-arrow::after { content: ""; width: 0; height: 0; margin-top: 2px; border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 14px solid var(--tomato); }
+@media (min-width: 760px) {
+  .ba-box { grid-template-columns: 220px 1fr; padding: 16px; }
+  .ba-items { font-size: 15px; }
+  .ba-box.is-after .ba-items { font-size: 16px; }
+}
+/* 使い方：絵 → タブ → 文字（タブを押す時に上下しない） */
+.steps-body { display: grid; gap: 10px; justify-items: center; margin-top: 10px; }
+.steps-side { width: min(100%, 460px); display: grid; gap: 10px; }
+.steps-side .step-tabs { margin: 0; }
+.step.step-fig, .step.step-text { margin: 0; }
+.step.step-text { justify-items: stretch; }
+.step-text .step-copy { width: 100%; }
+.step-text h3 { font-size: 18px; margin-bottom: 6px; }
+@media (min-width: 760px) {
+  .steps-body { grid-template-columns: 300px minmax(0, 460px); justify-content: center; align-items: center; gap: 28px; }
+}
+/* つづけるほど：何を覚えるから便利になるのか（小さな1行） */
+.grow-line span { display: grid; gap: 1px; }
+.grow-line strong { font-weight: 800; }
+.grow-line small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+/* 図解（ユーザーが用意した絵） */
+.lp-fig { margin: 10px auto 8px; max-width: 640px; }
+.lp-fig img { display: block; width: 100%; height: auto; border-radius: 16px; }
+.food-strip .lp-fig { padding: 0 16px; }

@@ -19,18 +19,18 @@
     <meta name="twitter:image:alt" content="豚の生姜焼きのイラストと、「かぶらない、あきない、また食べたい。」の文字" />
     <meta name="theme-color" content="#fff8ee" />
     <link rel="canonical" href="https://165cm.github.io/matagochi/lp/" />
-    <link rel="icon" href="../icons/favicon-32.png?v=20261116-pics" />
+    <link rel="icon" href="../icons/favicon-32.png?v=20261117-steps" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Klee+One:wght@600&display=swap" />
     <link rel="preload" as="image" href="assets/screen-plan.webp" />
-    <link rel="stylesheet" href="styles.css?v=20261116-pics" />
+    <link rel="stylesheet" href="styles.css?v=20261117-steps" />
   </head>
   <body>
     <header class="site-header">
       <div class="container header-inner">
         <a class="brand" href="#top" aria-label="リピごち トップへ">
-          <img class="brand-icon" src="../icons/icon-192.png?v=20261116-pics" width="40" height="40" alt="" /><span class="logo">リピごち</span>
+          <img class="brand-icon" src="../icons/icon-192.png?v=20261117-steps" width="40" height="40" alt="" /><span class="logo">リピごち</span>
           <span class="beta-chip">BETA</span>
           <span class="hand brand-note">また、これ食べたい。</span>
         </a>
@@ -79,16 +79,27 @@
         <div class="container narrow">
           <p class="kicker center">使うと、こう変わる</p>
           <h2 class="center">夕方の「どうしよう」が、<span class="marker nobr">なくなる。</span></h2>
-          <div class="ba-pics">
-            <figure><img src="assets/scene-before.webp" width="1000" height="747" alt="夕方のスーパーの野菜売り場で、ほぼ空のかごを持ち、スマホを見ながら困った顔で立ち止まる女性のイラスト" loading="lazy" decoding="async" /><figcaption>これまで</figcaption></figure>
-            <figure class="is-after"><img src="assets/scene-after.webp" width="1000" height="747" alt="同じ売り場で、スマホの買い物リストを見ながら笑顔でキャベツを手に取る女性のイラスト。かごには玉ねぎ・鮭・豚肉が入っている" loading="lazy" decoding="async" /><figcaption>これから</figcaption></figure>
+          <div class="ba-box is-before">
+            <figure class="ba-pic"><img src="assets/scene-before.webp" width="1000" height="747" alt="夕方のスーパーの野菜売り場で、ほぼ空のかごを持ち、スマホを見ながら困った顔で立ち止まる女性のイラスト" loading="lazy" decoding="async" /></figure>
+            <p class="ba-label">これまで</p>
+            <ul class="ba-items">
+              <li>帰りのスーパーで、献立を考えて立ち止まる</li>
+              <li>「なんでもいい」に、ひとりで悩む</li>
+              <li>使い切れなかった野菜を、週末に捨てる</li>
+              <li>「それ、おとといも食べたよ」と言われる</li>
+            </ul>
           </div>
-          <ul class="ba-list">
-            <li><span class="ba-icon" aria-hidden="true">🛒</span><p class="ba-before">帰りのスーパーで、献立を考えて立ち止まる</p><p class="ba-after">買う物はもうリストに。迷わず回れる</p></li>
-            <li><span class="ba-icon" aria-hidden="true">💬</span><p class="ba-before">「なんでもいい」に、ひとりで悩む</p><p class="ba-after">3日分が、理由つきで決まっている</p></li>
-            <li><span class="ba-icon" aria-hidden="true">🥬</span><p class="ba-before">使い切れなかった野菜を、週末に捨てる</p><p class="ba-after">同じ野菜を使い回して、使い切る</p></li>
-            <li><span class="ba-icon" aria-hidden="true">🍝</span><p class="ba-before">「それ、おとといも食べたよ」と言われる</p><p class="ba-after">好物が、恋しくなった頃にまた出てくる</p></li>
-          </ul>
+          <p class="ba-arrow" aria-hidden="true"><span>リピごちを使うと</span></p>
+          <div class="ba-box is-after">
+            <figure class="ba-pic"><img src="assets/scene-after.webp" width="1000" height="747" alt="同じ売り場で、スマホの買い物リストを見ながら笑顔でキャベツを手に取る女性のイラスト。かごには玉ねぎ・鮭・豚肉が入っている" loading="lazy" decoding="async" /></figure>
+            <p class="ba-label">これから</p>
+            <ul class="ba-items">
+              <li>買う物はもうリストに。<b>迷わず回れる</b></li>
+              <li>3日分が、<b>理由つきで決まっている</b></li>
+              <li>同じ野菜を使い回して、<b>使い切れる</b></li>
+              <li>好物が、<b>恋しくなった頃に</b>また出てくる</li>
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -98,17 +109,22 @@
           <p class="kicker center">つかいかた（タップで切り替え）</p>
           <h2 class="center">4ステップで、<span class="marker nobr">毎日の食卓が回る。</span></h2>
 
-          <div class="step-tabs" role="tablist" aria-label="4ステップの使い方">
+          <div class="steps-body">
+            <div class="steps-figs">
+              <article class="step step-fig is-active" data-step-panel="1" aria-hidden="true"><figure class="phone"><img src="assets/screen-done.webp" width="640" height="1326" alt="献立を決定した直後の画面。「水曜まで、もう考えなくて大丈夫」の見出しと、決めた3品の写真、「玉ねぎ・キャベツを使い回し」、「買う物22品を見る」のボタン" loading="lazy" /><figcaption>① 決定した直後の画面</figcaption></figure></article>
+              <article class="step step-fig" data-step-panel="2" aria-hidden="true" hidden><figure class="phone"><img src="assets/screen-shopping.webp" width="640" height="1326" alt="買い物の画面。月曜から水曜の3食分の料理の写真と「あと12品」、その下に玉ねぎ・キャベツなどの材料が売り場ごとに1行ずつ並び、行の右に使う曜日が付く" loading="lazy" /><figcaption>② 買い物タブの画面</figcaption></figure></article>
+              <article class="step step-fig" data-step-panel="3" aria-hidden="true" hidden><figure class="phone"><img src="assets/screen-recipes.webp" width="640" height="1326" alt="レシピの画面。検索の下に「おすすめ」「図鑑 10/48」「わたしのレシピ」の3つのタブがあり、料理の絵と調理時間が2列で並ぶ" loading="lazy" /><figcaption>③ レシピタブの画面</figcaption></figure></article>
+              <article class="step step-fig" data-step-panel="4" aria-hidden="true" hidden><figure class="phone"><img src="assets/screen-book.webp" width="640" height="1326" alt="レシピの図鑑の画面。「10 / 48枚」の進み具合と、肉のおかずの章に、金の枠の定番カード・GETしたカード・まだのカードが3列で並ぶ" loading="lazy" /><figcaption>④ レシピタブの図鑑</figcaption></figure></article>
+            </div>
+            <div class="steps-side">
+              <div class="step-tabs" role="tablist" aria-label="4ステップの使い方">
             <button type="button" class="step-tab is-active" role="tab" aria-selected="true" aria-controls="step-panel-1" id="step-tab-1" data-step-target="1">① 決める</button>
             <button type="button" class="step-tab" role="tab" aria-selected="false" aria-controls="step-panel-2" id="step-tab-2" data-step-target="2">② 買う</button>
             <button type="button" class="step-tab" role="tab" aria-selected="false" aria-controls="step-panel-3" id="step-tab-3" data-step-target="3">③ 動画</button>
             <button type="button" class="step-tab" role="tab" aria-selected="false" aria-controls="step-panel-4" id="step-tab-4" data-step-target="4">④ 図鑑</button>
           </div>
-
-          <article class="step is-active" id="step-panel-1" role="tabpanel" aria-labelledby="step-tab-1" data-step-panel="1">
-            <figure class="phone"><img src="assets/screen-done.webp" width="640" height="1326" alt="献立を決定した直後の画面。「水曜まで、もう考えなくて大丈夫」の見出しと、決めた3品の写真、「玉ねぎ・キャベツを使い回し」、「買う物22品を見る」のボタン" loading="lazy" /><figcaption>① 決定した直後の画面</figcaption></figure>
-            <div class="step-copy">
-              <span class="step-no">1</span>
+              <article class="step step-text is-active" id="step-panel-1" role="tabpanel" aria-labelledby="step-tab-1" data-step-panel="1">
+              <div class="step-copy">
               <h3>3日分を見て、決定を1回押すだけ。</h3>
               <p>変えたい日は「⇄ 変更」で写真から選び直し。<strong>3分添え物</strong>も1タップ。</p>
               <details class="more-fold">
@@ -117,12 +133,9 @@
               </details>
               <button type="button" class="step-next-btn" data-step-target="2">次へ：② 買い物リストを見る →</button>
             </div>
-          </article>
-
-          <article class="step reverse" id="step-panel-2" role="tabpanel" aria-labelledby="step-tab-2" data-step-panel="2" hidden>
-            <figure class="phone"><img src="assets/screen-shopping.webp" width="640" height="1326" alt="買い物の画面。月曜から水曜の3食分の料理の写真と「あと12品」、その下に玉ねぎ・キャベツなどの材料が売り場ごとに1行ずつ並び、行の右に使う曜日が付く" loading="lazy" /><figcaption>② 買い物タブの画面</figcaption></figure>
-            <div class="step-copy">
-              <span class="step-no">2</span>
+            </article>
+            <article class="step step-text" id="step-panel-2" role="tabpanel" aria-labelledby="step-tab-2" data-step-panel="2" hidden>
+              <div class="step-copy">
               <h3>売り場で迷わない、パック換算つき買い物リスト。</h3>
               <p>確定した献立の材料を売り場順に整理。<strong>「鶏もも1枚＋150g → 約400g（目安: 2枚）」「卵8個（目安: 1パック）」</strong>のように自動で単位合算・パック換算します。</p>
               <details class="more-fold">
@@ -133,16 +146,14 @@
                   <figcaption class="hand">キャベツ半分も、鶏もも2枚も。迷わず買えて、むだなく使い切る。</figcaption>
                 </figure>
               </details>
-              <button type="button" class="step-next-btn" data-step-target="3">次へ：③ YouTube動画の保存を見る →</button>
+              <button type="button" class="step-next-btn" data-step-target="3">次へ：③ 動画から選ぶ →</button>
             </div>
-          </article>
-
-          <article class="step" id="step-panel-3" role="tabpanel" aria-labelledby="step-tab-3" data-step-panel="3" hidden>
-            <figure class="phone"><img src="assets/screen-recipes.webp" width="640" height="1326" alt="レシピの画面。検索の下に「おすすめ」「図鑑 10/48」「わたしのレシピ」の3つのタブがあり、料理の絵と調理時間が2列で並ぶ" loading="lazy" /><figcaption>③ レシピタブの画面</figcaption></figure>
-            <div class="step-copy">
-              <span class="step-no">3</span>
-              <h3>好きなYouTube動画も、1タップで献立の候補に。</h3>
-              <p>YouTubeのURLを貼るだけで、AIが材料・作り方・人数・手順の時刻を読み取り、いつもの献立候補に自動で混ざります。</p>
+            </article>
+            <article class="step step-text" id="step-panel-3" role="tabpanel" aria-labelledby="step-tab-3" data-step-panel="3" hidden>
+              <div class="step-copy">
+              <h3>動画を選ぶだけで、材料が買い物リストに。</h3>
+                <figure class="lp-fig"><img src="assets/fig-video-to-list.webp" width="1200" height="670" alt="図解：「選ぶ」スマホで料理の動画をタップ →「材料を読む」豚肉・玉ねぎ・キャベツ・しょうがが飛び出す →「買い物リスト」チェック欄のリストと材料の入ったかご" loading="lazy" decoding="async" /></figure>
+              <p>集まった動画から選んで「献立に入れる」だけ。材料と分量は、決めた人数に合わせて買い物リストへ。好きな動画のURLを貼っても読み取ります。</p>
               <details class="more-fold">
                 <summary>YouTube取り込みの5つの特徴を見る</summary>
                 <ul class="checks">
@@ -155,21 +166,20 @@
               </details>
               <button type="button" class="step-next-btn" data-step-target="4">次へ：④ 図鑑を見る →</button>
             </div>
-          </article>
-
-          <article class="step reverse" id="step-panel-4" role="tabpanel" aria-labelledby="step-tab-4" data-step-panel="4" hidden>
-            <figure class="phone"><img src="assets/screen-book.webp" width="640" height="1326" alt="レシピの図鑑の画面。「10 / 48枚」の進み具合と、肉のおかずの章に、金の枠の定番カード・GETしたカード・まだのカードが3列で並ぶ" loading="lazy" /><figcaption>④ レシピタブの図鑑</figcaption></figure>
-            <div class="step-copy">
-              <span class="step-no">4</span>
+            </article>
+            <article class="step step-text" id="step-panel-4" role="tabpanel" aria-labelledby="step-tab-4" data-step-panel="4" hidden>
+              <div class="step-copy">
               <h3>作るたびにカードが集まる、48品の図鑑。</h3>
               <p>「作った！」を記録すると、図鑑のカードをGET。作るほど<strong>「★ GET」→「★★ 常連」→「👑 定番」</strong>と育ちます。食後の1タップ「次はいつ食べたい？」で、わが家の定番も決まっていきます。</p>
               <details class="more-fold">
                 <summary>カードの裏とカレンダーを見る</summary>
                 <p>カードの裏には材料・作り方・豆知識と「🗓 献立に入れる」。ふりかえりの食卓カレンダーから「🔁 もう一度、献立に入れる」もすぐ押せます。</p>
               </details>
-              <button type="button" class="step-next-btn" data-step-target="1">① 献立ステップへ戻る ↺</button>
+              <button type="button" class="step-next-btn" data-step-target="1">① にもどる ↺</button>
             </div>
-          </article>
+            </article>
+            </div>
+          </div>
 
           <div class="center step-cta">
             <a class="button button-primary button-large" href="../?start=quick" data-cta="steps">無料ではじめる<span aria-hidden="true">›</span></a>
@@ -195,7 +205,8 @@
             <figure aria-hidden="true"><img src="../assets/dishes/starter-52.webp" width="400" height="400" alt="" loading="lazy" /><figcaption>揚げ焼きの塩唐揚げ</figcaption></figure>
           </div>
         </div>
-        <p class="strip-note">最初から入っている48品＋毎日集まるYouTube新着（時短8割）で、飽きない1週間に。<span class="small">絵はアプリのものです</span></p>
+        <figure class="lp-fig"><img src="assets/fig-auto-collect.webp" width="1200" height="670" alt="図解：たくさんのレシピ動画を、小さな妖精が料理ごとの棚（生姜焼き・親子丼・鮭のホイル焼き）に分けている。上に「毎日、自動で集まる」の札" loading="lazy" decoding="async" /></figure>
+        <p class="strip-note"><b>毎日、YouTubeから人気のレシピ動画が集まります。</b>同じ料理の作り方は1つにまとめ、ふだんの夜ごはん向けの料理から選べます。</p>
       </section>
 
       <!-- つづけるほど良くなる -->
@@ -204,10 +215,10 @@
           <p class="kicker center">つづけるほど、わが家の味に</p>
           <h2 class="center">1日目より、<span class="marker nobr">3か月目のほうが便利。</span></h2>
           <ol class="grow-line">
-            <li><b>1日目</b><span>3日分が決まる。水曜まで、考えなくていい</span></li>
-            <li><b>1週目</b><span>買い物のむだが減る。野菜を使い切れる</span></li>
-            <li><b>1か月</b><span>好物が、恋しくなった頃に出てくる</span></li>
-            <li><b>3か月</b><span>図鑑とごはん方針が、わが家の形に育つ</span></li>
+            <li><b>1日目</b><span>8つの質問から、<strong>3日分が決まる</strong><small>人数・時間・苦手なものに合わせて選ぶ</small></span></li>
+            <li><b>1週目</b><span><strong>買い物のむだが減る</strong><small>家にある調味料を覚え、次から買う物に入れない</small></span></li>
+            <li><b>1か月</b><span><strong>好物が、ちょうどいい頃に出てくる</strong><small>食後の1タップ「次はいつ食べたい？」を覚えていく</small></span></li>
+            <li><b>3か月</b><span><strong>献立が、わが家の形になる</strong><small>記録から「魚の日を増やす？」と提案。図鑑もそろう</small></span></li>
           </ol>
         </div>
       </section>
@@ -673,6 +684,6 @@
       </div>
     </footer>
 
-    <script src="waitlist.js?v=20261116-pics" defer></script>
+    <script src="waitlist.js?v=20261117-steps" defer></script>
   </body>
 </html>
