@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./dishes.js";
-import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH, EXTRA_DISH_GROUPS } from "./ideal.js";
+import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH, EXTRA_DISH_GROUPS, IDEAL_FLAVORS } from "./ideal.js";
 import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 import { mapLimit } from "./mapLimit.js";
@@ -313,7 +313,8 @@ export function nextParentWave(doc, parents, stock, nowMs) {
     if (st.day === today) continue; // 1つの親は1日1回まで
     for (const kind of n.quick ? ["quick", "long"] : ["long"]) {
       if (kind === "long" && !n.long) continue;
-      const flavors = PARENT_FLAVORS[kind];
+      // 理想の12品の集まりにくい料理は、ふだんの言葉のあとに料理ごとの言葉も使う（IDEAL_FLAVORS・2026-11-16）。
+      const flavors = kind === "quick" ? [...PARENT_FLAVORS.quick, ...(IDEAL_FLAVORS[p.name] || [])] : PARENT_FLAVORS.long;
       if (st[kind] >= flavors.length) {
         if (nowMs - (Date.parse(st.at[kind] || 0) || 0) < PARENT_REUSE_DAYS * DAY) continue;
         st[kind] = 0; // 28日たったら最初の言葉から（新しい動画が出ている）
