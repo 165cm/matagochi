@@ -96,6 +96,16 @@ test("shopping names: different things to buy stay apart", () => {
   assert.equal(L.shoppingName("めんつゆ（3倍濃縮）"), "めんつゆ(3倍濃縮)");
   assert.equal(L.shoppingName("麺つゆ"), "めんつゆ");
   assert.equal(L.shoppingName("まぐろ（刺身用）"), "まぐろ(刺身用)");
+  // かっこが種類の時は、その種類の名前に（辞書になければ、かっこごと残す）。Codex review #260
+  assert.equal(L.shoppingName("しょうゆ（薄口）"), "薄口しょうゆ");
+  assert.equal(L.shoppingName("バター（食塩不使用）"), "無塩バター");
+  assert.equal(L.shoppingName("みそ（赤）"), "みそ(赤)");
+  assert.equal(L.shopping({ slots: { a: slot("2026-10-01", "a", [{ name: "しょうゆ（薄口）", amount: "大さじ1" }]) }, start: "2026-10-01", end: "2026-10-01", scale: (x) => x, pantry: { しょうゆ: "have" } })[0].status, "buy", "ふつうのしょうゆが家にあっても、薄口は買う");
+  same("卵", ["卵（M）", "卵(全卵)"]);
+  same("じゃがいも", ["じゃがいも(メークイン)", "じゃがいも（下茹でしたもの）"]);
+  // ねぎの種類は名前で決める。切り方では変えない。Codex review #260
+  same("長ねぎ", ["長ねぎ（小口切り）", "長ネギ(刻み)", "白ねぎの小口切り", "刻み長ねぎ"]);
+  same("小ねぎ", ["ねぎ（小口切り）", "刻みねぎ", "カットネギ", "青ねぎ(みじん切り)"]);
   // どちらを買うか本人が決める書き方は、まとめない
   for (const n of ["牛乳または豆乳", "卵黄 or 全卵", "パクチーまたは万能ねぎ", "好みのねぎ(わけぎ、長ねぎなど)"]) assert.equal(L.shoppingName(n), n, n);
   // 辞書にない名前も、切り方だけなら外す

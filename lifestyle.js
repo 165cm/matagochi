@@ -1267,7 +1267,12 @@
   const SHOP_PREFIX = /^(?:すりおろし|おろし|チューブ|刻み|きざみ|カット|千切り|せん切り|ささがき|輪切り|輪切|みじん切り)/;
   const SHOP_SUFFIX = /の?(?:みじん切り|みじんぎり|微塵切り|みじん|すりおろし|おろし|スライス|うす切り|薄切り|千切り|せん切り|小口切り|ざく切り|くし切り|輪切り|切り身|チューブ|白い部分|青い部分)$/;
   const SHOP_NEGI = /^(?:長|白|白髪|中太|青|小|万能|細|九条)?(?:ねぎ|葱)頭?$|^わけぎ$/;
-  const SHOP_NEGI_SMALL = /青(?!い部分)|小(?:ねぎ|ネギ|葱|口)|万能|細|九条|わけぎ|刻|きざみ|カット/;
+  // 名前に種類が書いてあればそれで決める（「長ねぎ(小口切り)」は長ねぎ）。ただの「ねぎ」だけ、切り方で見分ける
+  const SHOP_NEGI_LONG = /^(?:長|白|白髪|中太)/;
+  const SHOP_NEGI_SMALL = /^(?:青|小|万能|細|九条|わけぎ)/;
+  const SHOP_NEGI_SMALL_CUT = /小口|刻|きざみ|カット/;
+  // 辞書にある名前のかっこで、外してよい中身（大きさ・品種・状態）。それ以外の種類（「薄口」「食塩不使用」）は残す
+  const SHOP_PAREN_DROP = /^[mls]$|^(?:大|中|小)$|全卵|メークイン|男爵|mm|ゆで時間|分茹で|皮なし|皮つき|皮付き|乾燥|乾麺|顆粒|粉末|炊飯|市販|無添加|枚切り|チューブ|開い|骨付|骨つき|処理|半身|洗わない|観音開き/i;
   const shopNameCache = new Map();
   function shoppingName(name) {
     const raw = String(name || "").normalize("NFKC").trim().replace(/醬/g, "醤").replace(/麵/g, "麺");
@@ -1293,10 +1298,18 @@
     if (!core) return raw;
     const folded = shopFold(core);
     let hit = SHOP_INDEX.get(folded) || "";
-    if (SHOP_NEGI.test(folded)) hit = SHOP_NEGI_SMALL.test(flat) ? "小ねぎ" : "長ねぎ";
+    if (SHOP_NEGI.test(folded)) hit = SHOP_NEGI_LONG.test(folded) ? "長ねぎ" : SHOP_NEGI_SMALL.test(folded) || SHOP_NEGI_SMALL_CUT.test(flat) ? "小ねぎ" : "長ねぎ";
     // にんにく・しょうがは、生とチューブ（すりおろし）で売り場の物がちがう
     if ((hit === "にんにく" || hit === "しょうが") && /チューブ|おろし/.test(flat)) hit = `おろし${hit}`;
-    if (hit) return SHOP_PAREN_KEEP.test(paren) ? `${hit}(${paren})` : hit;
+    if (hit) {
+      if (!paren) return hit;
+      // 「しょうゆ(薄口)」＝薄口しょうゆ、「バター(食塩不使用)」＝無塩バター：かっこを前につけた名前が辞書にあればそれ
+      const kind = SHOP_INDEX.get(shopFold(paren + core));
+      if (kind) return kind;
+      if (SHOP_INDEX.get(shopFold(paren)) === hit) return hit; // かっこの中も同じ物（「水溶き片栗粉(片栗粉)」）
+      if (!SHOP_PAREN_KEEP.test(paren) && (SHOP_PAREN_PREP.test(paren) || SHOP_PAREN_DROP.test(paren))) return hit;
+      return `${hit}(${paren})`;
+    }
     // 辞書にない名前：何も外していなければそのまま。かっこの中が種類（「厚揚げ(絹)」）の時もそのまま。
     if (core === flat) return raw;
     if (!paren) return core;
