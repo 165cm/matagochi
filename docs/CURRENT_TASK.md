@@ -23,6 +23,7 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
+| 目標に届いている日も理想の12品を休んでいる料理から戻す（2026-11-16 のユーザーの判断） | レビュー待ち | claude/nice-shannon-6g1g5m | 理想の12品が8品に足りない時だけ、その数まで0円で戻す | api/src/trends.js, api/test/revive.test.js, docs/* |
 | Claude：LP を短い構成に（2026-11-16 のユーザーの判断：説明が多くて長い・使うとどう変わるかを見せる・使い方を前に・つくった理由は最後に・くわしい話は閉じておく） | レビュー待ち | claude/fervent-lovelace-d6tsd6 | 並び：最初の画面 → 使うと、こう変わる（これまで → これから）→ つかいかた → つづけるほど（4行）→ もっと知りたい方へ（閉じた6つ）→ 料金 → 質問 → つくった理由 → 最後のボタン。スマホ縦で 約9,900px → 約5,700px。390×844／1280×900／320×700 で横にはみ出さず画像切れなし（APP_MAP §61） | lp/index.html, lp/styles.css, test/lp.test.cjs, docs/* |
 | Claude：LP の更新・年内は無料（2026-11-16 のユーザーの依頼：いまの状態を反映・長く使ってもらう方向・2026年内は開発期間として無料） | 公開済み（#256） | claude/fervent-lovelace-d6tsd6 | LP：「毎晩の『今日なに作ろう？』を、週1回に。」・「2026年12月31日まで、ぜんぶ無料。」・長く使う理由の章（1日目 → 3か月）・つかいかたを今の画面に（決定直後のまとめ・図鑑）・料金の章の言い方・画面の絵を今のアプリから撮り直し。アプリの案内も「開発期間（2026年12月31日まで）」。390×844／1280×900／320×700 で横にはみ出さず画像切れなし（APP_MAP §61・FREE_PAID_BOUNDARY） | lp/index.html, lp/styles.css, lp/assets/*, plus.js, app.js, sw.js, index.html, version.json, docs/* |
 | Claude：アプリ全体の見直し ④片づけ（2026-11-15 のユーザーの判断：1番から順に） | 公開済み（#255） | claude/fervent-lovelace-d6tsd6 | 止めてあった下書きトレイのしくみ（`trayDraft`・候補カードの棚・`life-tray-*`）と、そのテスト11件・使わなくなった見た目の指定を取り除いた。画面は変えていない。日付で落ちるテスト1件（お休み週・日曜の夜）を日付固定に。アプリ514件PASS、390×844／844×390／1440×900 で主な画面を確認（APP_MAP §76）。見直しはこれで一区切り | daily-ui.js, app.js, household.js, styles.css, sw.js, index.html, version.json, test/recipe-card-tray.test.cjs, test/plus.test.cjs, docs/* |
