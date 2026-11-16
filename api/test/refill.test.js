@@ -341,3 +341,23 @@ test('refill: the 40 added parents are quick dishes of the short groups, every o
   const tiers = Object.fromEntries(prioritizedParents({}, []).map((p) => [p.name, p.tier]));
   for (const name of extra) assert.equal(tiers[name], 1, `${name} is in the short-group tier`);
 });
+
+test('2026-11-16: the hard-to-find ideal dishes keep searching with their own words after the usual 6 words, instead of waiting 28 days', async () => {
+  const { IDEAL_FLAVORS } = await import('../src/ideal.js');
+  const name = '鮭のムニエル', key = 'k-meuniere';
+  const parents = [{ key, name, tier: 0 }];
+  const stock = { [key]: { quick: 3, long: 2, total: 5 } };
+  // ふだんの言葉（6つ）を使い切った状態（以前はここから28日待っていた）
+  const doc = { waves: { parents: { [key]: { quick: PARENT_FLAVORS.quick.length, long: 2, at: { quick: new Date(NOW).toISOString(), long: new Date(NOW).toISOString() }, day: '' } } } };
+  let now = NOW + DAY;
+  const seen = [];
+  for (let i = 0; i < IDEAL_FLAVORS[name].length; i++, now += DAY) seen.push(nextParentWave(doc, parents, stock, now)?.q);
+  assert.deepEqual(seen, IDEAL_FLAVORS[name].map((f) => `${name} ${f} レシピ 材料`));
+  assert.equal(nextParentWave(doc, parents, stock, now), null, 'after its own words too, it waits 28 days as before');
+  // ほかの料理は今までどおり（言葉を使い切ったら28日待つ）
+  const d2 = { waves: { parents: { o: { quick: PARENT_FLAVORS.quick.length, long: 2, at: { quick: new Date(NOW).toISOString(), long: new Date(NOW).toISOString() }, day: '' } } } };
+  assert.equal(nextParentWave(d2, [{ key: 'o', name: 'ほかの料理' }], { o: { quick: 3, long: 2, total: 5 } }, NOW + DAY), null);
+  // 4品とも、理想の12品の名前と同じ（言葉が効く）
+  const { IDEAL_DISHES } = await import('../src/ideal.js');
+  assert.ok(Object.keys(IDEAL_FLAVORS).every((n) => IDEAL_DISHES.some((d) => d.name === n)));
+});
