@@ -717,3 +717,8 @@ button.button { border: 0; cursor: pointer; font-family: inherit; }
 .grow-line span { display: grid; gap: 1px; }
 .grow-line strong { font-weight: 800; }
 .grow-line small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+/* 図解（ユーザーが用意した絵） */
+.lp-fig { margin: 10px auto 8px; max-width: 640px; }
+.lp-fig img { display: block; width: 100%; height: auto; border-radius: 16px; }
+.food-strip .lp-fig { padding: 0 16px; }
