@@ -855,7 +855,7 @@ test("app: after 買い物完了 the next plan gets a fresh list — old purchas
   const items = JSON.parse(run("JSON.stringify(dailyShopping())"));
   assert.ok(items.length > 0);
   assert.ok(items.every((i) => i.status !== "purchased"), "nothing is pre-ticked from the last trip");
-  const pork = items.find((i) => i.name === "豚こま");
+  const pork = items.find((i) => i.name === "豚こま切れ肉");
   assert.equal(pork.amount, JSON.parse(run(`JSON.stringify(${r}.ingredients.find(i=>i.name==="豚こま").amount)`)), "amount is only for the new meal");
   assert.ok(pork.uses.includes("豚こまキャベツ丼"));
   assert.ok(run("renderTripMeals()").includes("1食分"));

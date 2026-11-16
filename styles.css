@@ -2638,6 +2638,9 @@ body.bars-hidden .playlist-footer, body.bars-hidden .cooking-primary { bottom: e
 .use-day-badge.is-near { background: #ffe2d6; color: var(--tomato); font-weight: 800; border: 1px solid #fec3b0; }
 .shop-pref-badge { flex: 0 0 auto; display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 7px; min-height: 28px; border-radius: 8px; background: #fff0e7; border: 1px solid #f9cdb8; color: #b4462c; cursor: pointer; white-space: nowrap; touch-action: manipulation; }
 .shop-pref-badge.is-skip { background: #f4f2ee; border-color: #dcd8d0; color: #726b63; }
+/* いつも代用・いつもパス（APP_MAP §79）：まだの時は白い枠、ONの時は色つき */
+.shop-pref-badge.is-always { background: #fff; border-color: #d9d3c8; color: #5d564e; }
+.shop-pref-badge.is-always.is-on { background: #e8f4ec; border-color: #b5d9c1; color: #256b43; }
 
 /* 右端の「⋯」「✕」ボタン：指で確実に押せる40pxタップ領域 */
 .shop-row-btn { position: relative; z-index: 2; flex: 0 0 auto; width: 38px; min-width: 38px; height: 40px; min-height: 40px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 16px; font-weight: 900; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; }
@@ -3962,6 +3965,7 @@ body.cook-mode-open #cook-timer-bar { top: calc(env(safe-area-inset-top, 0px) + 
 .shop-undo { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 55; display: flex; align-items: center; gap: 8px; width: min(calc(100% - 32px), 420px); padding: 8px 8px 8px 14px; border-radius: 16px; background: #2b2825; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 14px; animation: fd-in .2s ease-out both; }
 .shop-undo span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shop-undo button { flex: none; border: 0; border-radius: 10px; padding: 7px 10px; background: rgba(255,255,255,.16); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.shop-undo .shop-undo-always { background: #fff; color: #2f2a25; }
 .shop-undo .shop-undo-x { background: none; padding: 7px 6px; opacity: .7; }
 /* 🧂 常備品：買い物リストの中でも見られる */
 .pantry-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMemorySyncStore } from '../src/syncStore.js';
-import { createTrendBook, weekOf, paceCap, REVIVE_PER_DAY, TREND_USER_SHARE } from '../src/trends.js';
+import { createTrendBook, weekOf, paceCap, REVIVE_PER_DAY, REVIVE_TARGET, TREND_USER_SHARE } from '../src/trends.js';
 
 // 2026-10-28：新着を28日で十分な量に保つ（docs/APP_MAP.md §46-8）。
 // ② 月の予算を月末まで均等に・利用者の分を残す ③ AI の前に説明欄を0円で確かめる ④ 休んでいる料理を0円で新着に戻す。
@@ -195,4 +195,26 @@ test('2026-11-03: among the checked resting dishes, the ideal 12 dishes come bac
   const back = new Set((await store.get('trends/index')).envelope.weeks.find((w) => w.revived).items.map((x) => x.videoId));
   assert.ok(idealIds.every((v) => back.has(v)), 'every ideal-dish recipe that was checked comes back');
   assert.equal(catalog.ai, 0, 'still free');
+});
+
+test('2026-11-16: even when the visible list is at its target, missing ideal-dish recipes come back from the resting line (only those, only as many as missing)', async () => {
+  const store = createMemorySyncStore(), catalog = fakeCatalog();
+  const add = (extra = {}) => { const v = vid(); catalog.ready.set(v, recipe(v, extra)); return { videoId: v }; };
+  // 見えている新着：目標どおりの品数（理想の12品の作り方は0品）
+  const visible = Array.from({ length: REVIVE_TARGET }, () => add());
+  // 休んでいる料理：ふつうの料理10品と、理想の12品の作り方3品
+  const plain = Array.from({ length: 10 }, () => add());
+  const ideal = ['かんたん肉じゃが', '豚の生姜焼き 定番', 'ご飯がすすむ麻婆豆腐'].map((title) => add({ title }));
+  const old = new Date(NOW - 30 * DAY).toISOString(), fresh = new Date(NOW - DAY).toISOString();
+  await store.put('trends/index', { weeks: [
+    { week: weekOf(NOW - 30 * DAY), startedAt: old, candidates: [], tried: [], items: [...plain, ...ideal], skipped: {} },
+    { week: weekOf(NOW - DAY), startedAt: fresh, candidates: [], tried: [], items: visible, skipped: {} },
+  ] }, { ifGeneration: 0 });
+  const book = make(store, catalog);
+  const r = await book.step();
+  assert.equal(r.revived.run, ideal.length, 'only the ideal-dish recipes');
+  const back = new Set((await store.get('trends/index')).envelope.weeks.find((w) => w.revived).items.map((x) => x.videoId));
+  assert.ok(ideal.every((x) => back.has(x.videoId)));
+  assert.ok(plain.every((x) => !back.has(x.videoId)), 'ordinary dishes still wait while the list is at its target');
+  assert.equal(catalog.ai, 0, 'free');
 });

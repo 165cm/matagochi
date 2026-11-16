@@ -3,7 +3,7 @@ import { ApiError } from "./errors.js";
 import { canonicalYouTubeUrl } from "./youtube.js";
 import { usage, usageYen } from "./aiUsage.js";
 import { createDishBook, DISH_SEEDS, dishKey as parentKeyOf, parentOf } from "./dishes.js";
-import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH, EXTRA_DISH_GROUPS } from "./ideal.js";
+import { IDEAL_DISHES, IDEAL_CHILDREN, IDEAL_LONG, TARGET_SHARES, LIGHT_DISH, EXTRA_DISH_GROUPS, IDEAL_FLAVORS } from "./ideal.js";
 import { listedGuide } from "./rewrite.js";
 import { pacificDay, nextPacificMidnight } from "./searchQuota.js";
 import { mapLimit } from "./mapLimit.js";
@@ -313,7 +313,8 @@ export function nextParentWave(doc, parents, stock, nowMs) {
     if (st.day === today) continue; // 1つの親は1日1回まで
     for (const kind of n.quick ? ["quick", "long"] : ["long"]) {
       if (kind === "long" && !n.long) continue;
-      const flavors = PARENT_FLAVORS[kind];
+      // 理想の12品の集まりにくい料理は、ふだんの言葉のあとに料理ごとの言葉も使う（IDEAL_FLAVORS・2026-11-16）。
+      const flavors = kind === "quick" ? [...PARENT_FLAVORS.quick, ...(IDEAL_FLAVORS[p.name] || [])] : PARENT_FLAVORS.long;
       if (st[kind] >= flavors.length) {
         if (nowMs - (Date.parse(st.at[kind] || 0) || 0) < PARENT_REUSE_DAYS * DAY) continue;
         st[kind] = 0; // 28日たったら最初の言葉から（新しい動画が出ている）
@@ -568,8 +569,18 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       index.retiredOk = [...okSet].filter((v) => inLine.has(v));
       return { revived, scanned, usable: index.retiredOk.length, unchecked: index.retired.length - index.retiredOk.length };
     };
-    const room = Math.min(REVIVE_PER_DAY - day.n, REVIVE_TARGET - (port?.total || 0));
+    const dailyLeft = REVIVE_PER_DAY - day.n;
+    let room = Math.min(dailyLeft, REVIVE_TARGET - (port?.total || 0));
     if (!index.retired.length) return finish(new Set(), 0, 0);
+    // 見えている数は目標に届いていても、理想の12品の作り方が足りない時は、その足りない分だけ理想の12品の作り方を戻す
+    // （2026-11-16 のユーザーの判断：28日を過ぎて理想の12品が減っても、目標に届いている日は戻らず、AI で集め直すしかなかった。0円のまま）。
+    let items = null, idealOnly = false;
+    if (room <= 0 && dailyLeft > 0) {
+      items = (await list().catch(() => ({ items: [] }))).items || [];
+      const st = stockOf(items);
+      const short = [...IDEAL_KEYS].reduce((n, k) => n + Math.max(0, limitsFor(k).max - (st[k]?.total || 0)), 0);
+      if (short > 0) { room = Math.min(dailyLeft, short); idealOnly = true; }
+    }
     if (room <= 0) {
       // 戻す枠がない日：0円で、まだ確かめていない料理から古い順に確かめる（使えない料理を列から外し、使える数を数える）。
       const drop = new Set();
@@ -584,7 +595,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       }
       return finish(drop, scanned, 0);
     }
-    const items = (await list().catch(() => ({ items: [] }))).items || [];
+    items ||= (await list().catch(() => ({ items: [] }))).items || [];
     const stock = stockOf(items);
     const dbook = await (dishBook || createDishBook(store, { now })).book().catch(() => ({}));
     let week = index.weeks.find((w) => w.revived && w.day === today);
@@ -610,8 +621,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
       found.push({ v, r, pr, tier: tierOf(pr) });
     }
     found.sort((a, b) => a.tier - b.tier);
-    for (const { v, r, pr } of found) {
+    for (const { v, r, pr, tier } of found) {
       if (revived >= room) break;
+      if (idealOnly && tier > 0) break; // 目標に届いている日は、理想の12品の作り方だけ（found は段の順）
       // 次のどれかの時は、今日は戻さない（あとで条件が変われば戻せる）：
       //   掲載停止／説明文が30日以内に取り直されていない（caption が空）／投稿者が3%に届いている／親料理の子がそろっている・30分以上がもうある／親のない30分以上
       const quick = isQuickDish(r.planning?.minutes);

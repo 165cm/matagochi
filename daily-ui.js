@@ -591,6 +591,7 @@ function dailyShopping() {
     pantry: p.pantry,
     marks: state.shoppingMarks || {},
     manual: manualForActivePage(),
+    prefs: state.itemPrefs || {},
   });
   // 献立を変える前の「予定している食材」も添える（買い物完了の後は、このリストが空でも差分が分かるように）。
   Object.defineProperty(list, "planned", { value: plannedIngredients(), enumerable: false });
@@ -622,7 +623,7 @@ function shopViewContext() {
       scale: scaleAmountForServings,
       combine: combineAmounts,
       pantry: p.pantry,
-      marks: state.shoppingMarks || {},
+      marks: state.shoppingMarks || {}, prefs: state.itemPrefs || {},
       manual: manualForActivePage(),
     });
     const activeBuyIds = new Set(activeItems.filter((x) => x.status === "buy").map((x) => x.id));
@@ -656,6 +657,7 @@ function shopViewContext() {
         pantry: p.pantry,
         marks,
         manual: {},
+        prefs: state.itemPrefs || {},
       }).map((item) => {
         const m = marks[item.id];
         if (m?.status === "buy" && (m.updatedAt || "") > since) return { ...item, status: "buy" };
@@ -1633,6 +1635,11 @@ function rememberItemPref(name, pref) {
     state.itemPrefs[k] = prev && prev.action !== "clear" ? { ...prev, updatedAt: nowIso() } : { action: "clear", updatedAt: nowIso() };
   };
 }
+// いまの記憶が「いつも」で同じ扱いなら、代用・パスを押し直しても「いつも」を残す
+function keepAlways(id, action) {
+  const cur = state.itemPrefs?.[id];
+  return cur?.always === true && cur.action === action ? { always: true } : {};
+}
 // リピート時の記憶バッジ（前回代用・パスした食材に表示し、1タップで即適用）
 function renderItemPrefBadge(item) {
   if (item.status !== "buy") return "";
@@ -1646,6 +1653,15 @@ function renderItemPrefBadge(item) {
     return `<button type="button" class="shop-pref-badge is-skip" data-action="life-apply-item-pref" data-id="${escapeAttr(item.id)}" title="前回のパス（今回は買わない）を適用します">前回: ⏭ パス</button>`;
   }
   return "";
+}
+
+// いつも代用・いつもパス（APP_MAP §79）：代用・パスにした行に出す切り替え。ONの間は、次の買い物から自動でその扱いになる。
+function renderItemAlwaysBadge(item) {
+  if (isViewer() || !["sub", "skip"].includes(item.status) || String(item.id).startsWith("manual-")) return "";
+  const pref = state.itemPrefs?.[item.id];
+  const on = pref?.always === true && pref.action === item.status;
+  const what = item.status === "sub" ? "代用" : "パス";
+  return `<button type="button" class="shop-pref-badge is-always ${on ? "is-on" : ""}" data-action="life-item-always" data-id="${escapeAttr(item.id)}" aria-pressed="${on}" title="${on ? `押すと「いつも${what}」をやめます` : `次の買い物から、自動で${what}にします`}">${on ? "🔁 いつも" : "いつもこうする"}</button>`;
 }
 
 // 常備品の有効な買い替え周期（手動設定がなければ品目ごとのデフォルト賞味期限目安を使う。0は通知オフ）
@@ -1677,7 +1693,7 @@ function tripPantryCount() {
     if (!s?.recipe) continue;
     for (const ing of s.recipe.ingredients || []) {
       const k = Lifestyle.shoppingName(ing.name);
-      if (pantry[k] === "have" || Object.entries(pantry).some(([pn, v]) => v === "have" && Lifestyle.key(pn) === Lifestyle.key(k))) {
+      if (pantry[k] === "have" || Object.entries(pantry).some(([pn, v]) => v === "have" && Lifestyle.shoppingKey(pn) === Lifestyle.shoppingKey(k))) {
         usedPantryKeys.add(k);
       }
     }
@@ -1708,7 +1724,7 @@ let pantryAskLater = false; // 「あとで」：アプリを開き直すまで�
 const PANTRY_ASK_MAX = 24;
 function pantryNameOf(item) {
   const pantry = dailyProfile().pantry || {};
-  return Object.keys(pantry).find((n) => Lifestyle.key(n) === item.id || (Lifestyle.key(n) === "米" && item.id === "ごはん")) || item.name;
+  return Object.keys(pantry).find((n) => Lifestyle.shoppingKey(n) === item.id || (Lifestyle.key(n) === "米" && item.id === "ごはん")) || item.name;
 }
 function pantryAskItems(items) {
   if (isViewer() || pantryAskLater) return [];
@@ -1835,7 +1851,7 @@ function renderDailyShopping() {
             ${later(i) ? `<small class="later-hint" title="${escapeAttr(`${later(i).label}は傷みやすい食材です`)}">🗓 ${escapeHtml(formatDate(later(i).date))}（${weekdayLabel(later(i).date)}）に使う・傷みやすいので、その前に買うと安心</small>` : ""}
           </span>
         </label>
-        ${prefBadge}
+        ${prefBadge}${renderItemAlwaysBadge(i)}
         ${later(i) && !isViewer() ? `<button type="button" class="shopping-inline later-btn" data-action="life-item-later" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}をあとで買う">あとで</button>` : ""}
         ${daysBadge(i)}
         ${i.id.startsWith("manual-") && !isViewer() ? `<button type="button" class="shop-row-btn shop-del-btn" data-action="life-remove-item" data-id="${escapeAttr(i.id)}" aria-label="${escapeAttr(i.name)}を削除">✕</button>` : ""}
@@ -1921,7 +1937,7 @@ function renderDailyShopping() {
   ${!ctx.isShopped && purchased ? `<details class="shopping-fold"><summary><h3>購入済み <span class="badge">${purchased}</span></h3><small class="muted">チェックを外すと戻ります</small></summary>${groups("purchased")}</details>` : ""}
   ${countHaveSub ? `<details class="shopping-fold"><summary><h3>家にある・代用・パス <span class="badge">${countHaveSub}</span></h3><small class="muted">左スライドまたは「⋯」から変更できます</small></summary>${groupsHaveOrSub()}</details>` : ""}
   ${sheet}
-  ${shopUndo && !sheet ? `<div class="shop-undo" role="status"><span>${escapeHtml(shopUndo.text)}</span><button type="button" data-action="life-shop-undo">↩ 元に戻す</button><button type="button" class="shop-undo-x" data-action="life-shop-undo-close" aria-label="閉じる">✕</button></div><div class="shop-undo-space" aria-hidden="true"></div>` : ""}`;
+  ${shopUndo && !sheet ? `<div class="shop-undo" role="status"><span>${escapeHtml(shopUndo.text)}</span>${shopUndo.alwaysId ? `<button type="button" class="shop-undo-always" data-action="life-item-always" data-id="${escapeAttr(shopUndo.alwaysId)}">🔁 いつも</button>` : ""}<button type="button" data-action="life-shop-undo">↩ 元に戻す</button><button type="button" class="shop-undo-x" data-action="life-shop-undo-close" aria-label="閉じる">✕</button></div><div class="shop-undo-space" aria-hidden="true"></div>` : ""}`;
 }
 // 常備品だけを直すページ。設定ウィザードと同じデータ（householdProfile / foodProfile / 下書き）を書き換える。
 let pantryReturn = "shopping";
@@ -1975,7 +1991,7 @@ function renderPantryPage() {
       const k = Lifestyle.shoppingName(ing.name);
       if (allNames.includes(k)) tripPantryNames.add(k);
       else {
-        const hit = allNames.find((pn) => Lifestyle.key(pn) === Lifestyle.key(k));
+        const hit = allNames.find((pn) => Lifestyle.shoppingKey(pn) === Lifestyle.shoppingKey(k));
         if (hit) tripPantryNames.add(hit);
       }
     }
@@ -2685,7 +2701,7 @@ function bindDailyEvents() {
       };
       if (el.checked) {
         const pantry = dailyProfile().pantry || {};
-        const pantryName = Object.keys(pantry).find((n) => Lifestyle.key(n) === item.id || (Lifestyle.key(n) === "米" && item.id === "ごはん")) || item.name;
+        const pantryName = Object.keys(pantry).find((n) => Lifestyle.shoppingKey(n) === item.id || (Lifestyle.key(n) === "米" && item.id === "ごはん")) || item.name;
         if (Lifestyle.keeps(item) || pantry[pantryName] !== undefined) {
           notePantryBought(pantryName);
         }
@@ -3412,7 +3428,7 @@ function handleDailyAction(action, data) {
       const prevMark = state.shoppingMarks[item.id] ? { ...state.shoppingMarks[item.id] } : null;
       const pantry = dailyProfile().pantry || {};
       // 常備品の名前（「米」と「ごはん」のようなゆれも）
-      const pantryName = Object.keys(pantry).find((n) => Lifestyle.key(n) === item.id || (Lifestyle.key(n) === "米" && item.id === "ごはん")) || item.name;
+      const pantryName = Object.keys(pantry).find((n) => Lifestyle.shoppingKey(n) === item.id || (Lifestyle.key(n) === "米" && item.id === "ごはん")) || item.name;
       const prevPantry = pantry[pantryName];
       state.shoppingMarks[item.id] = {status:data.status, signature:item.signature, updatedAt:nowIso()};
       const undo = () => { state.shoppingMarks[item.id] = prevMark ? { ...prevMark, updatedAt: nowIso() } : { status: data.status === "have" ? "buy" : "have", signature: item.signature, updatedAt: nowIso() }; if (prevPantry !== dailyProfile().pantry?.[pantryName]) setPantry(pantryName, prevPantry || "none"); };
@@ -3483,8 +3499,9 @@ function handleDailyAction(action, data) {
       const hint = Lifestyle.substituteHint?.(item.name) || "";
       const subText = hint;
       state.shoppingMarks[item.id] = { status: "sub", subText, signature: item.signature, updatedAt: nowIso() };
-      const restorePref = rememberItemPref(item.name, { action: "sub", subText, updatedAt: nowIso() });
+      const restorePref = rememberItemPref(item.name, { action: "sub", subText, ...keepAlways(item.id, "sub"), updatedAt: nowIso() });
       shopUndo = {
+        alwaysId: keepAlways(item.id, "sub").always ? "" : item.id,
         text: `🔄 ${item.name}は代用${subText ? `（${subText}）` : ""}`,
         undo: () => {
           state.shoppingMarks[item.id] = prevMark ? { ...prevMark, updatedAt: nowIso() } : { status: "buy", signature: item.signature, updatedAt: nowIso() };
@@ -3500,8 +3517,9 @@ function handleDailyAction(action, data) {
       activeSwipeId = null;
       const prevMark = state.shoppingMarks[item.id] ? { ...state.shoppingMarks[item.id] } : null;
       state.shoppingMarks[item.id] = { status: "skip", signature: item.signature, updatedAt: nowIso() };
-      const restorePref = rememberItemPref(item.name, { action: "skip", updatedAt: nowIso() });
+      const restorePref = rememberItemPref(item.name, { action: "skip", ...keepAlways(item.id, "skip"), updatedAt: nowIso() });
       shopUndo = {
+        alwaysId: keepAlways(item.id, "skip").always ? "" : item.id,
         text: `⏭ ${item.name}は今回は買わない（パス）`,
         undo: () => {
           state.shoppingMarks[item.id] = prevMark ? { ...prevMark, updatedAt: nowIso() } : { status: "buy", signature: item.signature, updatedAt: nowIso() };
@@ -3509,6 +3527,25 @@ function handleDailyAction(action, data) {
         },
       };
       showToast(`⏭ ${item.name}は今回は買わない（パス）にしました`);
+    }
+  }
+  if (action === "life-item-always") {
+    const item = shopPageItems().find((i) => i.id === data.id);
+    if (item && ["sub", "skip"].includes(item.status)) {
+      const cur = state.itemPrefs?.[item.id];
+      const on = !(cur?.always === true && cur.action === item.status);
+      const restorePref = rememberItemPref(item.name, { action: item.status, subText: item.subText || "", ...(on ? { always: true } : {}), updatedAt: nowIso() });
+      // やめる時：自動でついていた分は、今回の印として残す（押したとたんに「買う物」へ戻さない）
+      let restoreMark = null;
+      if (!on && item.auto) {
+        const prevMark = state.shoppingMarks[item.id] ? { ...state.shoppingMarks[item.id] } : null;
+        state.shoppingMarks[item.id] = { status: item.status, subText: item.subText || "", signature: item.signature, updatedAt: nowIso() };
+        restoreMark = () => { state.shoppingMarks[item.id] = prevMark ? { ...prevMark, updatedAt: nowIso() } : { status: "buy", signature: "", updatedAt: nowIso() }; };
+      }
+      const what = item.status === "sub" ? `代用${item.subText ? `（${item.subText}）` : ""}` : "パス";
+      const text = on ? `🔁 ${item.name}は、次からいつも${what}` : `${item.name}の「いつも${item.status === "sub" ? "代用" : "パス"}」をやめました`;
+      shopUndo = { text, undo: () => { restorePref(); restoreMark?.(); } };
+      showToast(text);
     }
   }
   if (action === "life-apply-item-pref") {

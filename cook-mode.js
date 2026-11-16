@@ -92,9 +92,13 @@ const CookMode = (() => {
     if (typeof state === "undefined" || !state.shoppingMarks || !scope?.date || !scope?.recipeId) return null;
     const k = typeof Lifestyle?.shoppingKey === "function" ? Lifestyle.shoppingKey(name) : name;
     const m = state.shoppingMarks[k];
-    if (!m || !["sub", "skip"].includes(m.status)) return null;
     const head = `${scope.date}:${scope.recipeId}:`;
-    return String(m.signature || "").split("|").some((part) => part.startsWith(head)) ? m : null;
+    // この日・この料理の買い物でつけた印があれば、それが優先（「今回は買う」に戻した時は何も出さない）
+    if (m && String(m.signature || "").split("|").some((part) => part.startsWith(head))) return ["sub", "skip"].includes(m.status) ? m : null;
+    // いつも代用・いつもパス（APP_MAP §79）
+    const p = state.itemPrefs?.[k];
+    if (p?.always === true && ["sub", "skip"].includes(p.action)) return { status: p.action, subText: p.subText || "" };
+    return null;
   }
   function ingredientsHtml(ingredients, amountOf, cls = "", scope = null) {
     const list = groupsOf(ingredients);

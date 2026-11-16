@@ -38,7 +38,7 @@ test("PR 5c: perishables first used many days after the shopping day get a gentl
   assert.equal(later["豆腐"], null, "day 3 is fine for tofu (urgency 3 starts on day 4)");
   assert.deepEqual(later["絹豆腐"], { date: "2026-10-05", label: "豆腐" });
   assert.equal(later["冷凍えび"], null, "frozen food is not rushed");
-  assert.equal(later["豚こま"], null);
+  assert.equal(later["豚こま切れ肉"], null);
   const html = run("renderDailyShopping()");
   assert.match(html, /10月3日（土）に使う・傷みやすいので、その前に買うと安心/);
   assert.match(html, /もやし・豆苗は傷みやすい食材です/);
@@ -69,9 +69,9 @@ test("PR 5c: 'あとで' moves the item out of this trip (not 'at home') and kee
   assert.equal(J(run2, `dailyShopping().find((i) => i.name === "もやし").status`), "buy");
   assert.equal(J(run2, "dailyShopping().some((i) => i.name.startsWith('もやし（'))"), false);
   // 目安のない品には効かない
-  const pork = run2(`dailyShopping().find((i) => i.name === "豚こま").id`);
+  const pork = run2(`dailyShopping().find((i) => i.name === "豚こま切れ肉").id`);
   run2(`handleDailyAction("life-item-later", { id: ${JSON.stringify(pork)} })`);
-  assert.equal(J(run2, `dailyShopping().find((i) => i.name === "豚こま").status`), "buy");
+  assert.equal(J(run2, `dailyShopping().find((i) => i.name === "豚こま切れ肉").status`), "buy");
   // 保存・読み込み直しても「あとで」は残る
   run(`state = normalizeState(JSON.parse(JSON.stringify(state))); saveState=()=>{}; render=()=>{};`);
   assert.equal(J(run, `Object.values(state.shoppingMarks).some((m) => m.status === "later")`), true);
@@ -80,11 +80,11 @@ test("PR 5c: 'あとで' moves the item out of this trip (not 'at home') and kee
 test("PR 5c: changing the number of servings keeps what was bought on record and asks to check the amount", () => {
   const run = app();
   setup(run);
-  const item = J(run, `dailyShopping().find((i) => i.name === "豚こま")`);
+  const item = J(run, `dailyShopping().find((i) => i.name === "豚こま切れ肉")`);
   run(`state.shoppingMarks[${JSON.stringify(item.id)}] = { status: "purchased", signature: ${JSON.stringify(item.signature)}, updatedAt: nowIso() };`);
-  assert.equal(J(run, `dailyShopping().find((i) => i.name === "豚こま").status`), "purchased");
+  assert.equal(J(run, `dailyShopping().find((i) => i.name === "豚こま切れ肉").status`), "purchased");
   run(`state.mealSlots["2026-10-06"].servings = 4;`);
-  const after = J(run, `dailyShopping().find((i) => i.name === "豚こま")`);
+  const after = J(run, `dailyShopping().find((i) => i.name === "豚こま切れ肉")`);
   assert.equal(after.recheck, true, "the amount changed: check if what was bought is enough");
   assert.equal(J(run, `state.shoppingMarks[${JSON.stringify(item.id)}].status`), "purchased", "the record of buying stays");
   assert.match(run("renderDailyShopping()"), /要確認/);
