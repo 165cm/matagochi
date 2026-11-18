@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { judge, markdown, readRefill } = require("../scripts/trends-health.cjs");
+const { judge, markdown, readRefill, quality } = require("../scripts/trends-health.cjs");
 
 // 毎朝の新着集めの健康診断（scripts/trends-health.cjs）。返事は本番の実行記録（2026-10）の形のまま。
 const NOW = Date.parse("2026-10-28T00:00:00Z");
@@ -138,4 +138,25 @@ test("2026-11-04：手順の時刻のカバー率を表に出す（判定には�
   assert.match(md, /手順のカバー率（時刻のある手順 ÷ すべての手順） \| 85%（1700 \/ 2000）/);
   assert.equal(r.ok, true);
   assert.ok(!markdown(r).includes("手順の時刻"), "no table when the numbers could not be read");
+});
+
+test("2026-11-18：レシピの品質（人数・分量・時間・手順・読み方）を数えて表に出す（判定には使わない）", () => {
+  const ok = { title: "豚こま炒め", sourceServings: 2, ingredients: [{ name: "豚こま", amount: "200g" }, { name: "キャベツ", amount: "1/4個" }], steps: ["切る", "炒める", "味をつける"], planning: { minutes: 15 }, analyzedFrom: "description" };
+  const list = { items: [
+    ok,
+    { ...ok, sourceServings: null },
+    { ...ok, ingredients: [{ name: "豚こま", amount: "200g" }, { name: "塩", amount: "" }] },
+    { ...ok, ingredients: [{ name: "豚こま", amount: "200g" }] },
+    { ...ok, planning: {} },
+    { ...ok, title: "とろとろ角煮", steps: ["切る", "1時間煮込む", "盛る"], planning: { minutes: 10 }, analyzedFrom: "video" },
+    { ...ok, steps: ["炒める"] },
+  ] };
+  const q = quality(list);
+  assert.deepEqual([q.total, q.servingsUnknown, q.amountMissing, q.fewIngredients, q.minutesMissing, q.minutesShort, q.fewSteps, q.fromDescription, q.fromVideo], [7, 1, 1, 1, 1, 1, 1, 6, 1]);
+  const r = judge({ refresh: { today: 2, ai: AI, done: true }, refill: { done: true, added: 8, ran: { ai: 25, added: 8 } }, list: { items: items(410) }, now: NOW });
+  const md = markdown(r, { list });
+  assert.match(md, /### 🧪 レシピの品質（新着）/);
+  assert.match(md, /元のレシピの人数が分からない（分量を人数に合わせられない） \| 1品（14%）/);
+  assert.equal(r.ok, true);
+  assert.ok(!markdown(r).includes("レシピの品質"), "no table without the list");
 });
