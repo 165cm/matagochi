@@ -213,3 +213,25 @@ test('管理者の時刻確認は版と内容を照合し、時刻を変えず�
   const changed = await catalog.peek(url);
   assert.notDeepEqual(changed.stepTimes,changed.timecodeReview.stepTimes);
 });
+
+test('2026-11-19: a stored recipe with unknown servings gets them from its (fresh) description, for free; nutrition lines and stale descriptions do not count', async () => {
+  const store = createMemorySyncStore();
+  const at = new Date().toISOString();
+  const put = (id, result) => store.put(`youtube-${id}`, { status: 'ready', result: { title: '豚こま炒め', ingredients: [{ name: '豚こま', amount: '200g' }], steps: ['切る', '炒める'], sourceServings: null, snippetFetchedAt: at, catalog: { analyzedAt: at, revision: 'r1' }, ...result } }, { ifGeneration: 0 });
+  await put('aaaaaaaaaaa', { caption: '【材料（2〜3人分）】豚こま 200g' });
+  await put('bbbbbbbbbbb', { caption: 'カロリー（1人分）350kcal' });
+  await put('ccccccccccc', { caption: '材料（2人分）', snippetFetchedAt: new Date(Date.now() - 40 * 86_400_000).toISOString(), catalog: { analyzedAt: '2026-01-01T00:00:00Z' } });
+  await put('ddddddddddd', { caption: '材料（4人分）', sourceServings: 3 });
+  const catalog = createRecipeCatalog(store, async () => { throw new Error('no AI'); });
+  const fill = (id) => catalog.fillServings(`https://youtu.be/${id}`);
+  assert.equal(await fill('aaaaaaaaaaa'), 2, 'the smaller of 2〜3');
+  const got = (await store.get('youtube-aaaaaaaaaaa')).envelope.result;
+  assert.equal(got.sourceServings, 2);
+  assert.equal(got.sourceServingsFrom, 'rule');
+  assert.notEqual(got.catalog.revision, 'r1', 'a new revision so saved copies on phones update');
+  assert.equal(await fill('bbbbbbbbbbb'), 0, 'a nutrition line is not the number of servings');
+  assert.equal(await fill('ccccccccccc'), 0, 'a description older than 30 days is not used');
+  assert.equal(await fill('ddddddddddd'), 0, 'known servings are left as they are');
+  assert.equal((await store.get('youtube-ddddddddddd')).envelope.result.sourceServings, 3);
+  assert.equal(await fill('aaaaaaaaaaa'), 0, 'only once');
+});
