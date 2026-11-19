@@ -109,7 +109,53 @@ function timecodeRows(tc) {
   ];
 }
 
-function markdown(result, { minVisible = MIN_VISIBLE, timecodes = null } = {}) {
+// レシピの品質（新着。2026-11-18 のユーザーの判断「集めるのは達成できたので、品質に舵を切る」）。
+// いま見えている新着の一覧（GET /api/trends）を数えるだけ（0円）。判定（赤・緑）には使わない。直す順番を決める材料。
+// 「かも」は言葉から推し量っただけ（確かめるのは人か読み直し）。
+const LONG_WORDS = /煮込|じっくり|オーブン|炊飯器|一晩|漬け込|寝かせ|圧力鍋|コトコト/;
+const noAmount = (i) => !String(i?.amount ?? "").trim();
+function quality(list) {
+  const items = Array.isArray(list?.items) ? list.items : null;
+  if (!items || !items.length) return null;
+  const count = (pred) => items.filter(pred).length;
+  const minutes = (r) => Number(r.planning?.minutes) || 0;
+  return {
+    total: items.length,
+    servingsUnknown: count((r) => r.sourceServings == null),
+    amountMissing: count((r) => (r.ingredients || []).some(noAmount)),
+    fewIngredients: count((r) => (r.ingredients || []).length < 2),
+    minutesMissing: count((r) => !minutes(r)),
+    // 15分以内なのに、煮込み・オーブン・漬け込みなどの言葉がある（時間が短すぎるかも）
+    minutesShort: count((r) => minutes(r) > 0 && minutes(r) <= 15 && LONG_WORDS.test([r.title, ...(r.steps || [])].join(" "))),
+    fewSteps: count((r) => (r.steps || []).filter((x) => String(x || "").trim()).length < 3),
+    fromDescription: count((r) => r.analyzedFrom === "description"),
+    fromVideo: count((r) => ["video", "video-clip"].includes(r.analyzedFrom)),
+  };
+}
+function qualityRows(q) {
+  if (!q) return [];
+  const pct = (n) => `${Math.round((n / q.total) * 100)}%`;
+  const row = (label, n) => `| ${label} | ${n}品（${pct(n)}） |`;
+  return [
+    "",
+    "### 🧪 レシピの品質（新着）",
+    "",
+    "| 項目 | 数 |",
+    "|---|---:|",
+    row("元のレシピの人数が分からない（分量を人数に合わせられない）", q.servingsUnknown),
+    row("分量のない材料がある（買い物リストで量が出ない）", q.amountMissing),
+    row("材料が1つ以下（読み取りの失敗かも）", q.fewIngredients),
+    row("調理時間が分からない", q.minutesMissing),
+    row("15分以内なのに、煮込み・オーブン・漬け込みなどがある（時間が短すぎるかも）", q.minutesShort),
+    row("手順が2つ以下（読み取りの失敗かも）", q.fewSteps),
+    row("説明欄から読んだ", q.fromDescription),
+    row("動画から読んだ", q.fromVideo),
+    "",
+    `見えている新着 ${q.total}品を数えています（0円）。判定（赤・緑）には使いません。`,
+  ];
+}
+
+function markdown(result, { minVisible = MIN_VISIBLE, timecodes = null, list = null } = {}) {
   const n = result.numbers;
   const show = (v, unit = "") => (v === null || v === undefined ? "不明" : `${v}${unit}`);
   const lines = [
@@ -126,6 +172,7 @@ function markdown(result, { minVisible = MIN_VISIBLE, timecodes = null } = {}) {
     `| 今月の新着集めの費用（目安） | ${n.monthYen === null ? "不明" : `${n.monthYen}円 / ${show(n.monthYenCap, "円")}`} |`,
   ];
   lines.push(...timecodeRows(timecodes));
+  lines.push(...qualityRows(quality(list)));
   if (result.problems.length) lines.push("", "### 問題", ...result.problems.map((p) => `- ❌ ${p}`));
   if (result.notes.length) lines.push("", "### メモ", ...result.notes.map((p) => `- ${p}`));
   lines.push("", "くわしくは管理の画面（admin/catalog.html の「集める」タブ）で確かめられます。");
@@ -134,8 +181,9 @@ function markdown(result, { minVisible = MIN_VISIBLE, timecodes = null } = {}) {
 
 if (require.main === module) {
   const [refreshFile, refillFile, listFile, timecodesFile] = process.argv.slice(2);
-  const result = judge({ refresh: readJson(refreshFile), ...readRefill(refillFile), list: readJson(listFile) });
-  const text = markdown(result, { timecodes: timecodesFile ? readJson(timecodesFile) : null });
+  const list = readJson(listFile);
+  const result = judge({ refresh: readJson(refreshFile), ...readRefill(refillFile), list });
+  const text = markdown(result, { timecodes: timecodesFile ? readJson(timecodesFile) : null, list });
   console.log(text);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
   // 実行の画面のいちばん上にも出す（::error:: は赤い注記になる）。
@@ -143,4 +191,4 @@ if (require.main === module) {
   process.exit(result.ok ? 0 : 1);
 }
 
-module.exports = { judge, markdown, readRefill, MIN_VISIBLE };
+module.exports = { judge, markdown, readRefill, quality, MIN_VISIBLE };
