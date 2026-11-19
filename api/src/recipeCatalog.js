@@ -7,6 +7,7 @@ import { extractYouTubeVideoId, canonicalYouTubeUrl } from "./youtube.js";
 import { normalizeImportResult, normalizeIngredients } from "./importRecipe.js";
 import { localizeRecipe } from "./units.js";
 import { stepsKey } from "./rewrite.js";
+import { detectServings } from "./servings.js";
 import { VIDEO_TIMEOUT_MS, VIDEO_CLIENTS_MAX } from "./analyzer.js";
 
 export function createRecipeStore(env) {
@@ -631,6 +632,25 @@ export function createRecipeCatalog(store, analyze, { model = "unknown", now = D
       if (current?.envelope.status !== "ready") return false;
       await refreshed(key, current);
       return true;
+    },
+    // 元の人数が分からないレシピに、説明文（30日以内に取り直したもの）と題名から人数を決まったルールで読んで入れる（0円。
+    // 2026-11-19 のユーザーの判断「人数の分からないレシピを直す」）。読めた時だけ書き、版を新しくする（端末の写しにも届く）。
+    // 読み取りの時も同じルールで読んでいるが、以前に読んだレシピや、あとで説明文が取り直されたレシピの分を拾う。返すのは入れた人数（なければ 0）。
+    async fillServings(rawUrl) {
+      required();
+      const key = `youtube-${extractYouTubeVideoId(rawUrl)}`;
+      const current = await store.get(key);
+      const before = current?.envelope.status === "ready" ? current.envelope.result : null;
+      if (!before || before.unavailable || before.sourceServings != null || !before.caption) return 0;
+      const fetchedAt = Date.parse(before.snippetFetchedAt || before.catalog?.analyzedAt || 0);
+      if (now() - fetchedAt > SNIPPET_MAX_AGE_MS) return 0;
+      const n = detectServings(`${before.caption}\n${before.title || ""}`);
+      if (!n) return 0;
+      const at = new Date(now()).toISOString();
+      const result = { ...structuredClone(before), sourceServings: n, sourceServingsFrom: "rule", catalog: { ...(before.catalog || {}), revision: randomUUID() } };
+      await keepVersion(before, at, result.catalog.revision);
+      if (!(await store.put(key, { ...current.envelope, result }, { ifGeneration: current.generation }))) return 0;
+      return n;
     },
     // 定期の後片付け：保存済みの読み取り結果を名前の順に max 件見て、25日より前に確かめたものを YouTube に確かめ直す（50本ずつ）。
     // 公開 → 説明文・チャンネル名を取り直す。削除・非公開 → 一覧から外す（30日たっても戻らなければ消す）。

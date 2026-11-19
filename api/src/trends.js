@@ -671,6 +671,8 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     const ids = index.weeks.filter(fresh).flatMap((w) => w.items.map((i) => i.videoId));
     if (index.refreshedOn !== today) {
       if (catalog.refresh) for (const id of ids) await catalog.refresh(canonicalYouTubeUrl(id)).catch(() => false);
+      // 元の人数が分からないレシピに、取り直した説明文から人数を入れる（0円・2026-11-19）。
+      if (catalog.fillServings) for (const id of ids) await catalog.fillServings(canonicalYouTubeUrl(id)).catch(() => 0);
       // 投稿者のアイコン（1日に1回まとめて取り直して保存。取れなくても一覧は出す）。
       const channelIds = [];
       for (const id of ids) { const r = await peek(id).catch(() => null); if (r?.channelId && !channelIds.includes(r.channelId)) channelIds.push(r.channelId); }
