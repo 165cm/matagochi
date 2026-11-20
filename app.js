@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261116-shop-names";
+const APP_VERSION = "20261120-servings-guess";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -4514,7 +4514,7 @@ function normalizeImportedIngredients(items) {
 }
 
 function displayIngredientAmount(item, sourceServings) {
-  return scaleAmountForServings(item.amount, getServingCount(), sourceServings);
+  return scaleAmountForServings(item.amount, getServingCount(), sourceServings, item.name);
 }
 
 function buildAmountOptions(amount) {
@@ -4576,7 +4576,37 @@ function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
-function scaleAmountForServings(amount, servingCount, sourceServings = 1) {
+// 元のレシピの人数。分からない時は、主役の材料の量からの目安（Lifestyle.estimateServings。2026-11-20）。{ n, estimated }
+function recipeServingsBase(recipe) {
+  const n = normalizeSourceServings(recipe?.sourceServings);
+  if (n !== null) return { n, estimated: false };
+  const e = recipe && typeof Lifestyle?.estimateServings === "function" ? Lifestyle.estimateServings(recipe) : null;
+  return { n: e, estimated: !!e };
+}
+// 材料1つの分量を、家族の人数に（元の人数が分からない時は目安で）。
+const scaleIngredient = (recipe, item, servings) => scaleAmountForServings(item.amount, servings, recipeServingsBase(recipe).n, item.name);
+// かけ算した分量を、台所で量りやすい数にそろえる（2026-11-20 のユーザーの判断）。
+//   g・ml：10 きざみ（100 未満は 5 きざみ）／大さじ・小さじ・個・本・枚・切れなど：1/2 きざみ（1 より小さい時は 1/8・1/4・1/3・1/2・2/3・3/4 のどれか）／卵は1個きざみ（最低1個）
+const PIECE_UNIT = /^(個|本|枚|切れ|玉|丁|袋|缶|束|株|房|かけ|片|尾|パック|カップ|合|杯)/;
+function roundForKitchen(value, prefix, unit, name = "") {
+  if (/^(g|ｇ|グラム|ml|mL|ｍｌ|cc|ミリリットル)/i.test(unit)) { const step = value >= 100 ? 10 : 5; return Math.max(step, Math.round(value / step) * step); }
+  if (/卵|たまご|玉子/.test(name) && /^個/.test(unit)) return Math.max(1, Math.round(value));
+  if (prefix || PIECE_UNIT.test(unit)) {
+    if (value >= 1) return Math.round(value * 2) / 2;
+    const [n, d] = NICE_FRACTIONS.reduce((best, f) => (Math.abs(value - f[0] / f[1]) < Math.abs(value - best[0] / best[1]) ? f : best));
+    return n / d;
+  }
+  return value;
+}
+// 1以上の端数は「1と1/2」のように（レシピの書き方）。
+function formatKitchenNumber(value) {
+  const whole = Math.floor(value + 1e-9), rest = value - whole;
+  if (rest < 0.02) return String(whole);
+  const hit = NICE_FRACTIONS.find(([n, d]) => Math.abs(rest - n / d) < 0.02);
+  if (!hit) return formatScaledNumber(value);
+  return whole ? `${whole}と${hit[0]}/${hit[1]}` : `${hit[0]}/${hit[1]}`;
+}
+function scaleAmountForServings(amount, servingCount, sourceServings = 1, name = "") {
   const value = String(amount || "").trim();
   sourceServings = normalizeSourceServings(sourceServings);
   if (sourceServings === null) return value || "適量";
@@ -4585,9 +4615,15 @@ function scaleAmountForServings(amount, servingCount, sourceServings = 1) {
 
   const halfMatch = value.match(/^半(.+)$/);
   if (halfMatch) {
-    return `${formatScaledNumber(0.5 * count)}${halfMatch[1]}`;
+    return `${formatKitchenNumber(roundForKitchen(0.5 * count, "", halfMatch[1], name))}${halfMatch[1]}`;
   }
-
+  // 「大さじ1と1/2」「1/4個」「200g」のように、数が1つだけの分量は、台所で量りやすい数にそろえる。
+  const one = value.normalize("NFKC").match(/^(大さじ|小さじ)?\s*(?:(\d+)と(\d+)\/(\d+)|(\d+)\/(\d+)|(\d+(?:\.\d+)?))\s*([^\d]*)$/);
+  if (one) {
+    const base = one[2] ? Number(one[2]) + Number(one[3]) / Number(one[4]) : one[5] ? Number(one[5]) / Number(one[6]) : Number(one[7]);
+    const prefix = one[1] || "", unit = one[8] || "";
+    return `${prefix}${formatKitchenNumber(roundForKitchen(base * count, prefix, unit, name))}${unit}`;
+  }
   return value.replace(/(\d+)\s*\/\s*(\d+)|\d+(?:\.\d+)?/g, (match, numerator, denominator) => {
     const base = numerator ? Number(numerator) / Number(denominator) : Number(match);
     return formatScaledNumber(base * count);

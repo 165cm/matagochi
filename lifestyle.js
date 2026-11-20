@@ -624,6 +624,36 @@
   const FISH_RE = /鮭|さけ|サケ|サーモン|さば|サバ|鯖|ぶり|ブリ|鰤|かれい|カレイ|鰈|たら(?!し)|タラ|鱈|あじ|アジ|鯵|いわし|イワシ|鰯|さんま|サンマ|秋刀魚|まぐろ|マグロ|鮪|かつお|カツオ|鰹|鯛|めかじき|かじき|カジキ|ひらめ|すずき|うなぎ|ししゃも|えび|エビ|海老|いか|イカ|たこ(?!焼)|タコ(?!ライス)|ほたて|ホタテ|帆立|あさり|アサリ|しじみ|かき|カキ|牡蠣|しらす|ちりめん|ツナ|明太|たらこ|かに(?!かま)|カニ(?!カマ)|蟹|白身|切り身|魚/;
   const SEASONING_RE = /(かつお|カツオ|鰹)(節|ぶし|だし|風味)|削り節|花かつお|だしの素|ほんだし|顆粒だし|和風だし|白だし|めんつゆ|魚醤|ナンプラー|オイスター(ソース)?|えびせん|鶏ガラ|鶏がら|ガラスープ|コンソメ|ブイヨン|豚骨|とんこつ|牛脂|中華だし|ウェイパー|味の素/g;
   const mainText = (s) => String(s || "").replace(SEASONING_RE, " ");
+  // 元のレシピの人数が分からない時の目安（2026-11-20 のユーザーの判断「A：目安の人数を出す」）。主役の材料の量から決まったルールで推し量る（0円）。
+  //   肉・魚：100g で1人分（鶏もも・むね1枚＝2人分、切り身・1尾・1缶＝1人分、1パック＝2人分、しょうが焼き用などの薄い1枚＝1/2人分）
+  //   主食（肉・魚がない時）：パスタ100g・うどんなど1玉＝1人分、お米1合＝2人分、ごはん150g・1杯＝1人分
+  //   豆腐（ほかにない時）：1丁＝2人分
+  // どれも当てはまらなければ null（分量は動画のまま）。1〜8人分にまるめる。
+  const amountNumber = (s) => {
+    const m = String(s || "").normalize("NFKC").match(/(\d+)\s*\/\s*(\d+)|\d+(?:\.\d+)?/);
+    return m ? (m[1] ? Number(m[1]) / Number(m[2]) : Number(m[0])) : null;
+  };
+  const gramsOf = (s) => { const m = String(s || "").normalize("NFKC").match(/(\d+(?:\.\d+)?)\s*(?:g|グラム)/i); return m ? Number(m[1]) : null; };
+  function estimateServings(recipe) {
+    let protein = 0, staple = 0, tofu = 0;
+    for (const i of recipe?.ingredients || []) {
+      const name = String(i?.name || ""), amount = String(i?.amount || "").normalize("NFKC");
+      const g = gramsOf(amount), n = amountNumber(amount);
+      const main = mainText(name);
+      if (MEAT_RE.test(main) || FISH_RE.test(main)) {
+        if (g) protein += g / 100;
+        else if (n && /枚/.test(amount)) protein += n * (/もも|むね|胸|モモ|ムネ/.test(name) ? 2 : 0.5);
+        else if (n && /切れ|切り身|尾|缶/.test(amount)) protein += n;
+        else if (n && /パック/.test(amount)) protein += n * 2;
+      } else if (/パスタ|スパゲ|マカロニ/.test(name)) { if (g) staple += g / 100; }
+      else if (/うどん|そば|中華麺|ラーメン|焼きそば|そうめん/.test(name)) { if (g) staple += g / 200; else if (n && /玉|袋|束|人分/.test(amount)) staple += n; }
+      else if (/^(米|お米|白米)$/.test(name.trim())) { if (n && /合/.test(amount)) staple += n * 2; }
+      else if (/ごはん|ご飯|白飯/.test(name)) { if (g) staple += g / 150; else if (n && /杯|膳/.test(amount)) staple += n; }
+      else if (/豆腐/.test(name) && n && /丁/.test(amount)) tofu += n * 2;
+    }
+    const x = protein >= 0.5 ? protein : staple >= 0.5 ? staple : tofu;
+    return x >= 0.5 ? Math.min(8, Math.max(1, Math.round(x))) : null;
+  }
   const traits = memoByRecipe(traitsRaw, recipeSig, (v) => ({ ...v }));
   function traitsRaw(recipe) {
     const title = String(recipe?.title || "");
@@ -1687,10 +1717,13 @@
           if (!groups.has(k))
             groups.set(k, { id: k, name, category: item.category || "その他", amounts: [], parts: [], uses: [] });
           const g = groups.get(k);
+          // 4・5番目：料理と材料名（元の人数が分からない時の目安・卵の丸めにアプリが使う。2026-11-20）。
           const amount = scale(
             item.amount,
             s.servings,
             s.recipe.sourceServings,
+            s.recipe,
+            item.name,
           );
           g.amounts.push(amount);
           g.parts.push(`${s.date}:${s.recipe.id}:${amount}`);
@@ -2257,6 +2290,7 @@
     traits,
     tags,
     axes,
+    estimateServings,
     FACETS,
     rotation,
     repeatFit,
