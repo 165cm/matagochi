@@ -8,7 +8,8 @@ const SKIP_KINDS = [
   { id: "deli", icon: "🛵", label: "デリバリー" },
   { id: "home", icon: "🍙", label: "あるもので" },
 ];
-const SKIP_OF = Object.fromEntries(SKIP_KINDS.map((k) => [k.id, k]));
+// 「作れなかった」（過ぎた日の申告。2026-11-20）。選ぶ一覧には出さず、印としてだけ使う。
+const SKIP_OF = Object.fromEntries([...SKIP_KINDS, { id: "missed", icon: "⏸", label: "作れなかった" }].map((k) => [k.id, k]));
 let skipDate = "", moreDate = "";
 function skipLabel(slot) {
   const k = SKIP_OF[slot?.kind];
@@ -51,11 +52,13 @@ function restDay(date) {
   const slot = state.mealSlots?.[date];
   return !slot && !(prestartUntil() && date < prestartUntil()) && !cooksOn(date);
 }
-function shiftMoves(date, { early = false } = {}) {
+// floor：この日より前には置かない（過ぎた日の「作れなかった」は、今日から先へ）。
+function shiftMoves(date, { early = false, floor = "" } = {}) {
   const moves = [];
   let carry = dayEntry(date), from = date, d = date;
-  for (let n = 0; carry && n < 21; n += 1) {
+  for (let n = 0; carry && n < 30; n += 1) {
     d = addDays(d, 1);
+    if (floor && d < floor) { n -= 1; continue; }
     if (!cooksOn(d)) {
       // お休みの曜日に作るのは、買った料理（確定）だけ。そこで押し出しはおしまい。
       if (early && carry.slot && restDay(d)) { moves.push({ entry: carry, from, to: d, rest: true }); break; }
@@ -146,7 +149,70 @@ function renderSkipPanel(date) {
     })() : ""}
     <button type="button" class="text-button" data-action="life-skip-close">やめる</button></section>`;
 }
+// ----- 作れなかった（過ぎた日の申告。2026-11-20 のユーザーの依頼） -----
+// 献立に決めていたのに作れなかった日：その日を「作れなかった」にする。材料を買ってあった時は、どうするかを選ぶ。
+//   move：別の日に作る（今日から先の、次に作る日へ。あとの料理も1日ずつ後ろへ）
+//   left：作らない・材料は残っている（「家に残っている食材」に入れて、その食材を使う料理を先に出す）
+//   gone：作らない・材料はもう使った／ない
+let missDate = "";
+// 材料を買ってあったか（買い物を済ませた後も、その料理が決まっていた）。
+function slotBought(slot) {
+  const since = lastShoppedAt();
+  return !!(slot?.bought || (since && (slot?.updatedAt || "") <= since));
+}
+// 残る材料の候補は、傷む生ものだけ（野菜・肉・魚・卵や乳・日配）。調味料・ごはん・乾物は家にあるのが普通なので入れない。
+const MISS_AISLES = new Set(["veg", "meat", "fish", "chilled", "daily"]);
+function missedIngredients(slot) {
+  const pantry = dailyProfile().pantry || {};
+  return [...new Set((slot?.recipe?.ingredients || []).filter((i) => MISS_AISLES.has(Aisles.aisleOf(i.name, i.category, state.aisleOverrides || {}))).map((i) => Lifestyle.shoppingName(i.name)).filter((n) => n && Lifestyle.isBought(n) && pantry[n] !== "have"))];
+}
+function missDay(date, how) {
+  const slot = state.mealSlots?.[date];
+  if (!slot || slot.status !== "confirmed" || !slot.recipe) return { moved: "" };
+  const moves = how === "move" ? shiftMoves(date, { floor: today() }) : [];
+  state.mealSlots[date] = { date, status: "off", kind: "missed", recipeTitle: slot.recipe.title, ...(how ? { how } : {}), updatedAt: nowIso() };
+  delete state.planOverrides[date];
+  moves.forEach((m) => placeEntry(m.entry, m.to));
+  const left = how === "left" ? missedIngredients(slot) : [];
+  left.forEach((n) => setLeftover(n, true));
+  return { moved: moves[0]?.entry.recipe.title || "", to: moves[0]?.to || "", count: moves.length, left };
+}
+function renderMissPanel(date) {
+  if (missDate !== date || isViewer()) return "";
+  const slot = state.mealSlots?.[date];
+  if (!slot?.recipe) return "";
+  const bought = slotBought(slot);
+  const to = shiftMoves(date, { floor: today() })[0]?.to;
+  const items = missedIngredients(slot);
+  const f = Lifestyle.freshness(slot.recipe);
+  const opt = (how, title, note, primary = false) => `<button type="button" class="miss-option${primary ? " is-primary" : ""}" data-action="life-missed" data-date="${date}" data-how="${how}"><b>${title}</b>${note ? `<small>${note}</small>` : ""}</button>`;
+  return `<section class="miss-panel" aria-label="${formatDate(date)}の${escapeAttr(slot.recipe.title)}を作れなかった">
+    <p class="miss-q">${bought ? `<b>材料は買ってありますね。</b>どうしますか？` : "どうしますか？"}</p>
+    ${to ? opt("move", `🗓 ${formatDate(to)}（${weekdayLabel(to)}）に作る`, `${bought ? "買った材料をむだにしません。" : ""}あとの料理も1日ずつ後ろへ${bought && f.urgency >= 3 ? `。🧊 ${escapeHtml(f.label)}は早めに使うか冷凍を` : ""}`, true) : ""}
+    ${bought && items.length ? opt("left", "🧺 作らない・材料は残っている", `${escapeHtml(items.slice(0, 4).join("・"))}${items.length > 4 ? ` ほか${items.length - 4}品` : ""}を「家に残っている食材」に入れて、使う料理を先に出します`) : ""}
+    ${opt("gone", bought ? "🗑 作らない・材料はもう使った" : "作らない", "この日の料理はなしにします")}
+    <button type="button" class="text-button" data-action="life-missed-close">やめる</button></section>`;
+}
+function handleMissAction(action, data) {
+  if (!["life-missed-open", "life-missed-close", "life-missed"].includes(action)) return false;
+  if (isViewer()) return true;
+  if (action === "life-missed-open") missDate = missDate === data.date ? "" : data.date;
+  else if (action === "life-missed-close") missDate = "";
+  else {
+    const how = ["move", "left", "gone"].includes(data.how) ? data.how : "gone";
+    const before = dailyShopping();
+    const r = missDay(data.date, how);
+    missDate = "";
+    trackDaily("meal_missed", { how, bought: how !== "gone" });
+    changedShopping(before);
+    saveState();
+    showToast(how === "move" && r.to ? `「${r.moved}」は${formatDate(r.to)}（${weekdayLabel(r.to)}）に。${r.count > 1 ? "あとの料理も1日ずつずらしました。" : ""}` : how === "left" ? `残っている食材に${r.left.length}品入れました。献立タブで、その食材を使う料理を先に出します` : "作れなかった日にしました。");
+  }
+  render();
+  return true;
+}
 function handlePlanMoveAction(action, data) {
+  if (handleMissAction(action, data)) return true;
   if (!["life-more", "life-skip", "life-skip-close", "life-skip-kind", "life-move"].includes(action)) return false;
   if (isViewer()) return true;
   if (action === "life-more") { moreDate = moreDate === data.date ? "" : data.date; skipDate = ""; swapDate = ""; }
