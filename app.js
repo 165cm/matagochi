@@ -13,7 +13,7 @@ const SYNC_POLL_MS = 15_000;
 const SYNC_ROOM_ID_PATTERN = /^[a-f0-9]{64}$/;
 
 const defaultFamily = ["自分"];
-const APP_VERSION = "20261120-servings-guess";
+const APP_VERSION = "20261120-portion";
 const emptyDraft = { sourceServings: null, servingsManual: false, catalog: null, title: "", videoUrl: "", source: "", author: "", mealType: "dinner", caption: "", note: "", stepTimes: [], stepTimesFrom: undefined };
 const defaultRepeatCycle = "weekly";
 const repeatOptions = [
@@ -53,6 +53,8 @@ const demoState = {
   shoppingMarks: {},
   manualShopping: {},
   itemPrefs: {},
+  portion: 1,
+  portionByRecipe: {},
   pantryMeta: {},
   planLength: 3,
   onboarded: false,
@@ -389,6 +391,8 @@ function normalizeState(saved) {
     shoppingMarks: normalizeShoppingMarks(saved.shoppingMarks),
     manualShopping: normalizeManualShopping(saved.manualShopping),
     itemPrefs: normalizeItemPrefs(saved.itemPrefs),
+    portion: normalizePortion(saved.portion),
+    portionByRecipe: normalizePortionMap(saved.portionByRecipe),
     pantryMeta: normalizePantryMeta(saved.pantryMeta),
     planLength: Number(saved.planLength) === 7 ? 7 : 3,
     planOverrides: normalizePlanOverrides(saved.planOverrides),
@@ -552,6 +556,31 @@ function normalizeServingCount(value) {
   if (!Number.isFinite(count)) return 1;
   return Math.min(Math.max(count, 1), 12);
 }
+
+// 食べる量（2026-11-20 のユーザーの判断）：家族の人数とは別に、量を ×0.5〜2.0（0.25 きざみ）。
+// まとめての値（state.portion）と、レシピごとの値（state.portionByRecipe。キーは動画 または レシピ）。レシピごとの値があればそちらが勝つ。
+function normalizePortion(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(2, Math.max(0.5, Math.round(n * 4) / 4));
+}
+function normalizePortionMap(map) {
+  const out = {};
+  for (const [k, v] of Object.entries(map && typeof map === "object" ? map : {})) {
+    if (typeof k === "string" && k && Number.isFinite(Number(v))) out[k] = normalizePortion(v);
+  }
+  return out;
+}
+function portionKey(recipe) {
+  if (!recipe) return "";
+  const vid = youtubeVideoId(recipe.videoUrl || "");
+  return vid ? `v:${vid}` : `r:${recipe.starterId || recipe.id || ""}`;
+}
+function portionOf(recipe) {
+  const own = state.portionByRecipe?.[portionKey(recipe)];
+  return own !== undefined ? normalizePortion(own) : normalizePortion(state.portion);
+}
+const portionText = (n) => `×${Number.isInteger(n * 2) ? n.toFixed(1) : String(n)}`;
 
 function getServingCount() {
   return normalizeServingCount(state.servingCount);
@@ -787,6 +816,8 @@ function buildSyncPayload() {
     shoppingMarks: state.shoppingMarks,
     manualShopping: state.manualShopping,
     itemPrefs: state.itemPrefs || {},
+    portion: normalizePortion(state.portion),
+    portionByRecipe: state.portionByRecipe || {},
     pantryMeta: state.pantryMeta || {},
     requests: state.requests || {},
     roles: state.roles || { members: {}, updatedAt: "" },
@@ -835,6 +866,9 @@ function mergeSyncPayloads(local, remote) {
     settingsUpdatedAt: settingsSource.settingsUpdatedAt || "",
     family: Array.isArray(settingsSource.family) && settingsSource.family.length ? settingsSource.family : local.family,
     servingCount: settingsSource.servingCount,
+    // 食べる量は人数と同じく「設定」：あとから変えた端末の値にそろえる（2026-11-20）
+    portion: settingsSource.portion,
+    portionByRecipe: settingsSource.portionByRecipe,
     recipes,
     evaluations,
     tombstones,
@@ -905,6 +939,8 @@ function applySyncPayload(payload) {
   state.shoppingMarks = normalizeShoppingMarks(payload.shoppingMarks || state.shoppingMarks);
   state.manualShopping = normalizeManualShopping(payload.manualShopping || state.manualShopping);
   state.itemPrefs = normalizeItemPrefs(payload.itemPrefs || state.itemPrefs);
+  if (payload.portion !== undefined) state.portion = normalizePortion(payload.portion);
+  if (payload.portionByRecipe !== undefined) state.portionByRecipe = normalizePortionMap(payload.portionByRecipe);
   state.pantryMeta = normalizePantryMeta(payload.pantryMeta || state.pantryMeta);
   state.requests = normalizeRequests(payload.requests || state.requests);
   state.roles = normalizeRoles(payload.roles || state.roles);
@@ -2850,7 +2886,8 @@ function renderSettings() {
     ${renderAccountPanel()}
     ${renderDataProtectionCard()}
     <section class="settings-list" aria-label="設定">
-    ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 12 ? "disabled" : ""}>＋</button></div></div>
+    ${settingRow("food", "🍽️", "食生活", `${getServingCount()}人分${normalizePortion(state.portion) !== 1 ? `（量${portionText(normalizePortion(state.portion))}）` : ""}・平日${p.weekdayMinutes ? `${p.weekdayMinutes}分` : "未指定"}${leave.length ? `・${leave.slice(0, 3).join("、")}${leave.length > 3 ? " ほか" : ""}を除く` : ""}`, `<div class="settings-row"><span>人数</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="-1" aria-label="1人減らす" ${getServingCount() <= 1 ? "disabled" : ""}>−</button><strong aria-live="polite">${getServingCount()}人分</strong><button class="plan-icon" type="button" data-action="adjust-serving" data-delta="1" aria-label="1人増やす" ${getServingCount() >= 12 ? "disabled" : ""}>＋</button></div></div>
+      <div class="settings-row"><span>食べる量 ${tip("家族がよく食べる・少なめの時に。材料の量に、この倍率をかけます（レシピごとにも変えられます）")}</span><div class="settings-stepper"><button class="plan-icon" type="button" data-action="adjust-portion" data-delta="-0.25" aria-label="食べる量を減らす" ${normalizePortion(state.portion) <= 0.5 ? "disabled" : ""}>−</button><strong aria-live="polite">${portionText(normalizePortion(state.portion))}</strong><button class="plan-icon" type="button" data-action="adjust-portion" data-delta="0.25" aria-label="食べる量を増やす" ${normalizePortion(state.portion) >= 2 ? "disabled" : ""}>＋</button></div></div>
       ${(() => { const p = dailyProfile(); return `<dl class="planning-summary"><div><dt>平日の時間</dt><dd>${p.weekdayMinutes ? `${p.weekdayMinutes}分以内` : "未指定"}</dd></div><div><dt>食べられない</dt><dd>${escapeHtml(p.restrictions.join("・") || "未指定")}</dd></div><div><dt>苦手</dt><dd>${escapeHtml(p.dislikes.join("・") || "未指定")}</dd></div></dl>`; })()}
       ${isViewer() ? "" : `<h3 class="quick-sub">献立の寄せ方</h3>${renderPlanTunes()}`}
       <button class="primary-button full-button" data-action="life-profile">${state.onboardingDraft ? "設定の続きをする" : "好み・器具・常備品も変更する"}</button><button class="secondary-button full-button" data-action="life-pantry-open">🫙 常備品だけ変える</button><p class="muted small">材料は元レシピの人数から、この人数分に換算します。同期するのは器具・常備品・確定した献立・買い物で、食材制限と好みは共有しません。</p>`)}
@@ -3279,6 +3316,14 @@ async function handleAction(event) {
   if (action === "choose-serving") {
     if (state.view === "register") captureDraft();
     state.servingCount = Number(event.currentTarget.dataset.count);
+    touchSettings(); saveState(); render(); return;
+  }
+
+  if (action === "adjust-portion") {
+    const delta = Number(event.currentTarget.dataset.delta) || 0;
+    state.portion = normalizePortion(normalizePortion(state.portion) + delta);
+    // まとめての値と同じになったレシピごとの値は、もう要らない
+    for (const [k, v] of Object.entries(state.portionByRecipe || {})) if (v === state.portion) delete state.portionByRecipe[k];
     touchSettings(); saveState(); render(); return;
   }
 
@@ -4584,7 +4629,7 @@ function recipeServingsBase(recipe) {
   return { n: e, estimated: !!e };
 }
 // 材料1つの分量を、家族の人数に（元の人数が分からない時は目安で）。
-const scaleIngredient = (recipe, item, servings) => scaleAmountForServings(item.amount, servings, recipeServingsBase(recipe).n, item.name);
+const scaleIngredient = (recipe, item, servings) => scaleAmountForServings(item.amount, servings, recipeServingsBase(recipe).n, item.name, portionOf(recipe));
 // かけ算した分量を、台所で量りやすい数にそろえる（2026-11-20 のユーザーの判断）。
 //   g・ml：10 きざみ（100 未満は 5 きざみ）／大さじ・小さじ・個・本・枚・切れなど：1/2 きざみ（1 より小さい時は 1/8・1/4・1/3・1/2・2/3・3/4 のどれか）／卵は1個きざみ（最低1個）
 const PIECE_UNIT = /^(個|本|枚|切れ|玉|丁|袋|缶|束|株|房|かけ|片|尾|パック|カップ|合|杯)/;
@@ -4606,11 +4651,13 @@ function formatKitchenNumber(value) {
   if (!hit) return formatScaledNumber(value);
   return whole ? `${whole}と${hit[0]}/${hit[1]}` : `${hit[0]}/${hit[1]}`;
 }
-function scaleAmountForServings(amount, servingCount, sourceServings = 1, name = "") {
+// factor：食べる量（×0.5〜2.0）。元の人数が分からない時は、動画の分量にこの倍率だけをかける。
+function scaleAmountForServings(amount, servingCount, sourceServings = 1, name = "", factor = 1) {
   const value = String(amount || "").trim();
   sourceServings = normalizeSourceServings(sourceServings);
-  if (sourceServings === null) return value || "適量";
-  const count = normalizeServingCount(servingCount) / sourceServings;
+  factor = normalizePortion(factor);
+  if (sourceServings === null && factor === 1) return value || "適量";
+  const count = sourceServings === null ? factor : (normalizeServingCount(servingCount) * factor) / sourceServings;
   if (!value || count === 1 || /適量|少々|お好み|ひとつまみ/.test(value)) return value || "適量";
 
   const halfMatch = value.match(/^半(.+)$/);

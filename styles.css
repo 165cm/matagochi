@@ -4304,6 +4304,11 @@ div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.
 .servings-banner { flex-wrap: wrap; }
 .servings-banner .servings-options { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .servings-banner .choice-button { min-height: 44px; flex: 1 1 0; border-color: #e2574c; color: #c0392b; background: #fff; }
+/* 料理ごとの食べる量（2026-11-20） */
+.portion-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 4px 0 10px; font-size: 13px; }
+.portion-row > span { color: var(--muted, #6b6b6b); }
+.portion-row .settings-stepper strong { min-width: 52px; font-size: 15px; }
+.portion-row .text-button { min-height: 44px; font-size: 12.5px; }
 /* 人数の目安（2026-11-20）：赤い知らせではなく、小さな一言 */
 .servings-estimate { margin: 8px 0; padding: 8px 12px; border-radius: 12px; background: #f4f8f2; border: 1px solid #cfe0c6; color: #3d5a2e; font-size: 12.5px; line-height: 1.5; }
 .servings-estimate p { margin: 0; }
