@@ -1449,7 +1449,8 @@ function renderTodayTodos() {
   const rows = [];
   if (!isViewer()) {
     Object.values(state.mealSlots || {}).filter((s) => s.status === "confirmed" && s.date < today() && canRecordDate(s.date)).sort((a, b) => b.date.localeCompare(a.date))
-      .forEach((s) => rows.push(`<div class="todo-row"><span>🍳</span><p><b>${formatDate(s.date)}の${escapeHtml(s.recipe.title)}</b>、作った？</p>${dailyButton("life-record-past", "作った", `data-date="${s.date}"`)}</div>`));
+      // 「作った」と並べて「作れなかった」（2026-11-20）。押すと、材料を買ってあった時の選び方が開く。
+      .forEach((s) => rows.push(`<div class="todo-row is-past-meal"><span>🍳</span><p><b>${formatDate(s.date)}の${escapeHtml(s.recipe.title)}</b>、作った？</p><div class="todo-past-actions">${dailyButton("life-record-past", "作った", `data-date="${s.date}"`)}<button type="button" class="text-button" data-action="life-missed-open" data-date="${s.date}" aria-expanded="${missDate === s.date}">作れなかった</button></div>${renderMissPanel(s.date)}</div>`));
   }
   const yestEval = state.evaluations.find((e) => (e.cookedAt || "").slice(0, 10) === addDays(today(), -1) && e.preferencePending && raterNames().some((n) => !e.familyRepeatCycles?.[n]));
   if (yestEval && !isViewer() && !reviewDue()) {
