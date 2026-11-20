@@ -2203,11 +2203,11 @@ function renderCooking() {
   ${slot?.side ? `<div class="cooking-side-box"><b>🥢 今日の添え物：${escapeHtml(slot.side)}</b><p class="small muted">${escapeHtml(Lifestyle.sideOf(slot.side)?.desc || "")}</p></div>` : ""}
   ${canAnalyzeRecipe(recipe) ? `<p>${dailyButton("life-analyze", analyzingDate ? "作成中…" : "動画の説明文から下書きを作る",`data-date="${cookingDate}" ${analyzingDate ? "disabled" : ""}`)}</p>` : ""}
   ${slot?.recipe ? renderSourceNote(slot.recipe, !isViewer(), cookingDate) : ""}
-  ${slot?.recipe ? renderSourceReload(slot.recipe, !isViewer(), cookingDate) : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && (!!slot?.recipe || state.recipes.some((x) => x.id === recipe.id)), slot?.recipe ? cookingDate : "")}
   ${servingsManualNote(recipe)}
-  <h3>材料 <small class="muted">${escapeHtml(servingsLabel(recipe, servings))}</small></h3>${portionControl(recipe)}${cook.ingredients}
+  ${ingredientsHead(recipe, servings, "")}${cook.ingredients}
   ${cook.steps}
+  ${slot?.recipe ? renderSourceReload(slot.recipe, !isViewer(), cookingDate) : ""}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
 // ----- 記録の編集（食べた日・次に食べたい頃・写真・メモ） -----
@@ -4549,7 +4549,7 @@ function tagLabels(recipe) {
 const shoppingScale = (amount, servings, sourceServings, recipe, name) => scaleAmountForServings(amount, servings, recipe ? recipeServingsBase(recipe).n : sourceServings, name || "", recipe ? portionOf(recipe) : normalizePortion(state.portion));
 // 材料の見出しの人数（目安の時は「目安2人分→4人分」）。
 function servingsLabel(recipe, servings) {
-  const base = recipeServingsBase(recipe), f = portionOf(recipe);
+  const base = recipeServingsBase(recipe), f = recipe?.__noPortion ? 1 : portionOf(recipe);
   if (base.n === null) return f === 1 ? "動画の分量のまま" : `動画の分量の${portionText(f)}`;
   const amount = f === 1 ? `${servings}人分` : `${servings}人分${portionText(f)}`;
   return base.estimated ? `${amount}（元は目安で${base.n}人分）` : amount;
@@ -4559,7 +4559,14 @@ function portionControl(recipe) {
   if (!recipe || isViewer()) return "";
   const key = portionKey(recipe), f = portionOf(recipe), own = state.portionByRecipe?.[key] !== undefined;
   const btn = (d, label, off) => `<button class="plan-icon" type="button" data-action="life-portion" data-key="${escapeAttr(key)}" data-delta="${d}" aria-label="${label}"${off ? " disabled" : ""}>${d < 0 ? "−" : "＋"}</button>`;
-  return `<div class="portion-row"><span>食べる量</span><div class="settings-stepper">${btn(-0.25, "この料理の量を減らす", f <= 0.5)}<strong aria-live="polite">${portionText(f)}</strong>${btn(0.25, "この料理の量を増やす", f >= 2)}</div>${own ? `<button type="button" class="text-button" data-action="life-portion-reset" data-key="${escapeAttr(key)}">いつもの量（${portionText(normalizePortion(state.portion))}）に戻す</button>` : ""}</div>`;
+  return `<div class="portion-row"><span>量</span>${btn(-0.25, "この料理の量を減らす", f <= 0.5)}<strong aria-live="polite">${portionText(f)}</strong>${btn(0.25, "この料理の量を増やす", f >= 2)}</div>${own ? `<button type="button" class="text-button portion-reset" data-action="life-portion-reset" data-key="${escapeAttr(key)}">いつもの量（${portionText(normalizePortion(state.portion))}）に戻す</button>` : ""}`;
+}
+// 材料の見出し：「材料 4人分」と、右に料理ごとの量（−／＋）を1行で（2026-11-20 のユーザーの判断：材料まで早く）。
+// 量の倍率は右の数字で見えるので、見出しには書かない（見るだけの人は見出しに書く）。
+function ingredientsHead(recipe, servings, cls = "detail-h") {
+  const control = portionControl(recipe);
+  const label = control ? servingsLabel({ ...recipe, __noPortion: true }, servings) : servingsLabel(recipe, servings);
+  return `<div class="ing-head"><h3 class="${cls}">材料 <small>${escapeHtml(label)}</small></h3>${control}</div>`;
 }
 function servingsUnknownBanner(recipe, canEdit, date = "") {
   if (!recipe || recipe.sourceServings != null) return "";
@@ -4632,8 +4639,9 @@ function renderRecipeDetail() {
       ${saved ? `<button type="button" class="text-button" data-action="life-new-record" data-recipe="${escapeAttr(r.id)}">作った記録をつける</button><button type="button" class="text-button" data-action="edit-recipe" data-recipe="${escapeAttr(r.id)}">✏️ 編集する</button><button type="button" class="text-button danger" data-action="delete-recipe" data-recipe="${escapeAttr(r.id)}">このレシピを削除</button>` : ""}
     </div></details>` : "";
   const cookable = (r.steps || []).length > 0;
+  // 献立に入れる・料理モード・保存を1行に（2026-11-20：材料まで早く）。
   const actions = edit
-    ? `<button type="button" class="primary-button full-button detail-place" data-action="life-place-open" data-recipe="${escapeAttr(r.id)}">🗓 献立に入れる</button><div class="detail-actions">${cookable ? `<button type="button" class="secondary-button" data-cook-mode="open">🍳 料理モード</button>` : ""}${saved ? "" : dailyButton("life-save-starter", "🤍 保存", `data-recipe="${escapeAttr(r.id)}"`)}</div>`
+    ? `<div class="detail-actions detail-actions-main"><button type="button" class="primary-button detail-place" data-action="life-place-open" data-recipe="${escapeAttr(r.id)}">🗓 献立に入れる</button>${cookable ? `<button type="button" class="secondary-button" data-cook-mode="open">🍳 料理モード</button>` : ""}${saved ? "" : `<button type="button" class="secondary-button" data-action="life-save-starter" data-recipe="${escapeAttr(r.id)}">🤍 保存</button>`}</div>`
     : `<div class="detail-actions">${requestButton(r)}${r.videoUrl ? `<a class="secondary-button link-button" href="${escapeAttr(r.videoUrl)}" target="_blank" rel="noreferrer">▶ 動画を開く</a>` : ""}</div>`;
   const pLine = renderParentLine(r);
   // 最初から入っている料理（動画なし）は、同じ料理名の動画レシピがあれば、そちらへ誘う（2026-11-14 のユーザーの判断「動画ありを推し気味で」。APP_MAP §69）。
@@ -4645,22 +4653,26 @@ function renderRecipeDetail() {
     <div class="detail-top">${fromSwap ? `<button type="button" class="text-button cooking-back" data-action="life-swap-back">‹ ${swapSize()}皿に戻る</button>` : `<button type="button" class="text-button cooking-back" data-action="life-recipe-back">‹ レシピ一覧</button>`}<div class="detail-top-end">${objectionButton(r)}${more}</div></div>
     ${renderCreatorCredit(r) || dishTile(r, "detail-photo")}
     <h2 class="detail-title">${escapeHtml(r.title)}</h2>
-    <p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>
-    <div class="detail-tags">${tagLabels(r).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
-    ${renderSkillLine(r)}
-    <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
+    <p class="detail-meta">${[r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", `<span class="skill-stars" aria-label="必要なスキル ${Skills.rate(r).level}（5段階）">${Skills.stars(Skills.rate(r).level)}</span>`, last === "はじめて" ? "" : `前回：${escapeHtml(last)}`].filter(Boolean).join(" · ")}</p>
     ${fromSwap ? swapPickBar(r, swapCandidates().reuse) : actions}
-    ${fromSwap ? "" : videoBox}
-    ${pLine && !fromSwap ? `<div class="dish-group-box">${pLine}</div>` : ""}
-    ${edit && saved && canRereadRecipe(r) ? `<div class="reread-row${r.steps?.length ? "" : " is-empty"}">${r.steps?.length ? "" : "<p><b>作り方がまだありません</b>動画を見て読み取れます。</p>"}<button type="button" class="${r.steps?.length ? "text-button" : "primary-button"}" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : r.steps?.length ? "🎬 作り方がおかしい？動画から読み直す" : "🎬 動画から読み取る"}</button></div>` : ""}
     ${renderSourceNote(r, saved && edit)}
-    ${saved ? renderSourceReload(r, edit) : ""}
     ${servingsUnknownBanner(r, saved && edit)}
     ${servingsManualNote(r)}
-    <h3 class="detail-h">材料 <small>${escapeHtml(servingsLabel(r, servings))}</small></h3>${portionControl(r)}
+    ${edit && saved && canRereadRecipe(r) && !r.steps?.length ? `<div class="reread-row is-empty"><p><b>作り方がまだありません</b>動画を見て読み取れます。</p><button type="button" class="primary-button" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : "🎬 動画から読み取る"}</button></div>` : ""}
+    ${ingredientsHead(r, servings)}
     ${cook.ingredients}
     ${cook.steps}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
+    ${fromSwap ? "" : videoBox}
+    ${pLine && !fromSwap ? `<div class="dish-group-box">${pLine}</div>` : ""}
+    <details class="detail-about"><summary>ℹ️ このレシピについて</summary>
+      ${meta.length ? `<p class="detail-meta">${meta.map(escapeHtml).join(" · ")}</p>` : ""}
+      <div class="detail-tags">${tagLabels(r).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
+      ${renderSkillLine(r)}
+      <p class="detail-history">${last === "はじめて" ? "まだ作っていません" : `前回：${escapeHtml(last)}`}${Object.keys(ratings).length ? ` · ${Object.entries(ratings).map(([n, c]) => `${escapeHtml(n)}：${escapeHtml(cycleLabel(c))}`).join(" / ")}` : ""}</p>
+      ${edit && saved && canRereadRecipe(r) && r.steps?.length ? `<div class="reread-row"><button type="button" class="text-button" data-action="life-reread" data-recipe="${escapeAttr(r.id)}" ${rereadingId ? "disabled" : ""}>${rereadingId === r.id ? "動画を読んでいます…（最大2分）" : "🎬 作り方がおかしい？動画から読み直す"}</button></div>` : ""}
+      ${saved ? renderSourceReload(r, edit) : ""}
+    </details>
     <div class="yohaku-corner">${yohaku("wave")}</div>
     ${renderPlaceSheet(r)}
   </section>`;

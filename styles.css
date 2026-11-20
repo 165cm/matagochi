@@ -4304,11 +4304,23 @@ div.source-note p { flex: 1 1 200px; margin: 0; font-size: 12px; line-height: 1.
 .servings-banner { flex-wrap: wrap; }
 .servings-banner .servings-options { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .servings-banner .choice-button { min-height: 44px; flex: 1 1 0; border-color: #e2574c; color: #c0392b; background: #fff; }
-/* 料理ごとの食べる量（2026-11-20） */
-.portion-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 4px 0 10px; font-size: 13px; }
-.portion-row > span { color: var(--muted, #6b6b6b); }
-.portion-row .settings-stepper strong { min-width: 52px; font-size: 15px; }
-.portion-row .text-button { min-height: 44px; font-size: 12.5px; }
+/* 材料の見出しと料理ごとの量を1行に（2026-11-20） */
+.ing-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.ing-head h3 { margin: 0; }
+.portion-row { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; font-size: 12px; color: var(--muted, #6b6b6b); }
+.portion-row .plan-icon { min-width: 44px; min-height: 44px; font-size: 17px; }
+.portion-row strong { min-width: 44px; text-align: center; font-size: 14px; color: var(--ink, #2b2b2b); }
+.portion-reset { display: block; margin: 0 0 4px auto; min-height: 36px; font-size: 12.5px; }
+/* レシピ画面：上は 写真 → 名前 → 1行の情報 → ボタン1行 → 材料（2026-11-20 のユーザーの判断：材料まで早く） */
+.recipe-detail .detail-photo { aspect-ratio: 16 / 9; border-radius: 18px; }
+.detail-actions-main { flex-wrap: nowrap; }
+.detail-actions-main .detail-place { flex: 1 1 auto; min-height: 44px; margin: 0; padding: 0 12px; font-size: 15px; white-space: nowrap; }
+@media (max-width: 359px) { .detail-actions-main { flex-wrap: wrap; gap: 6px; } .detail-actions-main .detail-place { flex-basis: 100%; } .detail-actions-main .secondary-button { flex: 1 1 0; } }
+.detail-actions-main .secondary-button { flex: 0 0 auto; min-height: 44px; padding: 0 10px; font-size: 14px; white-space: nowrap; }
+.detail-meta .skill-stars { font-size: 12px; }
+.detail-about { margin: 16px 0 0; padding: 10px 12px; border-radius: 14px; background: var(--card, #fff); border: 1px solid var(--line, #eadfce); }
+.detail-about summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; font-size: 14px; font-weight: 700; }
+.detail-about[open] > *:not(summary) { margin-top: 8px; }
 /* 人数の目安（2026-11-20）：赤い知らせではなく、小さな一言 */
 .servings-estimate { margin: 8px 0; padding: 8px 12px; border-radius: 12px; background: #f4f8f2; border: 1px solid #cfe0c6; color: #3d5a2e; font-size: 12.5px; line-height: 1.5; }
 .servings-estimate p { margin: 0; }
