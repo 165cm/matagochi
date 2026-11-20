@@ -2206,7 +2206,7 @@ function renderCooking() {
   ${slot?.recipe ? renderSourceReload(slot.recipe, !isViewer(), cookingDate) : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && (!!slot?.recipe || state.recipes.some((x) => x.id === recipe.id)), slot?.recipe ? cookingDate : "")}
   ${servingsManualNote(recipe)}
-  <h3>材料 <small class="muted">${escapeHtml(servingsLabel(recipe, servings))}</small></h3>${cook.ingredients}
+  <h3>材料 <small class="muted">${escapeHtml(servingsLabel(recipe, servings))}</small></h3>${portionControl(recipe)}${cook.ingredients}
   ${cook.steps}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
@@ -2903,6 +2903,18 @@ function handleDailyAction(action, data) {
   if (handleFeedbackAction(action, data)) return true;
   if (handlePlusAction(action, data)) return true;
   if (handlePaywallAction(action, data)) return true;
+  // 料理ごとの食べる量（2026-11-20）。まとめての値と同じになったら、料理ごとの値は消す。
+  if (action === "life-portion" || action === "life-portion-reset") {
+    const key = String(data.key || "");
+    if (!key) return true;
+    state.portionByRecipe = state.portionByRecipe || {};
+    const bulk = normalizePortion(state.portion);
+    const next = action === "life-portion-reset" ? bulk : normalizePortion((state.portionByRecipe[key] ?? bulk) + (Number(data.delta) || 0));
+    if (next === bulk) delete state.portionByRecipe[key];
+    else state.portionByRecipe[key] = next;
+    touchSettings(); saveState(); render();
+    return true;
+  }
   if (handleTalkAction(action, data)) return true;
   if (["life-ratio", "life-staple", "life-chain", "life-priority", "life-photo-retry", "life-type-share"].includes(action)) { if (handleCookTypeAction(action, data)) return true; saveState({ scheduleSync: false }); render(); return true; }
   if (viewerBlocked(action)) return true;
@@ -4533,12 +4545,21 @@ function tagLabels(recipe) {
 // 元レシピの人数が未確認なら、材料ごとではなく1か所だけ赤いバナーで知らせる。
 // その場で数字をタップして決められる（2026-11-02：編集画面で決めても、作る画面の献立の写しには届かず、バナーが出続けていた）。
 // 買い物リストの分量：料理の元の人数が分からない時は目安で（2026-11-20）。添え物は今までどおり。
-const shoppingScale = (amount, servings, sourceServings, recipe, name) => scaleAmountForServings(amount, servings, recipe ? recipeServingsBase(recipe).n : sourceServings, name || "");
+// 食べる量：料理はその料理の倍率、添え物はまとめての倍率。
+const shoppingScale = (amount, servings, sourceServings, recipe, name) => scaleAmountForServings(amount, servings, recipe ? recipeServingsBase(recipe).n : sourceServings, name || "", recipe ? portionOf(recipe) : normalizePortion(state.portion));
 // 材料の見出しの人数（目安の時は「目安2人分→4人分」）。
 function servingsLabel(recipe, servings) {
-  const base = recipeServingsBase(recipe);
-  if (base.n === null) return "動画の分量のまま";
-  return base.estimated ? `${servings}人分（元は目安で${base.n}人分）` : `${servings}人分`;
+  const base = recipeServingsBase(recipe), f = portionOf(recipe);
+  if (base.n === null) return f === 1 ? "動画の分量のまま" : `動画の分量の${portionText(f)}`;
+  const amount = f === 1 ? `${servings}人分` : `${servings}人分${portionText(f)}`;
+  return base.estimated ? `${amount}（元は目安で${base.n}人分）` : amount;
+}
+// 料理ごとの食べる量（−／＋・いつもの量に戻す）。見るだけの人には出さない。2026-11-20
+function portionControl(recipe) {
+  if (!recipe || isViewer()) return "";
+  const key = portionKey(recipe), f = portionOf(recipe), own = state.portionByRecipe?.[key] !== undefined;
+  const btn = (d, label, off) => `<button class="plan-icon" type="button" data-action="life-portion" data-key="${escapeAttr(key)}" data-delta="${d}" aria-label="${label}"${off ? " disabled" : ""}>${d < 0 ? "−" : "＋"}</button>`;
+  return `<div class="portion-row"><span>食べる量</span><div class="settings-stepper">${btn(-0.25, "この料理の量を減らす", f <= 0.5)}<strong aria-live="polite">${portionText(f)}</strong>${btn(0.25, "この料理の量を増やす", f >= 2)}</div>${own ? `<button type="button" class="text-button" data-action="life-portion-reset" data-key="${escapeAttr(key)}">いつもの量（${portionText(normalizePortion(state.portion))}）に戻す</button>` : ""}</div>`;
 }
 function servingsUnknownBanner(recipe, canEdit, date = "") {
   if (!recipe || recipe.sourceServings != null) return "";
@@ -4636,7 +4657,7 @@ function renderRecipeDetail() {
     ${saved ? renderSourceReload(r, edit) : ""}
     ${servingsUnknownBanner(r, saved && edit)}
     ${servingsManualNote(r)}
-    <h3 class="detail-h">材料 <small>${escapeHtml(servingsLabel(r, servings))}</small></h3>
+    <h3 class="detail-h">材料 <small>${escapeHtml(servingsLabel(r, servings))}</small></h3>${portionControl(r)}
     ${cook.ingredients}
     ${cook.steps}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
