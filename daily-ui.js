@@ -586,7 +586,7 @@ function dailyShopping() {
     slots,
     start,
     end,
-    scale: scaleAmountForServings,
+    scale: shoppingScale,
     combine: combineAmounts,
     pantry: p.pantry,
     marks: state.shoppingMarks || {},
@@ -620,7 +620,7 @@ function shopViewContext() {
       start: "0000-01-01",
       end: "9999-12-31",
       includeCooked: true,
-      scale: scaleAmountForServings,
+      scale: shoppingScale,
       combine: combineAmounts,
       pantry: p.pantry,
       marks: state.shoppingMarks || {}, prefs: state.itemPrefs || {},
@@ -652,7 +652,7 @@ function shopViewContext() {
         start: today(),
         end,
         includeCooked: true,
-        scale: scaleAmountForServings,
+        scale: shoppingScale,
         combine: combineAmounts,
         pantry: p.pantry,
         marks,
@@ -2132,7 +2132,7 @@ function cookingCheck(kind, index, recipe, servings) {
 }
 // 作る画面とレシピの詳細で同じ：材料（タレはまとめて）・作り方（⏰タイマー・手順ごとの材料）・🍳 料理モード。
 function cookSections(recipe, servings) {
-  const amountOf = (x) => scaleAmountForServings(x.amount, servings, recipe.sourceServings);
+  const amountOf = (x) => scaleIngredient(recipe, x, servings);
   const steps = recipe.steps || [];
   // 覚えやすく書き直した手順があれば、それを表に（元の手順は各手順の下の「動画では」に。▶ はまとめた最初の元の手順の時刻。APP_MAP §49）。
   const guide = recipeGuide(recipe);
@@ -2206,7 +2206,7 @@ function renderCooking() {
   ${slot?.recipe ? renderSourceReload(slot.recipe, !isViewer(), cookingDate) : ""}
   ${servingsUnknownBanner(recipe, !isViewer() && (!!slot?.recipe || state.recipes.some((x) => x.id === recipe.id)), slot?.recipe ? cookingDate : "")}
   ${servingsManualNote(recipe)}
-  <h3>材料 <small class="muted">${recipe.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>${cook.ingredients}
+  <h3>材料 <small class="muted">${escapeHtml(servingsLabel(recipe, servings))}</small></h3>${cook.ingredients}
   ${cook.steps}
   <div class="actions">${dailyButton("life-save-copy", "自分のレシピに保存", `data-recipe="${escapeAttr(recipe.id)}"`)}</div>${primary ? `<div class="cooking-primary">${primary}</div>` : ""}</section>`;
 }
@@ -4015,7 +4015,7 @@ function renderFunnelDemo() {
     const servings = dailyProfile().servings;
     return [`🎉 読み取れました！`, `<div class="demo-recipe">${renderCreatorCredit(r)}<h3 class="demo-title">${escapeHtml(r.title)}</h3><p class="muted small">${[r.planning?.minutes ? `⏱ ${r.planning.minutes}分` : "", `材料 ${r.ingredients.length}品`, `作り方 ${r.steps.length}ステップ`].filter(Boolean).join(" ・ ")}</p>
       <p class="demo-hint">📱 スマホを<b>横</b>にすると、動画を見ながら作り方を読めます。手順の <b>▶</b> で、その場面から再生。</p>
-      <h4 class="detail-h">材料</h4><ul class="detail-ingredients">${r.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</span></li>`).join("")}</ul>
+      <h4 class="detail-h">材料</h4><ul class="detail-ingredients">${r.ingredients.map((i) => `<li><span>${escapeHtml(i.name)}</span><span>${escapeHtml(scaleIngredient(r, i, servings))}</span></li>`).join("")}</ul>
       <h4 class="detail-h">作り方</h4><ol class="detail-steps" data-steps-of="${escapeAttr(r.id)}">${r.steps.map((st, i) => `<li>${stepTimeSlot(r, i)}${escapeHtml(st)}</li>`).join("")}</ol>
       <p class="fd-ok">✓ このレシピを、献立の候補に入れました</p></div>`];
   }
@@ -4532,8 +4532,22 @@ function tagLabels(recipe) {
 }
 // 元レシピの人数が未確認なら、材料ごとではなく1か所だけ赤いバナーで知らせる。
 // その場で数字をタップして決められる（2026-11-02：編集画面で決めても、作る画面の献立の写しには届かず、バナーが出続けていた）。
+// 買い物リストの分量：料理の元の人数が分からない時は目安で（2026-11-20）。添え物は今までどおり。
+const shoppingScale = (amount, servings, sourceServings, recipe, name) => scaleAmountForServings(amount, servings, recipe ? recipeServingsBase(recipe).n : sourceServings, name || "");
+// 材料の見出しの人数（目安の時は「目安2人分→4人分」）。
+function servingsLabel(recipe, servings) {
+  const base = recipeServingsBase(recipe);
+  if (base.n === null) return "動画の分量のまま";
+  return base.estimated ? `${servings}人分（元は目安で${base.n}人分）` : `${servings}人分`;
+}
 function servingsUnknownBanner(recipe, canEdit, date = "") {
   if (!recipe || recipe.sourceServings != null) return "";
+  // 材料の量から目安が出せる時は、赤い知らせではなく小さな「目安」の一言（直したい人は人数を選べる）。2026-11-20
+  const est = recipeServingsBase(recipe);
+  if (est.estimated) {
+    const fix = canEdit ? `<details class="servings-fix"><summary>正しい人数を選ぶ</summary><div class="servings-options" role="group" aria-label="元のレシピの人数">${[1, 2, 3, 4].map((k) => `<button type="button" class="choice-button" data-action="life-servings-set" data-recipe="${escapeAttr(recipe.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} data-count="${k}">${k}人分</button>`).join("")}</div></details>` : "";
+    return `<div class="servings-estimate" role="note"><p>📏 元のレシピの人数は書かれていないため、材料の量から<b>目安で${est.n}人分</b>として計算しています${tip("肉・魚は100gで1人分、鶏もも肉1枚で2人分、切り身1切れで1人分などの目安です。外れることもあります")}</p>${fix}</div>`;
+  }
   const pick = canEdit ? `<div class="servings-options" role="group" aria-label="元のレシピの人数">${[1, 2, 3, 4].map((k) => `<button type="button" class="choice-button" data-action="life-servings-set" data-recipe="${escapeAttr(recipe.id)}"${date ? ` data-date="${escapeAttr(date)}"` : ""} data-count="${k}">${k}人分</button>`).join("")}</div>` : "";
   return `<div class="servings-banner" role="note"><p><b>元のレシピが何人分か未確認です</b><br>分量は動画のまま。${dailyProfile().servings || getServingCount()}人分に合わせるには、${canEdit ? "動画の人数をタップしてください。" : "レシピを編集できる人に人数を決めてもらってください。"}</p>${pick}</div>`;
 }
@@ -4622,7 +4636,7 @@ function renderRecipeDetail() {
     ${saved ? renderSourceReload(r, edit) : ""}
     ${servingsUnknownBanner(r, saved && edit)}
     ${servingsManualNote(r)}
-    <h3 class="detail-h">材料 <small>${r.sourceServings == null ? "動画の分量のまま" : `${servings}人分`}</small></h3>
+    <h3 class="detail-h">材料 <small>${escapeHtml(servingsLabel(r, servings))}</small></h3>
     ${cook.ingredients}
     ${cook.steps}
     ${r.note ? `<p class="detail-note">📝 ${escapeHtml(r.note)}</p>` : ""}
@@ -5767,7 +5781,7 @@ function renderCardFlipModal() {
   const servings = dailyProfile().servings || 2;
   const thumb = typeof recipeThumbnail === "function" ? recipeThumbnail(r) : "";
   const creator = (typeof creatorName === "function" && creatorName(r)) || (typeof authorOf === "function" && authorOf(r)) || r.author || r.channelTitle || "";
-  const ingList = (r.ingredients || []).map((i) => `<li><span>${escapeHtml(i.name)}</span><b>${escapeHtml(scaleAmountForServings(i.amount, servings, r.sourceServings))}</b></li>`).join("");
+  const ingList = (r.ingredients || []).map((i) => `<li><span>${escapeHtml(i.name)}</span><b>${escapeHtml(scaleIngredient(r, i, servings))}</b></li>`).join("");
   const stepList = (r.steps || []).slice(0, 8).map((s, idx) => `<li><b>${idx + 1}</b><span>${escapeHtml(s)}</span></li>`).join("");
 
   const fmtVal = (v, partial, unit) => {

@@ -32,7 +32,11 @@ test("tapping the count in the banner sets it on the saved recipe and on the mea
   setup(run);
   assert.equal(run("own.sourceServings"), null);
   assert.match(run("servingsUnknownBanner(slot.recipe, true, d)"), /life-servings-set.*2人分/s);
-  assert.match(run("servingsUnknownBanner(slot.recipe, false, d)"), /編集できる人/);
+  // 鶏むね肉1枚 → 目安2人分（2026-11-20）。見るだけの人には人数を選ぶボタンは出ない。
+  assert.match(run("servingsUnknownBanner(slot.recipe, false, d)"), /目安で2人分/);
+  assert.doesNotMatch(run("servingsUnknownBanner(slot.recipe, false, d)"), /life-servings-set/);
+  // 目安も出せない時は、今までどおりの知らせ
+  assert.match(run("servingsUnknownBanner({ id: 'x', sourceServings: null, ingredients: [{ name: 'キャベツ', amount: '1/4個' }] }, false, d)"), /編集できる人/);
   await run(`handleDailyAction("life-servings-set", { recipe: own.id, date: d, count: "2" })`);
   assert.equal(run("own.sourceServings"), 2);
   assert.equal(run("slot.recipe.sourceServings"), 2);
