@@ -156,7 +156,11 @@ test("2026-11-18：レシピの品質（人数・分量・時間・手順・読�
   const r = judge({ refresh: { today: 2, ai: AI, done: true }, refill: { done: true, added: 8, ran: { ai: 25, added: 8 } }, list: { items: items(410) }, now: NOW });
   const md = markdown(r, { list });
   assert.match(md, /### 🧪 レシピの品質（新着）/);
-  assert.match(md, /元のレシピの人数が分からない（分量を人数に合わせられない） \| 1品（14%）/);
+  assert.match(md, /元のレシピの人数が分からない（サーバーのデータ） \| 1品（14%）/);
+  // ok の材料（豚こま200g）から、アプリは目安2人分を出せる
+  assert.equal(q.servingsEstimated, 1);
+  assert.match(md, /うち、アプリで目安の人数を出せる \| 1品（人数不明の100%）/);
+  assert.match(md, /アプリで分量を人数に合わせられる（分かっている＋目安） \| 7品（100%）/);
   assert.equal(r.ok, true);
   assert.ok(!markdown(r).includes("レシピの品質"), "no table without the list");
 });

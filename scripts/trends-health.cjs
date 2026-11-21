@@ -114,6 +114,9 @@ function timecodeRows(tc) {
 // 「かも」は言葉から推し量っただけ（確かめるのは人か読み直し）。
 const LONG_WORDS = /煮込|じっくり|オーブン|炊飯器|一晩|漬け込|寝かせ|圧力鍋|コトコト/;
 const noAmount = (i) => !String(i?.amount ?? "").trim();
+// アプリが人数の分からないレシピに出す「目安の人数」（lifestyle.js estimateServings。2026-11-20）。読めない時は数えない。
+let estimateServings = null;
+try { estimateServings = require("../lifestyle.js").estimateServings || null; } catch { estimateServings = null; }
 function quality(list) {
   const items = Array.isArray(list?.items) ? list.items : null;
   if (!items || !items.length) return null;
@@ -122,6 +125,8 @@ function quality(list) {
   return {
     total: items.length,
     servingsUnknown: count((r) => r.sourceServings == null),
+    // うち、アプリで目安の人数を出せる（材料の量から）。null：目安の計算を読めなかった
+    servingsEstimated: estimateServings ? count((r) => r.sourceServings == null && !!estimateServings(r)) : null,
     amountMissing: count((r) => (r.ingredients || []).some(noAmount)),
     fewIngredients: count((r) => (r.ingredients || []).length < 2),
     minutesMissing: count((r) => !minutes(r)),
@@ -142,7 +147,11 @@ function qualityRows(q) {
     "",
     "| 項目 | 数 |",
     "|---|---:|",
-    row("元のレシピの人数が分からない（分量を人数に合わせられない）", q.servingsUnknown),
+    row("元のレシピの人数が分からない（サーバーのデータ）", q.servingsUnknown),
+    ...(q.servingsEstimated === null || q.servingsEstimated === undefined ? [] : [
+      `| 　うち、アプリで目安の人数を出せる | ${q.servingsEstimated}品（人数不明の${q.servingsUnknown ? Math.round((q.servingsEstimated / q.servingsUnknown) * 100) : 0}%） |`,
+      row("アプリで分量を人数に合わせられる（分かっている＋目安）", q.total - q.servingsUnknown + q.servingsEstimated),
+    ]),
     row("分量のない材料がある（買い物リストで量が出ない）", q.amountMissing),
     row("材料が1つ以下（読み取りの失敗かも）", q.fewIngredients),
     row("調理時間が分からない", q.minutesMissing),
