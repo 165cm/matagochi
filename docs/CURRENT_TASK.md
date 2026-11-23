@@ -23,7 +23,7 @@ Codex：codex/admin-hidden-entry で設定の版番号から管理画面への�
 
 | 担当 | 状態 | ブランチ | 内容 | 触るファイル |
 |---|---|---|---|---|
-| Claude：わたしの食卓レビュー（1週・4週・3か月・半年・1年）のブレスト準備（2026-11-23 のユーザーの依頼：バリエーション・栄養・チャレンジを見せて続ける気持ちを上げ、SNS 投稿で新しい人を呼ぶ） | 作業中（ブレスト中・実装はまだ） | claude/cool-pasteur-isg2rf | Claude のたたき台と Codex・Gemini への共通資料を作った。各AIの案がそろったら比べて、ユーザーと決める | docs/review/TABLE_REVIEW_BRAINSTORM_AGENDA.md, docs/CURRENT_TASK.md |
+| Claude：わたしの食卓レビュー（1週・4週・3か月・半年・1年）のブレスト準備（2026-11-23 のユーザーの依頼：バリエーション・栄養・チャレンジを見せて続ける気持ちを上げ、SNS 投稿で新しい人を呼ぶ） | 作業中（ブレスト中・実装はまだ） | claude/cool-pasteur-isg2rf | たたき台 → Codex・Gemini の回答 → 第2版（ユーザーの意見：カフェ風のAIイラストと「ひとこと」が主役、数字は補足）。次は試作（段階0）の可否をユーザーが決める | docs/review/TABLE_REVIEW_BRAINSTORM_AGENDA.md, docs/review/TABLE_REVIEW_BRAINSTORM_COMPARE.md, docs/CURRENT_TASK.md |
 | Claude：LP の「3日分」を選べる日数の言葉に（2026-11-17 のユーザーの判断） | レビュー待ち | claude/fervent-lovelace-d6tsd6 | 「3日分」と言い切らず「次の買い物までの献立」「3日・5日・1週間、わが家のペースで」に（アプリで選べる4つのリズムに合わせる）。APP_MAP §61 | lp/index.html, docs/* |
 | Claude：LP の配置を読みやすく（2026-11-17 のユーザーの判断：スマホで見て） | 公開済み（#263。図解2枚も） | claude/fervent-lovelace-d6tsd6 | これまで → リピごちで を2つの箱と矢印に・使い方は 絵 → タブ → 文字・つづけるほどに根拠の1行・動画が集まる／選ぶだけで買い物リストの言葉。図解3枚はユーザーが Nano Banana で作る予定（APP_MAP §61） | lp/index.html, lp/styles.css, test/lp.test.cjs, docs/* |
 | Claude：LP にイラスト4枚（2026-11-16・ユーザーが用意した絵） | 公開済み（#261） | claude/fervent-lovelace-d6tsd6 | 「使うと、こう変わる」に これまで／これから の絵・「つくった理由」を父と娘の食卓の絵に・共有した時の絵（OGP）を差し替え（LP とアプリ）。390×844／1280×900／320×700 で横にはみ出さず画像切れなし（APP_MAP §61） | lp/index.html, lp/styles.css, lp/assets/*, index.html, docs/* |
