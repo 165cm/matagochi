@@ -91,3 +91,13 @@ test("an image made for the old choices cannot be shared or saved after choosing
   assert.match(src, /function shareReview\(\) \{\n  if \(!reviewReady\(\)\) return;/);
   assert.match(src, /function saveReview\(\) \{\n  if \(!reviewReady\(\)\) return;/);
 });
+
+test("a drawn illustration is kept in memory even when the phone's storage is full (Codex review #275)", () => {
+  const vm = require("node:vm");
+  const store = {};
+  const localStorage = { getItem: (k) => store[k] ?? null, setItem: () => { throw new Error("QuotaExceededError"); } };
+  const ctx = vm.createContext({ localStorage, console, Date, JSON, Object, globalThis: {} });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "table-review.js"), "utf8") + "\n;globalThis.out = { saveIllust, illustCache };", ctx);
+  assert.equal(ctx.globalThis.out.saveIllust("e1", "data:image/webp;base64,AAA"), false, "could not be saved");
+  assert.equal(ctx.globalThis.out.illustCache().e1.url, "data:image/webp;base64,AAA", "but still usable right now");
+});

@@ -118,13 +118,18 @@ let reviewTrial = null; // サーバーの { used, total, left, paused }
 let reviewOut = { key: "", file: null, url: "" };
 let reviewBuilding = ""; // いま作っている画像の鍵（同じものを二重に作らない）
 const ILLUST_STORE = "ripigochi-illust";
-const illustCache = () => { try { return JSON.parse(localStorage.getItem(ILLUST_STORE) || "{}") || {}; } catch { return {}; } };
+// 作った絵は、開いている間はメモリにも持つ（端末の保存がいっぱいで書けなくても、その場で共有・保存できるように。Codex review #275）
+const illustMemo = {};
+const illustCache = () => { let saved = {}; try { saved = JSON.parse(localStorage.getItem(ILLUST_STORE) || "{}") || {}; } catch {} return { ...saved, ...illustMemo }; };
 function saveIllust(recordId, dataUrl) {
   // 作った絵は端末だけに置く（同期しない）。古いものから消して6枚まで（容量を食わないように）。
-  const all = illustCache();
-  all[recordId] = { url: dataUrl, at: Date.now() };
-  const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 6);
-  try { localStorage.setItem(ILLUST_STORE, JSON.stringify(Object.fromEntries(keep))); } catch {}
+  illustMemo[recordId] = { url: dataUrl, at: Date.now() };
+  const keep = Object.entries(illustCache()).sort((a, b) => b[1].at - a[1].at);
+  // 入りきらない時は、古い絵から減らしてもう一度（新しい絵はメモリにあるので消えない）
+  for (let n = 6; n >= 1; n--) {
+    try { localStorage.setItem(ILLUST_STORE, JSON.stringify(Object.fromEntries(keep.slice(0, n)))); return true; } catch {}
+  }
+  return false;
 }
 const reviewRecipeOf = (e) => recipeById(e.recipeId) || Lifestyle.curated.find((c) => c.id === e.recipeId) || { id: e.recipeId, title: e.recipeTitle || "わが家の一皿", ingredients: [] };
 function reviewData() {
