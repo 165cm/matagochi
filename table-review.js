@@ -105,7 +105,9 @@
   // 共通の色鉛筆の絵（最初から入っている48品。assets/illust/<id>.webp）
   const SHARED = new Set(Array.from({ length: 48 }, (_, i) => `starter-${51 + i}`));
   const sharedIllust = (recipe) => { const id = [recipe?.id, recipe?.starterId].find((x) => SHARED.has(String(x || ""))); return id ? `assets/illust/${id}.webp` : ""; };
-  const api = { periods, records, summarize, recommend, phrase, numbers, sharedIllust };
+  // できた画像を使ってよいのは、いまの選び方（期間・表紙・絵・料理名）で作った画像の時だけ（選び直した直後に古い画像を出さない。Codex review #275）
+  const outReady = (out, key, busy = "") => !!(out && out.url && out.file && key && out.key === key && !busy);
+  const api = { periods, records, summarize, recommend, phrase, numbers, sharedIllust, outReady };
   root.TableReview = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
@@ -114,6 +116,7 @@
 let reviewView = null; // { period, cover（記録ID）, art: "pencil"|"photo"|"app", showName, busy, error }
 let reviewTrial = null; // サーバーの { used, total, left, paused }
 let reviewOut = { key: "", file: null, url: "" };
+let reviewBuilding = ""; // いま作っている画像の鍵（同じものを二重に作らない）
 const ILLUST_STORE = "ripigochi-illust";
 const illustCache = () => { try { return JSON.parse(localStorage.getItem(ILLUST_STORE) || "{}") || {}; } catch { return {}; } };
 function saveIllust(recordId, dataUrl) {
@@ -160,14 +163,14 @@ function chosenArt(arts) {
 }
 function openTableReview() {
   reviewView = { period: "year", cover: "", art: "pencil", showName: true, busy: "", error: "" };
-  reviewOut = { key: "", file: null, url: "" };
+  reviewOut = { key: "", file: null, url: "" }; reviewBuilding = "";
   if (API_BASE_URL && typeof ticketHeaders === "function") {
     fetch(`${API_BASE_URL}/api/illust`, { headers: ticketHeaders() }).then((r) => (r.ok ? r.json() : null)).then((v) => { if (v && reviewView) { reviewTrial = v; render(); } }).catch(() => {});
   }
 }
 function closeTableReview() {
   if (reviewOut.url) URL.revokeObjectURL(reviewOut.url);
-  reviewView = null; reviewOut = { key: "", file: null, url: "" };
+  reviewView = null; reviewOut = { key: "", file: null, url: "" }; reviewBuilding = "";
   document.body?.classList?.remove("has-sheet");
 }
 function renderTableReview() {
@@ -189,7 +192,7 @@ function renderTableReview() {
     const artBtn = (key, label, ok) => (ok ? `<button type="button" class="chip-button" data-action="review-art" data-art="${key}" aria-pressed="${reviewView.art === key}">${label}</button>` : "");
     const drawBtn = canDraw && !reviewView.busy ? `<button type="button" class="primary-button tr-draw" data-action="review-draw">🖍 写真を色鉛筆に${left !== null ? `（お試し のこり${left}枚）` : ""}</button>` : "";
     const used = arts.photo && !arts.illust && left === 0 ? `<p class="muted small">色鉛筆のお試し（${reviewTrial.total}枚）は使い切りました。写真・アプリの絵で作れます。</p>` : "";
-    const ready = reviewOut.url && !reviewView.busy;
+    const ready = reviewReady();
     body = `<p class="tr-label">表紙の一皿</p><div class="tr-picks">${thumbs}</div>
       <div class="tr-arts" role="group" aria-label="絵">${artBtn("pencil", "🖍 色鉛筆", arts.illust || arts.shared)}${artBtn("photo", "📷 写真", arts.photo)}${artBtn("app", "🖼 アプリの絵", true)}<label class="tr-name"><input type="checkbox" data-action="review-name" ${reviewView.showName ? "checked" : ""}> 料理名</label></div>
       ${drawBtn}${used}
@@ -212,15 +215,22 @@ function wrapText(ctx, text, maxWidth) {
   return lines.slice(0, 3);
 }
 function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+// いまの選び方の鍵（期間・表紙・絵・料理名・ひとこと・数字）
+function reviewKey(d = reviewData()) {
+  if (!reviewView || !d.cover) return "";
+  const art = chosenArt(coverArts(d.cover));
+  return JSON.stringify([d.period.key, d.period.start, d.period.end, d.cover.key, art.src.length, art.src.slice(-40), reviewView.showName, TableReview.phrase(d.period.key, d.s, { solo: d.solo }), d.s.count, d.s.kinds]);
+}
+const reviewReady = () => !!reviewView && TableReview.outReady(reviewOut, reviewKey(), reviewView.busy);
 async function buildReviewImage() {
   if (!reviewView || reviewView.busy === "drawing") return;
   const { period, s, cover, solo } = reviewData();
   if (!cover) return;
   const art = chosenArt(coverArts(cover));
   const line = TableReview.phrase(period.key, s, { solo });
-  const key = JSON.stringify([period.key, period.start, period.end, cover.key, art.src.length, art.src.slice(-40), reviewView.showName, line, s.count, s.kinds]);
-  if (reviewOut.key === key) return;
-  reviewOut.key = key;
+  const key = reviewKey({ period, s, cover, solo });
+  if (reviewOut.key === key || reviewBuilding === key) return;
+  reviewBuilding = key;
   const W = 1080, H = 1920, font = `"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif`;
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = c.getContext("2d");
@@ -252,7 +262,9 @@ async function buildReviewImage() {
   ctx.textAlign = "left"; ctx.fillStyle = "#3b2f25"; ctx.font = `700 60px ${font}`; ctx.fillText("リピごち", 300, H - 170);
   ctx.fillStyle = "#8a7a68"; ctx.font = `400 30px ${font}`; ctx.fillText("「今日なに食べる？」を、過去の食卓から。", 300, H - 118);
   const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
-  if (!blob || reviewOut.key !== key) return;
+  if (reviewBuilding !== key) return; // 作っている間に選び直した
+  reviewBuilding = "";
+  if (!blob) return;
   if (reviewOut.url) URL.revokeObjectURL(reviewOut.url);
   reviewOut = { key, file: new File([blob], `ripigochi-${period.key}.png`, { type: "image/png" }), url: URL.createObjectURL(blob) };
   if (reviewView) render();
@@ -289,8 +301,8 @@ async function drawIllustForCover() {
   if (reviewView) { reviewView.busy = ""; render(); }
 }
 async function shareReview() {
+  if (!reviewReady()) return;
   const file = reviewOut.file;
-  if (!file) return;
   const data = { files: [file], text: reviewText() };
   try {
     if (navigator.canShare?.({ files: [file] })) { await navigator.share(data); return; }
@@ -298,7 +310,7 @@ async function shareReview() {
   saveReview();
 }
 function saveReview() {
-  if (!reviewOut.url) return;
+  if (!reviewReady()) return;
   const a = document.createElement("a");
   a.href = reviewOut.url; a.download = reviewOut.file?.name || "ripigochi.png"; a.target = "_blank"; a.rel = "noopener";
   document.body.appendChild(a); a.click(); a.remove();

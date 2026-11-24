@@ -81,3 +81,19 @@ test('illust route: only a registered household can use the trial; the dev code 
   assert.deepEqual([status.used, status.left, status.total], [1, ILLUST_TRIAL_TOTAL - 1, ILLUST_TRIAL_TOTAL]);
   assert.equal(draws, 2);
 });
+
+test('illust: a drawing that finishes after midnight at the end of the month is settled in the month it was reserved (Codex review #275)', async () => {
+  const store = createMemorySyncStore();
+  let t = Date.parse('2026-11-30T14:59:50Z'); // 日本時間 11/30 23:59:50
+  const desk = createIllustDesk(store, { now: () => t, draw: async () => { t = Date.parse('2026-11-30T15:00:10Z'); return { ...drawn, yen: 5 }; } });
+  await desk.draw({ image: await photo() }, 'home-1');
+  assert.equal((await store.get('illust-budget/2026-11')).envelope.yen, 5, 'the real cost replaces the estimate in November');
+  assert.equal(await store.get('illust-budget/2026-12'), null, 'December is untouched');
+  // 失敗した時も、予約した月から戻す（翌月の分を減らさない）
+  t = Date.parse('2026-11-30T14:59:50Z');
+  const failing = createIllustDesk(store, { now: () => t, draw: async () => { t = Date.parse('2026-11-30T15:00:10Z'); throw new Error('down'); } });
+  await store.put('illust-budget/2026-12', { yen: 30, count: 5 }, { ifGeneration: 0 });
+  await assert.rejects(failing.draw({ image: await photo() }, 'home-2'), { code: 'illust_failed' });
+  assert.equal((await store.get('illust-budget/2026-11')).envelope.yen, 5);
+  assert.equal((await store.get('illust-budget/2026-12')).envelope.yen, 30);
+});

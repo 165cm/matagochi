@@ -80,3 +80,14 @@ test("the review is wired in: loaded after weekly.js, cached by the service work
   const src = fs.readFileSync(path.join(__dirname, "..", "table-review.js"), "utf8");
   assert.doesNotMatch(src, /ytimg|youtube\.com/, "no outside images on the canvas");
 });
+
+test("an image made for the old choices cannot be shared or saved after choosing again (Codex review #275)", () => {
+  const out = { key: "A", url: "blob:x", file: {} };
+  assert.equal(TR.outReady(out, "A"), true);
+  assert.equal(TR.outReady(out, "B"), false, "the name was hidden (or the period / cover / art changed): wait for the new image");
+  assert.equal(TR.outReady(out, "A", "drawing"), false, "not while drawing");
+  assert.equal(TR.outReady({ key: "A", url: "", file: null }, "A"), false);
+  const src = fs.readFileSync(path.join(__dirname, "..", "table-review.js"), "utf8");
+  assert.match(src, /function shareReview\(\) \{\n  if \(!reviewReady\(\)\) return;/);
+  assert.match(src, /function saveReview\(\) \{\n  if \(!reviewReady\(\)\) return;/);
+});

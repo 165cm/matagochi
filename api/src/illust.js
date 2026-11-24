@@ -75,14 +75,15 @@ export function createIllustDesk(store, { draw, now = Date.now, trialTotal = ILL
         });
       }
       const refundTrial = () => unlimited ? null : update(trialKey(household), (w) => (usedOf(w) ? { used: usedOf(w) - 1, at: w.at } : null)).catch(() => null);
-      // 2) 月の費用の上限（目安の分を先に足す）
+      // 2) 月の費用の上限（目安の分を先に足す）。精算も同じ月の分で（月をまたいで描き終えても翌月に付けない。Codex review #275）
+      const bkey = budgetKey();
       try {
-        await update(budgetKey(), (b) => {
+        await update(bkey, (b) => {
           if (yenOf(b) + yenPerImage > yenPerMonth) throw new ApiError(429, "illust_budget", "今月のイラストはここまでです。写真そのまま・アプリの絵で作れます。");
           return { yen: yenOf(b) + yenPerImage, count: (Number(b?.count) || 0) + 1 };
         });
       } catch (error) { await refundTrial(); throw error; }
-      const settle = (actual) => update(budgetKey(), (b) => ({ yen: Math.max(0, yenOf(b) - yenPerImage + actual), count: Math.max(0, (Number(b?.count) || 0) - (actual ? 0 : 1)) })).catch(() => null);
+      const settle = (actual) => update(bkey, (b) => ({ yen: Math.max(0, yenOf(b) - yenPerImage + actual), count: Math.max(0, (Number(b?.count) || 0) - (actual ? 0 : 1)) })).catch(() => null);
       // 3) 描く
       let result;
       try {
