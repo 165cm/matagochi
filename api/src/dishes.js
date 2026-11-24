@@ -55,7 +55,7 @@ const DISH_PAIRS = [
   ["たらのムニエル", ["鱈", "たら"], ["むにえる"]],
   ["たらの酒蒸し", ["鱈", "たら"], ["酒蒸"]],
   ["鯛の酒蒸し", ["鯛"], ["酒蒸"]],
-  ["さば缶のトマト煮", ["さば"], ["とまと"]],
+  ["さば缶のトマト煮", ["さば"], ["とまと"], ["煮"]],
   ["さば缶の炒め物", ["さば缶"], ["炒", "焼"]],
   ["さんまの蒲焼き", ["さんま", "秋刀魚"], ["蒲焼", "かば焼"]],
   ["厚揚げステーキ", ["厚揚"], ["すてーき"]],
@@ -75,15 +75,21 @@ const DISH_PAIRS = [
   ["ねぎ塩チキン", ["鶏", "とり", "どり", "ちきん"], ["ねぎ塩", "葱塩"]],
   ["蒸し鶏", ["茹で鶏", "ゆで鶏", "ゆでどり", "茹でどり"]],
 ].map(([name, ...groups]) => [name, groups.map((g) => g.map(dishKey))]);
+// ふだんの見分け方と同じく、句ごとに見る。比べるための言葉（「〜より簡単」など）が続く時・丼の題名は使わない（Codex review #274）。
 function pairOf(title, removed) {
-  const t = dishKey(title);
-  if (!t) return null;
-  for (const [name, groups] of DISH_PAIRS) {
-    if (removed.has(dishKey(name))) continue;
-    if (!groups.every((g) => g.some((w) => t.includes(w)))) continue;
-    // 丼は丼ものの親にする（ふだんの見分け方と同じ。「厚揚げステーキの〜丼」は厚揚げステーキにしない）
-    if (/丼/.test(t)) continue;
-    return { key: dishKey(name), name };
+  for (const t of phrasesOf(title)) {
+    if (/丼/.test(t)) continue; // 丼は丼ものの親にする（「厚揚げステーキの〜丼」は厚揚げステーキにしない）
+    for (const [name, groups] of DISH_PAIRS) {
+      if (removed.has(dishKey(name))) continue;
+      let end = -1;
+      for (const g of groups) {
+        const at = Math.max(...g.map((w) => { const i = t.indexOf(w); return i < 0 ? -1 : i + w.length; }));
+        if (at < 0) { end = -1; break; }
+        end = Math.max(end, at);
+      }
+      if (end < 0 || COMPARE.test(t.slice(end))) continue;
+      return Object.defineProperty({ key: dishKey(name), name }, "weak", { value: true }); // weak は保存・API の返事には出さない
+    }
   }
   return null;
 }
@@ -128,7 +134,8 @@ function phrasesOf(title) {
 export function parentOf(title, book = {}, dishName = "") {
   if (dishName) {
     const byAi = cleanAiName(dishName) ? parentOf(cleanAiName(dishName), book) : null;
-    if (byAi) { const byTitle = parentOf(title, book); return byTitle && byTitle.key !== byAi.key ? byTitle : byAi; }
+    // 言葉の組で見つけた親（weak）は、AI の料理名より弱い（題名に料理名がそのまま入っている時だけ、題名を優先する）
+    if (byAi) { const byTitle = parentOf(title, book); return byTitle && byTitle.key !== byAi.key && !byTitle.weak ? byTitle : byAi; }
   }
   const phrases = phrasesOf(title);
   if (!phrases.length) return null;

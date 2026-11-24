@@ -416,6 +416,14 @@ test('2026-11-24: six hard-to-find names are swapped, and titles without the exa
   assert.equal(parentOf('厚揚げステーキのガーリックバター醤油丼', {}), null);
   assert.equal(parentOf('たらこパスタ', {}), null, 'たらこ is not たら');
   assert.equal(parentOf('ニラ醤油だれ', {}), null);
+  // 比べるための料理名は仲間にしない・AI の料理名より弱い（Codex review #274）
+  assert.equal(parentOf('鮭のムニエルより簡単！和風キャベツ巻き', {}, 'ロールキャベツ')?.name, 'ロールキャベツ');
+  assert.equal(parentOf('鮭のムニエルより簡単！和風キャベツ巻き', {}), null);
+  assert.equal(parentOf('なすと豚肉の味噌だれ炒め', {}, '肉じゃが')?.name, '肉じゃが', 'a word match does not override the AI dish name');
+  assert.equal(JSON.stringify(parentOf('鮭のごま照り焼き', {})), JSON.stringify({ key: parentOf('鮭のごま照り焼き', {}).key, name: '鮭の照り焼き' }), 'no extra fields in the answer');
+  // さば缶のトマト煮は煮る料理だけ（サラダ・炒め物にしない）
+  assert.equal(parentOf('サバとトマトの冷製サラダ', {}, 'サバのサラダ')?.name ?? null, null);
+  assert.equal(parentOf('サバ缶とトマトの炒め物', {})?.name, 'さば缶の炒め物');
   // 外した料理名は、仲間の見分け方でも使わない
   assert.equal(parentOf('鮭のごま照り焼き', { removed: ['鮭の照り焼き'] }), null);
 });
