@@ -361,3 +361,35 @@ test('2026-11-16: the hard-to-find ideal dishes keep searching with their own wo
   const { IDEAL_DISHES } = await import('../src/ideal.js');
   assert.ok(Object.keys(IDEAL_FLAVORS).every((n) => IDEAL_DISHES.some((d) => d.name === n)));
 });
+
+test('2026-11-24: the ideal-dish log shows, per dish, the stock, what is still missing, the next word, and what each recent search found and why videos were left out', async () => {
+  const { IDEAL_DISHES } = await import('../src/ideal.js');
+  const store = createMemorySyncStore();
+  const catalog = fakeCatalog();
+  // 冷しゃぶだけ：20分以内6品（上限）・30分以上0品。ほかの理想の料理は8品そろっている。
+  const others = IDEAL_DISHES.filter((d) => d.name !== '冷しゃぶ').flatMap((d) => [...times(6, [d.name, 10]), ...times(2, [d.name, 45])]);
+  await withList(store, catalog, [...times(6, ['冷しゃぶ', 10]), ...others, ...times(40, ['ほかの料理', 10])]);
+  await start(store, { stages: [{ n: 1, yen: 100, startedAt: new Date(NOW).toISOString(), ai: 0, input: 0, output: 0, added: times(4, { videoId: 'q', minutes: 10 }), skipped: {}, byQuery: {}, done: false }] });
+  const [v1, v2] = [vid(), vid()];
+  catalog.make.set(v1, recipe(v1, '冷しゃぶ', 10));
+  const searched = [];
+  const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
+    search: async (q) => { searched.push(q); return searched.length > 1 ? [] : [{ videoId: v1, channelId: 'c1', title: '冷しゃぶ' }, { videoId: v2, channelId: 'c2', title: '冷しゃぶ' }, { videoId: vid(), channelId: 'c2', title: '冷しゃぶ' }, { videoId: vid(), channelId: 'c2', title: '冷しゃぶ' }]; } });
+  await book.seed({ yen: 10, axis: 'parent', maxAdd: 1 });
+  assert.equal(searched[0], `冷しゃぶ ${PARENT_FLAVORS.long[0]} レシピ 材料`, 'only a 30-minute child is missing, so the long word is used');
+  const log = await book.idealLog();
+  const d = log.dishes.find((x) => x.name === '冷しゃぶ');
+  assert.deepEqual(d.stock, { quick: 6, long: 0, total: 6 });
+  assert.equal(d.quick.need, 0);
+  assert.equal(d.long.need, 2);
+  assert.equal(d.long.used, 1);
+  assert.equal(d.long.next, PARENT_FLAVORS.long[1]);
+  assert.equal(d.searches.length, 1);
+  const s = d.searches[0];
+  assert.equal(s.found, 4);
+  assert.equal(s.why.same_channel, 1, 'a third video from the same channel is left out before the AI');
+  assert.equal(s.why.parent_long, 1, 'a quick child read by the AI is not added: only a 30-minute child is wanted');
+  assert.equal(s.added, 0);
+  assert.ok(!JSON.stringify(log).includes(v1), 'no video ids');
+  assert.ok(log.dishes.find((x) => x.name !== '冷しゃぶ').full);
+});
