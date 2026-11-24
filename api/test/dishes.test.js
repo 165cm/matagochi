@@ -19,23 +19,23 @@ test('parents: a dictionary dish in the title is the parent (arrangements too, t
   assert.equal(p('鯖の味噌煮'), 'さばの味噌煮');
   assert.equal(p('ぶりの照り焼き'), 'ぶりの照り焼き', 'cooking-method-only names are not parents (ぶり and 鶏 stay apart)');
   assert.equal(p('鶏の照り焼き'), '鶏の照り焼き');
-  assert.equal(p('お豆腐ふわふわ焼き'), null);
+  assert.equal(p('ちくわの磯辺焼き'), null);
 });
 
 test('parents: a new dish name is promoted once 3 videos from 2+ channels share it; a removed one is not; aliases merge', async () => {
   const store = createMemorySyncStore();
   const book = createDishBook(store, { now: () => Date.parse('2026-10-05T00:00:00Z') });
   const v = (n, title, ch) => ({ videoId: `v${n}`, title, channelId: ch });
-  const oneChannel = [v(1, 'ふわふわ豆腐焼き', 'a'), v(2, '絶品 ふわふわ豆腐焼き', 'a'), v(3, 'ふわふわ豆腐焼き【簡単】', 'a')];
+  const oneChannel = [v(1, 'ちくわの磯辺焼き', 'a'), v(2, '絶品 ちくわの磯辺焼き', 'a'), v(3, 'ちくわの磯辺焼き【簡単】', 'a')];
   assert.deepEqual(await book.classify(oneChannel, { promote: true }), {}, 'one channel only → not yet');
-  const two = [...oneChannel.slice(0, 2), v(3, 'ふわふわ豆腐焼き｜みんなの', 'b')];
+  const two = [...oneChannel.slice(0, 2), v(3, 'ちくわの磯辺焼き｜みんなの', 'b')];
   assert.equal(DISH_PROMOTE_VIDEOS, 3);
   const got = await book.classify(two, { promote: true });
   assert.deepEqual(Object.keys(got).sort(), ['v1', 'v2', 'v3']);
-  assert.equal(got.v1.name, 'ふわふわ豆腐焼き');
-  assert.ok((await book.book()).promoted[dishKey('ふわふわ豆腐焼き')].since);
+  assert.equal(got.v1.name, 'ちくわの磯辺焼き');
+  assert.ok((await book.book()).promoted[dishKey('ちくわの磯辺焼き')].since);
   // 外すと、親にならない・格上げもしない
-  await book.edit({ op: 'remove', key: 'ふわふわ豆腐焼き' });
+  await book.edit({ op: 'remove', key: 'ちくわの磯辺焼き' });
   assert.deepEqual(await book.classify(two, { promote: true }), {});
   await book.edit({ op: 'remove', key: '八宝菜' });
   assert.equal(parentOf('王将風 八宝菜', await book.book()), null, 'a seed dish can be removed too');
@@ -50,7 +50,7 @@ test('parents: a new dish name is promoted once 3 videos from 2+ channels share 
 test('parents: GET /api/trends gives each item its parent; the admin endpoints need the token', async (t) => {
   const now = Date.parse('2026-10-05T01:00:00Z');
   const store = createMemorySyncStore();
-  const titles = { a0000000001: '王将風 八宝菜', a0000000002: '陳健一さんの八宝菜', a0000000003: 'お豆腐ふわふわ焼き' };
+  const titles = { a0000000001: '王将風 八宝菜', a0000000002: '陳健一さんの八宝菜', a0000000003: 'ちくわの磯辺焼き' };
   const recipe = (v) => ({ title: titles[v], videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: 'c' + v.slice(-1), ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'], tags: [] });
   await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: Object.keys(titles).map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
   const catalog = { async peek(url) { const v = url.match(/v=([\w-]{11})/)[1]; return titles[v] ? recipe(v) : null; } };
@@ -81,7 +81,7 @@ test('parents: GET /api/trends gives each item its parent; the admin endpoints n
 test('admin recipe list: new dishes and planned/kept ones, each with its parent and adoption numbers; the token is needed', async (t) => {
   const now = Date.parse('2026-10-05T01:00:00Z');
   const store = createMemorySyncStore();
-  const titles = { b0000000001: '王将風 八宝菜', b0000000002: '陳健一さんの八宝菜', b0000000003: 'お豆腐ふわふわ焼き', b0000000004: '塩こんぶ肉じゃが' };
+  const titles = { b0000000001: '王将風 八宝菜', b0000000002: '陳健一さんの八宝菜', b0000000003: 'ちくわの磯辺焼き', b0000000004: '塩こんぶ肉じゃが' };
   const recipe = (v) => ({ title: titles[v], videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: 'c' + v.slice(-1), channelTitle: 'ch' + v.slice(-1), ingredients: [{ name: '豚' }, { name: '白菜' }, { name: '塩' }], steps: ['切る', '炒める'], tags: [], planning: { minutes: 15 }, snippetFetchedAt: new Date(now).toISOString(), catalog: { analyzedAt: new Date(now).toISOString(), extractorVersion: 99 } });
   for (const v of Object.keys(titles)) await store.put(`youtube-${v}`, { status: 'ready', result: recipe(v) }, { ifGeneration: 0 });
   // 新着は1〜3、4は新着ではないが献立に入って残した料理
@@ -111,7 +111,7 @@ test('admin recipe list: new dishes and planned/kept ones, each with its parent 
 test('review fix (#124): every adoption count reaches the new dishes (beyond 500), and the admin reads never promote the dictionary', async (t) => {
   const now = Date.parse('2026-10-05T01:00:00Z');
   const store = createMemorySyncStore();
-  const titles = { c0000000001: 'ふわふわ豆腐焼き', c0000000002: '絶品 ふわふわ豆腐焼き', c0000000003: 'ふわふわ豆腐焼き｜簡単' };
+  const titles = { c0000000001: 'ちくわの磯辺焼き', c0000000002: '絶品 ちくわの磯辺焼き', c0000000003: 'ちくわの磯辺焼き｜簡単' };
   const recipe = (v) => ({ title: titles[v], videoUrl: `https://www.youtube.com/watch?v=${v}`, channelId: v.endsWith('1') ? 'ca' : 'cb', channelTitle: 'ch', ingredients: [{ name: '豆腐' }, { name: '卵' }, { name: '塩' }], steps: ['混ぜる', '焼く'], tags: [], snippetFetchedAt: new Date(now).toISOString(), catalog: { analyzedAt: new Date(now).toISOString(), extractorVersion: 99 } });
   for (const v of Object.keys(titles)) await store.put(`youtube-${v}`, { status: 'ready', result: recipe(v) }, { ifGeneration: 0 });
   await store.put('trends/index', { weeks: [{ week: weekOf(now), startedAt: new Date(now).toISOString(), candidates: [], tried: [], items: Object.keys(titles).map((videoId) => ({ videoId })), skipped: {} }] }, { ifGeneration: 0 });
@@ -130,7 +130,7 @@ test('review fix (#124): every adoption count reaches the new dishes (beyond 500
   assert.equal(Object.keys((await store.get('dishes/book'))?.envelope?.promoted || {}).length, 0, 'admin reads do not promote');
   // 公開の一覧では格上げされる
   await fetch(base + '/api/trends');
-  assert.ok((await store.get('dishes/book')).envelope.promoted[dishKey('ふわふわ豆腐焼き')]);
+  assert.ok((await store.get('dishes/book')).envelope.promoted[dishKey('ちくわの磯辺焼き')]);
 });
 
 test('review fix (#124 r2): stopped channels and stopped videos do not come back into the admin list through the adoption counts', async (t) => {
