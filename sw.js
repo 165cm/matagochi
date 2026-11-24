@@ -1,5 +1,5 @@
-const CACHE_NAME = "ripigochi-v254";
-const APP_VERSION = "20261120-missed";
+const CACHE_NAME = "ripigochi-v255";
+const APP_VERSION = "20261124-review";
 const CORE_ASSETS = [
   "./assets/dish-picks/shogayaki.webp",
   "./assets/dish-picks/karaage.webp",
@@ -40,6 +40,7 @@ const CORE_ASSETS = [
   `./skill-quiz.js?v=${APP_VERSION}`,
   `./cook-level.js?v=${APP_VERSION}`,
   `./weekly.js?v=${APP_VERSION}`,
+  `./table-review.js?v=${APP_VERSION}`,
   `./cook-type.js?v=${APP_VERSION}`,
   `./plan-moves.js?v=${APP_VERSION}`,
   `./plus.js?v=${APP_VERSION}`,

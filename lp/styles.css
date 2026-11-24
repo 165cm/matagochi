@@ -722,3 +722,10 @@ button.button { border: 0; cursor: pointer; font-family: inherit; }
 .lp-fig { margin: 10px auto 8px; max-width: 640px; }
 .lp-fig img { display: block; width: 100%; height: auto; border-radius: 16px; }
 .food-strip .lp-fig { padding: 0 16px; }
+
+/* 📮 わたしの食卓レビューから来た人への歓迎の帯（APP_MAP §82） */
+.review-welcome { background: #fff1d6; border-bottom: 1px solid #f0dcb4; }
+.review-welcome[hidden] { display: none; }
+.review-welcome-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; padding-bottom: 10px; }
+.review-welcome p { margin: 0; line-height: 1.5; }
+.review-welcome small { color: #7a6e64; }

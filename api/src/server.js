@@ -14,7 +14,7 @@ import { createCreatorDesk } from "./creators.js";
 import { createCreatorAuth } from "./creatorAuth.js";
 import { createTimecodeBook } from "./timecodes.js";
 import { createImageImporter } from "./imageImport.js";
-import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, matchStepsToTranscript, buildHybridRecipeSteps, writeCatchCopies, nameDishes, judgeDishPhoto, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
+import { analyzeRecipeDescription, analyzeRecipeImages, analyzeRecipeVideo, analyzeStepTimes, matchStepsToChapters, matchStepsToTranscript, buildHybridRecipeSteps, writeCatchCopies, nameDishes, judgeDishPhoto, drawIllust, drawMenuBoard, checkMenuBoard, describeMenu, rewriteRecipeSteps } from "./analyzer.js";
 import { fetchYouTubeTranscript, parseTranscriptText } from "./transcript.js";
 import { createSkillJudge } from "./skillPhoto.js";
 import { createVariantSearch } from "./variants.js";
@@ -37,6 +37,7 @@ import { createPhotoStore, createSyncStore } from "./syncStore.js";
 import { fetchTikTokOEmbed } from "./tiktok.js";
 import { canonicalYouTubeUrl, extractYouTubePlaylistId, extractYouTubeVideoId, fetchYouTubePlaylist, fetchYouTubeSnippet, searchYouTubeRecipes, searchYouTubeChannels, fetchChannelUploads, fetchChannelIcons, fetchChannelStats, resolveYouTubeChannel, fetchYouTubeStatuses } from "./youtube.js";
 import { createHousekeeping } from "./housekeeping.js";
+import { createIllustDesk, ILLUST_YEN_PER_MONTH, ILLUST_YEN_PER_IMAGE } from "./illust.js";
 
 // 管理画面の一覧で、保存場所から同時に読む数（1件ずつだと数百件で数十秒かかるため。2026-11-03）。
 const ADMIN_READ_CONCURRENCY = 20;
@@ -90,6 +91,10 @@ export function createApp(env = process.env, deps = {}) {
     ...(Number(env.TREND_YEN_PER_MONTH) >= 0 && env.TREND_YEN_PER_MONTH !== undefined && env.TREND_YEN_PER_MONTH !== "" ? { yenPerMonth: Number(env.TREND_YEN_PER_MONTH) } : {}), ...(Number(env.TREND_YEN_PER_AI) > 0 ? { yenPerAi: Number(env.TREND_YEN_PER_AI) } : {}) });
   const housekeeping = createHousekeeping(recipeStore, { catalog, now: deps.now || Date.now });
   const popularBook = createPopularBook(recipeStore, { catalog, now: deps.now || Date.now, optedOut: () => creatorDesk.optedOut(), isTrend: (videoId) => trendBook.has(videoId), dishBook });
+  // わたしの食卓レビューの色鉛筆イラスト（APP_MAP §82）。月の円の上限は取り込みの AI とは別（ILLUST_YEN_PER_MONTH・既定1,500円）。
+  const illustDesk = createIllustDesk(recipeStore, { draw: deps.drawIllust || ((image, prompt) => drawIllust(image, prompt, env)), now: deps.now || Date.now,
+    yenPerMonth: Number(env.ILLUST_YEN_PER_MONTH) >= 0 && env.ILLUST_YEN_PER_MONTH !== undefined && env.ILLUST_YEN_PER_MONTH !== "" ? Number(env.ILLUST_YEN_PER_MONTH) : ILLUST_YEN_PER_MONTH,
+    yenPerImage: Number(env.ILLUST_YEN_PER_IMAGE) > 0 ? Number(env.ILLUST_YEN_PER_IMAGE) : ILLUST_YEN_PER_IMAGE });
   const skillJudge = createSkillJudge(recipeStore, { judge: deps.judgeDishPhoto || ((image) => judgeDishPhoto(image, env)), reserveBudget: () => catalog.reserveAnalysisBudget(), now: deps.now || Date.now });
   const variantSearch = createVariantSearch(recipeStore, { search: searchQuota.wrap(rawSearch, "variant"), optedOut: () => creatorDesk.optedOut(), now: deps.now || Date.now });
   const pushDesk = createPushDesk(recipeStore, { send: deps.sendPush, subject: env.PUSH_SUBJECT || "https://165cm.github.io/matagochi/", now: deps.now || Date.now });
@@ -123,7 +128,7 @@ export function createApp(env = process.env, deps = {}) {
   const candidateJson = express.json({ limit: "512kb" });
   app.use((req, res, next) => {
     // 管理の候補づくりは、貼り付けた字幕（30分の動画で数十KB）を受け取るので広げる。
-    const parser = /^\/api\/admin\/recipes\/[\w-]{11}\/candidate$/.test(req.path) ? candidateJson : req.path === "/api/weekly/menu" ? menuJson : ["/api/import/images", "/api/skill/photo"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
+    const parser = /^\/api\/admin\/recipes\/[\w-]{11}\/candidate$/.test(req.path) ? candidateJson : req.path === "/api/weekly/menu" ? menuJson : ["/api/import/images", "/api/skill/photo", "/api/illust"].includes(req.path) ? imageJson : req.path.startsWith("/api/sync/") ? syncJson : defaultJson;
     parser(req, res, next);
   });
 
@@ -179,6 +184,20 @@ export function createApp(env = process.env, deps = {}) {
   // 親料理ごとの自動の補充（2026-10-03）：毎日の新着集め（refresh）とは別の要求にする（1回の要求の時間を短く保つ。review fix #135）。
   // 定期実行（.github/workflows/trends.yml）が refresh の後に done になるまで呼ぶ。1日の枠（料理15品・AI 25回）・月の上限の中。
   app.post("/api/trends/refill", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, trendBook.refill()); });
+  // 写真 → 色鉛筆のイラスト。お試しは登録した家庭（1日の上限の家庭）だけ・合計3枚（家庭の作り直しで増やせないように）。
+  app.get("/api/illust", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, illustDesk.status(householdOf(req), { unlimited: unlimitedOf(req) })); });
+  app.post("/api/illust", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const household = householdOf(req), unlimited = unlimitedOf(req);
+    send(res, (async () => {
+      if (!unlimited) {
+        if (!tickets) throw new ApiError(503, "catalog_not_configured", "保存先が未設定です。");
+        if (!household) throw new ApiError(400, "household_required", "家庭の識別子がありません。");
+        await tickets.get(household, { create: false });
+      }
+      return illustDesk.draw(req.body || {}, household, { unlimited });
+    })());
+  });
   app.post("/api/skill/photo", (req, res) => { res.setHeader("Cache-Control", "no-store"); send(res, skillJudge.judge(req.body || {}, householdOf(req))); });
   // 通知：鍵・登録（この先のお知らせも一緒に）・解除・テスト・定期実行（GitHub Actions が15分ごとに呼ぶ）
   app.get("/api/push/key", (req, res) => { res.setHeader("Cache-Control", "public, max-age=3600"); send(res, pushDesk.publicKey()); });

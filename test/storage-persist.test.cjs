@@ -8,7 +8,7 @@ const source = fullSource.slice(0, fullSource.lastIndexOf('document.querySelecto
 // navigator.storage の persist/persisted を数えるだけの偽物を入れて、app.js を読み込む。
 function app(storage) {
   const context = vm.createContext({ console, URL, Date, navigator: storage === undefined ? {} : { storage }, document: { querySelector: () => null, querySelectorAll: () => [] } });
-  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','skills.js','aisles.js','lifestyle.js','profile-talk.js','talk-ui.js','daily-ui.js','playlist-import.js','household.js','skill-quiz.js','cook-level.js','weekly.js','cook-type.js','plan-moves.js','plus.js','cook-mode.js','folders.js','install.js','push.js','tickets.js','account.js','discover.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
+  for (const file of ['dinner-persona.js','taste.js','taste-ui.js','starter-recipes.js','skills.js','aisles.js','lifestyle.js','profile-talk.js','talk-ui.js','daily-ui.js','playlist-import.js','household.js','skill-quiz.js','cook-level.js','weekly.js','table-review.js','cook-type.js','plan-moves.js','plus.js','cook-mode.js','folders.js','install.js','push.js','tickets.js','account.js','discover.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
   vm.runInContext(source, context);
   return (code) => vm.runInContext(code, context);
 }

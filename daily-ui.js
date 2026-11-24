@@ -2447,10 +2447,11 @@ function renderReflection() {
   ${reflMonth === 0 ? renderReflectEvidence() : ""}
   ${fav ? `<section class="fav-card"><p class="eyebrow">${reflMonth === 0 ? "今月" : "この月"}の偏愛</p><div class="fav-body">${dishTile(favRecipe, "fav-photo")}<div><h3>${escapeHtml(favRecipe.title)}</h3><p class="hand"><span class="marker">${escapeHtml(favNote)}</span></p></div></div></section>` : ""}
   ${reflMonth === 0 ? renderMenuAlbum() : ""}
-  <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3><div class="view-switch" role="group" aria-label="見せ方">${list.length ? `<button type="button" class="chip-button" data-action="life-refl-view" data-view="cal" aria-pressed="${reflView === "cal"}">📅 カレンダー</button><button type="button" class="chip-button" data-action="life-refl-view" data-view="grid" aria-pressed="${reflView === "grid"}">🖼 写真</button>` : ""}<button type="button" class="chip-button" data-action="life-card-book-open">🃏 図鑑 ›</button></div></div>
+  <section class="table-section"><div class="table-head"><h3>わたしの食卓</h3><div class="view-switch" role="group" aria-label="見せ方">${list.length ? `<button type="button" class="chip-button" data-action="life-refl-view" data-view="cal" aria-pressed="${reflView === "cal"}">📅 カレンダー</button><button type="button" class="chip-button" data-action="life-refl-view" data-view="grid" aria-pressed="${reflView === "grid"}">🖼 写真</button>` : ""}<button type="button" class="chip-button" data-action="life-card-book-open">🃏 図鑑 ›</button>${typeof renderTableReview === "function" && (state.evaluations || []).some((e) => !String(e.id || "").startsWith("demo-")) ? '<button type="button" class="chip-button tr-open" data-action="review-open">📮 レビュー</button>' : ""}</div></div>
   ${tiles ? (reflView === "cal" ? renderRecordCalendar(list, month.key, recipeOf, photoOf) : `<div class="table-grid">${tiles}</div>`) + '<p class="muted small">タップで記録を開く</p>' : `<div class="empty-state">${yohaku("bowl")}<p class="muted">${reflMonth === 0 ? "「作った」を押すと、ここに食卓の記録がたまっていきます。" : "この月の記録はありません。"}</p></div>`}</section>
   ${reflMonth === 0 && typeof renderBackupReminder === "function" ? renderBackupReminder() : ""}
-  ${trayFlipId ? renderCardFlipModal() : ""}`;
+  ${trayFlipId ? renderCardFlipModal() : ""}
+  ${typeof renderTableReview === "function" ? renderTableReview() : ""}`;
 }
 function saveOwnRecipe(recipe) {
   const existing = state.recipes.find(
@@ -2892,6 +2893,8 @@ function bindDailyEvents() {
   });
 }
 function handleDailyAction(action, data) {
+  // 📮 わたしの食卓レビュー（table-review.js。APP_MAP §82）
+  if (action.startsWith("review-") && typeof handleTableReviewAction === "function" && handleTableReviewAction(action, data)) return true;
   const oldView = state.view;
   if (!action.startsWith("life-")) return false;
   if (handleHouseholdAction(action, data)) return true;
@@ -4200,7 +4203,9 @@ function syncHasSheetBodyClass() {
     (swapDate && (!state?.view || state.view === "plan")) ||
     ((trayFlipId || cardGetRecipeId) && (inPlanOrToday || state.view === "repeat")) ||
     // レシピタブの図鑑で開いたカードの裏（§78。Codex review #254）
-    (trayFlipId && state.view === "collection")
+    (trayFlipId && state.view === "collection") ||
+    // 📮 わたしの食卓レビュー（§82）
+    (typeof reviewView !== "undefined" && reviewView && state.view === "repeat")
   );
   document.body?.classList?.toggle("has-sheet", hasModal);
   return hasModal;
