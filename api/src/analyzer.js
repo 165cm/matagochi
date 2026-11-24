@@ -574,16 +574,21 @@ export async function drawIllust(image, prompt, env = process.env, { clients } =
     ...(env.GOOGLE_CLOUD_PROJECT ? [{ name: "vertex-global", ai: () => new GoogleGenAI({ vertexai: true, project: env.GOOGLE_CLOUD_PROJECT, location: env.GEMINI_IMAGE_LOCATION || "global" }) }] : []),
   ];
   if (!list.length) throw new ApiError(500, "missing_google_cloud_project", "Google Cloudプロジェクトが設定されていません。");
+  // 絵が返ってこなかった試行でも、使った分（usageMetadata）は月の費用に数える（Codex review #275）
+  let spent = 0;
   for (const client of list) {
     try {
       const response = await client.ai().models.generateContent({ model, contents: [{ role: "user", parts: [{ inlineData: image }, { text: prompt }] }],
         config: { httpOptions: { timeout: 120_000, retryOptions: { attempts: 1 } }, responseModalities: ["IMAGE"], temperature: 0.4, imageConfig: { aspectRatio: "1:1" } } });
+      if (response?.usageMetadata) spent += illustYen(response.usageMetadata, env);
       const part = response.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
       if (!part) throw new Error(`no image (${response.candidates?.[0]?.finishReason || "unknown"})`);
-      return { mimeType: part.inlineData.mimeType || "image/png", data: part.inlineData.data, yen: illustYen(response.usageMetadata, env), via: client.name };
+      return { mimeType: part.inlineData.mimeType || "image/png", data: part.inlineData.data, yen: spent, via: client.name };
     } catch (error) {
       console.error(JSON.stringify({ event: "illust_failed", via: client.name, model, message: String(error?.message || "").slice(0, 200) }));
     }
   }
-  throw new ApiError(502, "illust_failed", "イラストを描けませんでした。お試しの回数は戻しました。");
+  const error = new ApiError(502, "illust_failed", "イラストを描けませんでした。お試しの回数は戻しました。");
+  error.yen = spent;
+  throw error;
 }

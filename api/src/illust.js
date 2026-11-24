@@ -91,7 +91,8 @@ export function createIllustDesk(store, { draw, now = Date.now, trialTotal = ILL
         result = await draw(prepared, illustPrompt(dish));
         if (!result?.data || !/^image\/(png|jpeg|webp)$/.test(result.mimeType || "")) throw new ApiError(502, "illust_failed", "イラストを描けませんでした。お試しの回数は戻しました。");
       } catch (error) {
-        await settle(0);
+        // 絵がなくても、AI が使った分は月の費用に残す（お試しの回数は戻す）
+        await settle(Number.isFinite(error?.yen) && error.yen > 0 ? error.yen : 0);
         await refundTrial();
         if (error instanceof ApiError && error.status < 500) throw error;
         throw new ApiError(502, "illust_failed", "イラストを描けませんでした。お試しの回数は戻しました。");

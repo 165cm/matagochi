@@ -97,3 +97,24 @@ test('illust: a drawing that finishes after midnight at the end of the month is 
   assert.equal((await store.get('illust-budget/2026-11')).envelope.yen, 5);
   assert.equal((await store.get('illust-budget/2026-12')).envelope.yen, 30);
 });
+
+test('illust: tries that used the AI but returned no picture still count toward the month (Codex review #275)', async () => {
+  const { drawIllust } = await import('../src/analyzer.js');
+  const usage = { promptTokenCount: 1275, candidatesTokenCount: 0, thoughtsTokenCount: 945 };
+  const noImage = { name: 'a', ai: () => ({ models: { generateContent: async () => ({ usageMetadata: usage, candidates: [{ finishReason: 'OTHER', content: { parts: [] } }] }) } }) };
+  const down = { name: 'b', ai: () => ({ models: { generateContent: async () => { throw new Error('down'); } } }) };
+  const ok = { name: 'c', ai: () => ({ models: { generateContent: async () => ({ usageMetadata: { promptTokenCount: 1275, candidatesTokenCount: 1120, candidatesTokensDetails: [{ modality: 'IMAGE', tokenCount: 1120 }] }, candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }] } }] }) } }) };
+  const env = { USD_JPY: '160' };
+  const failed = await drawIllust({ mimeType: 'image/jpeg', data: 'AA' }, 'p', env, { clients: [noImage, down] }).catch((e) => e);
+  assert.equal(failed.code, 'illust_failed');
+  assert.ok(failed.yen > 0.4, `the thinking and input of the empty try are counted (${failed.yen})`);
+  const done = await drawIllust({ mimeType: 'image/jpeg', data: 'AA' }, 'p', env, { clients: [noImage, ok] });
+  assert.ok(done.yen > failed.yen + 5, 'a success after an empty try counts both');
+  // 描けなかった時：お試しは戻し、使った分だけ月の費用に残す
+  const store = createMemorySyncStore();
+  const desk = createIllustDesk(store, { draw: async () => { throw failed; } });
+  await assert.rejects(desk.draw({ image: await photo() }, 'home-1'), { code: 'illust_failed' });
+  assert.equal((await desk.status('home-1')).left, ILLUST_TRIAL_TOTAL);
+  const month = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+  assert.equal((await store.get(`illust-budget/${month}`)).envelope.yen, failed.yen);
+});
