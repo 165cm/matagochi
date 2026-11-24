@@ -335,7 +335,7 @@ test('refill: the 40 added parents are quick dishes of the short groups, every o
   // 言い方のゆれ
   assert.equal(parentOf('鶏むね肉のみぞれ煮', {})?.name, '鶏のみぞれ煮');
   assert.equal(parentOf('トマトと卵の炒め物', {})?.name, 'トマト卵炒め');
-  assert.equal(parentOf('めかじきの照り焼き', {})?.name, 'かじきの照り焼き');
+  assert.equal(parentOf('サバ缶炒め', {})?.name, 'さば缶の炒め物');
   // 魚が足りない時、足した魚の料理は「足りない分野」の段（tier 1）に入る
   const { prioritizedParents } = await import('../src/trends.js');
   const tiers = Object.fromEntries(prioritizedParents({}, []).map((p) => [p.name, p.tier]));
@@ -392,4 +392,38 @@ test('2026-11-24: the ideal-dish log shows, per dish, the stock, what is still m
   assert.equal(s.added, 0);
   assert.ok(!JSON.stringify(log).includes(v1), 'no video ids');
   assert.ok(log.dishes.find((x) => x.name !== '冷しゃぶ').full);
+});
+
+// 2026-11-24 のユーザーの判断：1週間たっても動画がほとんど見つからない6つを入れ替え、題名に料理名がそのまま入っていない仲間も見分ける（0円）
+test('2026-11-24: six hard-to-find names are swapped, and titles without the exact name are matched by their words', async () => {
+  const { DISH_SEEDS, parentOf } = await import('../src/dishes.js');
+  for (const gone of ['鮭の竜田揚げ', 'かじきの照り焼き', 'ぶりの竜田揚げ', 'あんかけ豆腐', 'なすの肉巻き', 'れんこんのはさみ焼き']) assert.ok(!DISH_SEEDS.includes(gone), gone);
+  for (const added of ['鯛の酒蒸し', 'さば缶の炒め物', 'さば缶のトマト煮', '豆腐のふわふわ焼き', '野菜の肉巻き', '小松菜の炒め物']) assert.ok(DISH_SEEDS.includes(added), added);
+  const cases = {
+    '鮭のごま照り焼き': '鮭の照り焼き', '鮭と野菜の甘酢照り焼き': '鮭の照り焼き', '鮭とわかめのクリーム煮': '鮭のクリーム煮',
+    'サーモンムニエル きのこクリームソース': '鮭のムニエル', 'なすと豚肉の味噌だれ炒め': 'なすの味噌炒め', 'レンジで超簡単！なす味噌炒め': 'なすの味噌炒め',
+    '白菜と豚バラのクリーム煮': '白菜のクリーム煮', '厚揚げの照り焼きステーキ': '厚揚げステーキ', 'もやしのにんにく塩炒め': 'もやし炒め',
+    'なすとオクラの揚げ浸し': 'なすの揚げ浸し', '鶏肉ときのこのみぞれ煮': '鶏のみぞれ煮', 'たらときのこの酒蒸し': 'たらの酒蒸し',
+    'もやしとさば缶のヘルシー炒め': 'さば缶の炒め物', 'サバ缶のトマト煮': 'さば缶のトマト煮', '梅おろしでさっぱり！鯛の酒蒸し': '鯛の酒蒸し',
+    'お豆腐ふわふわ焼き': '豆腐のふわふわ焼き', '巻くだけチーズ肉巻きピーマン': '野菜の肉巻き', '小松菜の肉味噌炒め': '小松菜の炒め物',
+    '茹で鶏と絶品ゴマだれ': '蒸し鶏', 'ゴーヤチャンプル': 'ゴーヤチャンプルー',
+  };
+  for (const [title, name] of Object.entries(cases)) assert.equal(parentOf(title, {})?.name, name, title);
+  // 料理名がそのまま入っていれば、そちらが先（照り焼きチキンは鮭の照り焼きにしない・なすの煮びたしはそのまま）
+  assert.equal(parentOf('照り焼きチキン', {})?.name, '照り焼きチキン');
+  assert.equal(parentOf('鶏の照り焼き 鮭にも合うたれ', {})?.name, '鶏の照り焼き');
+  // 丼は丼ものの親にする・関係のない題名は仲間にしない
+  assert.equal(parentOf('厚揚げステーキのガーリックバター醤油丼', {}), null);
+  assert.equal(parentOf('たらこパスタ', {}), null, 'たらこ is not たら');
+  assert.equal(parentOf('ニラ醤油だれ', {}), null);
+  // 比べるための料理名は仲間にしない・AI の料理名より弱い（Codex review #274）
+  assert.equal(parentOf('鮭のムニエルより簡単！和風キャベツ巻き', {}, 'ロールキャベツ')?.name, 'ロールキャベツ');
+  assert.equal(parentOf('鮭のムニエルより簡単！和風キャベツ巻き', {}), null);
+  assert.equal(parentOf('なすと豚肉の味噌だれ炒め', {}, '肉じゃが')?.name, '肉じゃが', 'a word match does not override the AI dish name');
+  assert.equal(JSON.stringify(parentOf('鮭のごま照り焼き', {})), JSON.stringify({ key: parentOf('鮭のごま照り焼き', {}).key, name: '鮭の照り焼き' }), 'no extra fields in the answer');
+  // さば缶のトマト煮は煮る料理だけ（サラダ・炒め物にしない）
+  assert.equal(parentOf('サバとトマトの冷製サラダ', {}, 'サバのサラダ')?.name ?? null, null);
+  assert.equal(parentOf('サバ缶とトマトの炒め物', {})?.name, 'さば缶の炒め物');
+  // 外した料理名は、仲間の見分け方でも使わない
+  assert.equal(parentOf('鮭のごま照り焼き', { removed: ['鮭の照り焼き'] }), null);
 });
