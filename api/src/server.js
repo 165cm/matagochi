@@ -632,6 +632,11 @@ export function createApp(env = process.env, deps = {}) {
     return { n: real.filter(Boolean).length, k: real.filter((ok, i) => ok && Number.isFinite((times || [])[i])).length, source: source || "" };
   }
   // 手順の時刻のカバー率（新着・毎朝の健康診断が読む。2026-11-04 のユーザーの判断）。数だけを返す（レシピの中身・動画IDは返さない）。
+  // 理想の12品の探し方の点検（0円・数と自分たちの検索語だけ。題名・動画IDは返さない。毎朝の健康診断が読む。2026-11-24）。
+  app.get("/api/trends/ideal-log", (req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=300");
+    send(res, trendBook.idealLog());
+  });
   // 0円（保存済みを読むだけ）。読み出しが多いので、数え直すのは1時間に1回まで。
   let tcCoverage = null;
   app.get("/api/trends/timecodes", (req, res) => {

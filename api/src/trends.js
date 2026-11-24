@@ -913,7 +913,11 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           stage = { n: (stage?.n || 0) + 1, yen: Math.max(1, Math.min(1000, Math.round(Number(yen) || 100))), startedAt: new Date(now()).toISOString(), ai: 0, input: 0, output: 0, added: [], skipped: {}, byQuery: {}, done: false };
           doc.stages.push(stage);
         }
-        const skip = (why) => { stage.skipped[why] = (stage.skipped[why] || 0) + 1; };
+        // c（候補）を渡すと、広げ方の検索ごとの記録（doc.waves.log の why）にも外した理由を数える（理想の12品の探し方の点検。2026-11-24）。
+        const skip = (why, c = null) => {
+          stage.skipped[why] = (stage.skipped[why] || 0) + 1;
+          if (c?.wave) { const e = (doc.waves?.log || []).find((x) => x.n === c.wave); if (e) (e.why ||= {})[why] = (e.why[why] || 0) + 1; }
+        };
         const { yenPerAi } = await unitYen();
         const allowed = Math.max(0, Math.min(Number(maxAi) >= 0 ? Number(maxAi) : Infinity, Math.floor(stage.yen / Math.max(0.01, yenPerAi)) - stage.ai));
         const monthCap = monthCapCalls();
@@ -947,7 +951,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
         const excluded = await optedOut();
         // lite：説明欄の読み取りで AI に「考える」部分を使わせない（費用を下げる。analyzer.js）。
         const collector = { lite: true };
-        const done = (c, why) => { doc.tried.push(c.videoId); seen.add(c.videoId); if (why) skip(why); };
+        const done = (c, why) => { doc.tried.push(c.videoId); seen.add(c.videoId); if (why) skip(why, c); };
         // 後回しの候補：
         //   ① 実行の始めに、その間に保存済みになった（0円で読める）候補を候補に戻す（実際の調理時間で決める。review fix #130 r2）。
         //   ② 30分以上の枠が空いて候補がなくなった時、検索より先に1本ずつ戻す（1本の結果を段階に入れてから、枠を数え直す）。
@@ -1061,12 +1065,16 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             }
             const perChannel = {};
             const picked = [];
+            // 検索で見つかった本数と、AI の前に外した理由（広げ方の検索だけ。題名は残さない）。
+            const wlog = wave ? (doc.waves?.log || []).find((x) => x.n === wave.n) : null;
+            if (wlog) wlog.found = found.length;
+            const pre = (why) => { skip(why); if (wlog) (wlog.why ||= {})[why] = (wlog.why[why] || 0) + 1; };
             for (const c of found) {
-              if (seen.has(c.videoId) || picked.some((x) => x.videoId === c.videoId) || doc.later.some((x) => x.videoId === c.videoId) || doc.capped.some((x) => x.videoId === c.videoId) || doc.candidates.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { skip("filtered"); continue; }
-              if (!dig && (perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) { skip("same_channel"); continue; }
-              if (dig && picked.length >= DIG_PICK) { skip("dig_enough"); continue; }
+              if (seen.has(c.videoId) || picked.some((x) => x.videoId === c.videoId) || doc.later.some((x) => x.videoId === c.videoId) || doc.capped.some((x) => x.videoId === c.videoId) || doc.candidates.some((x) => x.videoId === c.videoId) || NOT_DINNER.test(c.title) || !TREND_MARKET.titleLooksLocal(c.title) || excluded.has(c.channelId) || excluded.has(c.videoId)) { pre("filtered"); continue; }
+              if (!dig && (perChannel[c.channelId] = (perChannel[c.channelId] || 0) + 1) > 2) { pre("same_channel"); continue; }
+              if (dig && picked.length >= DIG_PICK) { skip("dig_enough", c); continue; }
               // 説明欄を確かめられない時だけ、ここで定番を3本までにする（確かめられる時は、確かめて通った3本まで）。
-              if (!videoDetails && wave?.axis === "classic" && picked.length >= WAVE_CLASSIC_KEEP) { skip("classic_enough"); continue; }
+              if (!videoDetails && wave?.axis === "classic" && picked.length >= WAVE_CLASSIC_KEEP) { skip("classic_enough", c); continue; }
               const hint = titleHint(c.title);
               // 題名から分かる親料理（料理名の形だけを残す。題名そのものは残さない）。
               const pk = wave ? parentOf(c.title, await getDbook())?.key : "";
@@ -1088,7 +1096,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               for (const c of picked) {
                 const d = details[c.videoId];
                 // 定番は、説明欄の確認を通った WAVE_CLASSIC_KEEP 本まで残す（料理が3品増えたら残りは読まない）。外した分は試した扱いにしない。
-                if (wave?.axis === "classic" && kept >= WAVE_CLASSIC_KEEP && (!need.includes(c.videoId) || (d?.status === "public" && looksLikeRecipe(d.snippet?.description)))) { skip("classic_enough"); continue; }
+                if (wave?.axis === "classic" && kept >= WAVE_CLASSIC_KEEP && (!need.includes(c.videoId) || (d?.status === "public" && looksLikeRecipe(d.snippet?.description)))) { skip("classic_enough", c); continue; }
                 if (!need.includes(c.videoId)) { doc.candidates.push(c); kept += 1; }
                 else if (d?.status !== "public") done(c, "not_public");
                 else if (!looksLikeRecipe(d.snippet?.description)) done(c, "description_not_recipe");
@@ -1103,14 +1111,14 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           const batch = [];
           while (batch.length < SEED_PARALLEL && doc.candidates.length) {
             const c = doc.candidates.shift();
-            if (seen.has(c.videoId) || batch.some((x) => x.videoId === c.videoId)) { skip("duplicate"); continue; }
+            if (seen.has(c.videoId) || batch.some((x) => x.videoId === c.videoId)) { skip("duplicate", c); continue; }
             // 持ち越した候補も、読む前に掲載停止（動画・チャンネル）を確かめ直す（あとから止められた動画に費用を使わない）。
             if (excluded.has(c.videoId) || (c.channelId && excluded.has(c.channelId))) { done(c, "opted_out"); continue; }
             // 投稿者の比率：入れると新着全体の3%を超える投稿者の動画は読まない（試した扱いにしない＝新着が増えればまた入れられる）。
             if (c.channelId) {
               const p = await getPort();
               // 見送りの列（doc.capped）に残し、枠が空いた後の実行で戻す（試した扱いにしない。review fix #132）。
-              if (!portfolioRoom(p, c.channelId)) { skip("channel_cap"); if (!doc.capped.some((x) => x.videoId === c.videoId)) doc.capped.push(c); continue; }
+              if (!portfolioRoom(p, c.channelId)) { skip("channel_cap", c); if (!doc.capped.some((x) => x.videoId === c.videoId)) doc.capped.push(c); continue; }
               // 同じ投稿者の動画を同時に読むと、入れられる数を超えて AI で読むことがある → 読んでいる分を入れたものとして数え、超えるなら次の組へ回す。
               const same = batch.filter((x) => x.channelId === c.channelId).length;
               if (same && !portfolioRoom({ total: p.total + same, by: { [c.channelId]: (p.by[c.channelId] || 0) + same } }, c.channelId)) { doc.candidates.unshift(c); break; }
@@ -1118,12 +1126,12 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             // 親料理の子が6品そろっている時は読まない（読んでいる最中の同じ親も数える。試した扱いにしない）。
             if (c.wave && c.pk) {
               const st = (await getStock())[c.pk], same = batch.filter((x) => x.pk === c.pk).length;
-              if ((st?.total || 0) + same >= limitsFor(c.pk).max) { if (same) { doc.candidates.unshift(c); break; } skip("parent_full"); continue; }
+              if ((st?.total || 0) + same >= limitsFor(c.pk).max) { if (same) { doc.candidates.unshift(c); break; } skip("parent_full", c); continue; }
             }
             // 定番：その検索で料理が3品増えたら、残りは読まない（読んでいる最中の分も数える）。
             if (c.axis === "classic") {
               const e = (doc.waves?.log || []).find((x) => x.n === c.wave);
-              if (e && (e.added || 0) + batch.filter((x) => x.wave === c.wave).length >= WAVE_CLASSIC_PICK) { skip("classic_enough"); continue; }
+              if (e && (e.added || 0) + batch.filter((x) => x.wave === c.wave).length >= WAVE_CLASSIC_PICK) { skip("classic_enough", c); continue; }
             }
             // 投稿者・題名からの見込みで外す／後回しにするのは、AI で読む必要がある候補だけ（もう読んだ料理は0円で、実際の調理時間で決める。review fix #130）。
             const ch = doc.channels?.[c.channelId];
@@ -1134,7 +1142,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               if (lowCh) { done(c, "channel_low"); continue; }
               // 30分以上の枠がない時：題名が長そう・時短の少ない投稿者の動画は、読まずに後回し（試した扱いにしない）。
               // 次に枠が空いた時・次の実行で読めるように、後回しの列（doc.later）に残す。1回の実行で戻すのは1度だけ（同じ実行で回り続けない）。
-              skip(wait);
+              skip(wait, c);
               if (!doc.later.some((x) => x.videoId === c.videoId)) doc.later.push(c);
               continue;
             }
@@ -1170,17 +1178,17 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
               done(c, String(error.code || "error").slice(0, 40)); continue;
             }
             done(c);
-            if ((r?.channelId && excluded.has(r.channelId)) || excluded.has(c.videoId)) { skip("opted_out"); continue; }
-            if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short"); continue; }
+            if ((r?.channelId && excluded.has(r.channelId)) || excluded.has(c.videoId)) { skip("opted_out", c); continue; }
+            if (!isDinnerRecipe(r)) { skip(!(r?.steps || []).length ? "no_steps_in_description" : NOT_DINNER.test(r?.title || "") ? "not_dinner" : "too_short", c); continue; }
             // 広げ方の料理は、時短8割・30分以上2割に：30分以上（時間が分からない料理も）は、割合を超えるなら入れない。
-            if (c.wave && !isQuickDish(r.planning?.minutes) && !longRoom(stage.added)) { skip(free ? "long_quota_free" : "long_quota"); continue; } /* 0円で読んだ料理は、AI で読んだ結果に数えない（review fix #129） */
+            if (c.wave && !isQuickDish(r.planning?.minutes) && !longRoom(stage.added)) { skip(free ? "long_quota_free" : "long_quota", c); continue; } /* 0円で読んだ料理は、AI で読んだ結果に数えない（review fix #129） */
             // 親料理：子は6品まで・30分以上は1品まで（読んで分かった料理名で数える）。
             let pkey = "";
             if (c.wave) {
               const pr = parentOf(r.title, await getDbook(), r.dishName);
               if (pr) {
                 const st = (await getStock())[pr.key] || {};
-                if (!parentRoom(st, isQuickDish(r.planning?.minutes), pr.key)) { skip((st.total || 0) >= limitsFor(pr.key).max ? "parent_full" : "parent_long"); continue; }
+                if (!parentRoom(st, isQuickDish(r.planning?.minutes), pr.key)) { skip((st.total || 0) >= limitsFor(pr.key).max ? "parent_full" : "parent_long", c); continue; }
                 pkey = pr.key;
               }
             }
@@ -1188,7 +1196,7 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             const chId = r?.channelId || c.channelId;
             if (!portfolioRoom(await getPort(), chId)) {
               // 読んでから分かった時も、試した扱いを戻して見送りの列へ（読んだ結果は保存済み＝次は0円）。
-              skip(free ? "channel_cap" : "channel_cap_read");
+              skip(free ? "channel_cap" : "channel_cap_read", c);
               doc.tried = doc.tried.filter((v) => v !== c.videoId);
               if (!doc.capped.some((x) => x.videoId === c.videoId)) doc.capped.push({ ...c, channelId: chId });
               continue;
@@ -1253,6 +1261,29 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
     // 1日の枠（AI 25回・料理15品）は、seed を呼ぶ前に世代つきで予約する（予約できなければ呼ばない）。
     // 使わなかった分は後で返す。返せなかった時は多めに数えたまま＝上限は越えない（review fix #135）。
     // done：今日はもう補充しなくてよい（枠を使い切った・そろった・時間切れや待ち以外の理由で止まった）。
+    // 理想の12品の探し方の点検（0円・読み出すだけ。2026-11-24 のユーザーの依頼「集まらない4品の原因を見る」）。
+    // 料理ごとに：いまの作り方の数（20分以内・30分以上）と上限、足りない数、次に使う言葉の位置、言葉を使い切って待っている日、
+    // 最近の検索（言葉・見つかった本数・AI の前に残った本数・AI で読んだ本数・増えた本数・外した理由）。題名・動画は返さない。
+    async idealLog() {
+      const doc = (await store.get("trends/seed"))?.envelope || {};
+      const w = doc.waves || {};
+      const stock = stockOf((await this.list({ promote: false }).catch(() => ({ items: [] }))).items || []);
+      const nowMs = now();
+      const dishes = IDEAL_DISHES.map((d) => {
+        const key = parentKeyOf(d.name), st = stock[key] || { quick: 0, long: 0, total: 0 }, l = limitsFor(key), n = need(st, key);
+        const ps = w.parents?.[key] || { quick: 0, long: 0, at: {}, day: "" };
+        const words = { quick: [...PARENT_FLAVORS.quick, ...(IDEAL_FLAVORS[d.name] || [])], long: PARENT_FLAVORS.long };
+        const kind = (k) => {
+          const used = Math.min(ps[k] || 0, words[k].length), last = Date.parse(ps.at?.[k] || 0) || 0;
+          const waitUntil = used >= words[k].length && nowMs - last < PARENT_REUSE_DAYS * DAY ? new Date(last + PARENT_REUSE_DAYS * DAY).toISOString().slice(0, 10) : "";
+          return { need: n[k], used, words: words[k].length, next: used < words[k].length ? words[k][used] : "", waitUntil };
+        };
+        const searches = (w.log || []).filter((e) => e.axis === "parent" && e.word === d.name).slice(-6)
+          .map((e) => ({ at: e.at, q: e.q, quick: !!e.quick, found: e.found ?? null, picked: e.picked || 0, ai: e.ai || 0, added: e.added || 0, why: e.why || {} }));
+        return { name: d.name, label: d.label, stock: st, max: l.max, quickMax: l.quick, longMax: l.long, full: (st.total || 0) >= l.max, lastDay: ps.day || "", quick: kind("quick"), long: kind("long"), searches };
+      });
+      return { at: new Date(nowMs).toISOString(), dishes };
+    },
     async refill({ timeMs = budgetMs } = {}) {
       const day = dayOf(now());
       const cur = await store.get("trends/refill");
