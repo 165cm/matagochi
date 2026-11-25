@@ -554,3 +554,41 @@ ${unitPromptTable()}
   }).catch(() => { throw new ApiError(503,"analysis_uncertain","画像解析の応答を確認できませんでした。重複分析を防ぐため再分析を保留しています。手動入力をご利用ください。"); });
   return parseJsonResponse(response.text || "");
 }
+
+// わたしの食卓レビュー：写真を色鉛筆のイラストに（illust.js）。モデルは GEMINI_ILLUST_MODEL（既定 Nano Banana 2.1）。
+// ① Gemini API（GEMINI_API_KEY がある時）→ ② Vertex（global）の順に試す。費用は実際のトークン数から円で返す
+// （単価は ILLUST_PRICE_IN / ILLUST_PRICE_IMAGE_OUT / ILLUST_PRICE_TEXT_OUT〔USD／100万トークン〕と USD_JPY。既定 0.5／30／3・160円）。
+export function illustYen(usage, env = process.env) {
+  const num = (v, d) => (Number(v) > 0 ? Number(v) : d);
+  const u = usage || {};
+  const details = Array.isArray(u.candidatesTokensDetails) ? u.candidatesTokensDetails : [];
+  const image = details.filter((d) => String(d?.modality || "").toUpperCase() === "IMAGE").reduce((n, d) => n + (Number(d.tokenCount) || 0), 0) || (details.length ? 0 : Number(u.candidatesTokenCount) || 0);
+  const textOut = Math.max(0, (Number(u.candidatesTokenCount) || 0) - image) + (Number(u.thoughtsTokenCount) || 0);
+  const usd = ((Number(u.promptTokenCount) || 0) * num(env.ILLUST_PRICE_IN, 0.5) + image * num(env.ILLUST_PRICE_IMAGE_OUT, 30) + textOut * num(env.ILLUST_PRICE_TEXT_OUT, 3)) / 1_000_000;
+  return usd * num(env.USD_JPY, 160);
+}
+export async function drawIllust(image, prompt, env = process.env, { clients } = {}) {
+  const model = env.GEMINI_ILLUST_MODEL || "gemini-nano-banana-2.1";
+  const list = clients || [
+    ...(env.GEMINI_API_KEY ? [{ name: "gemini-api", ai: () => new GoogleGenAI({ apiKey: env.GEMINI_API_KEY }) }] : []),
+    ...(env.GOOGLE_CLOUD_PROJECT ? [{ name: "vertex-global", ai: () => new GoogleGenAI({ vertexai: true, project: env.GOOGLE_CLOUD_PROJECT, location: env.GEMINI_IMAGE_LOCATION || "global" }) }] : []),
+  ];
+  if (!list.length) throw new ApiError(500, "missing_google_cloud_project", "Google Cloudプロジェクトが設定されていません。");
+  // 絵が返ってこなかった試行でも、使った分（usageMetadata）は月の費用に数える（Codex review #275）
+  let spent = 0;
+  for (const client of list) {
+    try {
+      const response = await client.ai().models.generateContent({ model, contents: [{ role: "user", parts: [{ inlineData: image }, { text: prompt }] }],
+        config: { httpOptions: { timeout: 120_000, retryOptions: { attempts: 1 } }, responseModalities: ["IMAGE"], temperature: 0.4, imageConfig: { aspectRatio: "1:1" } } });
+      if (response?.usageMetadata) spent += illustYen(response.usageMetadata, env);
+      const part = response.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
+      if (!part) throw new Error(`no image (${response.candidates?.[0]?.finishReason || "unknown"})`);
+      return { mimeType: part.inlineData.mimeType || "image/png", data: part.inlineData.data, yen: spent, via: client.name };
+    } catch (error) {
+      console.error(JSON.stringify({ event: "illust_failed", via: client.name, model, message: String(error?.message || "").slice(0, 200) }));
+    }
+  }
+  const error = new ApiError(502, "illust_failed", "イラストを描けませんでした。お試しの回数は戻しました。");
+  error.yen = spent;
+  throw error;
+}

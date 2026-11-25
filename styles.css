@@ -5269,3 +5269,35 @@ body.has-sheet { overflow: hidden; }
 .miss-option.is-primary { border-color: var(--tomato); }
 .miss-option small { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .miss-panel > .text-button { justify-self: start; min-height: 36px; }
+
+/* 📮 わたしの食卓レビュー（table-review.js。APP_MAP §82） */
+.tr-overlay { position: fixed; inset: 0; z-index: 85; display: grid; place-items: end center; }
+.tr-backdrop { position: absolute; inset: 0; background: rgba(30, 18, 8, 0.55); }
+.tr-sheet { position: relative; z-index: 1; width: min(100%, 520px); max-height: 92vh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: var(--surface); display: grid; gap: 10px; }
+@media (min-width: 700px) { .tr-overlay { place-items: center; padding: 16px; } .tr-sheet { border-radius: 20px; } }
+.tr-head { display: flex; align-items: center; justify-content: space-between; }
+.tr-head h3 { margin: 0; font-size: 17px; }
+.tr-periods, .tr-arts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tr-label { margin: 2px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); }
+.tr-picks { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin; }
+.tr-pick { flex: 0 0 auto; width: 60px; height: 60px; padding: 0; border-radius: 12px; overflow: hidden; border: 2px solid transparent; background: var(--surface-soft); cursor: pointer; }
+.tr-pick[aria-pressed="true"] { border-color: var(--tomato); box-shadow: 0 0 0 2px rgba(238, 106, 76, 0.25); }
+.tr-pick img, .tr-pick .dish-tile { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 0; }
+.tr-pick .dish-tile small { display: none; }
+.tr-name { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); margin-left: auto; }
+.tr-draw { width: 100%; }
+.tr-preview { display: grid; place-items: center; min-height: 240px; border-radius: 14px; background: var(--surface-soft); overflow: hidden; }
+.tr-preview img { display: block; width: auto; max-width: 100%; max-height: 48vh; aspect-ratio: 9 / 16; border-radius: 10px; box-shadow: var(--shadow); }
+.tr-wait { display: grid; justify-items: center; gap: 4px; padding: 24px; text-align: center; color: var(--muted); }
+.tr-wait p { margin: 0; font-weight: 700; color: var(--ink); }
+.tr-wait .yohaku { width: 72px; height: auto; }
+.tr-error { margin: 0; color: var(--sage-dark); font-size: 13px; }
+.tr-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tr-actions .primary-button, .tr-actions .secondary-button { flex: 1 1 120px; }
+.tr-empty { display: grid; justify-items: center; gap: 4px; padding: 20px 8px; text-align: center; }
+.tr-empty .yohaku { width: 80px; height: auto; }
+.tr-empty p { margin: 0; }
+.tr-periods .chip-button, .tr-arts .chip-button { min-height: 40px; padding: 4px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tr-periods .chip-button[aria-pressed="true"], .tr-arts .chip-button[aria-pressed="true"] { border-color: var(--tomato); background: #fff1ec; color: var(--sage-dark); }
+.tr-actions button:disabled { opacity: 0.5; cursor: default; }

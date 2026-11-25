@@ -33,6 +33,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | `household.js` | 家族で使う（招待・リクエスト・今週のカレンダー） |
 | `skill-quiz.js` `cook-level.js` | スキル診断・XP・バッジ |
 | `weekly.js` | 1週間コンプのスタンプ（献立表の生成は止めている） |
+| `table-review.js` | 📮 わたしの食卓レビュー（期間・表紙の一皿・ひとこと・縦長の画像と共有。APP_MAP §82） |
 | `cook-type.js` `plan-moves.js` | 料理タイプ・献立の入れ替え |
 | `plus.js` | 無料／プラスの出し分け（`GATING_LIVE=false`）・β版のお礼と意見・使われ方の集計 |
 | `folders.js` `install.js` `push.js` | 定番フォルダ・ホーム画面に追加・通知 |
@@ -49,6 +50,7 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 ## データ（端末の中）
 
 - `state` 1つにまとめて `localStorage`（`matagochi-mvp-v1`）へ。写真は IndexedDB
+- 端末だけ（state の外）：`ripigochi-illust`（わたしの食卓レビューで作った色鉛筆の絵。新しい6枚まで）
 - 主な項目：`recipes`（保存したレシピ）・`mealSlots`（日付ごとの確定した献立）・`planOverrides`（入れ替え・自分で決めた一皿）・`evaluations`（作った記録と「また食べたい」周期 `familyRepeatCycles`）・`shoppingMarks`（買い物のチェック）・`foodProfile` / `householdProfile`（好み・器具・常備品 `pantry`）・`tasteProfile`（わが家のごはん方針。端末ごと・同期しない）・`family`・`requests`・`plus`・`trialFrom`
 - 買い物の名前：買い物リストでは材料名を `Lifestyle.shoppingName` で「買う物の名前」にそろえる（長ネギ・ネギ → 長ねぎ。辞書は lifestyle.js `SHOP_NAMES`）。`itemPrefs[品] = { action: "sub"|"skip"|"clear", subText, always?, updatedAt }`（`always` はいつも代用・いつもパス。APP_MAP §79）
 - レシピの材料：`{ name, amount, category, group? }`（`group` はタレ・合わせ調味料の印 "A" "☆" "タレ" など）
@@ -68,11 +70,12 @@ API（Cloud Run: matagochi-api / Node + Express）  api/src/
 | 投稿者 | `POST /api/creators/request`（掲載停止の申し込み）・`/api/creators/verify`（YouTubeでログイン）・`/api/creators/me`（持ち主の操作・動画を一覧に戻す）・`POST /api/creators/corrections`（修正依頼）・管理 `/api/admin/creators*`（承認画面 `admin/creators.html`） |
 | おすすめ | `/api/trends`・`/api/popular`（読み出すだけ）・`POST /api/trends/refresh`（定期実行：新着を集める＋1日1回の後片付け `housekeeping.js`。APP_MAP §39・§41） |
 | 意見・集計 | `POST /api/feedback`・`POST /api/usage`（管理：`/api/admin/*` は `RECIPE_ADMIN_TOKEN`） |
+| わたしの食卓レビュー | `GET/POST /api/illust`（写真 → 色鉛筆のイラスト。お試し合計3枚・月の円の上限。`api/src/illust.js`・APP_MAP §82） |
 | その他 | `/api/skill/photo`・`/api/search/variants`・`/api/weekly/menu`（`WEEKLY_MENU=on` の時だけ）・`/api/recipes/*`・`/health` |
 
 - 手順の書き直し（覚えやすい手順）の上限と0円の確かめは `api/src/rewrite.js`（APP_MAP §49）
 - AIへの指示は `api/src/analyzer.js`。取り込みの組み立ては `importRecipe.js`（AIが人数を取りこぼした時は `servings.js` のルールで読む）。手順の時刻（タイムコード）抽出は字幕（`api/src/transcript.js`）→ チャプター → 動画解析の順に照合（`api/src/timecodes.js`・APP_MAP §52）
-- 環境変数：`GEMINI_API_KEY` `GEMINI_MODEL` `GEMINI_VIDEO_MODEL` `YOUTUBE_API_KEY` `RECIPE_BUCKET` `SYNC_BUCKET` `ALLOWED_ORIGINS` `RECIPE_ADMIN_TOKEN` `DEV_UNLOCK_CODE` `GOOGLE_CLIENT_ID` `RESEND_API_KEY` `MAIL_FROM` `PUSH_SUBJECT` `START_TICKETS` `AI_DAILY_LIMIT` `AI_MONTHLY_LIMIT` `VIDEO_ANALYSIS_ENABLED` `VIDEO_MAX_SECONDS` `TIMECODE_FPS` `TIMECODE_MAX_SECONDS`（手順の時刻を動画から探す時のコマ数〔既定0.2＝5秒に1コマ〕と見る長さ〔既定1800秒〕。APP_MAP §46-2）`WEEKLY_MENU` `TREND_PER_DAY` `TREND_WEEK_MAX`（新着の採用数：1日2・1週14が既定）`TREND_AI_PER_DAY` `TREND_AI_PER_WEEK`（新着集めが AI を呼ぶ回数：1日6・1週30が既定。APP_MAP §39）`TREND_YEN_PER_MONTH` `TREND_YEN_PER_AI` `GEMINI_PRICE_IN_USD_PER_M` `GEMINI_PRICE_OUT_USD_PER_M` `GEMINI_PRICE_AUDIO_IN_USD_PER_M` `USD_JPY`（実測のトークン数から費用を出す単価。音声の入力は別の単価〔既定 $1.00〕。APP_MAP §46・§52-6）`CANDIDATE_VIDEO_PER_DAY`（管理の候補づくりで動画を読む1日の回数〔既定10〕。APP_MAP §52-6）（新着集めの月の費用の上限〔既定1,000円〕と、AI 1回の目安〔既定5円〕。APP_MAP §39・§45）ほか
+- 環境変数：`GEMINI_API_KEY` `GEMINI_MODEL` `GEMINI_VIDEO_MODEL` `YOUTUBE_API_KEY` `RECIPE_BUCKET` `SYNC_BUCKET` `ALLOWED_ORIGINS` `RECIPE_ADMIN_TOKEN` `DEV_UNLOCK_CODE` `GOOGLE_CLIENT_ID` `RESEND_API_KEY` `MAIL_FROM` `PUSH_SUBJECT` `START_TICKETS` `AI_DAILY_LIMIT` `AI_MONTHLY_LIMIT` `GEMINI_ILLUST_MODEL` `ILLUST_YEN_PER_MONTH` `ILLUST_YEN_PER_IMAGE` `ILLUST_PRICE_IN` `ILLUST_PRICE_IMAGE_OUT` `ILLUST_PRICE_TEXT_OUT`（わたしの食卓レビューの絵。月1,500円・1枚の目安6円・単価〔USD／100万トークン〕。APP_MAP §82） `VIDEO_ANALYSIS_ENABLED` `VIDEO_MAX_SECONDS` `TIMECODE_FPS` `TIMECODE_MAX_SECONDS`（手順の時刻を動画から探す時のコマ数〔既定0.2＝5秒に1コマ〕と見る長さ〔既定1800秒〕。APP_MAP §46-2）`WEEKLY_MENU` `TREND_PER_DAY` `TREND_WEEK_MAX`（新着の採用数：1日2・1週14が既定）`TREND_AI_PER_DAY` `TREND_AI_PER_WEEK`（新着集めが AI を呼ぶ回数：1日6・1週30が既定。APP_MAP §39）`TREND_YEN_PER_MONTH` `TREND_YEN_PER_AI` `GEMINI_PRICE_IN_USD_PER_M` `GEMINI_PRICE_OUT_USD_PER_M` `GEMINI_PRICE_AUDIO_IN_USD_PER_M` `USD_JPY`（実測のトークン数から費用を出す単価。音声の入力は別の単価〔既定 $1.00〕。APP_MAP §46・§52-6）`CANDIDATE_VIDEO_PER_DAY`（管理の候補づくりで動画を読む1日の回数〔既定10〕。APP_MAP §52-6）（新着集めの月の費用の上限〔既定1,000円〕と、AI 1回の目安〔既定5円〕。APP_MAP §39・§45）ほか
 
 ## 外部サービス
 

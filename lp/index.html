@@ -42,6 +42,14 @@
       </div>
     </header>
 
+    <!-- 📮 わたしの食卓レビューの画像から来た人にだけ出す歓迎の帯（?from=review。APP_MAP §82） -->
+    <div class="review-welcome" id="review-welcome" hidden>
+      <div class="container review-welcome-inner">
+        <p><b>🍳 シェアされた「わたしの食卓」から、ようこそ</b><br /><small>あなたの夜ごはんも、記録すると1枚の絵になります（2026年内は全機能無料）</small></p>
+        <a class="button button-primary button-small" href="../?start=quick" data-cta="review">はじめる</a>
+      </div>
+    </div>
+    <script>try { if (new URLSearchParams(location.search).get("from") === "review") document.getElementById("review-welcome").hidden = false; } catch (e) {}</script>
     <main id="top">
       <!-- ファーストビュー -->
       <section class="hero">

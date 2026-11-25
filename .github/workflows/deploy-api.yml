@@ -21,6 +21,9 @@ env:
   GEMINI_MODEL: gemini-2.5-flash
   GEMINI_VIDEO_MODEL: gemini-2.5-flash
   GEMINI_MENU_MODEL: gemini-3.1-flash-image
+  # わたしの食卓レビューの色鉛筆イラスト（APP_MAP §82）。2026-11-24 のユーザーの判断：月1,500円まで（取り込みの AI とは別に数える）。
+  GEMINI_ILLUST_MODEL: gemini-nano-banana-2.1
+  ILLUST_YEN_PER_MONTH: "1500"
   # アプリ全体の AI の月の回数の上限（利用者の取り込み＋新着集め。新着集めはこの7割まで）。
   # 2026-11-23 のユーザーの判断：1,000 → 1,600回（円の上限 月1,000円・利用者の分3割は変えない）。
   AI_MONTHLY_LIMIT: "1600"
@@ -56,6 +59,8 @@ jobs:
             GEMINI_MODEL=${{ env.GEMINI_MODEL }}
             GEMINI_VIDEO_MODEL=${{ env.GEMINI_VIDEO_MODEL }}
             GEMINI_MENU_MODEL=${{ env.GEMINI_MENU_MODEL }}
+            GEMINI_ILLUST_MODEL=${{ env.GEMINI_ILLUST_MODEL }}
+            ILLUST_YEN_PER_MONTH=${{ env.ILLUST_YEN_PER_MONTH }}
             AI_MONTHLY_LIMIT=${{ env.AI_MONTHLY_LIMIT }}
           env_vars_update_strategy: merge
       - name: Health check
