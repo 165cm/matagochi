@@ -113,7 +113,7 @@ test('refill: runs automatically up to 24 dishes and 40 AI calls a day, and does
   assert.ok(st.parents.filter((p) => p.total > 0).length >= 5);
   // 管理の画面（🎯 進み具合）用：親ごとの目標（理想の12品は20分以内6・30分以上2・8品まで、ほかは4・1・6品まで）と補充の段（2026-11-03）
   const idealRow = st.parents.find((p) => p.ideal), plainRow = st.parents.find((p) => !p.ideal);
-  assert.deepEqual([idealRow.lim, idealRow.tier], [{ quick: 6, long: 2, max: 8 }, 0]);
+  assert.deepEqual([idealRow.lim, idealRow.tier], [{ quick: 8, long: 2, max: 8, longOptional: true }, 0]);
   assert.deepEqual(plainRow.lim, { quick: 4, long: 1, max: 6 });
   assert.ok([1, 2].includes(plainRow.tier));
   assert.deepEqual(st.idealMissing, [], 'every ideal dish is in the dictionary');
@@ -257,17 +257,20 @@ test('review fix (#135 r2): the workflow refills only after the daily collection
 });
 
 // 理想の品ぞろえ（2026-10-28 のユーザーの判断）：理想の12品 → 目安より少ない分野 → ほか、の順に補充する。理想の12品は8品まで。
-test('ideal: the 12 ideal dishes come first and fill to 8 (6 quick, 2 long); others stay at 6', async () => {
+test('ideal: the 12 ideal dishes come first and fill to 8 (at most 2 long, the rest may be quick); others stay at 6', async () => {
   const { IDEAL_DISHES, IDEAL_CHILDREN } = await import('../src/ideal.js');
   assert.equal(IDEAL_DISHES.length, 12);
   const ps = prioritizedParents({}, []);
   assert.deepEqual(ps.slice(0, 12).map((p) => p.name), IDEAL_DISHES.map((d) => d.name), 'ideal first, in order');
   assert.ok(ps.slice(0, 12).every((p) => p.tier === 0));
   const ideal = ps[0].key;
-  assert.deepEqual(limitsFor(ideal), { quick: 6, long: 2, max: IDEAL_CHILDREN });
+  assert.deepEqual(limitsFor(ideal), { quick: IDEAL_CHILDREN, long: 2, max: IDEAL_CHILDREN, longOptional: true });
   assert.equal(limitsFor('ほかの料理').max, 6);
   assert.equal(parentRoom({ quick: 5, long: 0, total: 5 }, true, ideal), true, 'a 6th quick child is fine for an ideal dish');
-  assert.equal(parentRoom({ quick: 6, long: 1, total: 7 }, true, ideal), false, 'the last seat is for a long one');
+  // 2026-11-25：30分以上の席は取っておかない（2品まで）。20分以内で8品まで埋めてよい
+  assert.equal(parentRoom({ quick: 6, long: 1, total: 7 }, true, ideal), true, 'no seat is kept for a long one');
+  assert.equal(parentRoom({ quick: 6, long: 2, total: 8 }, true, ideal), false);
+  assert.equal(parentRoom({ quick: 5, long: 2, total: 7 }, false, ideal), false, 'a third long one is not added');
   assert.equal(parentRoom({ quick: 6, long: 1, total: 7 }, false, ideal), true);
   assert.equal(parentRoom({ quick: 6, long: 2, total: 8 }, false, ideal), false, '8 at most');
   // 理想の料理名が6品そろっていても、まだ探す（ほかの親より先）。理想の中では、足りない子の多い料理名から。
@@ -376,20 +379,20 @@ test('2026-11-24: the ideal-dish log shows, per dish, the stock, what is still m
   const book = createTrendBook(store, { catalog, now: () => NOW, yenPerAi: 1, yenPerMonth: 1000,
     search: async (q) => { searched.push(q); return searched.length > 1 ? [] : [{ videoId: v1, channelId: 'c1', title: '冷しゃぶ' }, { videoId: v2, channelId: 'c2', title: '冷しゃぶ' }, { videoId: vid(), channelId: 'c2', title: '冷しゃぶ' }, { videoId: vid(), channelId: 'c2', title: '冷しゃぶ' }]; } });
   await book.seed({ yen: 10, axis: 'parent', maxAdd: 1 });
-  assert.equal(searched[0], `冷しゃぶ ${PARENT_FLAVORS.long[0]} レシピ 材料`, 'only a 30-minute child is missing, so the long word is used');
+  // 2026-11-25：30分以上の席は取っておかないので、20分以内の言葉で探す（あと2品）
+  assert.equal(searched[0], `冷しゃぶ ${PARENT_FLAVORS.quick[0]} レシピ 材料`, 'no long seat is kept, so a quick word is used');
   const log = await book.idealLog();
   const d = log.dishes.find((x) => x.name === '冷しゃぶ');
-  assert.deepEqual(d.stock, { quick: 6, long: 0, total: 6 });
-  assert.equal(d.quick.need, 0);
-  assert.equal(d.long.need, 2);
-  assert.equal(d.long.used, 1);
-  assert.equal(d.long.next, PARENT_FLAVORS.long[1]);
+  assert.deepEqual(d.stock, { quick: 7, long: 0, total: 7 }, 'the quick child was added');
+  assert.equal(d.quick.need, 1);
+  assert.equal(d.long.need, 0);
+  assert.equal(d.quick.used, 1);
+  assert.equal(d.quick.next, PARENT_FLAVORS.quick[1]);
   assert.equal(d.searches.length, 1);
   const s = d.searches[0];
   assert.equal(s.found, 4);
   assert.equal(s.why.same_channel, 1, 'a third video from the same channel is left out before the AI');
-  assert.equal(s.why.parent_long, 1, 'a quick child read by the AI is not added: only a 30-minute child is wanted');
-  assert.equal(s.added, 0);
+  assert.equal(s.added, 1, 'a quick child is added (maxAdd 1)');
   assert.ok(!JSON.stringify(log).includes(v1), 'no video ids');
   assert.ok(log.dishes.find((x) => x.name !== '冷しゃぶ').full);
 });
