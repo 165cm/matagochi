@@ -38,7 +38,7 @@ function markdown(log) {
   for (const d of open) {
     const wait = [d.quick?.waitUntil ? `20分以内：${day(d.quick.waitUntil)}まで` : "", d.long?.waitUntil ? `30分以上：${day(d.long.waitUntil)}まで` : ""].filter(Boolean).join("／") || "—";
     const next = [d.quick?.need ? `20分以内「${d.quick.next || "なし"}」（${d.quick.used}/${d.quick.words}）` : "", d.long?.need ? `30分以上「${d.long.next || "なし"}」（${d.long.used}/${d.long.words}）` : ""].filter(Boolean).join("／") || "—";
-    lines.push(`| ${d.name} | ${d.stock?.quick || 0}／${d.stock?.long || 0}（上限 ${d.quickMax}／${d.longMax}） | ${d.quick?.need || 0}／${d.long?.need || 0} | ${next} | ${wait} |`);
+    lines.push(`| ${d.name} | ${d.stock?.quick || 0}／${d.stock?.long || 0}（${d.max || 8}品まで・30分以上は${d.longMax}品まで） | ${d.quick?.need || 0}／${d.long?.need || 0} | ${next} | ${wait} |`);
   }
   lines.push("", "**最近の検索**（新しい順・料理ごとに6回まで）", "", "| 料理 | 日 | 言葉 | 見つかった | AI の前に残った | AI で読んだ | 増えた | 外した理由 |", "|---|---|---|---:|---:|---:|---:|---|");
   let any = false;

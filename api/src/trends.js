@@ -248,14 +248,20 @@ export function stockOf(items = []) {
   return by;
 }
 // 理想の12品（ideal.js）は、子を IDEAL_CHILDREN 品まで（30分以上は IDEAL_LONG 品まで）。ほかの親は今までどおり6品まで（30分以上1品）。
+// 2026-11-25 のユーザーの判断「無理に長くする必要はない」：理想の12品の30分以上は「取っておく席」ではなく「2品まで」（longOptional）。
+// 30分以上の作り方が見つからない料理（冷しゃぶなど）は、8品を20分以内で埋めてよい。30分以上だけを探しには行かない。
 const IDEAL_KEYS = new Set(IDEAL_DISHES.map((d) => parentKeyOf(d.name)));
 export const isIdealParent = (key) => IDEAL_KEYS.has(key);
 export const limitsFor = (key) => (IDEAL_KEYS.has(key)
-  ? { quick: IDEAL_CHILDREN - IDEAL_LONG, long: IDEAL_LONG, max: IDEAL_CHILDREN }
+  ? { quick: IDEAL_CHILDREN, long: IDEAL_LONG, max: IDEAL_CHILDREN, longOptional: true }
   : { quick: REFILL_CHILDREN - REFILL_LONG_PER_PARENT, long: REFILL_LONG_PER_PARENT, max: REFILL_CHILDREN_MAX });
-const need = (st = {}, key = "") => { const l = limitsFor(key); return { quick: Math.max(0, l.quick - (st.quick || 0)), long: Math.max(0, l.long - (st.long || 0)) }; };
+const need = (st = {}, key = "") => {
+  const l = limitsFor(key);
+  if (l.longOptional) return { quick: Math.max(0, l.max - (st.total || 0)), long: 0 };
+  return { quick: Math.max(0, l.quick - (st.quick || 0)), long: Math.max(0, l.long - (st.long || 0)) };
+};
 // 子を入れてよいか（親1つで6品まで・30分以上は1品まで・20分以内は5品まで＝30分以上の1品の席を残す。理想の12品は8品・30分以上2品）。
-export const parentRoom = (st = {}, quick, key = "") => { const l = limitsFor(key); return (st.total || 0) < l.max && (quick ? (st.quick || 0) < l.max - l.long : (st.long || 0) < l.long); };
+export const parentRoom = (st = {}, quick, key = "") => { const l = limitsFor(key); return (st.total || 0) < l.max && (quick ? (st.quick || 0) < (l.longOptional ? l.max : l.max - l.long) : (st.long || 0) < l.long); };
 // 親の子がそろったか（数ではなく内訳で：20分以内4品以上・30分以上1品以上。review fix #135）。
 export const parentFilled = (st = {}, key = "") => { const n = need(st, key); return n.quick === 0 && n.long === 0; };
 // 親料理の分野（主役）。定番の一覧（WAVE_CLASSIC_DISHES）と理想の12品から。分からない親は数えない。
