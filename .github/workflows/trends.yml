@@ -36,7 +36,7 @@ jobs:
             echo "Round $i: $out"
             echo "$out" > refresh.json
             # その日の分がそろった時だけ、次の「親料理の補充」へ進む（review fix #135）。
-            echo "$out" | grep -q '"done":true' && { echo "done=true" >> "$GITHUB_OUTPUT"; exit 0; }
+            echo "$out" | grep -q '"done":true' && { echo "done=true" >> "$GITHUB_OUTPUT"; echo "refill=true" >> "$GITHUB_OUTPUT"; exit 0; }
             # AI全体の枠・設定の不足は、今日はここまで。通信や一時的な失敗は、少し待ってやり直す（done にはならない）。
             echo "$out" | grep -q '"paused":"ai_budget"' && { echo "AIの今日の枠を利用者に残すため、続きは明日。"; exit 0; }
             echo "$out" | grep -q '"paused":"not_configured"' && { echo "サーバーの設定が足りません（AI・YouTube APIキー）。"; exit 1; }
@@ -45,9 +45,11 @@ jobs:
             sleep 5
           done
           echo "Not finished yet; the next run continues."
+          # 一時的なエラー・時間切れで終わらなかった日も、補充は動かす（2026-11-26 のユーザーの判断。AI全体の枠を利用者に残す日・設定の不足の日は動かさない）。
+          echo "refill=true" >> "$GITHUB_OUTPUT"
       - name: Refill parent dishes (until today's share is done)
-        # 新着集めがその日の分を終えた（done:true を確かめた）時だけ。AI全体の枠を利用者に残す日・終わらなかった日は補充しない。
-        if: steps.refresh.outputs.done == 'true'
+        # 新着集めがその日の分を終えた時と、一時的なエラー・時間切れで終わらなかった時。AI全体の枠を利用者に残す日（ai_budget）・設定の不足の日は補充しない。
+        if: steps.refresh.outputs.refill == 'true'
         run: |
           for i in 1 2 3 4 5 6; do
             out=$(curl -sS --max-time 290 -X POST -H "Content-Type: application/json" \

@@ -17,7 +17,7 @@ function fakeCatalog(overrides = {}) {
       const budgetRefused = overrides[url.match(/v=([\w-]{11})/)[1]] === 'budget';
       if (!budgetRefused) o.aiGate?.used();
       const r = await this._import(url, o); ready.set(url.match(/v=([\w-]{11})/)[1], r); return r; },
-    async _import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw Object.assign(new Error('gone'), { code: 'video_not_found' }); if (overrides[id] === 'flaky') throw Object.assign(new Error('timeout'), { code: 'youtube_timeout', status: 504 }); if (overrides[id] === 'budget') throw Object.assign(new Error('budget'), { code: 'analysis_budget_exceeded', status: 429 }); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
+    async _import(url, o = {}) { const id = url.match(/v=([\w-]{11})/)[1]; calls.push([id, !!o.forceVideo]); if (o.forceVideo) read.add(id); if (overrides[id] === 'fail') throw Object.assign(new Error('gone'), { code: 'video_not_found' }); if (overrides[id] === 'pending') throw Object.assign(new Error('pending'), { code: 'analysis_pending', status: 409 }); if (overrides[id] === 'flaky') throw Object.assign(new Error('timeout'), { code: 'youtube_timeout', status: 504 }); if (overrides[id] === 'budget') throw Object.assign(new Error('budget'), { code: 'analysis_budget_exceeded', status: 429 }); if (overrides[id] === 'empty' && !o.forceVideo) throw Object.assign(new Error('empty'), { code: 'empty_description' }); if (overrides[id] === 'nosteps' && !read.has(id)) return recipe(id, { steps: [] }); return recipe(id, overrides[id] && typeof overrides[id] === 'object' ? overrides[id] : {}); } };
 }
 const ids = Array.from({ length: 14 }, (_, i) => `vid${String(i).padStart(8, '0')}`);
 
@@ -277,6 +277,19 @@ test('review fix 1c: a temporary failure is retried on later runs (up to 3 times
   const third = await make().step();
   assert.equal(third.skipped.youtube_timeout, 1, 'after the third failure it is given up');
   assert.equal(third.items, 2, 'and the others are collected');
+});
+
+test('2026-11-26: a video stuck "in analysis" is put at the back once; the other videos are still collected that run', async () => {
+  const store = createMemorySyncStore();
+  const now = Date.parse('2026-09-28T01:00:00Z');
+  const catalog = fakeCatalog({ [ids[0]]: 'pending' });
+  const book = createTrendBook(store, { catalog, now: () => now, search: async () => ids.slice(0, 3).map((videoId, i) => ({ videoId, channelId: `c${i}`, title: 'レシピ' })) });
+  const r = await book.step();
+  assert.equal(r.items, 2, 'the two other videos are collected instead of stopping at the first one');
+  assert.equal(r.skipped.wait_later, 1);
+  assert.notEqual(r.paused, 'temporary_error', 'the day is not stopped by the one stuck video');
+  const w = (await store.get('trends/index')).envelope.weeks[0];
+  assert.ok(!w.tried.includes(ids[0]) && w.candidates.includes(ids[0]), 'the stuck video is not used up');
 });
 
 test('review fix 2: on a new day, the channels are checked before yesterday\'s leftover candidates, and new uploads go first', async () => {
