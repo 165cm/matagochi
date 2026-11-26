@@ -247,13 +247,15 @@ test('review fix (#135 r2): if the collection throws (e.g. its record could not 
   assert.equal((await book.refill()).skipped, 'today_done');
 });
 
-test('review fix (#135 r2): the workflow refills only after the daily collection said done:true', async () => {
+test('review fix (#135 r2) / 2026-11-26: the workflow refills after the daily collection is done, or did not finish (temporary error, time); not on the AI-budget or settings stop', async () => {
   const { readFileSync } = await import('node:fs');
   const yml = readFileSync(new URL('../../.github/workflows/trends.yml', import.meta.url), 'utf8');
   assert.match(yml, /id: refresh/);
-  assert.match(yml, /grep -q '"done":true' && \{ echo "done=true" >> "\$GITHUB_OUTPUT"; exit 0; \}/);
-  assert.match(yml, /if: steps\.refresh\.outputs\.done == 'true'\n\s+run: \|\n[\s\S]*\/api\/trends\/refill/);
-  assert.ok(!/ai_budget"' && \{[^}]*GITHUB_OUTPUT/.test(yml), 'the AI-budget stop does not mark done');
+  assert.match(yml, /grep -q '"done":true' && \{ echo "done=true" >> "\$GITHUB_OUTPUT"; echo "refill=true" >> "\$GITHUB_OUTPUT"; exit 0; \}/);
+  assert.match(yml, /Not finished yet; the next run continues\."\n(\s*#.*\n)*\s*echo "refill=true" >> "\$GITHUB_OUTPUT"/);
+  assert.match(yml, /if: steps\.refresh\.outputs\.refill == 'true'\n\s+run: \|\n[\s\S]*\/api\/trends\/refill/);
+  assert.ok(!/ai_budget"' && \{[^}]*GITHUB_OUTPUT/.test(yml), 'the AI-budget stop does not mark done or refill');
+  assert.ok(!/not_configured"' && \{[^}]*GITHUB_OUTPUT/.test(yml), 'the settings stop does not refill');
 });
 
 // 理想の品ぞろえ（2026-10-28 のユーザーの判断）：理想の12品 → 目安より少ない分野 → ほか、の順に補充する。理想の12品は8品まで。

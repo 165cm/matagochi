@@ -798,6 +798,9 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
           current.candidates.splice(current.tried.length, 0, ...picked.slice(0, MAX_TRIES_PER_ROUND));
         };
         let paused = "", limited = "", scannedNow = false, searchFailedNow = false;
+        // 「読み取り中」「1分待ち」の動画は、この実行では後ろへ回して次の候補へ（1本のせいで、その日の集めを止めない。2026-11-26 のユーザーの判断）。
+        // 後ろへ回すのは各動画1度だけ。もう一度当たったら、今までどおり一時的なエラーとして止まる。
+        const waitedNow = new Set();
         while (quota() > 0 && now() - started < budgetMs) {
           if ((await aiUsedToday()) >= Math.floor(dailyLimit / 2)) { paused = "ai_budget"; break; }
           if (!canSpend()) { if (reserveFailed) paused = "cost_not_saved"; else limited = budgetReason(); break; }
@@ -857,6 +860,14 @@ export function createTrendBook(store, { catalog, search, optedOut = async () =>
             } else {
               // 試していない扱いに戻す（次の実行で、この動画からやり直す）。
               current.tried.pop();
+              if (kind === "wait" && !waitedNow.has(videoId)) {
+                waitedNow.add(videoId);
+                current.candidates.splice(current.tried.length, 1);
+                current.candidates.push(videoId);
+                skip("wait_later");
+                await writeIndex(index);
+                continue;
+              }
               if (kind === "retry") { current.retries[videoId] = (current.retries[videoId] || 0) + 1; paused = "temporary_error"; skip("retry"); }
               else if (kind === "wait") paused = "temporary_error"; // 直前の失敗の待ち時間・分析中。失敗の回数には入れない
               else if (kind === "budget") { if (reserveFailed) paused = "cost_not_saved"; else limited = budgetReason(); }
